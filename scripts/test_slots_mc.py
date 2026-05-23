@@ -63,41 +63,59 @@ def test_build_distribution_with_residual():
 
 @pytest.fixture
 def reset_martingale_globals():
-    """Reset PARAMS and CONFIG to defaults so martingale tests don't leak state."""
+    """Set PARAMS/CONFIG to known values for the test, then restore prior values."""
+    saved = (
+        slots_mc.PARAMS.base_bet,
+        slots_mc.PARAMS.loss_mult,
+        slots_mc.PARAMS.treat_push_as_win,
+        slots_mc.CONFIG.max_bet,
+    )
     slots_mc.PARAMS.base_bet = 5000
     slots_mc.PARAMS.loss_mult = 2.0
     slots_mc.PARAMS.treat_push_as_win = False
     slots_mc.CONFIG.max_bet = 250000
-    yield
+    try:
+        yield
+    finally:
+        (
+            slots_mc.PARAMS.base_bet,
+            slots_mc.PARAMS.loss_mult,
+            slots_mc.PARAMS.treat_push_as_win,
+            slots_mc.CONFIG.max_bet,
+        ) = saved
 
 
 def test_martingale_zero_or_negative_last_bet_returns_base(reset_martingale_globals):
-    assert slots_mc.next_bet_martingale(1_000_000, 0, 0.0, 0, 1) == slots_mc.PARAMS.base_bet
-    assert slots_mc.next_bet_martingale(1_000_000, -5000, 0.0, 0, 1) == slots_mc.PARAMS.base_bet
+    base = slots_mc.PARAMS.base_bet
+    assert slots_mc.next_bet_martingale(1_000_000, 0, 0.0, 0, 1) == base
+    assert slots_mc.next_bet_martingale(1_000_000, -base, 0.0, 0, 1) == base
 
 
 def test_martingale_resets_to_base_after_win(reset_martingale_globals):
     # last_mult > 1.0 = win
-    assert slots_mc.next_bet_martingale(1_000_000, 20000, 2.0, 1, 0) == 5000
+    assert slots_mc.next_bet_martingale(1_000_000, 20000, 2.0, 1, 0) == slots_mc.PARAMS.base_bet
 
 
 def test_martingale_doubles_after_loss(reset_martingale_globals):
-    # last_mult = 0.0 = loss; bet should double
-    assert slots_mc.next_bet_martingale(1_000_000, 5000, 0.0, 0, 1) == 10000
-    assert slots_mc.next_bet_martingale(1_000_000, 10000, 0.0, 0, 2) == 20000
+    # last_mult = 0.0 = loss; bet should multiply by loss_mult
+    mult = slots_mc.PARAMS.loss_mult
+    assert slots_mc.next_bet_martingale(1_000_000, 5000, 0.0, 0, 1) == int(5000 * mult)
+    assert slots_mc.next_bet_martingale(1_000_000, 10000, 0.0, 0, 2) == int(10000 * mult)
 
 
 def test_martingale_caps_at_max_bet(reset_martingale_globals):
-    # 200000 * 2 = 400000 but max_bet caps at 250000
-    assert slots_mc.next_bet_martingale(1_000_000, 200000, 0.0, 0, 1) == 250000
+    # 200000 * 2 = 400000 but max_bet caps the result
+    cap = slots_mc.CONFIG.max_bet
+    assert slots_mc.next_bet_martingale(1_000_000, 200000, 0.0, 0, 1) == cap
 
 
 def test_martingale_push_as_win_resets(reset_martingale_globals):
     slots_mc.PARAMS.treat_push_as_win = True
     # last_mult = 1.0 (push), treated as win => reset
-    assert slots_mc.next_bet_martingale(1_000_000, 20000, 1.0, 1, 0) == 5000
+    assert slots_mc.next_bet_martingale(1_000_000, 20000, 1.0, 1, 0) == slots_mc.PARAMS.base_bet
 
 
 def test_martingale_push_as_loss_doubles(reset_martingale_globals):
     # treat_push_as_win defaults to False; 1.0 multiplier counts as loss for progression
-    assert slots_mc.next_bet_martingale(1_000_000, 20000, 1.0, 0, 1) == 40000
+    mult = slots_mc.PARAMS.loss_mult
+    assert slots_mc.next_bet_martingale(1_000_000, 20000, 1.0, 0, 1) == int(20000 * mult)
