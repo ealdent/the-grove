@@ -10,7 +10,21 @@ slots_mc = importlib.util.module_from_spec(spec)
 sys.modules["slots_mc"] = slots_mc
 spec.loader.exec_module(slots_mc)
 
-from slots_mc import theoretical_ev, Outcome
+from slots_mc import theoretical_ev, Outcome, build_distribution
+
+def test_build_distribution_empty_outcomes():
+    """Test build_distribution raises ValueError on empty list."""
+    with pytest.raises(ValueError, match="Please paste your previously determined probabilities into OUTCOMES."):
+        build_distribution([])
+
+def test_build_distribution_sum_too_high():
+    """Test build_distribution raises ValueError when sum of probabilities > 1."""
+    outcomes = [
+        ("outcome1", 0.6, 1.0),
+        ("outcome2", 0.5, 2.0),
+    ]
+    with pytest.raises(ValueError, match=r"Outcome probabilities sum to 1\.100000 \(>1\)\. Fix your inputs\."):
+        build_distribution(outcomes)
 
 def test_theoretical_ev_empty():
     """Test with an empty list of outcomes."""
