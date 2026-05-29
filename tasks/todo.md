@@ -1,3 +1,24 @@
+# SVG Forest Prism Mycelium Index Entry
+
+## Spec
+
+- [x] Add the new Prism Mycelium SVG exploration game to the SVG Forest index.
+- [x] Keep the existing badge-grid style and navigation behavior.
+- [x] Verify the new link points at `gpt-5.5-xhigh-svg-forest.html`.
+- [x] Commit and push the update.
+
+## Plan
+
+- [x] Inspect the SVG Forest index structure.
+- [x] Add the matching badge theme and card.
+- [x] Run static link/diff checks.
+- [x] Commit and push to the current branch.
+
+## Review
+
+- Added a Prism Mycelium badge to `svg-forest/index.html` using the existing grid/card pattern and a new prism accent theme.
+- Verified the target file exists, the index references `gpt-5.5-xhigh-svg-forest.html`, and `git diff --check` passes.
+
 # Canon T5i TOC Link Hit Area Fix
 
 ## Spec
