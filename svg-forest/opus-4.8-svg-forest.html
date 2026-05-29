@@ -1,0 +1,702 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"/>
+<meta name="theme-color" content="#06061c"/>
+<title>LUMENGROVE — a bioluminescent alien grove</title>
+<style>
+  :root{ --ui:#cdefft; }
+  *{ box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html,body{
+    margin:0; padding:0; width:100%; height:100%;
+    position:fixed; inset:0; overflow:hidden;
+    background:#06061c; color:#dcefff;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    overscroll-behavior:none; touch-action:none;
+    -webkit-user-select:none; user-select:none;
+  }
+  #scene{ position:fixed; inset:0; width:100%; height:100%; display:block; cursor:grab; }
+  #scene:active{ cursor:grabbing; }
+
+  /* ---------- HUD ---------- */
+  #hud{ position:fixed; inset:0; pointer-events:none; z-index:10; }
+  #panel{
+    position:absolute; top:14px; left:14px;
+    padding:10px 14px; border-radius:14px;
+    background:rgba(12,10,38,0.42);
+    border:1px solid rgba(150,200,255,0.18);
+    backdrop-filter:blur(6px); -webkit-backdrop-filter:blur(6px);
+    font-size:12px; line-height:1.5; letter-spacing:.3px;
+    box-shadow:0 4px 24px rgba(0,0,0,0.35);
+  }
+  #panel .title{
+    font-size:14px; font-weight:700; letter-spacing:2px;
+    background:linear-gradient(90deg,#7ffcff,#ff8de0,#ffe79a);
+    -webkit-background-clip:text; background-clip:text; color:transparent;
+    margin-bottom:3px;
+  }
+  #panel .stat{ color:#a9c4e8; }
+  #panel .stat b{ color:#eaf6ff; font-variant-numeric:tabular-nums; }
+
+  #hint{
+    position:absolute; bottom:18px; left:50%; transform:translateX(-50%);
+    padding:8px 16px; border-radius:999px;
+    background:rgba(12,10,38,0.4); border:1px solid rgba(150,200,255,0.15);
+    font-size:12px; color:#bcd6f4; white-space:nowrap;
+    backdrop-filter:blur(6px); -webkit-backdrop-filter:blur(6px);
+  }
+
+  /* ---------- Intro card ---------- */
+  #intro{
+    position:fixed; inset:0; z-index:20; pointer-events:none;
+    display:flex; align-items:center; justify-content:center;
+    transition:opacity .9s ease;
+  }
+  #intro .card{
+    text-align:center; padding:26px 30px; max-width:80%;
+    border-radius:20px;
+    background:rgba(10,8,32,0.55); border:1px solid rgba(150,200,255,0.18);
+    backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px);
+    box-shadow:0 10px 50px rgba(0,0,0,0.5);
+  }
+  #intro h1{
+    margin:0 0 6px; font-size:clamp(22px,6vw,40px); letter-spacing:4px; font-weight:800;
+    background:linear-gradient(90deg,#7ffcff,#ff8de0,#ffe79a,#9a6bff);
+    -webkit-background-clip:text; background-clip:text; color:transparent;
+  }
+  #intro p{ margin:4px 0; color:#bcd6f4; font-size:clamp(12px,3.4vw,15px); }
+  #intro .go{ margin-top:12px; color:#8fb6e0; font-size:12px; letter-spacing:1px; }
+  #intro.hidden{ opacity:0; }
+
+  /* ---------- Joysticks ---------- */
+  .joy{
+    position:fixed; bottom:max(22px,env(safe-area-inset-bottom)); z-index:15;
+    width:128px; height:128px; border-radius:50%;
+    background:radial-gradient(circle at 50% 50%, rgba(40,30,80,0.30), rgba(20,16,48,0.45));
+    border:1px solid rgba(150,200,255,0.22);
+    touch-action:none; pointer-events:auto;
+    box-shadow:inset 0 0 30px rgba(120,180,255,0.08), 0 6px 24px rgba(0,0,0,0.35);
+    opacity:.62; transition:opacity .25s;
+  }
+  body.touch .joy{ opacity:.85; }
+  .joy:active{ opacity:1; }
+  #joyL{ left:max(20px,env(safe-area-inset-left)); }
+  #joyR{ right:max(20px,env(safe-area-inset-right)); }
+  .joy .thumb{
+    position:absolute; left:50%; top:50%; width:54px; height:54px; border-radius:50%;
+    transform:translate(-50%,-50%);
+    background:radial-gradient(circle at 38% 34%, #bdeaff, #5aa6e8 55%, #2b5fb0);
+    box-shadow:0 0 18px rgba(120,200,255,0.6), inset 0 -4px 8px rgba(0,0,0,0.3);
+    pointer-events:none;
+  }
+  .joy .lbl{
+    position:absolute; left:0; right:0; top:-20px; text-align:center;
+    font-size:10px; letter-spacing:2px; color:#9fc0e6;
+  }
+
+  @media (max-width:520px){
+    #hint{ display:none; }
+    #panel{ font-size:11px; padding:8px 11px; }
+  }
+</style>
+</head>
+<body>
+
+<svg id="scene" preserveAspectRatio="xMidYMid slice" aria-label="Lumengrove first-person exploration">
+  <defs>
+    <linearGradient id="skyGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%"  stop-color="#05051a"/>
+      <stop offset="26%" stop-color="#120a33"/>
+      <stop offset="40%" stop-color="#311158"/>
+      <stop offset="48%" stop-color="#6e2783"/>
+      <stop offset="53%" stop-color="#b1527f"/>
+      <stop offset="100%" stop-color="#c98a86"/>
+    </linearGradient>
+    <linearGradient id="horizonGlowGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%"  stop-color="#ff5fc8" stop-opacity="0"/>
+      <stop offset="45%" stop-color="#ff79cf" stop-opacity="0.5"/>
+      <stop offset="60%" stop-color="#ffd0a6" stop-opacity="0.35"/>
+      <stop offset="100%" stop-color="#ff5fc8" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="groundGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%"  stop-color="#3a1652"/>
+      <stop offset="7%"  stop-color="#1d0d39"/>
+      <stop offset="38%" stop-color="#0d0824"/>
+      <stop offset="100%" stop-color="#040210"/>
+    </linearGradient>
+    <radialGradient id="vignetteGrad" cx="50%" cy="48%" r="72%">
+      <stop offset="0%"  stop-color="#000000" stop-opacity="0"/>
+      <stop offset="62%" stop-color="#000000" stop-opacity="0"/>
+      <stop offset="100%" stop-color="#02000a" stop-opacity="0.62"/>
+    </radialGradient>
+
+    <!-- soft glows (no filters, for performance) -->
+    <radialGradient id="glow-cyan">
+      <stop offset="0%" stop-color="#9bfdff" stop-opacity="0.9"/>
+      <stop offset="45%" stop-color="#2bd4e0" stop-opacity="0.34"/>
+      <stop offset="100%" stop-color="#2bd4e0" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="glow-magenta">
+      <stop offset="0%" stop-color="#ffaeec" stop-opacity="0.9"/>
+      <stop offset="45%" stop-color="#ef47ad" stop-opacity="0.32"/>
+      <stop offset="100%" stop-color="#ef47ad" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="glow-gold">
+      <stop offset="0%" stop-color="#fff0b8" stop-opacity="0.9"/>
+      <stop offset="45%" stop-color="#f7bf4a" stop-opacity="0.32"/>
+      <stop offset="100%" stop-color="#f7bf4a" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="glow-violet">
+      <stop offset="0%" stop-color="#d6bdff" stop-opacity="0.9"/>
+      <stop offset="45%" stop-color="#8a5cff" stop-opacity="0.34"/>
+      <stop offset="100%" stop-color="#8a5cff" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="glow-green">
+      <stop offset="0%" stop-color="#c2ffd9" stop-opacity="0.85"/>
+      <stop offset="45%" stop-color="#3ad98f" stop-opacity="0.3"/>
+      <stop offset="100%" stop-color="#3ad98f" stop-opacity="0"/>
+    </radialGradient>
+
+    <!-- mushroom caps -->
+    <radialGradient id="cap-cyan" cx="42%" cy="32%" r="78%">
+      <stop offset="0%" stop-color="#e6ffff"/><stop offset="42%" stop-color="#41e3d3"/><stop offset="100%" stop-color="#0e8f9d"/>
+    </radialGradient>
+    <radialGradient id="cap-magenta" cx="42%" cy="32%" r="78%">
+      <stop offset="0%" stop-color="#ffe0f5"/><stop offset="42%" stop-color="#ff5fc8"/><stop offset="100%" stop-color="#ad2078"/>
+    </radialGradient>
+    <radialGradient id="cap-gold" cx="42%" cy="32%" r="78%">
+      <stop offset="0%" stop-color="#fff8de"/><stop offset="42%" stop-color="#ffd35f"/><stop offset="100%" stop-color="#cf841c"/>
+    </radialGradient>
+    <radialGradient id="cap-violet" cx="42%" cy="32%" r="78%">
+      <stop offset="0%" stop-color="#f1e6ff"/><stop offset="42%" stop-color="#9a6bff"/><stop offset="100%" stop-color="#5526c9"/>
+    </radialGradient>
+    <linearGradient id="stalk" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#e2d8ff"/><stop offset="100%" stop-color="#8e79c4"/>
+    </linearGradient>
+
+    <!-- crystals -->
+    <linearGradient id="crystal-violet" x1="0" y1="0" x2="0.3" y2="1">
+      <stop offset="0%" stop-color="#f1e2ff"/><stop offset="45%" stop-color="#8c5cff"/><stop offset="100%" stop-color="#3f1a8f"/>
+    </linearGradient>
+    <linearGradient id="crystal-cyan" x1="0" y1="0" x2="0.3" y2="1">
+      <stop offset="0%" stop-color="#e6fdff"/><stop offset="45%" stop-color="#54d6ff"/><stop offset="100%" stop-color="#176f9e"/>
+    </linearGradient>
+
+    <!-- spore jelly bells -->
+    <radialGradient id="jelly-magenta" cx="50%" cy="38%" r="70%">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.62"/>
+      <stop offset="58%" stop-color="#ff86dc" stop-opacity="0.36"/>
+      <stop offset="100%" stop-color="#c23a9a" stop-opacity="0.06"/>
+    </radialGradient>
+    <radialGradient id="jelly-cyan" cx="50%" cy="38%" r="70%">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.62"/>
+      <stop offset="58%" stop-color="#86eaff" stop-opacity="0.36"/>
+      <stop offset="100%" stop-color="#2b9fc2" stop-opacity="0.06"/>
+    </radialGradient>
+
+    <!-- moons -->
+    <radialGradient id="moon-cyan" cx="40%" cy="38%" r="70%">
+      <stop offset="0%" stop-color="#f4ffff"/><stop offset="60%" stop-color="#c2efff"/><stop offset="100%" stop-color="#5fb6d6"/>
+    </radialGradient>
+    <radialGradient id="moon-magenta" cx="40%" cy="38%" r="70%">
+      <stop offset="0%" stop-color="#fff1f8"/><stop offset="60%" stop-color="#ffc4e6"/><stop offset="100%" stop-color="#dd6fb0"/>
+    </radialGradient>
+
+    <!-- aurora -->
+    <radialGradient id="aurora-green">
+      <stop offset="0%" stop-color="#7effc4" stop-opacity="0.5"/>
+      <stop offset="100%" stop-color="#7effc4" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="aurora-teal">
+      <stop offset="0%" stop-color="#69e6ff" stop-opacity="0.42"/>
+      <stop offset="100%" stop-color="#69e6ff" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <rect id="skyRect" x="0" y="0" width="100%" height="100%" fill="url(#skyGrad)"/>
+  <g id="auroraG"></g>
+  <g id="starsG"></g>
+  <g id="moonsG"></g>
+  <rect id="horizonGlow" x="0" y="0" width="100%" height="120" fill="url(#horizonGlowGrad)"/>
+  <rect id="groundRect" x="0" y="0" width="100%" height="100" fill="url(#groundGrad)"/>
+  <g id="sceneG"></g>
+  <g id="particlesG"></g>
+  <rect id="vignette" x="0" y="0" width="100%" height="100%" fill="url(#vignetteGrad)" pointer-events="none"/>
+</svg>
+
+<div id="hud">
+  <div id="panel">
+    <div class="title">LUMENGROVE</div>
+    <div class="stat">pos <b id="pos">0, 0</b></div>
+    <div class="stat">heading <b id="head">N</b></div>
+  </div>
+  <div id="hint">WASD / Arrows to move &amp; turn · drag to look</div>
+</div>
+
+<div id="intro">
+  <div class="card">
+    <h1>LUMENGROVE</h1>
+    <p>A bioluminescent alien grove that unfolds forever.</p>
+    <p>Wander the glowing fungi, crystal spires and drifting spore-jellies.</p>
+    <div class="go">— move to begin —</div>
+  </div>
+</div>
+
+<div class="joy" id="joyL"><div class="lbl">MOVE</div><div class="thumb"></div></div>
+<div class="joy" id="joyR"><div class="lbl">TURN</div><div class="thumb"></div></div>
+
+<script>
+"use strict";
+(function(){
+  const SVG = "http://www.w3.org/2000/svg";
+  const $ = id => document.getElementById(id);
+
+  const svg        = $("scene");
+  const sceneG     = $("sceneG");
+  const starsG     = $("starsG");
+  const moonsG     = $("moonsG");
+  const auroraG    = $("auroraG");
+  const particlesG = $("particlesG");
+  const groundRect = $("groundRect");
+  const horizonGlow= $("horizonGlow");
+
+  // ---------------- config ----------------
+  const CFG = {
+    cellSize:6, cellRadius:4,
+    near:0.45, maxDepth:25, fogStart:16,
+    eye:1.45,
+    moveSpeed:3.6, turnSpeed:1.9,
+    bobFreq:8.5, bobAmp:8.0,
+    focalK:0.55
+  };
+
+  // ---------------- math helpers ----------------
+  const clamp = (v,a,b)=> v<a?a:(v>b?b:v);
+  const wrap  = a => { a=(a+Math.PI)%(Math.PI*2); if(a<0)a+=Math.PI*2; return a-Math.PI; };
+  function cellSeed(cx,cz){
+    let h = 2166136261>>>0;
+    h = Math.imul(h ^ (cx|0), 16777619)>>>0;
+    h = Math.imul(h ^ (cz|0), 16777619)>>>0;
+    h ^= h>>>13; h = Math.imul(h,0x5bd1e995)>>>0; h ^= h>>>15;
+    return h>>>0;
+  }
+  function mulberry32(a){
+    return function(){
+      a|=0; a=(a+0x6D2B79F5)|0;
+      let t=Math.imul(a^(a>>>15), 1|a);
+      t=(t+Math.imul(t^(t>>>7), 61|t))^t;
+      return ((t^(t>>>14))>>>0)/4294967296;
+    };
+  }
+
+  // ---------------- viewport state ----------------
+  let W=0,H=0, focal=0, FOVhalf=0, baseHorizon=0;
+  function resize(){
+    W = Math.max(1, window.innerWidth);
+    H = Math.max(1, window.innerHeight);
+    svg.setAttribute("viewBox", "0 0 "+W+" "+H);
+    focal = W*CFG.focalK;
+    FOVhalf = Math.atan((W/2)/focal);
+    baseHorizon = H*0.5;
+    horizonGlow.setAttribute("height", (H*0.24).toFixed(0));
+    pitchOffset = clamp(pitchOffset, -H*0.22, H*0.22);
+  }
+  window.addEventListener("resize", resize);
+  window.addEventListener("orientationchange", resize);
+  if(window.visualViewport) window.visualViewport.addEventListener("resize", resize);
+
+  // ---------------- player + input ----------------
+  const player = { x:0, z:0, yaw:0 };
+  let pitchOffset = 0;
+  const keys = Object.create(null);
+  let joyMove=0, joyTurn=0;
+  let bobPhase=0, bobAmpCur=0, bobY=0, bobX=0;
+  let started=false;
+
+  function begin(){
+    if(started) return; started=true;
+    $("intro").classList.add("hidden");
+  }
+
+  const FWD = {KeyW:1,ArrowUp:1}, BCK={KeyS:1,ArrowDown:1};
+  const TL  = {KeyA:1,ArrowLeft:1}, TR={KeyD:1,ArrowRight:1};
+  window.addEventListener("keydown", e=>{
+    if(["ArrowUp","ArrowDown","ArrowLeft","ArrowRight"," "].includes(e.key)) e.preventDefault();
+    keys[e.code]=true; begin();
+  });
+  window.addEventListener("keyup", e=>{ keys[e.code]=false; });
+
+  // drag-to-look (pointer based; works for mouse/pen/touch on the open scene)
+  let lookId=null, lastX=0, lastY=0;
+  svg.addEventListener("pointerdown", e=>{
+    if(e.target.closest && e.target.closest(".joy")) return;
+    lookId=e.pointerId; lastX=e.clientX; lastY=e.clientY;
+    try{ svg.setPointerCapture(lookId); }catch(_){}
+    begin();
+  });
+  svg.addEventListener("pointermove", e=>{
+    if(e.pointerId!==lookId) return;
+    const dx=e.clientX-lastX, dy=e.clientY-lastY;
+    lastX=e.clientX; lastY=e.clientY;
+    player.yaw = wrap(player.yaw + dx*0.005);
+    pitchOffset = clamp(pitchOffset - dy*0.9, -H*0.22, H*0.22);
+  });
+  function endLook(e){ if(e.pointerId===lookId) lookId=null; }
+  svg.addEventListener("pointerup", endLook);
+  svg.addEventListener("pointercancel", endLook);
+
+  // virtual joysticks (true multitouch — each tracks its own pointerId)
+  function setupJoystick(elm, onChange){
+    const thumb = elm.querySelector(".thumb");
+    let id=null;
+    function rect(){ return elm.getBoundingClientRect(); }
+    function move(e){
+      const r=rect(), cx=r.left+r.width/2, cy=r.top+r.height/2, max=r.width*0.34;
+      let dx=e.clientX-cx, dy=e.clientY-cy;
+      const d=Math.hypot(dx,dy);
+      if(d>max){ dx*=max/d; dy*=max/d; }
+      thumb.style.transform=`translate(calc(-50% + ${dx.toFixed(1)}px), calc(-50% + ${dy.toFixed(1)}px))`;
+      onChange(dx/max, dy/max);
+    }
+    elm.addEventListener("pointerdown", e=>{
+      if(id!==null) return;
+      id=e.pointerId; try{ elm.setPointerCapture(id); }catch(_){}
+      begin(); move(e); e.preventDefault();
+    });
+    elm.addEventListener("pointermove", e=>{ if(e.pointerId===id){ move(e); e.preventDefault(); } });
+    function end(e){
+      if(e.pointerId!==id) return;
+      id=null; thumb.style.transform="translate(-50%,-50%)"; onChange(0,0);
+    }
+    elm.addEventListener("pointerup", end);
+    elm.addEventListener("pointercancel", end);
+  }
+  setupJoystick($("joyL"), (x,y)=>{ joyMove = -y; });
+  setupJoystick($("joyR"), (x,y)=>{ joyTurn =  x; });
+
+  // block native mobile gestures
+  document.addEventListener("touchmove", e=>{ e.preventDefault(); }, {passive:false});
+  document.addEventListener("gesturestart", e=>e.preventDefault());
+  document.addEventListener("contextmenu", e=>e.preventDefault());
+  if(matchMedia("(pointer: coarse)").matches || ("ontouchstart" in window)) document.body.classList.add("touch");
+
+  // ---------------- prop artwork (authored in world units) ----------------
+  const MUSH = [
+    {cap:"cap-cyan",    glow:"glow-cyan",    gill:"#9bfff5"},
+    {cap:"cap-magenta", glow:"glow-magenta", gill:"#ffb3ec"},
+    {cap:"cap-gold",    glow:"glow-gold",    gill:"#ffe9a8"},
+    {cap:"cap-violet",  glow:"glow-violet",  gill:"#d9c2ff"}
+  ];
+  const CRYS = [
+    {grad:"crystal-violet", glow:"glow-violet"},
+    {grad:"crystal-cyan",   glow:"glow-cyan"}
+  ];
+  const JELLY = [
+    {bell:"jelly-magenta", glow:"glow-magenta", rim:"#ff9fe0"},
+    {bell:"jelly-cyan",    glow:"glow-cyan",    rim:"#9fefff"}
+  ];
+  const PATCH_GLOWS = ["glow-cyan","glow-magenta","glow-gold","glow-green","glow-violet"];
+
+  const dur  = rng => (2.6 + rng()*3.4).toFixed(2);
+  const dly  = rng => (-rng()*4).toFixed(2);
+
+  function mushArt(v, rng){
+    return `
+      <ellipse class="gp" style="animation-duration:${dur(rng)}s;animation-delay:${dly(rng)}s" cx="0" cy="-1.42" rx="1.05" ry="0.82" fill="url(#${v.glow})"/>
+      <path d="M-0.12 0 C-0.17 -0.55 -0.12 -1.05 -0.06 -1.4 L0.06 -1.4 C0.12 -1.05 0.17 -0.55 0.12 0 Z" fill="url(#stalk)"/>
+      <ellipse cx="0" cy="-1.4" rx="0.33" ry="0.08" fill="${v.gill}" opacity="0.85"/>
+      <path d="M-0.66 -1.42 Q0 -2.12 0.66 -1.42 Q0.34 -1.52 0 -1.5 Q-0.34 -1.52 -0.66 -1.42 Z" fill="url(#${v.cap})"/>
+      <path d="M-0.66 -1.42 Q0 -2.12 0.66 -1.42" fill="none" stroke="#ffffff" stroke-opacity="0.28" stroke-width="0.03"/>
+      <circle cx="-0.2" cy="-1.62" r="0.07" fill="#ffffff" opacity="0.5"/>
+      <circle cx="0.17" cy="-1.71" r="0.05" fill="#ffffff" opacity="0.45"/>
+      <circle cx="0.29" cy="-1.5" r="0.04" fill="#ffffff" opacity="0.4"/>`;
+  }
+  function crystalArt(v, rng){
+    return `
+      <ellipse class="gp" style="animation-duration:${dur(rng)}s;animation-delay:${dly(rng)}s" cx="0" cy="-0.55" rx="0.85" ry="0.78" fill="url(#${v.glow})"/>
+      <polygon points="-0.34,-1.0 -0.56,-0.3 -0.4,0.05 -0.24,0.05" fill="url(#${v.grad})" opacity="0.92"/>
+      <polygon points="0.34,-1.2 0.6,-0.4 0.42,0.05 0.26,0.05" fill="url(#${v.grad})" opacity="0.92"/>
+      <polygon points="0,-2.1 0.34,-0.7 0.16,0.05 -0.16,0.05 -0.34,-0.7" fill="url(#${v.grad})"/>
+      <polygon points="0,-2.1 0.16,0.05 -0.16,0.05" fill="#ffffff" opacity="0.10"/>
+      <polyline points="0,-2.1 0.34,-0.7 0.16,0.05" fill="none" stroke="#e3fbff" stroke-opacity="0.5" stroke-width="0.025"/>`;
+  }
+  function jellyArt(v, rng){
+    return `
+      <ellipse class="gp" style="animation-duration:${dur(rng)}s;animation-delay:${dly(rng)}s" cx="0" cy="0" rx="0.98" ry="0.88" fill="url(#${v.glow})"/>
+      <g class="tendrils" style="animation-duration:${(3.4+rng()*2.6).toFixed(2)}s;animation-delay:${dly(rng)}s">
+        <path d="M-0.4 0.08 Q-0.52 0.72 -0.36 1.28" fill="none" stroke="${v.rim}" stroke-opacity="0.5" stroke-width="0.035" stroke-linecap="round"/>
+        <path d="M-0.13 0.13 Q-0.04 0.82 -0.2 1.48" fill="none" stroke="${v.rim}" stroke-opacity="0.45" stroke-width="0.035" stroke-linecap="round"/>
+        <path d="M0.13 0.13 Q0.22 0.78 0.1 1.42" fill="none" stroke="${v.rim}" stroke-opacity="0.45" stroke-width="0.035" stroke-linecap="round"/>
+        <path d="M0.4 0.08 Q0.54 0.7 0.4 1.32" fill="none" stroke="${v.rim}" stroke-opacity="0.5" stroke-width="0.035" stroke-linecap="round"/>
+      </g>
+      <path d="M-0.6 0.05 Q-0.62 -0.7 0 -0.72 Q0.62 -0.7 0.6 0.05 Q0.3 0.18 0 0.15 Q-0.3 0.18 -0.6 0.05 Z" fill="url(#${v.bell})"/>
+      <path d="M-0.6 0.05 Q-0.62 -0.7 0 -0.72 Q0.62 -0.7 0.6 0.05" fill="none" stroke="${v.rim}" stroke-opacity="0.8" stroke-width="0.03"/>
+      <ellipse cx="0" cy="-0.3" rx="0.27" ry="0.19" fill="#ffffff" opacity="0.35"/>`;
+  }
+  function patchArt(glow, rng){
+    return `
+      <ellipse class="gp" style="animation-duration:${dur(rng)}s;animation-delay:${dly(rng)}s" cx="0" cy="0" rx="1.1" ry="0.32" fill="url(#${glow})"/>
+      <ellipse cx="0" cy="0" rx="0.5" ry="0.15" fill="#ffffff" opacity="0.16"/>
+      <circle cx="-0.3" cy="-0.05" r="0.05" fill="#ffffff" opacity="0.5"/>
+      <circle cx="0.25" cy="0.04" r="0.04" fill="#ffffff" opacity="0.45"/>`;
+  }
+
+  // ---------------- world objects (cell-based streaming) ----------------
+  const cells   = new Map();   // "cx,cz" -> [objects]
+  const objects = new Map();   // id -> object (currently spawned)
+
+  function makeObject(type,x,z,rng,id){
+    const g = document.createElementNS(SVG,"g");
+    g.style.display="none";
+    let size=1, cullW=1, variant=0;
+    if(type==="mushroom"){ variant=Math.floor(rng()*MUSH.length);  size=0.85+rng()*0.95; cullW=0.9; g.innerHTML=mushArt(MUSH[variant],rng); }
+    else if(type==="crystal"){ variant=Math.floor(rng()*CRYS.length); size=0.95+rng()*1.4;  cullW=0.9; g.innerHTML=crystalArt(CRYS[variant],rng); }
+    else if(type==="jelly"){ variant=Math.floor(rng()*JELLY.length); size=0.7+rng()*0.75; cullW=1.1; g.innerHTML=jellyArt(JELLY[variant],rng); }
+    else { size=0.8+rng()*1.5; cullW=1.4; g.innerHTML=patchArt(PATCH_GLOWS[Math.floor(rng()*PATCH_GLOWS.length)],rng); }
+    const o = { id,type,x,z,size,cullW, node:g, phase:rng()*6.283, _op:-1, _vis:false, _cz:0 };
+    if(type==="jelly"){ o.hover=1.5+rng()*1.9; o.bob=0.22+rng()*0.3; o.drift=0.5+rng()*0.95; }
+    return o;
+  }
+
+  function loadCell(cx,cz){
+    const key = cx+","+cz;
+    if(cells.has(key)) return;
+    const rng = mulberry32(cellSeed(cx,cz));
+    const bx = cx*CFG.cellSize, bz = cz*CFG.cellSize;
+    const list = [];
+    const n = rng()<0.18 ? 0 : (rng()<0.72 ? 1 : 2);
+    for(let i=0;i<n;i++){
+      const r=rng();
+      const type = r<0.52 ? "mushroom" : (r<0.8 ? "crystal" : "jelly");
+      list.push(makeObject(type, bx+rng()*CFG.cellSize, bz+rng()*CFG.cellSize, rng, key+":"+i));
+    }
+    const pn = Math.floor(rng()*2.7);
+    for(let j=0;j<pn;j++){
+      list.push(makeObject("patch", bx+rng()*CFG.cellSize, bz+rng()*CFG.cellSize, rng, key+":p"+j));
+    }
+    cells.set(key,list);
+    const frag = document.createDocumentFragment();
+    for(const o of list){ objects.set(o.id,o); frag.appendChild(o.node); }
+    sceneG.appendChild(frag);
+  }
+  function unloadCell(key){
+    const list = cells.get(key);
+    if(!list) return;
+    for(const o of list){ o.node.remove(); objects.delete(o.id); }
+    cells.delete(key);
+  }
+  let lastCell="";
+  function ensureCells(force){
+    const pcx=Math.round(player.x/CFG.cellSize), pcz=Math.round(player.z/CFG.cellSize);
+    const ck=pcx+","+pcz;
+    if(ck===lastCell && !force) return;
+    lastCell=ck;
+    const R=CFG.cellRadius;
+    const need=new Set();
+    for(let dx=-R;dx<=R;dx++) for(let dz=-R;dz<=R;dz++){
+      const cx=pcx+dx, cz=pcz+dz; need.add(cx+","+cz); loadCell(cx,cz);
+    }
+    for(const key of cells.keys()) if(!need.has(key)) unloadCell(key);
+  }
+
+  // ---------------- sky: stars, moons, aurora ----------------
+  let stars=[], moonsArr=[], aurorasArr=[];
+  function buildSky(){
+    const r = mulberry32(1337);
+    for(let i=0;i<70;i++){
+      const c=document.createElementNS(SVG,"circle");
+      const sz=(0.6+r()*1.7).toFixed(2);
+      c.setAttribute("r",sz);
+      c.setAttribute("fill", r()<0.3 ? "#bdf0ff" : "#ffffff");
+      c.setAttribute("class","tw");
+      c.style.animationDuration=(2+r()*4).toFixed(2)+"s";
+      c.style.animationDelay=(-r()*5).toFixed(2)+"s";
+      c.style.display="none";
+      starsG.appendChild(c);
+      stars.push({ az:r()*Math.PI*2, el:(3+r()*34)*Math.PI/180, node:c, v:false });
+    }
+    const moonDefs=[{az:0.5,el:0.42,r:46,g:"moon-cyan"},{az:2.55,el:0.5,r:28,g:"moon-magenta"}];
+    for(const m of moonDefs){
+      const g=document.createElementNS(SVG,"g");
+      const halo = m.g==="moon-cyan" ? "glow-cyan" : "glow-magenta";
+      g.innerHTML = `<ellipse cx="0" cy="0" rx="${m.r*2.6}" ry="${m.r*2.6}" fill="url(#${halo})"/>`+
+                    `<circle cx="0" cy="0" r="${m.r}" fill="url(#${m.g})"/>`+
+                    `<circle cx="${-m.r*0.28}" cy="${-m.r*0.2}" r="${m.r*0.16}" fill="#ffffff" opacity="0.12"/>`+
+                    `<circle cx="${m.r*0.3}" cy="${m.r*0.18}" r="${m.r*0.1}" fill="#000000" opacity="0.07"/>`;
+      moonsG.appendChild(g);
+      moonsArr.push({az:m.az, el:m.el, node:g, v:false});
+    }
+    const aurDefs=[{az:1.25,grad:"aurora-green"},{az:4.4,grad:"aurora-teal"}];
+    for(const a of aurDefs){
+      const g=document.createElementNS(SVG,"g");
+      g.innerHTML = `<ellipse class="aur" style="animation-duration:${(7+Math.random()*4).toFixed(1)}s" cx="0" cy="0" rx="260" ry="92" fill="url(#${a.grad})"/>`+
+                    `<ellipse class="aur" style="animation-duration:${(9+Math.random()*4).toFixed(1)}s;animation-delay:-2s" cx="120" cy="30" rx="180" ry="70" fill="url(#${a.grad})"/>`;
+      auroraG.appendChild(g);
+      aurorasArr.push({az:a.az, node:g});
+    }
+  }
+  function updateSky(now){
+    const F=focal, halfA=FOVhalf+0.22;
+    const skyH = baseHorizon + pitchOffset + bobY*0.3;
+    for(const s of stars){
+      const d=wrap(s.az-player.yaw);
+      if(Math.abs(d)>halfA){ if(s.v){ s.node.style.display="none"; s.v=false; } continue; }
+      const x=W/2+F*Math.tan(d), y=skyH-F*Math.tan(s.el);
+      if(!s.v){ s.node.style.display=""; s.v=true; }
+      s.node.setAttribute("cx",x.toFixed(1)); s.node.setAttribute("cy",y.toFixed(1));
+    }
+    for(const m of moonsArr){
+      const d=wrap(m.az-player.yaw);
+      if(Math.abs(d)>halfA+0.35){ if(m.v){ m.node.style.display="none"; m.v=false; } continue; }
+      const x=W/2+F*Math.tan(d), y=skyH-F*Math.tan(m.el);
+      if(!m.v){ m.node.style.display=""; m.v=true; }
+      m.node.setAttribute("transform",`translate(${x.toFixed(1)},${y.toFixed(1)})`);
+    }
+    for(const a of aurorasArr){
+      const d=wrap(a.az-player.yaw);
+      if(Math.abs(d)>1.5){ a.node.style.display="none"; continue; }
+      a.node.style.display="";
+      const x=W/2+F*Math.tan(clamp(d,-1.2,1.2)), y=skyH-H*0.3;
+      a.node.setAttribute("transform",`translate(${x.toFixed(1)},${y.toFixed(1)})`);
+    }
+  }
+
+  // ---------------- ambient particles (screen-space dust) ----------------
+  function buildParticles(){
+    const r=mulberry32(99);
+    for(let i=0;i<26;i++){
+      const c=document.createElementNS(SVG,"circle");
+      c.setAttribute("cx",(r()*100).toFixed(1)+"%");
+      c.setAttribute("cy",(15+r()*70).toFixed(1)+"%");
+      c.setAttribute("r",(0.7+r()*1.6).toFixed(2));
+      c.setAttribute("fill", r()<0.5 ? "#9bfdff" : "#ffd0f4");
+      c.setAttribute("class","particle");
+      c.style.animationDuration=(7+r()*9).toFixed(1)+"s";
+      c.style.animationDelay=(-r()*12).toFixed(1)+"s";
+      particlesG.appendChild(c);
+    }
+  }
+
+  // ---------------- render ----------------
+  let orderIds=[], orderLen=0;
+  const visible=[];
+  function render(now){
+    const horizonEff = baseHorizon + pitchOffset + bobY;
+    groundRect.setAttribute("y", horizonEff.toFixed(1));
+    groundRect.setAttribute("height", Math.max(0,H-horizonEff).toFixed(1));
+    horizonGlow.setAttribute("y", (horizonEff - H*0.12).toFixed(1));
+
+    updateSky(now);
+
+    const F=focal, cx=W/2, sy=Math.sin(player.yaw), cyy=Math.cos(player.yaw);
+    visible.length=0;
+    for(const o of objects.values()){
+      let ox=o.x, oz=o.z;
+      if(o.type==="jelly"){
+        ox += Math.sin(now*0.0003 + o.phase)*o.drift;
+        oz += Math.cos(now*0.00026 + o.phase*1.3)*o.drift;
+      }
+      const dx=ox-player.x, dz=oz-player.z;
+      const camZ = dx*sy + dz*cyy;
+      if(camZ<CFG.near || camZ>CFG.maxDepth){ if(o._vis){ o.node.style.display="none"; o._vis=false; } continue; }
+      const camX = dx*cyy - dz*sy;
+      const k = F/camZ, s = k*o.size;
+      const sx = cx + camX*k + bobX;
+      const halfW = o.cullW*s + 30;
+      if(sx+halfW<0 || sx-halfW>W){ if(o._vis){ o.node.style.display="none"; o._vis=false; } continue; }
+      let anchorY;
+      if(o.type==="jelly"){
+        const hv = o.hover + Math.sin(now*0.0016 + o.phase)*o.bob;
+        anchorY = horizonEff + F*(CFG.eye - hv)/camZ;
+      } else {
+        anchorY = horizonEff + F*CFG.eye/camZ;
+      }
+      if(!o._vis){ o.node.style.display=""; o._vis=true; }
+      o.node.setAttribute("transform", `translate(${sx.toFixed(1)},${anchorY.toFixed(1)}) scale(${s.toFixed(3)})`);
+      const op = camZ<=CFG.fogStart ? 1 : Math.max(0, 1-(camZ-CFG.fogStart)/(CFG.maxDepth-CFG.fogStart));
+      if(Math.abs(op-o._op)>0.02){ o.node.style.opacity = op.toFixed(2); o._op=op; }
+      o._cz=camZ; visible.push(o);
+    }
+
+    // painter's algorithm: far -> near (reorder DOM only when order changes)
+    visible.sort((a,b)=> b._cz - a._cz);
+    let changed = visible.length!==orderLen;
+    if(!changed){ for(let i=0;i<visible.length;i++){ if(orderIds[i]!==visible[i].id){ changed=true; break; } } }
+    if(changed){
+      const frag=document.createDocumentFragment();
+      for(const o of visible) frag.appendChild(o.node);
+      sceneG.appendChild(frag);
+      orderIds = visible.map(o=>o.id); orderLen=visible.length;
+    }
+  }
+
+  // ---------------- HUD ----------------
+  const DIRS=["N","NE","E","SE","S","SW","W","NW"];
+  const posEl=$("pos"), headEl=$("head");
+  let hudT=0;
+  function updateHUD(){
+    posEl.textContent = Math.round(player.x)+", "+Math.round(player.z);
+    let deg = (player.yaw*180/Math.PI)%360; if(deg<0) deg+=360;
+    headEl.textContent = DIRS[Math.round(deg/45)%8];
+  }
+
+  // ---------------- main loop ----------------
+  let last=performance.now();
+  function frame(now){
+    let dt=(now-last)/1000; last=now; if(dt>0.05) dt=0.05;
+
+    // self-heal viewport: recover if dimensions arrive late or change without a resize event
+    if((window.innerWidth && window.innerWidth!==W) || (window.innerHeight && window.innerHeight!==H)) resize();
+
+    let f = (anyKey(FWD)?1:0) + (anyKey(BCK)?-1:0) + joyMove;
+    let t = (anyKey(TR)?1:0)  + (anyKey(TL)?-1:0)  + joyTurn;
+    f=clamp(f,-1,1); t=clamp(t,-1,1);
+
+    player.yaw = wrap(player.yaw + t*CFG.turnSpeed*dt);
+    if(f!==0){
+      const sp=f*CFG.moveSpeed*dt;
+      player.x += Math.sin(player.yaw)*sp;
+      player.z += Math.cos(player.yaw)*sp;
+    }
+
+    // head bob
+    const mag=Math.abs(f);
+    bobAmpCur += (mag-bobAmpCur)*Math.min(1,dt*6);
+    if(mag>0.01) bobPhase += dt*CFG.bobFreq*(0.6+0.4*mag);
+    bobY = Math.sin(bobPhase)*CFG.bobAmp*bobAmpCur;
+    bobX = Math.cos(bobPhase*0.5)*CFG.bobAmp*0.5*bobAmpCur;
+
+    ensureCells(false);
+    render(now);
+
+    hudT+=dt; if(hudT>0.15){ hudT=0; updateHUD(); }
+    requestAnimationFrame(frame);
+  }
+  function anyKey(map){ for(const k in map) if(keys[k]) return true; return false; }
+
+  // ---------------- boot ----------------
+  resize();
+  buildSky();
+  buildParticles();
+  ensureCells(true);
+  updateHUD();
+  requestAnimationFrame(frame);
+})();
+</script>
+
+<style>
+  /* SVG element animations (kept out of the JS render path for performance) */
+  @keyframes tw   { 0%,100%{opacity:.25} 50%{opacity:1} }
+  .tw{ animation:tw linear infinite; }
+  @keyframes gpk  { 0%,100%{opacity:.55} 50%{opacity:.95} }
+  .gp{ animation:gpk ease-in-out infinite; }
+  @keyframes swayk{ 0%,100%{transform:rotate(-4deg)} 50%{transform:rotate(4deg)} }
+  .tendrils{ transform-box:fill-box; transform-origin:50% 0%; animation:swayk ease-in-out infinite; }
+  @keyframes aurk { 0%,100%{opacity:.16} 50%{opacity:.4} }
+  .aur{ animation:aurk ease-in-out infinite; }
+  @keyframes prisek{ 0%{transform:translateY(0);opacity:0} 12%{opacity:.85} 88%{opacity:.6} 100%{transform:translateY(-130px);opacity:0} }
+  .particle{ animation:prisek linear infinite; }
+</style>
+</body>
+</html>
