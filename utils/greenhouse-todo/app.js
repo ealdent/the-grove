@@ -1592,7 +1592,12 @@ function buildHauntedForest() {
     const placements = archetypes.map(() => []);
     const TREE3D_COUNT = 420;
     for (let i = 0; i < TREE3D_COUNT; i++) {
-        const p = scatterPoint(1.5, 32, i);
+        const scale = 0.85 + Math.random() * 1.05;
+        // Branches + canopy quads reach ~4.5 m sideways at full scale; keep the
+        // trunk far enough out that foliage can overhang the roof line but
+        // never pass through the glass into the greenhouse.
+        const minDist = 5.0 + scale * 2.0;
+        const p = scatterPoint(minDist, 32, i);
         // 70% living, 30% dead snags for the haunted look
         const dead = Math.random() < 0.3;
         const pool = archetypes
@@ -1602,7 +1607,7 @@ function buildHauntedForest() {
         placements[pick].push({
             x: p.x, z: p.z,
             rotY: Math.random() * Math.PI * 2,
-            scale: 0.85 + Math.random() * 1.05
+            scale
         });
     }
 
@@ -1656,7 +1661,7 @@ function buildHauntedForest() {
 
     const farTrees = [];
     for (let i = 0; i < 700; i++) {
-        const p = scatterPoint(26, 60, i);
+        const p = scatterPoint(24, 46, i);
         farTrees.push({
             x: p.x, z: p.z,
             scale: 0.7 + Math.random() * 0.7,
@@ -1686,6 +1691,62 @@ function buildHauntedForest() {
 
     buildForestFloor();
     buildUndergrowth(foliageTex);
+    buildForestBackdrop();
+}
+
+// Fully opaque painted forest wall encircling the playfield — the final
+// guarantee that nothing beyond the woods is ever visible, regardless of how
+// the instanced trees happen to line up. Three silhouette layers, fog-toned
+// far to dark near, with a ragged canopy line against the sky.
+function buildForestBackdrop() {
+    const W = 1024, H = 256;
+    const canvas = document.createElement('canvas');
+    canvas.width = W;
+    canvas.height = H;
+    const ctx = canvas.getContext('2d');
+    // Hazy sky strip above the canopy line
+    const skyGrad = ctx.createLinearGradient(0, 0, 0, H * 0.45);
+    skyGrad.addColorStop(0, '#cdd9d2');
+    skyGrad.addColorStop(1, '#b4c4ba');
+    ctx.fillStyle = skyGrad;
+    ctx.fillRect(0, 0, W, H);
+
+    const layers = [
+        { top: 58, color: '#7c8a7c', trunkColor: '#6a7a6c' },
+        { top: 86, color: '#525f4b', trunkColor: '#414e3c' },
+        { top: 118, color: '#2c3629', trunkColor: '#1d251b' }
+    ];
+    for (const layer of layers) {
+        // Ragged canopy line: overlapping blobs along an undulating ridge
+        ctx.fillStyle = layer.color;
+        let x = -20;
+        while (x < W + 20) {
+            const y = layer.top + Math.sin(x * 0.05) * 8 + (Math.random() - 0.5) * 14;
+            const r = 14 + Math.random() * 22;
+            ctx.beginPath();
+            ctx.arc(x, y, r, 0, Math.PI * 2);
+            ctx.fill();
+            x += r * 0.7;
+        }
+        ctx.fillRect(0, layer.top + 18, W, H - layer.top - 18);
+        // Trunk striping fading down into the layer
+        ctx.fillStyle = layer.trunkColor;
+        for (let t = 0; t < 70; t++) {
+            const tx = Math.random() * W;
+            const tw = 2 + Math.random() * 6;
+            ctx.fillRect(tx, layer.top + 30 + Math.random() * 30, tw, H);
+        }
+    }
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    tex.wrapS = THREE.RepeatWrapping;
+    tex.repeat.set(7, 1);
+
+    const mat = new THREE.MeshBasicMaterial({ map: tex, side: THREE.BackSide, fog: true });
+    const wall = new THREE.Mesh(new THREE.CylinderGeometry(64, 64, 44, 48, 1, true), mat);
+    wall.position.set(0, 22, -20); // centered on the greenhouse footprint
+    scene.add(wall);
+    sharedAssets._backdropMat = mat;
 }
 
 // Leaf-litter / moss forest floor outside the greenhouse — a big plane with a
@@ -1856,8 +1917,9 @@ function buildUndergrowth(foliageTex) {
         const mesh = new THREE.InstancedMesh(crossGeom, mat, count);
         for (let i = 0; i < count; i++) {
             const side = i % 4;
-            // Pack the understory right up against the glass and keep it deep
-            const dist = 0.6 + Math.pow(Math.random(), 1.4) * 36;
+            // Pack the understory close, but never so close that a wide
+            // cross-quad (up to ~1.3 m half-width) pokes through the glass
+            const dist = 1.7 + Math.pow(Math.random(), 1.4) * 34;
             let x, z;
             if (side === 0)      { x = -8 - dist; z = -60 + Math.random() * 80; }
             else if (side === 1) { x =  8 + dist; z = -60 + Math.random() * 80; }
@@ -3447,12 +3509,17 @@ function buildGreenhouse() {
     backWallRight.position.set(doorWidth / 2 + backBaseLeftWidth / 2, glassWallY, 5);
     ghGroup.add(backWallRight);
 
-    // Top glass above the door
+    // Top glass above the door — offset 16 cm behind the wall plane so its side
+    // faces sit at the same x=±1 planes as the wall-glass end faces but in a
+    // disjoint z range (coplanar-but-overlapping faces z-fight), and its bottom
+    // edge is buried inside the oversized door-frame header below.
     const doorHeight = 4.0;
     if (baseHeight + wallHeight > doorHeight) {
-        const topGlassHeight = (baseHeight + wallHeight) - doorHeight;
-        const topGlass = new THREE.Mesh(new THREE.BoxGeometry(doorWidth, topGlassHeight, 0.2), glassMat);
-        topGlass.position.set(0, doorHeight + topGlassHeight / 2, 5);
+        const topGlass = new THREE.Mesh(
+            new THREE.BoxGeometry(doorWidth, wallTopY - (doorHeight + 0.06), 0.1),
+            glassMat
+        );
+        topGlass.position.set(0, (doorHeight + 0.06 + wallTopY) / 2, 5.16);
         ghGroup.add(topGlass);
     }
 
@@ -3561,23 +3628,28 @@ function buildGreenhouse() {
     const doorGroup = new THREE.Group();
     doorGroup.position.set(0, doorHeight / 2, 5.05); // Slightly offset from back wall
 
-    // Door Frame
+    // Door Frame — deliberately oversized. The uprights are centered exactly on
+    // the x=±1 planes where the back-wall glass ends, and the header is
+    // centered on the y=4 plane where the transom glass starts, so every
+    // glass edge terminates INSIDE opaque frame volume. Edge-to-edge contact
+    // (coplanar faces) is what caused the flickering along the door frame.
     const doorFrameMat = getMetalFrameMaterial();
-    const doorFrameLeft = new THREE.Mesh(new THREE.BoxGeometry(0.1, doorHeight, 0.25), doorFrameMat);
-    doorFrameLeft.position.set(-doorWidth / 2 + 0.05, 0, 0);
+    const doorFrameLeft = new THREE.Mesh(new THREE.BoxGeometry(0.16, doorHeight + 0.18, 0.35), doorFrameMat);
+    doorFrameLeft.position.set(-doorWidth / 2, 0.07, 0);
     doorGroup.add(doorFrameLeft);
 
-    const doorFrameRight = new THREE.Mesh(new THREE.BoxGeometry(0.1, doorHeight, 0.25), doorFrameMat);
-    doorFrameRight.position.set(doorWidth / 2 - 0.05, 0, 0);
+    const doorFrameRight = new THREE.Mesh(new THREE.BoxGeometry(0.16, doorHeight + 0.18, 0.35), doorFrameMat);
+    doorFrameRight.position.set(doorWidth / 2, 0.07, 0);
     doorGroup.add(doorFrameRight);
 
-    const doorFrameTop = new THREE.Mesh(new THREE.BoxGeometry(doorWidth, 0.1, 0.25), doorFrameMat);
-    doorFrameTop.position.set(0, doorHeight / 2 - 0.05, 0);
+    const doorFrameTop = new THREE.Mesh(new THREE.BoxGeometry(doorWidth + 0.5, 0.16, 0.35), doorFrameMat);
+    doorFrameTop.position.set(0, doorHeight / 2, 0);
     doorGroup.add(doorFrameTop);
 
-    // Glass Pane
-    const doorGlass = new THREE.Mesh(new THREE.BoxGeometry(doorWidth - 0.2, doorHeight - 0.1, 0.1), glassMat);
-    doorGlass.position.set(0, -0.05, 0);
+    // Glass Pane — floats 2 cm above the floor and tucks its top edge into the
+    // header so neither edge touches another surface exactly.
+    const doorGlass = new THREE.Mesh(new THREE.BoxGeometry(doorWidth - 0.2, doorHeight - 0.08, 0.1), glassMat);
+    doorGlass.position.set(0, -0.02, 0);
     doorGroup.add(doorGlass);
 
     // Door handle
@@ -4182,6 +4254,11 @@ function updateSunAndLighting() {
         // of washing out into the pale sky; thick and cold after dark.
         scene.fog.density = 0.003 + nightness * 0.009;
         scene.fog.color.setHex(0xb6c9c2).lerp(new THREE.Color(0x070d12), nightness);
+    }
+
+    // Painted forest wall darkens to near-black with the night
+    if (sharedAssets._backdropMat) {
+        sharedAssets._backdropMat.color.setScalar(0.06 + 0.94 * dayness);
     }
 
     // Fireflies only come out after dark; dust motes show best in daylight.
