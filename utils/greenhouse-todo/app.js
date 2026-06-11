@@ -30,10 +30,18 @@ let emptyPotInstances = null;
 const emptyPotOccupied = [];
 
 // Forest + atmosphere
-const treeMaterials = [];    // tree billboard materials (one per type) with onBeforeCompile-injected wind
+const treeMaterials = [];    // tree/foliage materials with onBeforeCompile-injected wind
 const shaftMeshes = [];      // additive light-shaft cones below each lamp (night only)
 let currentDayness = 1;      // 1 = full day, 0 = full night (set by updateSunAndLighting)
 const eyePairs = [];         // glowing-red eye pair state machines
+
+// Particles & weather (built in buildParticles / buildForestAtmosphere)
+let dripSystem = null;       // falling water drops inside the greenhouse
+const ripplePool = [];       // expanding rings where drips land
+let dustSystem = null;       // floating dust motes / pollen
+let fireflySystem = null;    // night fireflies out in the forest
+const mistSprites = [];      // drifting ground-fog sprites outside
+const GREENHOUSE_BOUNDS = { xMin: -8, xMax: 8, zMin: -45, zMax: 5 };
 
 // FPS / stats overlay (toggled with F)
 let stats = null;
@@ -386,9 +394,16 @@ function init() {
     // 8. Build Greenhouse Environment
     buildGreenhouse();
 
-    // 8b. Haunted forest backdrop + glowing eyes
+    // 8b. Haunted forest, atmosphere + glowing eyes
     buildHauntedForest();
+    buildForestAtmosphere();
     buildHauntedEyes();
+
+    // 8c. Wet, messy, overgrown interior
+    buildPuddles();
+    buildVinesAndIvy();
+    buildClutter();
+    buildGreenhouseParticles();
 
     // 9. Initial sun + lighting (uses real Eastern Time)
     updateSunAndLighting();
@@ -454,6 +469,41 @@ function configureRepeat(tex, repeat, srgb) {
     return tex;
 }
 
+// Tileable fractal value noise — returns a Float32Array of [0,1] values, size×size.
+// Used to give organic large-scale variation to procedural textures (wet patches,
+// leaf litter, bark, moss) instead of pure uniform speckle.
+function makeFbmField(size, octaves = 4, baseFreq = 4) {
+    const field = new Float32Array(size * size);
+    let amp = 1, freq = baseFreq, totalAmp = 0;
+    for (let o = 0; o < octaves; o++) {
+        const grid = [];
+        for (let i = 0; i < (freq + 1) * (freq + 1); i++) grid.push(Math.random());
+        const gAt = (gx, gy) => grid[(gy % freq) * (freq + 1) + (gx % freq)];
+        for (let y = 0; y < size; y++) {
+            const fy = (y / size) * freq;
+            const gy = Math.floor(fy);
+            const ty = fy - gy;
+            const sy = ty * ty * (3 - 2 * ty);
+            for (let x = 0; x < size; x++) {
+                const fx = (x / size) * freq;
+                const gx = Math.floor(fx);
+                const tx = fx - gx;
+                const sx = tx * tx * (3 - 2 * tx);
+                const v00 = gAt(gx, gy), v10 = gAt(gx + 1, gy);
+                const v01 = gAt(gx, gy + 1), v11 = gAt(gx + 1, gy + 1);
+                const v = (v00 * (1 - sx) + v10 * sx) * (1 - sy)
+                        + (v01 * (1 - sx) + v11 * sx) * sy;
+                field[y * size + x] += v * amp;
+            }
+        }
+        totalAmp += amp;
+        amp *= 0.5;
+        freq *= 2;
+    }
+    for (let i = 0; i < field.length; i++) field[i] /= totalAmp;
+    return field;
+}
+
 // Real PBR wood from threejs.org's CDN. Each call returns a material with cloned-textures
 // so different surfaces can have their own UV repeats.
 function makeWoodMaterial({ repeat = [1, 1], roughness = 0.85, color = 0xffffff } = {}) {
@@ -478,12 +528,51 @@ function makeWoodMaterial({ repeat = [1, 1], roughness = 0.85, color = 0xffffff 
 function getGlassMaterial() {
     if (sharedAssets.glass) return sharedAssets.glass;
     // MeshBasicMaterial — unlit, so glass tint is constant from every angle. No envMap
-    // reflections, no specular glare, no view-dependent color. Slight green tint with
-    // ~28% opacity reads as "foggy old greenhouse glass".
+    // reflections, no specular glare, no view-dependent color. A streaky grime map
+    // (condensation runs, algae film, mineral spots) makes the panes read as decades-old
+    // greenhouse glass rather than clean acrylic.
+    const SIZE = 256;
+    const canvas = document.createElement('canvas');
+    canvas.width = canvas.height = SIZE;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#c0dcc4';
+    ctx.fillRect(0, 0, SIZE, SIZE);
+    // Vertical condensation streaks running down the pane
+    for (let i = 0; i < 70; i++) {
+        const x = Math.random() * SIZE;
+        const top = Math.random() * SIZE * 0.5;
+        const len = 30 + Math.random() * (SIZE - top);
+        const light = Math.random() < 0.5;
+        ctx.strokeStyle = light
+            ? `rgba(230,245,235,${0.10 + Math.random() * 0.20})`
+            : `rgba(90,120,95,${0.08 + Math.random() * 0.18})`;
+        ctx.lineWidth = 0.6 + Math.random() * 2.2;
+        ctx.beginPath();
+        ctx.moveTo(x, top);
+        ctx.quadraticCurveTo(x + (Math.random() - 0.5) * 5, top + len * 0.5, x + (Math.random() - 0.5) * 7, top + len);
+        ctx.stroke();
+    }
+    // Algae film creeping up from the bottom edge
+    const algae = ctx.createLinearGradient(0, SIZE, 0, SIZE * 0.55);
+    algae.addColorStop(0, 'rgba(70,110,70,0.5)');
+    algae.addColorStop(1, 'rgba(70,110,70,0)');
+    ctx.fillStyle = algae;
+    ctx.fillRect(0, 0, SIZE, SIZE);
+    // Mineral spots / old splashes
+    for (let i = 0; i < 220; i++) {
+        ctx.fillStyle = `rgba(225,235,220,${0.06 + Math.random() * 0.16})`;
+        ctx.beginPath();
+        ctx.arc(Math.random() * SIZE, Math.random() * SIZE, 0.5 + Math.random() * 2.2, 0, Math.PI * 2);
+        ctx.fill();
+    }
+    const grimeTex = new THREE.CanvasTexture(canvas);
+    configureRepeat(grimeTex, [3, 1], true);
+
     sharedAssets.glass = new THREE.MeshBasicMaterial({
-        color: 0xc0dcc4,
+        color: 0xffffff,
+        map: grimeTex,
         transparent: true,
-        opacity: 0.28,
+        opacity: 0.32,
         side: THREE.DoubleSide,
         depthWrite: false,
         fog: true
@@ -600,55 +689,86 @@ function getDoorHandleMaterial() {
 function getDirtFloorMaterial() {
     if (sharedAssets.floor) return sharedAssets.floor;
     const SIZE = 512;
+    // Large-scale dampness variation + fine grain detail
+    const wet = makeFbmField(SIZE, 4, 3);
+    const grain = makeFbmField(SIZE, 5, 12);
 
-    // Color
+    // Color — dark waterlogged soil; wet patches read darker and slightly colder
     const colorCanvas = document.createElement('canvas');
     colorCanvas.width = colorCanvas.height = SIZE;
     const cctx = colorCanvas.getContext('2d');
-    cctx.fillStyle = '#3a2718';
-    cctx.fillRect(0, 0, SIZE, SIZE);
-    for (let i = 0; i < 5000; i++) {
-        const r = 30 + Math.random() * 35;
-        const g = 18 + Math.random() * 25;
-        const b = 8 + Math.random() * 18;
-        cctx.fillStyle = `rgba(${r|0},${g|0},${b|0},${0.15 + Math.random() * 0.45})`;
-        cctx.beginPath();
-        cctx.arc(Math.random() * SIZE, Math.random() * SIZE, 1 + Math.random() * 3, 0, Math.PI * 2);
-        cctx.fill();
+    const img = cctx.createImageData(SIZE, SIZE);
+    for (let i = 0; i < SIZE * SIZE; i++) {
+        const w = wet[i];          // 0 dry … 1 soaked
+        const g = grain[i];
+        const dryness = 1 - w;
+        img.data[i * 4 + 0] = 22 + dryness * 38 + g * 26;
+        img.data[i * 4 + 1] = 14 + dryness * 24 + g * 18;
+        img.data[i * 4 + 2] = 8 + dryness * 12 + g * 12;
+        img.data[i * 4 + 3] = 255;
     }
-    // Pebbles
-    for (let i = 0; i < 220; i++) {
-        const shade = 70 + Math.random() * 70;
+    cctx.putImageData(img, 0, 0);
+    // Pebbles + bits of debris pressed into the mud
+    for (let i = 0; i < 260; i++) {
+        const shade = 60 + Math.random() * 70;
         cctx.fillStyle = `rgb(${shade|0},${(shade-12)|0},${(shade-22)|0})`;
         cctx.beginPath();
-        cctx.arc(Math.random() * SIZE, Math.random() * SIZE, 1.5 + Math.random() * 4.5, 0, Math.PI * 2);
+        cctx.arc(Math.random() * SIZE, Math.random() * SIZE, 1.5 + Math.random() * 4, 0, Math.PI * 2);
         cctx.fill();
+    }
+    // Scattered dead-leaf fragments trodden into the floor
+    for (let i = 0; i < 120; i++) {
+        const r = 80 + Math.random() * 50;
+        const g = 55 + Math.random() * 35;
+        cctx.fillStyle = `rgba(${r|0},${g|0},20,${0.4 + Math.random() * 0.4})`;
+        cctx.save();
+        cctx.translate(Math.random() * SIZE, Math.random() * SIZE);
+        cctx.rotate(Math.random() * Math.PI);
+        cctx.beginPath();
+        cctx.ellipse(0, 0, 2 + Math.random() * 4, 1 + Math.random() * 2, 0, 0, Math.PI * 2);
+        cctx.fill();
+        cctx.restore();
     }
     const colorTex = new THREE.CanvasTexture(colorCanvas);
     configureRepeat(colorTex, [12, 12], true);
 
-    // Height
+    // Roughness — wet patches are glossy (low roughness) so they catch the light
+    const roughCanvas = document.createElement('canvas');
+    roughCanvas.width = roughCanvas.height = SIZE;
+    const rctx = roughCanvas.getContext('2d');
+    const rimg = rctx.createImageData(SIZE, SIZE);
+    for (let i = 0; i < SIZE * SIZE; i++) {
+        const w = Math.pow(wet[i], 1.6);
+        const rough = 235 - w * 190 + grain[i] * 20;
+        rimg.data[i * 4 + 0] = rimg.data[i * 4 + 1] = rimg.data[i * 4 + 2] = rough;
+        rimg.data[i * 4 + 3] = 255;
+    }
+    rctx.putImageData(rimg, 0, 0);
+    const roughTex = new THREE.CanvasTexture(roughCanvas);
+    configureRepeat(roughTex, [12, 12], false);
+
+    // Height — mud lumps, footprint-ish depressions following the wet field
     const heightCanvas = document.createElement('canvas');
     heightCanvas.width = heightCanvas.height = SIZE;
     const hctx = heightCanvas.getContext('2d');
-    hctx.fillStyle = '#3a3a3a';
-    hctx.fillRect(0, 0, SIZE, SIZE);
-    for (let i = 0; i < 1200; i++) {
-        const grey = 50 + Math.random() * 130;
-        hctx.fillStyle = `rgb(${grey|0},${grey|0},${grey|0})`;
-        hctx.beginPath();
-        hctx.arc(Math.random() * SIZE, Math.random() * SIZE, 1 + Math.random() * 6, 0, Math.PI * 2);
-        hctx.fill();
+    const himg = hctx.createImageData(SIZE, SIZE);
+    for (let i = 0; i < SIZE * SIZE; i++) {
+        const v = 70 + grain[i] * 120 - wet[i] * 40;
+        himg.data[i * 4 + 0] = himg.data[i * 4 + 1] = himg.data[i * 4 + 2] = v;
+        himg.data[i * 4 + 3] = 255;
     }
-    const normalTex = makeNormalMapFromCanvas(heightCanvas, 8);
+    hctx.putImageData(himg, 0, 0);
+    const normalTex = makeNormalMapFromCanvas(heightCanvas, 6);
     configureRepeat(normalTex, [12, 12], false);
 
     sharedAssets.floor = new THREE.MeshPhysicalMaterial({
         map: colorTex,
         normalMap: normalTex,
-        normalScale: new THREE.Vector2(1.4, 1.4),
-        roughness: 0.95,
-        metalness: 0
+        normalScale: new THREE.Vector2(1.2, 1.2),
+        roughnessMap: roughTex,
+        roughness: 1.0,
+        metalness: 0,
+        envMapIntensity: 0.9
     });
     return sharedAssets.floor;
 }
@@ -825,13 +945,18 @@ function createLeafMaterial() {
     hctx.stroke();
     const normalTex = makeNormalMapFromCanvas(heightCanvas, 6);
 
-    return new THREE.MeshStandardMaterial({
+    // MeshPhysicalMaterial with sheen — gives the soft velvety highlight real
+    // leaves have instead of a plasticky specular dot.
+    return new THREE.MeshPhysicalMaterial({
         map: colorTex,
         alphaMap: alphaTex,
         normalMap: normalTex,
         normalScale: new THREE.Vector2(0.6, 0.6),
-        roughness: 0.65,
+        roughness: 0.6,
         metalness: 0,
+        sheen: 0.4,
+        sheenColor: new THREE.Color(0x9ad88a),
+        sheenRoughness: 0.5,
         side: THREE.DoubleSide,
         transparent: true,
         alphaTest: 0.45
@@ -947,22 +1072,9 @@ function createOldGrowthTreeTexture() {
     return new THREE.CanvasTexture(canvas);
 }
 
-function makeWindyTreeMaterial(texture, color) {
-    // MeshBasicMaterial — flat silhouette, identical from any angle. No per-side
-    // lighting variance, no sun shading, no IBL pulling color around as you turn.
-    // transparent:false + alphaTest puts trees in the OPAQUE pass so they write
-    // proper depth; the transparent glass then composites over them deterministically
-    // (otherwise the transparent-sort order flips as you move and the glass tint
-    // appears/disappears on the same trees).
-    const mat = new THREE.MeshBasicMaterial({
-        map: texture,
-        color,
-        side: THREE.DoubleSide,
-        transparent: false,
-        alphaTest: 0.5,
-        fog: true
-    });
-    // GPU-only wind sway — uniforms are written from updateTreeWind once per frame.
+// GPU-only wind sway — uniforms are written from updateTreeWind once per frame.
+// Works on any material (basic billboards, standard foliage, undergrowth).
+function injectWindSway(mat, heightRange = 7) {
     mat.onBeforeCompile = (shader) => {
         shader.uniforms.uTime = { value: 0 };
         shader.uniforms.uWindStrength = { value: 0 };
@@ -980,7 +1092,7 @@ function makeWindyTreeMaterial(texture, color) {
                 #else
                     float _phase = uTime;
                 #endif
-                float _swayFactor = smoothstep(0.0, 7.0, position.y);
+                float _swayFactor = smoothstep(0.0, ${heightRange.toFixed(1)}, position.y);
                 float _swayX = sin(_phase) * uWindStrength * _swayFactor;
                 float _swayZ = sin(_phase * 0.8 + 1.2) * uWindStrength * 0.5 * _swayFactor;
                 transformed.x += _swayX;
@@ -988,17 +1100,274 @@ function makeWindyTreeMaterial(texture, color) {
             `);
         mat.userData.shader = shader;
     };
+    treeMaterials.push(mat);
     return mat;
 }
 
+function makeWindyTreeMaterial(texture, color) {
+    // MeshBasicMaterial — flat silhouette, identical from any angle. No per-side
+    // lighting variance, no sun shading, no IBL pulling color around as you turn.
+    // transparent:false + alphaTest puts trees in the OPAQUE pass so they write
+    // proper depth; the transparent glass then composites over them deterministically
+    // (otherwise the transparent-sort order flips as you move and the glass tint
+    // appears/disappears on the same trees).
+    const mat = new THREE.MeshBasicMaterial({
+        map: texture,
+        color,
+        side: THREE.DoubleSide,
+        transparent: false,
+        alphaTest: 0.5,
+        fog: true
+    });
+    return injectWindSway(mat, 7);
+}
+
+// Bark — vertical ridge texture from layered noise + carved fissures.
+function makeBarkTexture(baseR, baseG, baseB) {
+    const SIZE = 256;
+    const ridges = makeFbmField(SIZE, 4, 6);
+    const canvas = document.createElement('canvas');
+    canvas.width = canvas.height = SIZE;
+    const ctx = canvas.getContext('2d');
+    const img = ctx.createImageData(SIZE, SIZE);
+    for (let y = 0; y < SIZE; y++) {
+        for (let x = 0; x < SIZE; x++) {
+            // Stretch the noise vertically so it reads as bark ridges
+            const n = ridges[((y * 3) % SIZE) * SIZE + x];
+            const v = 0.45 + n * 0.85;
+            const i = (y * SIZE + x) * 4;
+            img.data[i + 0] = baseR * v;
+            img.data[i + 1] = baseG * v;
+            img.data[i + 2] = baseB * v;
+            img.data[i + 3] = 255;
+        }
+    }
+    ctx.putImageData(img, 0, 0);
+    // Deep vertical fissures
+    for (let i = 0; i < 26; i++) {
+        let x = Math.random() * SIZE;
+        ctx.strokeStyle = `rgba(8,5,3,${0.4 + Math.random() * 0.4})`;
+        ctx.lineWidth = 1 + Math.random() * 2.5;
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        for (let y = 0; y < SIZE; y += 18) {
+            x += (Math.random() - 0.5) * 9;
+            ctx.lineTo(x, y);
+        }
+        ctx.stroke();
+    }
+    // Lichen / moss blotches
+    for (let i = 0; i < 40; i++) {
+        ctx.fillStyle = `rgba(${60 + Math.random() * 40 | 0},${90 + Math.random() * 50 | 0},50,${0.10 + Math.random() * 0.22})`;
+        ctx.beginPath();
+        ctx.arc(Math.random() * SIZE, Math.random() * SIZE, 3 + Math.random() * 10, 0, Math.PI * 2);
+        ctx.fill();
+    }
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+    return tex;
+}
+
+// Ragged leaf-mass clump with alpha — used for canopy quads on 3D trees.
+function makeFoliageClumpTexture() {
+    if (sharedAssets.foliageTex) return sharedAssets.foliageTex;
+    const SIZE = 128;
+    const canvas = document.createElement('canvas');
+    canvas.width = canvas.height = SIZE;
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, SIZE, SIZE);
+    const cx = SIZE / 2, cy = SIZE / 2;
+    for (let i = 0; i < 420; i++) {
+        const a = Math.random() * Math.PI * 2;
+        // Bias leaves toward the center so edges go ragged and sparse
+        const d = Math.pow(Math.random(), 0.6) * SIZE * 0.46;
+        const x = cx + Math.cos(a) * d;
+        const y = cy + Math.sin(a) * d;
+        const g = 50 + Math.random() * 80;
+        const r = g * (0.35 + Math.random() * 0.3);
+        const b = g * (0.3 + Math.random() * 0.25);
+        ctx.fillStyle = `rgba(${r|0},${g|0},${b|0},${0.75 + Math.random() * 0.25})`;
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.rotate(Math.random() * Math.PI);
+        ctx.beginPath();
+        ctx.ellipse(0, 0, 2.5 + Math.random() * 5, 1.4 + Math.random() * 3, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+    }
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    sharedAssets.foliageTex = tex;
+    return tex;
+}
+
+// One real 3D tree: recursive tapered-cylinder branches merged into a single bark
+// geometry, plus (for living trees) merged canopy quads at the branch tips.
+function buildTreeArchetype({ dead = false } = {}) {
+    const barkParts = [];
+    const tips = [];
+    const up = new THREE.Vector3(0, 1, 0);
+    const maxDepth = dead ? 4 : 3;
+
+    function branch(p0, dir, len, r0, depth) {
+        const r1 = Math.max(0.015, r0 * 0.55);
+        const radial = depth === 0 ? 7 : 5;
+        const seg = new THREE.CylinderGeometry(r1, r0, len, radial, 1);
+        seg.translate(0, len / 2, 0);
+        const q = new THREE.Quaternion().setFromUnitVectors(up, dir);
+        seg.applyQuaternion(q);
+        seg.translate(p0.x, p0.y, p0.z);
+        barkParts.push(seg);
+        const p1 = p0.clone().addScaledVector(dir, len);
+        if (depth >= maxDepth) {
+            tips.push(p1.clone());
+            return;
+        }
+        const kids = depth === 0 ? 3 : (Math.random() < 0.5 ? 2 : 3);
+        for (let i = 0; i < kids; i++) {
+            const axis = new THREE.Vector3(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5)
+                .cross(dir);
+            if (axis.lengthSq() < 1e-6) axis.set(1, 0, 0);
+            axis.normalize();
+            const nd = dir.clone().applyAxisAngle(axis, (dead ? 0.55 : 0.4) + Math.random() * 0.55);
+            // Living trees reach upward; dead trees claw sideways
+            nd.y += dead ? 0.02 : 0.3;
+            nd.normalize();
+            branch(p1, nd, len * (0.58 + Math.random() * 0.16), r1, depth + 1);
+        }
+        if (depth >= 1 && !dead && Math.random() < 0.5) tips.push(p1.clone());
+    }
+
+    const trunkDir = new THREE.Vector3((Math.random() - 0.5) * 0.14, 1, (Math.random() - 0.5) * 0.14).normalize();
+    const trunkLen = 2.6 + Math.random() * 1.4;
+    const trunkR = 0.26 + Math.random() * 0.12;
+    branch(new THREE.Vector3(0, 0, 0), trunkDir, trunkLen, trunkR, 0);
+
+    // Root flare at the base
+    const root = new THREE.CylinderGeometry(trunkR * 1.02, trunkR * 2.1, 0.5, 7, 1);
+    root.translate(0, 0.25, 0);
+    barkParts.push(root);
+
+    const barkGeom = mergeGeometries(barkParts);
+
+    let foliageGeom = null;
+    if (!dead && tips.length) {
+        const quads = [];
+        for (const tip of tips) {
+            const clumps = 2 + (Math.random() < 0.4 ? 1 : 0);
+            for (let c = 0; c < clumps; c++) {
+                const s = 1.7 + Math.random() * 1.7;
+                const quad = new THREE.PlaneGeometry(s, s);
+                quad.rotateY(Math.random() * Math.PI);
+                quad.rotateZ((Math.random() - 0.5) * 0.7);
+                quad.translate(
+                    tip.x + (Math.random() - 0.5) * 0.9,
+                    tip.y + (Math.random() - 0.3) * 0.8,
+                    tip.z + (Math.random() - 0.5) * 0.9
+                );
+                quads.push(quad);
+            }
+        }
+        foliageGeom = mergeGeometries(quads);
+    }
+    return { barkGeom, foliageGeom };
+}
+
 function buildHauntedForest() {
-    // Two textures for variation — bare gnarled and leafy old-growth.
+    // --- Real 3D trees in the near/mid bands ---
+    const livingBarkTex = makeBarkTexture(96, 74, 56);
+    const deadBarkTex = makeBarkTexture(62, 58, 54);
+    const foliageTex = makeFoliageClumpTexture();
+
+    const livingBarkMat = new THREE.MeshStandardMaterial({
+        map: livingBarkTex, roughness: 0.95, metalness: 0, envMapIntensity: 0.35
+    });
+    const deadBarkMat = new THREE.MeshStandardMaterial({
+        map: deadBarkTex, color: 0x9a9a96, roughness: 1.0, metalness: 0, envMapIntensity: 0.3
+    });
+    const foliageMat = new THREE.MeshStandardMaterial({
+        map: foliageTex,
+        color: 0x9fb894,
+        alphaTest: 0.45,
+        transparent: false,
+        side: THREE.DoubleSide,
+        roughness: 0.9,
+        metalness: 0,
+        envMapIntensity: 0.35
+    });
+    injectWindSway(foliageMat, 9);
+
+    // Five archetypes (3 living, 2 dead) so the forest doesn't look copy-pasted.
+    const archetypes = [];
+    for (let i = 0; i < 3; i++) archetypes.push({ ...buildTreeArchetype({ dead: false }), dead: false });
+    for (let i = 0; i < 2; i++) archetypes.push({ ...buildTreeArchetype({ dead: true }), dead: true });
+
+    // Scatter helper — picks a point on one of the four sides of the greenhouse.
+    function scatterPoint(distMin, distMax, i) {
+        const side = i % 4;
+        const dist = distMin + Math.random() * (distMax - distMin);
+        if (side === 0) return { x: -8 - dist, z: -62 + Math.random() * 84 };
+        if (side === 1) return { x: 8 + dist, z: -62 + Math.random() * 84 };
+        if (side === 2) return { x: -36 + Math.random() * 72, z: -45 - dist };
+        return { x: -36 + Math.random() * 72, z: 5 + dist };
+    }
+
+    // Place 3D trees and bin them per archetype.
+    const placements = archetypes.map(() => []);
+    const TREE3D_COUNT = 130;
+    for (let i = 0; i < TREE3D_COUNT; i++) {
+        const p = scatterPoint(7, 32, i);
+        // 70% living, 30% dead snags for the haunted look
+        const dead = Math.random() < 0.3;
+        const pool = archetypes
+            .map((a, idx) => ({ a, idx }))
+            .filter(e => e.a.dead === dead);
+        const pick = pool[Math.floor(Math.random() * pool.length)].idx;
+        placements[pick].push({
+            x: p.x, z: p.z,
+            rotY: Math.random() * Math.PI * 2,
+            scale: 0.85 + Math.random() * 1.05
+        });
+    }
+
+    const _m = new THREE.Matrix4();
+    const _q = new THREE.Quaternion();
+    const _yAxis = new THREE.Vector3(0, 1, 0);
+    archetypes.forEach((arch, idx) => {
+        const list = placements[idx];
+        if (!list.length) return;
+        const bark = new THREE.InstancedMesh(arch.barkGeom, arch.dead ? deadBarkMat : livingBarkMat, list.length);
+        const foliage = arch.foliageGeom
+            ? new THREE.InstancedMesh(arch.foliageGeom, foliageMat, list.length)
+            : null;
+        for (let i = 0; i < list.length; i++) {
+            const t = list[i];
+            _q.setFromAxisAngle(_yAxis, t.rotY);
+            _m.compose(new THREE.Vector3(t.x, 0, t.z), _q, new THREE.Vector3(t.scale, t.scale, t.scale));
+            bark.setMatrixAt(i, _m);
+            if (foliage) foliage.setMatrixAt(i, _m);
+        }
+        bark.instanceMatrix.needsUpdate = true;
+        bark.castShadow = true;
+        bark.receiveShadow = false;
+        bark.frustumCulled = false;
+        scene.add(bark);
+        if (foliage) {
+            foliage.instanceMatrix.needsUpdate = true;
+            foliage.castShadow = false;
+            foliage.receiveShadow = false;
+            foliage.frustumCulled = false;
+            scene.add(foliage);
+        }
+    });
+
+    // --- Far band: dense billboard wall so you can't see through to infinity ---
     const bareTex = createDeadTreeTexture();
     bareTex.colorSpace = THREE.SRGBColorSpace;
     const leafyTex = createOldGrowthTreeTexture();
     leafyTex.colorSpace = THREE.SRGBColorSpace;
 
-    // Crossed planes per tree → merged into one BufferGeometry, instanced.
     const treeWidth = 5;
     const treeHeight = 10;
     const plane1 = new THREE.PlaneGeometry(treeWidth, treeHeight);
@@ -1009,43 +1378,22 @@ function buildHauntedForest() {
 
     const bareMat = makeWindyTreeMaterial(bareTex, 0x1c1814);
     const leafyMat = makeWindyTreeMaterial(leafyTex, 0x141a14);
-    treeMaterials.push(bareMat, leafyMat);
 
-    // Three distance bands of dense trees so the back rows form a wall and you
-    // can't see through to infinity. Far band is heavily packed silhouettes.
-    const trees = [];
-    const bands = [
-        { distMin: 10, distMax: 20, count: 120, scaleMin: 0.85, scaleMax: 1.55 },
-        { distMin: 18, distMax: 32, count: 180, scaleMin: 0.7,  scaleMax: 1.25 },
-        { distMin: 30, distMax: 55, count: 260, scaleMin: 0.55, scaleMax: 1.00 }
-    ];
-    for (const band of bands) {
-        for (let i = 0; i < band.count; i++) {
-            const side = i % 4;
-            const dist = band.distMin + Math.random() * (band.distMax - band.distMin);
-            let x, z;
-            if (side === 0)      { x = -8 - dist; z = -60 + Math.random() * 80; }
-            else if (side === 1) { x =  8 + dist; z = -60 + Math.random() * 80; }
-            else if (side === 2) { x = -32 + Math.random() * 64; z = -45 - dist; }
-            else                 { x = -32 + Math.random() * 64; z =   5 + dist; }
-            trees.push({
-                x, z,
-                scale: band.scaleMin + Math.random() * (band.scaleMax - band.scaleMin),
-                rotY: Math.random() * Math.PI * 2,
-                type: Math.random() < 0.6 ? 1 : 0 // 60% leafy, 40% bare
-            });
-        }
+    const farTrees = [];
+    for (let i = 0; i < 300; i++) {
+        const p = scatterPoint(30, 58, i);
+        farTrees.push({
+            x: p.x, z: p.z,
+            scale: 0.6 + Math.random() * 0.55,
+            rotY: Math.random() * Math.PI * 2,
+            type: Math.random() < 0.6 ? 1 : 0
+        });
     }
-
-    // Split into two InstancedMesh per type (still 2 draw calls total).
-    const _m = new THREE.Matrix4();
-    const _q = new THREE.Quaternion();
-    const _yAxis = new THREE.Vector3(0, 1, 0);
     [
         { mat: bareMat, type: 0 },
         { mat: leafyMat, type: 1 }
     ].forEach(({ mat, type }) => {
-        const subset = trees.filter(t => t.type === type);
+        const subset = farTrees.filter(t => t.type === type);
         if (subset.length === 0) return;
         const mesh = new THREE.InstancedMesh(treeGeom, mat, subset.length);
         for (let i = 0; i < subset.length; i++) {
@@ -1060,6 +1408,295 @@ function buildHauntedForest() {
         mesh.frustumCulled = false; // bounding sphere doesn't account for scattered instances
         scene.add(mesh);
     });
+
+    buildForestFloor();
+    buildUndergrowth(foliageTex);
+}
+
+// Leaf-litter / moss forest floor outside the greenhouse — a big plane with a
+// rectangular hole cut where the greenhouse dirt floor shows through.
+function buildForestFloor() {
+    const SIZE = 512;
+    const moss = makeFbmField(SIZE, 4, 4);
+    const litter = makeFbmField(SIZE, 5, 10);
+    const canvas = document.createElement('canvas');
+    canvas.width = canvas.height = SIZE;
+    const ctx = canvas.getContext('2d');
+    const img = ctx.createImageData(SIZE, SIZE);
+    for (let i = 0; i < SIZE * SIZE; i++) {
+        const m = moss[i];     // mossy (green) vs bare loam (brown)
+        const l = litter[i];
+        img.data[i * 4 + 0] = 24 + l * 30 + (1 - m) * 18;
+        img.data[i * 4 + 1] = 22 + l * 26 + m * 26;
+        img.data[i * 4 + 2] = 12 + l * 14;
+        img.data[i * 4 + 3] = 255;
+    }
+    ctx.putImageData(img, 0, 0);
+    // Dead leaves strewn across the floor
+    for (let i = 0; i < 900; i++) {
+        const r = 60 + Math.random() * 70;
+        const g = 40 + Math.random() * 45;
+        ctx.fillStyle = `rgba(${r|0},${g|0},${15 + Math.random() * 15|0},${0.35 + Math.random() * 0.45})`;
+        ctx.save();
+        ctx.translate(Math.random() * SIZE, Math.random() * SIZE);
+        ctx.rotate(Math.random() * Math.PI);
+        ctx.beginPath();
+        ctx.ellipse(0, 0, 1.5 + Math.random() * 3, 0.8 + Math.random() * 1.6, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+    }
+    const tex = new THREE.CanvasTexture(canvas);
+    configureRepeat(tex, [22, 22], true);
+
+    const heightCanvas = document.createElement('canvas');
+    heightCanvas.width = heightCanvas.height = SIZE;
+    const hctx = heightCanvas.getContext('2d');
+    const himg = hctx.createImageData(SIZE, SIZE);
+    for (let i = 0; i < SIZE * SIZE; i++) {
+        const v = 60 + litter[i] * 140;
+        himg.data[i * 4 + 0] = himg.data[i * 4 + 1] = himg.data[i * 4 + 2] = v;
+        himg.data[i * 4 + 3] = 255;
+    }
+    hctx.putImageData(himg, 0, 0);
+    const normalTex = makeNormalMapFromCanvas(heightCanvas, 5);
+    configureRepeat(normalTex, [22, 22], false);
+
+    // ShapeGeometry rotated flat: shape (x, y) maps to world (x, -y), so the hole
+    // for the greenhouse footprint uses y = -worldZ.
+    const HALF = 160;
+    const shape = new THREE.Shape();
+    shape.moveTo(-HALF, -HALF);
+    shape.lineTo(HALF, -HALF);
+    shape.lineTo(HALF, HALF);
+    shape.lineTo(-HALF, HALF);
+    shape.closePath();
+    const hole = new THREE.Path();
+    const hx = 8.6;
+    const hyMin = -(GREENHOUSE_BOUNDS.zMax + 0.6); // worldZ 5.6 → shapeY -5.6
+    const hyMax = -(GREENHOUSE_BOUNDS.zMin - 0.6); // worldZ -45.6 → shapeY 45.6
+    hole.moveTo(-hx, hyMin);
+    hole.lineTo(hx, hyMin);
+    hole.lineTo(hx, hyMax);
+    hole.lineTo(-hx, hyMax);
+    hole.closePath();
+    shape.holes.push(hole);
+
+    const geom = new THREE.ShapeGeometry(shape);
+    // ShapeGeometry UVs span world units — rescale so the texture repeat is sane
+    const uvs = geom.attributes.uv;
+    for (let i = 0; i < uvs.count; i++) {
+        uvs.setXY(i, uvs.getX(i) / (HALF * 2), uvs.getY(i) / (HALF * 2));
+    }
+    const mat = new THREE.MeshPhysicalMaterial({
+        map: tex,
+        normalMap: normalTex,
+        normalScale: new THREE.Vector2(1, 1),
+        roughness: 0.95,
+        metalness: 0
+    });
+    const floor = new THREE.Mesh(geom, mat);
+    floor.rotation.x = -Math.PI / 2;
+    floor.position.y = 0.02;
+    floor.receiveShadow = true;
+    scene.add(floor);
+}
+
+// Fern / bush silhouette with alpha for instanced undergrowth.
+function makeFernTexture() {
+    if (sharedAssets.fernTex) return sharedAssets.fernTex;
+    const SIZE = 128;
+    const canvas = document.createElement('canvas');
+    canvas.width = canvas.height = SIZE;
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, SIZE, SIZE);
+    const baseX = SIZE / 2, baseY = SIZE - 4;
+    const fronds = 7;
+    for (let f = 0; f < fronds; f++) {
+        const angle = -Math.PI / 2 + (f - (fronds - 1) / 2) * 0.32 + (Math.random() - 0.5) * 0.1;
+        const len = SIZE * (0.55 + Math.random() * 0.35);
+        const g = 70 + Math.random() * 60;
+        ctx.strokeStyle = `rgb(${g * 0.4|0},${g|0},${g * 0.35|0})`;
+        ctx.lineWidth = 2;
+        const tipX = baseX + Math.cos(angle) * len;
+        const tipY = baseY + Math.sin(angle) * len;
+        const bendX = baseX + Math.cos(angle) * len * 0.5 + (Math.random() - 0.5) * 10;
+        const bendY = baseY + Math.sin(angle) * len * 0.5 - 6;
+        ctx.beginPath();
+        ctx.moveTo(baseX, baseY);
+        ctx.quadraticCurveTo(bendX, bendY, tipX, tipY);
+        ctx.stroke();
+        // Pinnae along the frond
+        const steps = 11;
+        for (let s = 1; s < steps; s++) {
+            const t = s / steps;
+            const px = baseX + (bendX - baseX) * 2 * t * (1 - t) + (tipX - baseX) * t * t + (baseX - baseX) * (1 - t) * (1 - t);
+            const py = baseY + (bendY - baseY) * 2 * t * (1 - t) + (tipY - baseY) * t * t;
+            const pinLen = (1 - t) * 13 + 2;
+            ctx.lineWidth = 1.4;
+            ctx.beginPath();
+            ctx.moveTo(px - pinLen, py - pinLen * 0.35);
+            ctx.lineTo(px, py);
+            ctx.lineTo(px + pinLen, py - pinLen * 0.35);
+            ctx.stroke();
+        }
+    }
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    sharedAssets.fernTex = tex;
+    return tex;
+}
+
+function buildUndergrowth(foliageTex) {
+    const fernTex = makeFernTexture();
+
+    // Cross-quad, base at y=0
+    const q1 = new THREE.PlaneGeometry(1.1, 0.9);
+    q1.translate(0, 0.45, 0);
+    const q2 = q1.clone();
+    q2.rotateY(Math.PI / 2);
+    const crossGeom = mergeGeometries([q1, q2]);
+
+    const fernMat = new THREE.MeshStandardMaterial({
+        map: fernTex, alphaTest: 0.4, transparent: false, side: THREE.DoubleSide,
+        roughness: 0.95, metalness: 0, color: 0xb8ccae, envMapIntensity: 0.35
+    });
+    injectWindSway(fernMat, 0.9);
+    const bushMat = new THREE.MeshStandardMaterial({
+        map: foliageTex, alphaTest: 0.45, transparent: false, side: THREE.DoubleSide,
+        roughness: 0.95, metalness: 0, color: 0x8aa882, envMapIntensity: 0.35
+    });
+    injectWindSway(bushMat, 0.9);
+
+    const _m = new THREE.Matrix4();
+    const _q = new THREE.Quaternion();
+    const _yAxis = new THREE.Vector3(0, 1, 0);
+    [
+        { mat: fernMat, count: 160 },
+        { mat: bushMat, count: 120 }
+    ].forEach(({ mat, count }) => {
+        const mesh = new THREE.InstancedMesh(crossGeom, mat, count);
+        for (let i = 0; i < count; i++) {
+            const side = i % 4;
+            const dist = 6.5 + Math.random() * 38;
+            let x, z;
+            if (side === 0)      { x = -8 - dist; z = -60 + Math.random() * 80; }
+            else if (side === 1) { x =  8 + dist; z = -60 + Math.random() * 80; }
+            else if (side === 2) { x = -40 + Math.random() * 80; z = -45 - dist; }
+            else                 { x = -40 + Math.random() * 80; z =   5 + dist; }
+            _q.setFromAxisAngle(_yAxis, Math.random() * Math.PI * 2);
+            const s = 0.5 + Math.random() * 1.1;
+            _m.compose(new THREE.Vector3(x, 0, z), _q, new THREE.Vector3(s, s * (0.8 + Math.random() * 0.5), s));
+            mesh.setMatrixAt(i, _m);
+        }
+        mesh.instanceMatrix.needsUpdate = true;
+        mesh.castShadow = false;
+        mesh.receiveShadow = false;
+        mesh.frustumCulled = false;
+        scene.add(mesh);
+    });
+}
+
+// --- Forest atmosphere: drifting ground mist + fireflies (night) ---
+
+function makeMistTexture() {
+    const SIZE = 128;
+    const canvas = document.createElement('canvas');
+    canvas.width = canvas.height = SIZE;
+    const ctx = canvas.getContext('2d');
+    const grad = ctx.createRadialGradient(SIZE / 2, SIZE / 2, 4, SIZE / 2, SIZE / 2, SIZE / 2);
+    grad.addColorStop(0, 'rgba(200, 215, 220, 0.55)');
+    grad.addColorStop(0.55, 'rgba(190, 205, 212, 0.22)');
+    grad.addColorStop(1, 'rgba(180, 200, 210, 0)');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, SIZE, SIZE);
+    return new THREE.CanvasTexture(canvas);
+}
+
+function buildForestAtmosphere() {
+    // Ground mist — big soft sprites drifting slowly between the trees.
+    const mistTex = makeMistTexture();
+    for (let i = 0; i < 14; i++) {
+        const mat = new THREE.SpriteMaterial({
+            map: mistTex,
+            transparent: true,
+            opacity: 0.05,
+            depthWrite: false,
+            fog: true
+        });
+        const sprite = new THREE.Sprite(mat);
+        const side = i % 4;
+        const dist = 9 + Math.random() * 22;
+        let x, z;
+        if (side === 0)      { x = -8 - dist; z = -55 + Math.random() * 70; }
+        else if (side === 1) { x =  8 + dist; z = -55 + Math.random() * 70; }
+        else if (side === 2) { x = -30 + Math.random() * 60; z = -45 - dist; }
+        else                 { x = -30 + Math.random() * 60; z =   5 + dist; }
+        sprite.position.set(x, 1.0 + Math.random() * 1.2, z);
+        sprite.scale.set(10 + Math.random() * 9, 3.2 + Math.random() * 2.2, 1);
+        sprite.userData.vx = (Math.random() - 0.5) * 0.16;
+        sprite.userData.vz = (Math.random() - 0.5) * 0.16;
+        sprite.userData.baseOpacity = 0.5 + Math.random() * 0.5;
+        scene.add(sprite);
+        mistSprites.push(sprite);
+    }
+
+    // Fireflies — additive shader points that twinkle and wander; night only.
+    const COUNT = 80;
+    const positions = new Float32Array(COUNT * 3);
+    const phases = new Float32Array(COUNT);
+    for (let i = 0; i < COUNT; i++) {
+        const side = i % 4;
+        const dist = 9 + Math.random() * 24;
+        let x, z;
+        if (side === 0)      { x = -8 - dist; z = -55 + Math.random() * 70; }
+        else if (side === 1) { x =  8 + dist; z = -55 + Math.random() * 70; }
+        else if (side === 2) { x = -30 + Math.random() * 60; z = -45 - dist; }
+        else                 { x = -30 + Math.random() * 60; z =   5 + dist; }
+        positions[i * 3 + 0] = x;
+        positions[i * 3 + 1] = 0.4 + Math.random() * 1.9;
+        positions[i * 3 + 2] = z;
+        phases[i] = Math.random() * Math.PI * 2;
+    }
+    const geom = new THREE.BufferGeometry();
+    geom.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    geom.setAttribute('aPhase', new THREE.BufferAttribute(phases, 1));
+    const mat = new THREE.ShaderMaterial({
+        uniforms: {
+            uTime: { value: 0 },
+            uNight: { value: 0 }
+        },
+        vertexShader: `
+            uniform float uTime;
+            attribute float aPhase;
+            varying float vTwinkle;
+            void main() {
+                vec3 p = position;
+                p.x += sin(uTime * 0.31 + aPhase) * 0.8;
+                p.y += sin(uTime * 0.43 + aPhase * 2.0) * 0.35;
+                p.z += cos(uTime * 0.27 + aPhase) * 0.8;
+                vTwinkle = smoothstep(0.15, 0.9, 0.5 + 0.5 * sin(uTime * 1.7 + aPhase * 7.0));
+                vec4 mv = modelViewMatrix * vec4(p, 1.0);
+                gl_PointSize = (4.0 + 5.0 * vTwinkle) * (18.0 / max(1.0, -mv.z));
+                gl_Position = projectionMatrix * mv;
+            }
+        `,
+        fragmentShader: `
+            uniform float uNight;
+            varying float vTwinkle;
+            void main() {
+                float d = length(gl_PointCoord - vec2(0.5));
+                float falloff = smoothstep(0.5, 0.0, d);
+                vec3 col = mix(vec3(0.5, 0.9, 0.3), vec3(1.0, 0.95, 0.55), vTwinkle);
+                gl_FragColor = vec4(col, falloff * vTwinkle * uNight);
+            }
+        `,
+        transparent: true,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending
+    });
+    fireflySystem = new THREE.Points(geom, mat);
+    fireflySystem.frustumCulled = false;
+    scene.add(fireflySystem);
 }
 
 // --- Glowing red eyes at the forest edge (night only) ---
@@ -1200,6 +1837,682 @@ function updateTreeWind(now) {
         mat.userData.shader.uniforms.uTime.value = now / 1000;
         mat.userData.shader.uniforms.uWindStrength.value = strength;
     }
+}
+
+// --- Wet interior: puddles, roof drips with ripples, floating dust ---
+
+function buildPuddles() {
+    // Irregular glossy puddles in the walking aisle and under table edges.
+    const puddleGeoms = [];
+    const spots = [
+        [0.4, -3.2, 1.0], [-0.8, -9.5, 1.3], [1.1, -15.8, 0.8], [-0.3, -22.5, 1.5],
+        [0.7, -29.0, 1.0], [-1.0, -35.5, 1.2], [0.2, -41.0, 0.9],
+        [-5.6, -12.0, 0.9], [5.8, -26.0, 1.1], [-5.9, -33.0, 0.8]
+    ];
+    for (const [px, pz, size] of spots) {
+        const pts = [];
+        const lobes = 9;
+        for (let i = 0; i < lobes; i++) {
+            const a = (i / lobes) * Math.PI * 2;
+            const r = size * (0.55 + Math.random() * 0.45);
+            pts.push(new THREE.Vector2(Math.cos(a) * r, Math.sin(a) * r));
+        }
+        const shape = new THREE.Shape();
+        shape.splineThru(pts);
+        shape.closePath();
+        const g = new THREE.ShapeGeometry(shape, 12);
+        g.rotateX(-Math.PI / 2);
+        g.translate(px, 0, pz);
+        puddleGeoms.push(g);
+    }
+    const merged = mergeGeometries(puddleGeoms);
+    const mat = new THREE.MeshPhysicalMaterial({
+        color: 0x12181a,
+        roughness: 0.04,
+        metalness: 0,
+        envMapIntensity: 1.5,
+        clearcoat: 0.6,
+        clearcoatRoughness: 0.1,
+        transparent: true,
+        opacity: 0.92
+    });
+    const puddles = new THREE.Mesh(merged, mat);
+    puddles.position.y = 0.012;
+    puddles.receiveShadow = true;
+    scene.add(puddles);
+}
+
+function buildGreenhouseParticles() {
+    // Roof height at a given x (gable: ridge y=11 at x=0 down to y=6 at |x|=8)
+    const roofY = (x) => 11 - Math.abs(x) * (5 / 8);
+
+    // --- Drips: condensation falling from the roof glass ---
+    const DRIPS = 45;
+    const positions = new Float32Array(DRIPS * 3);
+    const speeds = new Float32Array(DRIPS);
+    for (let i = 0; i < DRIPS; i++) {
+        const x = -7.5 + Math.random() * 15;
+        positions[i * 3 + 0] = x;
+        positions[i * 3 + 1] = Math.random() * roofY(x);
+        positions[i * 3 + 2] = -44 + Math.random() * 48;
+        speeds[i] = 2.6 + Math.random() * 2.0;
+    }
+    const dripGeom = new THREE.BufferGeometry();
+    dripGeom.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    const dripMat = new THREE.PointsMaterial({
+        color: 0xbfd8e8,
+        size: 0.045,
+        transparent: true,
+        opacity: 0.65,
+        depthWrite: false,
+        sizeAttenuation: true
+    });
+    const dripPoints = new THREE.Points(dripGeom, dripMat);
+    dripPoints.frustumCulled = false;
+    scene.add(dripPoints);
+    dripSystem = { points: dripPoints, positions, speeds, roofY };
+
+    // --- Ripple pool: rings that expand where drips land ---
+    const rippleGeom = new THREE.RingGeometry(0.75, 0.85, 24);
+    rippleGeom.rotateX(-Math.PI / 2);
+    for (let i = 0; i < 10; i++) {
+        const mat = new THREE.MeshBasicMaterial({
+            color: 0xcfe4f0,
+            transparent: true,
+            opacity: 0,
+            depthWrite: false,
+            side: THREE.DoubleSide
+        });
+        const ring = new THREE.Mesh(rippleGeom, mat);
+        ring.position.y = 0.016;
+        ring.visible = false;
+        scene.add(ring);
+        ripplePool.push({ mesh: ring, age: 0, active: false });
+    }
+
+    // --- Dust motes / pollen drifting through the air ---
+    const DUST = 260;
+    const dustPos = new Float32Array(DUST * 3);
+    const dustPhase = new Float32Array(DUST);
+    for (let i = 0; i < DUST; i++) {
+        dustPos[i * 3 + 0] = -7.5 + Math.random() * 15;
+        dustPos[i * 3 + 1] = 0.3 + Math.random() * 5.0;
+        dustPos[i * 3 + 2] = -44 + Math.random() * 48;
+        dustPhase[i] = Math.random() * Math.PI * 2;
+    }
+    const dustGeom = new THREE.BufferGeometry();
+    dustGeom.setAttribute('position', new THREE.BufferAttribute(dustPos, 3));
+    dustGeom.setAttribute('aPhase', new THREE.BufferAttribute(dustPhase, 1));
+    const dustMat = new THREE.ShaderMaterial({
+        uniforms: {
+            uTime: { value: 0 },
+            uIntensity: { value: 0.2 }
+        },
+        vertexShader: `
+            uniform float uTime;
+            attribute float aPhase;
+            void main() {
+                vec3 p = position;
+                p.x += sin(uTime * 0.13 + aPhase) * 0.4;
+                p.y += sin(uTime * 0.09 + aPhase * 2.0) * 0.3;
+                p.z += cos(uTime * 0.11 + aPhase) * 0.4;
+                vec4 mv = modelViewMatrix * vec4(p, 1.0);
+                gl_PointSize = 2.2 * (14.0 / max(1.0, -mv.z));
+                gl_Position = projectionMatrix * mv;
+            }
+        `,
+        fragmentShader: `
+            uniform float uIntensity;
+            void main() {
+                float d = length(gl_PointCoord - vec2(0.5));
+                float falloff = smoothstep(0.5, 0.05, d);
+                gl_FragColor = vec4(vec3(0.95, 0.92, 0.82), falloff * uIntensity);
+            }
+        `,
+        transparent: true,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending
+    });
+    dustSystem = new THREE.Points(dustGeom, dustMat);
+    dustSystem.frustumCulled = false;
+    scene.add(dustSystem);
+}
+
+function spawnRipple(x, z) {
+    const free = ripplePool.find(r => !r.active);
+    if (!free) return;
+    free.active = true;
+    free.age = 0;
+    free.mesh.position.x = x;
+    free.mesh.position.z = z;
+    free.mesh.visible = true;
+}
+
+function updateParticles(now, delta) {
+    const t = now / 1000;
+
+    // Drips fall, land, and respawn at the roof
+    if (dripSystem) {
+        const { points, positions, speeds, roofY } = dripSystem;
+        for (let i = 0; i < speeds.length; i++) {
+            positions[i * 3 + 1] -= speeds[i] * delta;
+            if (positions[i * 3 + 1] <= 0.02) {
+                if (Math.random() < 0.6) spawnRipple(positions[i * 3], positions[i * 3 + 2]);
+                const x = -7.5 + Math.random() * 15;
+                positions[i * 3 + 0] = x;
+                positions[i * 3 + 1] = roofY(x) - Math.random() * 1.5;
+                positions[i * 3 + 2] = -44 + Math.random() * 48;
+            }
+        }
+        points.geometry.attributes.position.needsUpdate = true;
+    }
+
+    // Ripples expand and fade over ~0.9 s
+    for (const r of ripplePool) {
+        if (!r.active) continue;
+        r.age += delta;
+        const k = r.age / 0.9;
+        if (k >= 1) {
+            r.active = false;
+            r.mesh.visible = false;
+            continue;
+        }
+        const s = 0.08 + k * 0.55;
+        r.mesh.scale.set(s, 1, s);
+        r.mesh.material.opacity = 0.45 * (1 - k);
+    }
+
+    // Dust + firefly shader clocks
+    if (dustSystem) dustSystem.material.uniforms.uTime.value = t;
+    if (fireflySystem) fireflySystem.material.uniforms.uTime.value = t;
+
+    // Ground mist drifts slowly through the trees; denser at night
+    const mistDayFactor = 0.06 + (1 - currentDayness) * 0.16;
+    for (const sprite of mistSprites) {
+        sprite.position.x += sprite.userData.vx * delta;
+        sprite.position.z += sprite.userData.vz * delta;
+        // Keep mist out of the greenhouse and from wandering off into the void
+        const p = sprite.position;
+        const insideX = p.x > GREENHOUSE_BOUNDS.xMin - 1 && p.x < GREENHOUSE_BOUNDS.xMax + 1;
+        const insideZ = p.z > GREENHOUSE_BOUNDS.zMin - 1 && p.z < GREENHOUSE_BOUNDS.zMax + 1;
+        if ((insideX && insideZ) || Math.abs(p.x) > 60 || p.z < -100 || p.z > 50) {
+            sprite.userData.vx *= -1;
+            sprite.userData.vz *= -1;
+        }
+        sprite.material.opacity = sprite.userData.baseOpacity * mistDayFactor
+            * (0.85 + 0.15 * Math.sin(t * 0.21 + p.x));
+    }
+}
+
+// --- Vines, ivy, hanging baskets, big ferns (interior overgrowth) ---
+
+function makeIvyLeafTexture() {
+    if (sharedAssets.ivyTex) return sharedAssets.ivyTex;
+    const SIZE = 64;
+    const canvas = document.createElement('canvas');
+    canvas.width = canvas.height = SIZE;
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, SIZE, SIZE);
+    // Three-lobed ivy leaf pointing down, stem at top
+    const grad = ctx.createRadialGradient(32, 30, 4, 32, 32, 32);
+    grad.addColorStop(0, '#4f8a3c');
+    grad.addColorStop(0.7, '#33632a');
+    grad.addColorStop(1, '#1d4019');
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.moveTo(32, 6);                                  // stem joint
+    ctx.bezierCurveTo(14, 4, 2, 18, 10, 30);            // left basal lobe
+    ctx.bezierCurveTo(2, 36, 12, 50, 22, 44);           // left mid lobe
+    ctx.bezierCurveTo(24, 56, 40, 56, 42, 44);          // center tip
+    ctx.bezierCurveTo(52, 50, 62, 36, 54, 30);          // right mid lobe
+    ctx.bezierCurveTo(62, 18, 50, 4, 32, 6);            // right basal lobe
+    ctx.closePath();
+    ctx.fill();
+    // Veins
+    ctx.strokeStyle = 'rgba(190, 220, 170, 0.5)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(32, 8); ctx.lineTo(32, 52);
+    ctx.moveTo(32, 22); ctx.lineTo(14, 32);
+    ctx.moveTo(32, 22); ctx.lineTo(50, 32);
+    ctx.moveTo(32, 14); ctx.lineTo(12, 18);
+    ctx.moveTo(32, 14); ctx.lineTo(52, 18);
+    ctx.stroke();
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    sharedAssets.ivyTex = tex;
+    return tex;
+}
+
+function buildVinesAndIvy() {
+    const tubeGeoms = [];
+    const leafMatrices = [];
+    const _m = new THREE.Matrix4();
+    const _q = new THREE.Quaternion();
+    const _e = new THREE.Euler();
+
+    // One vine: tube along a curve + leaf transforms scattered along it
+    function addVine(points, leafEvery = 0.1, leafScale = 1) {
+        const curve = new THREE.CatmullRomCurve3(points);
+        const len = curve.getLength();
+        const segs = Math.max(6, Math.floor(len * 5));
+        tubeGeoms.push(new THREE.TubeGeometry(curve, segs, 0.013, 5, false));
+        const count = Math.max(2, Math.floor(len / leafEvery));
+        for (let i = 0; i < count; i++) {
+            const tt = Math.min(0.98, (i + Math.random() * 0.6) / count);
+            const p = curve.getPointAt(tt);
+            _e.set(Math.random() * 0.9 - 0.45, Math.random() * Math.PI * 2, Math.random() * 0.9 - 0.45);
+            _q.setFromEuler(_e);
+            const s = (0.07 + Math.random() * 0.07) * leafScale;
+            _m.compose(
+                new THREE.Vector3(
+                    p.x + (Math.random() - 0.5) * 0.06,
+                    p.y + (Math.random() - 0.5) * 0.06,
+                    p.z + (Math.random() - 0.5) * 0.06
+                ),
+                _q,
+                new THREE.Vector3(s, s, s)
+            );
+            leafMatrices.push(_m.clone());
+        }
+    }
+
+    // 1. Ivy climbing the side walls from the floor (inside, hugging the glass)
+    for (const wx of [-7.75, 7.75]) {
+        for (let i = 0; i < 5; i++) {
+            const z0 = -42 + Math.random() * 44;
+            const h = 3.2 + Math.random() * 2.2;
+            const pts = [];
+            const steps = 6;
+            for (let s = 0; s <= steps; s++) {
+                const f = s / steps;
+                pts.push(new THREE.Vector3(
+                    wx + (Math.random() - 0.5) * 0.18,
+                    f * h,
+                    z0 + Math.sin(f * Math.PI * 2 + i) * 0.7 + (Math.random() - 0.5) * 0.3
+                ));
+            }
+            addVine(pts, 0.1);
+        }
+    }
+
+    // 2. Vines dangling from the cross beams (y=3) over the aisle and tables
+    for (let beam = 0; beam < 10; beam++) {
+        const bz = -beam * 4;
+        const danglers = 2 + (beam % 2);
+        for (let d = 0; d < danglers; d++) {
+            const bx = -6 + Math.random() * 12;
+            const len = 0.9 + Math.random() * 1.4;
+            const sway = (Math.random() - 0.5) * 0.5;
+            const pts = [];
+            const steps = 4;
+            for (let s = 0; s <= steps; s++) {
+                const f = s / steps;
+                pts.push(new THREE.Vector3(
+                    bx + sway * f * f,
+                    3.0 - f * len,
+                    bz + Math.sin(f * Math.PI) * 0.2
+                ));
+            }
+            addVine(pts, 0.09);
+        }
+    }
+
+    // 3. Runners weaving along the trellises above the tables
+    for (const tx of [-3, 3]) {
+        for (let run = 0; run < 3; run++) {
+            const z0 = -36 + run * 14 + Math.random() * 4;
+            const runLen = 6 + Math.random() * 5;
+            const pts = [];
+            const steps = 7;
+            for (let s = 0; s <= steps; s++) {
+                const f = s / steps;
+                pts.push(new THREE.Vector3(
+                    tx + Math.sin(f * Math.PI * 3) * 0.65,
+                    3.04 + Math.sin(f * Math.PI * 5) * 0.06 - (s % 2) * 0.12,
+                    z0 + f * runLen
+                ));
+            }
+            addVine(pts, 0.09);
+        }
+    }
+
+    const stemMat = new THREE.MeshStandardMaterial({
+        color: 0x3c4a24, roughness: 0.9, metalness: 0
+    });
+    const stems = new THREE.Mesh(mergeGeometries(tubeGeoms), stemMat);
+    stems.castShadow = false;
+    stems.receiveShadow = false;
+    scene.add(stems);
+
+    const ivyMat = new THREE.MeshStandardMaterial({
+        map: makeIvyLeafTexture(),
+        alphaTest: 0.4,
+        transparent: false,
+        side: THREE.DoubleSide,
+        roughness: 0.75,
+        metalness: 0
+    });
+    const leafGeom = new THREE.PlaneGeometry(1, 1);
+    const leaves = new THREE.InstancedMesh(leafGeom, ivyMat, leafMatrices.length);
+    for (let i = 0; i < leafMatrices.length; i++) leaves.setMatrixAt(i, leafMatrices[i]);
+    leaves.instanceMatrix.needsUpdate = true;
+    leaves.frustumCulled = false;
+    scene.add(leaves);
+
+    buildHangingBaskets();
+    buildBigFerns();
+}
+
+function buildHangingBaskets() {
+    const potMat = getPotMaterial();
+    const soilMat = getSoilMaterial();
+    const cordMat = new THREE.MeshBasicMaterial({ color: 0x1f140b });
+    const foliageMat = new THREE.MeshStandardMaterial({
+        map: makeFoliageClumpTexture(),
+        alphaTest: 0.45,
+        transparent: false,
+        side: THREE.DoubleSide,
+        roughness: 0.85,
+        metalness: 0,
+        color: 0x9cc488
+    });
+
+    const basketSpots = [
+        [-3, -6], [3, -10], [-3, -18], [3, -26], [-3, -34]
+    ];
+    for (const [bx, bz] of basketSpots) {
+        const g = new THREE.Group();
+        g.position.set(bx + (Math.random() - 0.5) * 0.8, 2.35, bz);
+
+        const bowl = new THREE.Mesh(
+            new THREE.SphereGeometry(0.26, 14, 8, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2),
+            potMat
+        );
+        bowl.castShadow = true;
+        g.add(bowl);
+        const soil = new THREE.Mesh(new THREE.CircleGeometry(0.25, 14), soilMat);
+        soil.rotation.x = -Math.PI / 2;
+        soil.position.y = 0.01;
+        g.add(soil);
+
+        // Three cords up to the cross-beam level (y=3 world)
+        const cordLen = 3.0 - g.position.y;
+        for (let c = 0; c < 3; c++) {
+            const a = (c / 3) * Math.PI * 2;
+            const cord = new THREE.Mesh(new THREE.CylinderGeometry(0.005, 0.005, cordLen, 4), cordMat);
+            const topX = 0, topZ = 0;
+            const botX = Math.cos(a) * 0.24, botZ = Math.sin(a) * 0.24;
+            cord.position.set((topX + botX) / 2, cordLen / 2, (topZ + botZ) / 2);
+            cord.rotation.z = Math.atan2(botX - topX, cordLen);
+            cord.rotation.x = -Math.atan2(botZ - topZ, cordLen);
+            g.add(cord);
+        }
+
+        // Foliage tuft bursting out of the bowl
+        for (let f = 0; f < 3; f++) {
+            const quad = new THREE.Mesh(new THREE.PlaneGeometry(0.7, 0.55), foliageMat);
+            quad.position.y = 0.16;
+            quad.rotation.set((Math.random() - 0.5) * 0.5, (f / 3) * Math.PI, (Math.random() - 0.5) * 0.4);
+            g.add(quad);
+        }
+
+        // Trailing strands spilling over the rim
+        const ivyMat = new THREE.MeshStandardMaterial({
+            map: makeIvyLeafTexture(), alphaTest: 0.4, side: THREE.DoubleSide,
+            roughness: 0.75, metalness: 0
+        });
+        const strandLeaf = new THREE.PlaneGeometry(0.09, 0.09);
+        for (let v = 0; v < 4; v++) {
+            const a = Math.random() * Math.PI * 2;
+            const sx = Math.cos(a) * 0.22, sz = Math.sin(a) * 0.22;
+            const drop = 0.5 + Math.random() * 0.7;
+            for (let s = 0; s < 6; s++) {
+                const f = s / 5;
+                const leaf = new THREE.Mesh(strandLeaf, ivyMat);
+                leaf.position.set(sx * (1 + f * 0.5), 0.02 - f * drop, sz * (1 + f * 0.5));
+                leaf.rotation.set(Math.random() * 0.8 - 0.4, Math.random() * Math.PI * 2, Math.random() * 0.8 - 0.4);
+                g.add(leaf);
+            }
+        }
+        scene.add(g);
+    }
+}
+
+function buildBigFerns() {
+    const fernTex = makeFernTexture();
+    const potMat = getPotMaterial();
+    const soilMat = getSoilMaterial();
+    const fernMat = new THREE.MeshStandardMaterial({
+        map: fernTex, alphaTest: 0.4, transparent: false, side: THREE.DoubleSide,
+        roughness: 0.9, metalness: 0, color: 0xc4d8ba
+    });
+
+    const spots = [
+        [-6.9, -43.6], [6.9, -43.6], [-6.9, 3.6], [6.9, 3.6],
+        [-6.9, -20.2], [6.9, -28.4]
+    ];
+    for (const [fx, fz] of spots) {
+        const g = new THREE.Group();
+        g.position.set(fx, 0, fz);
+        const pot = new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.25, 0.42, 16), potMat);
+        pot.position.y = 0.21;
+        pot.castShadow = true;
+        pot.receiveShadow = true;
+        g.add(pot);
+        const soil = new THREE.Mesh(new THREE.CircleGeometry(0.31, 14), soilMat);
+        soil.rotation.x = -Math.PI / 2;
+        soil.position.y = 0.41;
+        g.add(soil);
+        const fronds = 4;
+        for (let f = 0; f < fronds; f++) {
+            const quad = new THREE.Mesh(new THREE.PlaneGeometry(1.3, 1.15), fernMat);
+            quad.position.y = 0.95;
+            quad.rotation.y = (f / fronds) * Math.PI;
+            quad.rotation.z = (Math.random() - 0.5) * 0.15;
+            g.add(quad);
+        }
+        g.rotation.y = Math.random() * Math.PI * 2;
+        g.scale.setScalar(0.85 + Math.random() * 0.4);
+        scene.add(g);
+    }
+}
+
+// --- Mess: moss, fallen leaves, and worn clutter props ---
+
+function makeMossTexture() {
+    if (sharedAssets.mossTex) return sharedAssets.mossTex;
+    const SIZE = 64;
+    const canvas = document.createElement('canvas');
+    canvas.width = canvas.height = SIZE;
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, SIZE, SIZE);
+    for (let i = 0; i < 350; i++) {
+        const a = Math.random() * Math.PI * 2;
+        const d = Math.pow(Math.random(), 0.5) * SIZE * 0.46;
+        const x = SIZE / 2 + Math.cos(a) * d;
+        const y = SIZE / 2 + Math.sin(a) * d;
+        const g = 70 + Math.random() * 60;
+        ctx.fillStyle = `rgba(${g * 0.45|0},${g|0},${g * 0.35|0},${0.5 + Math.random() * 0.5})`;
+        ctx.beginPath();
+        ctx.arc(x, y, 0.8 + Math.random() * 2.2, 0, Math.PI * 2);
+        ctx.fill();
+    }
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    sharedAssets.mossTex = tex;
+    return tex;
+}
+
+function buildClutter() {
+    const potMat = getPotMaterial();
+    const soilMat = getSoilMaterial();
+    const _m = new THREE.Matrix4();
+    const _q = new THREE.Quaternion();
+    const _e = new THREE.Euler();
+
+    // --- Fallen leaves scattered on floor and tabletops ---
+    const ivyTex = makeIvyLeafTexture();
+    const leafMat = new THREE.MeshStandardMaterial({
+        map: ivyTex, alphaTest: 0.4, transparent: false, side: THREE.DoubleSide,
+        roughness: 0.95, metalness: 0
+    });
+    const FALLEN = 240;
+    const fallen = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1), leafMat, FALLEN);
+    const tint = new THREE.Color();
+    for (let i = 0; i < FALLEN; i++) {
+        const onTable = i % 5 === 0; // every 5th leaf litters a tabletop
+        let x, y, z;
+        if (onTable) {
+            x = (Math.random() < 0.5 ? -3 : 3) + (Math.random() - 0.5) * 1.8;
+            y = 1.057;
+            z = -Math.floor(Math.random() * 10) * 4 + (Math.random() - 0.5) * 2.8;
+        } else {
+            x = -7.4 + Math.random() * 14.8;
+            y = 0.018;
+            z = -44 + Math.random() * 48;
+        }
+        _e.set(-Math.PI / 2 + (Math.random() - 0.5) * 0.35, 0, Math.random() * Math.PI * 2, 'YXZ');
+        _q.setFromEuler(_e);
+        const s = 0.06 + Math.random() * 0.07;
+        _m.compose(new THREE.Vector3(x, y, z), _q, new THREE.Vector3(s, s, s));
+        fallen.setMatrixAt(i, _m);
+        // Browns through sickly greens — dead and dying litter
+        tint.setHSL(0.06 + Math.random() * 0.16, 0.5 + Math.random() * 0.3, 0.25 + Math.random() * 0.2);
+        fallen.setColorAt(i, tint);
+    }
+    fallen.instanceMatrix.needsUpdate = true;
+    if (fallen.instanceColor) fallen.instanceColor.needsUpdate = true;
+    fallen.frustumCulled = false;
+    scene.add(fallen);
+
+    // --- Moss patches on the wood bases and table corners ---
+    const mossMat = new THREE.MeshStandardMaterial({
+        map: makeMossTexture(), alphaTest: 0.3, transparent: false, side: THREE.DoubleSide,
+        roughness: 1, metalness: 0
+    });
+    const MOSS = 70;
+    const mossGeom = new THREE.CircleGeometry(0.5, 10);
+    mossGeom.rotateX(-Math.PI / 2);
+    const moss = new THREE.InstancedMesh(mossGeom, mossMat, MOSS);
+    for (let i = 0; i < MOSS; i++) {
+        let x, y, z;
+        const where = i % 3;
+        if (where === 0) {        // top of side wood bases
+            x = (Math.random() < 0.5 ? -8 : 8) + (Math.random() - 0.5) * 0.12;
+            y = 1.205;
+            z = -44 + Math.random() * 48;
+        } else if (where === 1) { // table corners / edges
+            x = (Math.random() < 0.5 ? -3 : 3) + (Math.random() < 0.5 ? -0.85 : 0.85);
+            y = 1.052;
+            z = -Math.floor(Math.random() * 10) * 4 + (Math.random() < 0.5 ? -1.3 : 1.3);
+        } else {                  // damp floor against the walls
+            x = (Math.random() < 0.5 ? -1 : 1) * (6.6 + Math.random() * 0.8);
+            y = 0.016;
+            z = -44 + Math.random() * 48;
+        }
+        _e.set(0, Math.random() * Math.PI * 2, 0);
+        _q.setFromEuler(_e);
+        const s = 0.25 + Math.random() * 0.55;
+        _m.compose(new THREE.Vector3(x, y, z), _q, new THREE.Vector3(s, 1, s));
+        moss.setMatrixAt(i, _m);
+        tint.setHSL(0.3 + Math.random() * 0.05, 0.4 + Math.random() * 0.2, 0.3 + Math.random() * 0.15);
+        moss.setColorAt(i, tint);
+    }
+    moss.instanceMatrix.needsUpdate = true;
+    if (moss.instanceColor) moss.instanceColor.needsUpdate = true;
+    moss.frustumCulled = false;
+    scene.add(moss);
+
+    // --- Stacked wooden crates in the front corner ---
+    const crateMat = makeWoodMaterial({ repeat: [1, 1], roughness: 0.9, color: 0x9a7c58 });
+    const crates = [
+        { p: [-6.6, 0.35, -43.2], s: 0.7, ry: 0.1 },
+        { p: [-5.7, 0.3, -43.5], s: 0.6, ry: -0.35 },
+        { p: [-6.4, 0.99, -43.3], s: 0.58, ry: 0.5 }
+    ];
+    for (const c of crates) {
+        const crate = new THREE.Mesh(new THREE.BoxGeometry(c.s, c.s, c.s), crateMat);
+        crate.position.set(c.p[0], c.p[1], c.p[2]);
+        crate.rotation.y = c.ry;
+        crate.castShadow = true;
+        crate.receiveShadow = true;
+        scene.add(crate);
+    }
+
+    // --- Galvanized watering can by the aisle ---
+    const galvMat = new THREE.MeshStandardMaterial({ color: 0x8a9298, metalness: 0.85, roughness: 0.4 });
+    const can = new THREE.Group();
+    can.position.set(1.15, 0, -9.4);
+    const body = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.17, 0.3, 14), galvMat);
+    body.position.y = 0.15;
+    body.castShadow = true;
+    can.add(body);
+    const spout = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.03, 0.36, 8), galvMat);
+    spout.position.set(0.2, 0.22, 0);
+    spout.rotation.z = -Math.PI / 3.2;
+    can.add(spout);
+    const handle = new THREE.Mesh(new THREE.TorusGeometry(0.1, 0.012, 6, 12, Math.PI), galvMat);
+    handle.position.set(-0.13, 0.27, 0);
+    handle.rotation.z = Math.PI / 2.4;
+    can.add(handle);
+    can.rotation.y = 0.7;
+    scene.add(can);
+
+    // --- Tipped-over broken pot with spilled soil and shards ---
+    const tipped = new THREE.Group();
+    tipped.position.set(-1.35, 0, -23.2);
+    const tpot = new THREE.Mesh(new THREE.CylinderGeometry(0.155, 0.105, 0.2, 18, 1, true), potMat);
+    tpot.rotation.z = Math.PI / 2;
+    tpot.rotation.y = 0.4;
+    tpot.position.y = 0.13;
+    tpot.castShadow = true;
+    tipped.add(tpot);
+    const spill = new THREE.Mesh(new THREE.CircleGeometry(0.28, 12), soilMat);
+    spill.rotation.x = -Math.PI / 2;
+    spill.position.set(0.28, 0.017, 0.05);
+    spill.scale.set(1.4, 1, 0.8);
+    tipped.add(spill);
+    for (let s = 0; s < 3; s++) {
+        const shard = new THREE.Mesh(new THREE.CircleGeometry(0.06 + Math.random() * 0.04, 3), potMat);
+        shard.position.set(0.2 + Math.random() * 0.4, 0.02, -0.2 + Math.random() * 0.4);
+        shard.rotation.set(-Math.PI / 2 + (Math.random() - 0.5) * 0.5, 0, Math.random() * Math.PI);
+        tipped.add(shard);
+    }
+    tipped.rotation.y = Math.random() * Math.PI * 2;
+    scene.add(tipped);
+
+    // --- Coiled garden hose by the door ---
+    const hoseMat = new THREE.MeshStandardMaterial({ color: 0x274d2a, roughness: 0.6, metalness: 0 });
+    const hose = new THREE.Group();
+    hose.position.set(6.7, 0, 3.5);
+    for (let h = 0; h < 3; h++) {
+        const loop = new THREE.Mesh(new THREE.TorusGeometry(0.32 - h * 0.015, 0.028, 8, 20), hoseMat);
+        loop.rotation.x = -Math.PI / 2 + (Math.random() - 0.5) * 0.12;
+        loop.position.y = 0.035 + h * 0.055;
+        loop.castShadow = true;
+        hose.add(loop);
+    }
+    const nozzle = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.028, 0.16, 8), galvMat);
+    nozzle.position.set(0.34, 0.05, 0.12);
+    nozzle.rotation.z = Math.PI / 2.4;
+    hose.add(nozzle);
+    scene.add(hose);
+
+    // --- Half-used bag of potting soil slumped against the right base ---
+    const bagMat = new THREE.MeshStandardMaterial({ color: 0x33281c, roughness: 1, metalness: 0 });
+    const bag = new THREE.Mesh(new THREE.CapsuleGeometry(0.22, 0.36, 4, 10), bagMat);
+    bag.scale.set(1, 0.85, 0.6);
+    bag.position.set(7.45, 0.3, -12.3);
+    bag.rotation.z = 0.42;
+    bag.castShadow = true;
+    bag.receiveShadow = true;
+    scene.add(bag);
+    const bagSpill = new THREE.Mesh(new THREE.CircleGeometry(0.3, 12), soilMat);
+    bagSpill.rotation.x = -Math.PI / 2;
+    bagSpill.position.set(7.1, 0.017, -12.0);
+    bagSpill.scale.set(1.3, 1, 0.9);
+    scene.add(bagSpill);
 }
 
 // --- Flower variants (one is randomly chosen per completed todo) ---
@@ -2195,6 +3508,9 @@ function createPlant(todoData, isLoad = false) {
         const stem = new THREE.Mesh(stemGeom, plantMat);
         stem.position.y = 0.2;
         stem.castShadow = true;
+        // Keep the age-based growth the plant had when it was completed — without
+        // this, completing a mature plant would shrink it back to seedling size.
+        stem.scale.setScalar(growthScaleFor(todoData));
         plantGroup.add(stem);
 
         // Pick a flower variant. New completions get an explicit random pick saved to
@@ -2249,8 +3565,24 @@ function createPlant(todoData, isLoad = false) {
             // Shadow casting disabled — alpha-tested shadows are expensive and
             // leaves are too small to read clearly in shadow anyway.
             leaf.name = i === 0 ? "leaf1" : (i === 1 ? "leaf2" : `leaf${i + 1}`);
+            // Base transform + index, so updatePlantVisual can droop/curl/drop
+            // each leaf individually as the plant withers.
+            leaf.userData.wilt = { baseRz: cfg.rz, baseScale: cfg.scale * 0.9, idx: i };
             stem.add(leaf);
         });
+
+        // Two dead leaves lying on the soil — hidden while healthy, revealed as
+        // the plant sheds foliage at low health.
+        for (let i = 0; i < 2; i++) {
+            const dead = new THREE.Mesh(leafGeom, perPlantLeafMat);
+            const a = Math.random() * Math.PI * 2;
+            dead.position.set(Math.cos(a) * 0.07, 0.24, Math.sin(a) * 0.07);
+            dead.rotation.set(-Math.PI / 2 + 0.18, Math.random() * Math.PI * 2, 0, 'YXZ');
+            dead.scale.setScalar(0.55 + Math.random() * 0.15);
+            dead.name = `fallenLeaf${i + 1}`;
+            dead.visible = false;
+            plantGroup.add(dead);
+        }
     }
 
     // Save reference for interaction and updates
@@ -2366,6 +3698,16 @@ function updateSunAndLighting() {
     shaftMeshes.forEach(mesh => {
         mesh.visible = bulbsOn;
     });
+
+    // Humid haze: thicker and colder at night, soft green-grey by day.
+    if (scene.fog) {
+        scene.fog.density = 0.0045 + nightness * 0.0075;
+        scene.fog.color.setHex(0xc8dfee).lerp(new THREE.Color(0x070d12), nightness);
+    }
+
+    // Fireflies only come out after dark; dust motes show best in daylight.
+    if (fireflySystem) fireflySystem.material.uniforms.uNight.value = nightness;
+    if (dustSystem) dustSystem.material.uniforms.uIntensity.value = 0.08 + 0.16 * dayness;
 }
 
 // --- Raycasting helpers — handle both regular Plant Groups and InstancedMesh empty pots ---
@@ -2493,10 +3835,10 @@ function animate() {
     requestAnimationFrame(animate);
 
     const time = performance.now();
+    // Clamp so a backgrounded tab doesn't produce a giant catch-up step
+    const delta = Math.min(0.1, (time - prevTime) / 1000);
 
     if (controls.isLocked === true || mobileActive) {
-        const delta = (time - prevTime) / 1000;
-
         velocity.x -= velocity.x * 10.0 * delta;
         velocity.z -= velocity.z * 10.0 * delta;
 
@@ -2564,6 +3906,7 @@ function animate() {
     // Atmosphere — wind sway (GPU-side, just a uniform write) + glowing eyes state
     updateTreeWind(time);
     updateHauntedEyes(time);
+    updateParticles(time, delta);
 
     prevTime = time;
 
@@ -2670,6 +4013,13 @@ function updateDecay() {
     });
 }
 
+// Age-based growth scale: seedlings start at 70% and reach full size over ~1.5 days.
+// Shared by active plants (updatePlantVisual) and the completed-flower rebuild.
+function growthScaleFor(todo) {
+    const ageDays = Math.max(0, (getCurrentSimulatedTime() - (todo.createdAt || 0)) / 86400000);
+    return 0.7 + 0.3 * Math.min(1, ageDays / 1.5);
+}
+
 function updatePlantVisual(todo) {
     if (!todo.mesh) return;
 
@@ -2692,10 +4042,38 @@ function updatePlantVisual(todo) {
     const anyLeaf = stem.getObjectByName("leaf1");
     if (anyLeaf) anyLeaf.material.color.copy(color);
 
+    // Growth: seedlings start small and reach full size over ~1.5 days of life.
+    const growth = growthScaleFor(todo);
+
     // Droop stronger as health drops (max ~80° bend at zero health).
     stem.rotation.x = (1 - r) * (Math.PI / 2.2);
     // Stem shrinks vertically as it dies; leaves squash with it.
-    stem.scale.set(1, 0.55 + r * 0.45, 1);
+    stem.scale.set(growth, growth * (0.55 + r * 0.45), growth);
+
+    // Per-leaf wither: each leaf droops, curls inward, and eventually detaches.
+    // Higher leaves (later idx) drop first, like a real dying plant.
+    const wiltAmount = 1 - r;
+    const dropThresholds = [0, 0.08, 0.2, 0.32, 0.45];
+    for (const child of stem.children) {
+        const w = child.userData && child.userData.wilt;
+        if (!w) continue;
+        const stagger = 1 + w.idx * 0.18;
+        const droop = wiltAmount * 0.85 * stagger;
+        child.rotation.z = w.baseRz + (w.baseRz > 0 ? droop : -droop);
+        // Curl: leaf narrows and shortens as it dries out
+        child.scale.set(
+            w.baseScale * (1 - 0.4 * wiltAmount),
+            w.baseScale * (1 - 0.2 * wiltAmount),
+            w.baseScale
+        );
+        child.visible = r > dropThresholds[w.idx] || w.idx < 2;
+    }
+
+    // Shed leaves appear on the soil once the plant starts dropping foliage.
+    const fallen1 = todo.mesh.getObjectByName("fallenLeaf1");
+    const fallen2 = todo.mesh.getObjectByName("fallenLeaf2");
+    if (fallen1) fallen1.visible = r < 0.45;
+    if (fallen2) fallen2.visible = r < 0.25;
 }
 
 // Console-accessible debug helpers (UI buttons were removed from the pause overlay):
