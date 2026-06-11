@@ -1590,9 +1590,9 @@ function buildHauntedForest() {
 
     // Place 3D trees and bin them per archetype.
     const placements = archetypes.map(() => []);
-    const TREE3D_COUNT = 170;
+    const TREE3D_COUNT = 420;
     for (let i = 0; i < TREE3D_COUNT; i++) {
-        const p = scatterPoint(5, 30, i);
+        const p = scatterPoint(1.5, 32, i);
         // 70% living, 30% dead snags for the haunted look
         const dead = Math.random() < 0.3;
         const pool = archetypes
@@ -1655,11 +1655,11 @@ function buildHauntedForest() {
     const leafyMat = makeWindyTreeMaterial(leafyTex, 0x141a14);
 
     const farTrees = [];
-    for (let i = 0; i < 300; i++) {
-        const p = scatterPoint(30, 58, i);
+    for (let i = 0; i < 700; i++) {
+        const p = scatterPoint(26, 60, i);
         farTrees.push({
             x: p.x, z: p.z,
-            scale: 0.6 + Math.random() * 0.55,
+            scale: 0.7 + Math.random() * 0.7,
             rotY: Math.random() * Math.PI * 2,
             type: Math.random() < 0.6 ? 1 : 0
         });
@@ -1764,6 +1764,10 @@ function buildForestFloor() {
     }
     const mat = new THREE.MeshPhysicalMaterial({
         map: tex,
+        // Tinted down to fake canopy shade — the sun shadow camera only covers
+        // the greenhouse, so without this the deep forest floor glows in
+        // direct sun and reads as an open meadow.
+        color: 0x6f786a,
         normalMap: normalTex,
         normalScale: new THREE.Vector2(1, 1),
         roughness: 0.95,
@@ -1846,20 +1850,21 @@ function buildUndergrowth(foliageTex) {
     const _q = new THREE.Quaternion();
     const _yAxis = new THREE.Vector3(0, 1, 0);
     [
-        { mat: fernMat, count: 160 },
-        { mat: bushMat, count: 120 }
+        { mat: fernMat, count: 450 },
+        { mat: bushMat, count: 520 }
     ].forEach(({ mat, count }) => {
         const mesh = new THREE.InstancedMesh(crossGeom, mat, count);
         for (let i = 0; i < count; i++) {
             const side = i % 4;
-            const dist = 6.5 + Math.random() * 38;
+            // Pack the understory right up against the glass and keep it deep
+            const dist = 0.6 + Math.pow(Math.random(), 1.4) * 36;
             let x, z;
             if (side === 0)      { x = -8 - dist; z = -60 + Math.random() * 80; }
             else if (side === 1) { x =  8 + dist; z = -60 + Math.random() * 80; }
             else if (side === 2) { x = -40 + Math.random() * 80; z = -45 - dist; }
             else                 { x = -40 + Math.random() * 80; z =   5 + dist; }
             _q.setFromAxisAngle(_yAxis, Math.random() * Math.PI * 2);
-            const s = 0.5 + Math.random() * 1.1;
+            const s = 0.6 + Math.random() * 1.7;
             _m.compose(new THREE.Vector3(x, 0, z), _q, new THREE.Vector3(s, s * (0.8 + Math.random() * 0.5), s));
             mesh.setMatrixAt(i, _m);
         }
@@ -2702,7 +2707,9 @@ function buildClutter() {
         }
         _e.set(0, Math.random() * Math.PI * 2, 0);
         _q.setFromEuler(_e);
-        const s = 0.25 + Math.random() * 0.55;
+        // Ledge moss stays small — the wood base top is only 0.2 m wide and a
+        // wide disc would float in mid-air past its edge.
+        const s = where === 0 ? 0.12 + Math.random() * 0.1 : 0.25 + Math.random() * 0.55;
         _m.compose(new THREE.Vector3(x, y, z), _q, new THREE.Vector3(s, 1, s));
         moss.setMatrixAt(i, _m);
         tint.setHSL(0.3 + Math.random() * 0.05, 0.4 + Math.random() * 0.2, 0.3 + Math.random() * 0.15);
@@ -3412,26 +3419,32 @@ function buildGreenhouse() {
     backBaseRight.position.set(doorWidth / 2 + backBaseLeftWidth / 2, baseHeight / 2, 5);
     ghGroup.add(backBaseRight);
 
-    // Glass Walls (above the wood base)
-    const leftWall = new THREE.Mesh(new THREE.BoxGeometry(0.2, wallHeight, totalLength), glassMat);
-    leftWall.position.set(-8, baseHeight + wallHeight / 2, zCenter);
+    // Glass Walls (above the wood base). The panes are slightly thinner than
+    // the bases and sunk 3 cm into them: if the glass bottom face sits exactly
+    // on the base top face the two coplanar surfaces z-fight, which showed up
+    // as violent flickering along the ledge whenever the camera moved nearby.
+    const glassSink = 0.03;
+    const glassWallH = wallHeight + glassSink;
+    const glassWallY = baseHeight - glassSink + glassWallH / 2;
+    const leftWall = new THREE.Mesh(new THREE.BoxGeometry(0.16, glassWallH, totalLength), glassMat);
+    leftWall.position.set(-8, glassWallY, zCenter);
     ghGroup.add(leftWall);
 
-    const rightWall = new THREE.Mesh(new THREE.BoxGeometry(0.2, wallHeight, totalLength), glassMat);
-    rightWall.position.set(8, baseHeight + wallHeight / 2, zCenter);
+    const rightWall = new THREE.Mesh(new THREE.BoxGeometry(0.16, glassWallH, totalLength), glassMat);
+    rightWall.position.set(8, glassWallY, zCenter);
     ghGroup.add(rightWall);
 
-    const frontWall = new THREE.Mesh(new THREE.BoxGeometry(totalWidth, wallHeight, 0.2), glassMat);
-    frontWall.position.set(0, baseHeight + wallHeight / 2, -45);
+    const frontWall = new THREE.Mesh(new THREE.BoxGeometry(totalWidth, glassWallH, 0.16), glassMat);
+    frontWall.position.set(0, glassWallY, -45);
     ghGroup.add(frontWall);
 
     // Back Wall Glass (also with a gap for the door)
-    const backWallLeft = new THREE.Mesh(new THREE.BoxGeometry(backBaseLeftWidth, wallHeight, 0.2), glassMat);
-    backWallLeft.position.set(-doorWidth / 2 - backBaseLeftWidth / 2, baseHeight + wallHeight / 2, 5);
+    const backWallLeft = new THREE.Mesh(new THREE.BoxGeometry(backBaseLeftWidth, glassWallH, 0.16), glassMat);
+    backWallLeft.position.set(-doorWidth / 2 - backBaseLeftWidth / 2, glassWallY, 5);
     ghGroup.add(backWallLeft);
 
-    const backWallRight = new THREE.Mesh(new THREE.BoxGeometry(backBaseLeftWidth, wallHeight, 0.2), glassMat);
-    backWallRight.position.set(doorWidth / 2 + backBaseLeftWidth / 2, baseHeight + wallHeight / 2, 5);
+    const backWallRight = new THREE.Mesh(new THREE.BoxGeometry(backBaseLeftWidth, glassWallH, 0.16), glassMat);
+    backWallRight.position.set(doorWidth / 2 + backBaseLeftWidth / 2, glassWallY, 5);
     ghGroup.add(backWallRight);
 
     // Top glass above the door
