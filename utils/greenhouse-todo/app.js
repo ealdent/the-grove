@@ -3508,6 +3508,9 @@ function createPlant(todoData, isLoad = false) {
         const stem = new THREE.Mesh(stemGeom, plantMat);
         stem.position.y = 0.2;
         stem.castShadow = true;
+        // Keep the age-based growth the plant had when it was completed — without
+        // this, completing a mature plant would shrink it back to seedling size.
+        stem.scale.setScalar(growthScaleFor(todoData));
         plantGroup.add(stem);
 
         // Pick a flower variant. New completions get an explicit random pick saved to
@@ -4010,6 +4013,13 @@ function updateDecay() {
     });
 }
 
+// Age-based growth scale: seedlings start at 70% and reach full size over ~1.5 days.
+// Shared by active plants (updatePlantVisual) and the completed-flower rebuild.
+function growthScaleFor(todo) {
+    const ageDays = Math.max(0, (getCurrentSimulatedTime() - (todo.createdAt || 0)) / 86400000);
+    return 0.7 + 0.3 * Math.min(1, ageDays / 1.5);
+}
+
 function updatePlantVisual(todo) {
     if (!todo.mesh) return;
 
@@ -4033,8 +4043,7 @@ function updatePlantVisual(todo) {
     if (anyLeaf) anyLeaf.material.color.copy(color);
 
     // Growth: seedlings start small and reach full size over ~1.5 days of life.
-    const ageDays = Math.max(0, (getCurrentSimulatedTime() - (todo.createdAt || 0)) / 86400000);
-    const growth = 0.7 + 0.3 * Math.min(1, ageDays / 1.5);
+    const growth = growthScaleFor(todo);
 
     // Droop stronger as health drops (max ~80° bend at zero health).
     stem.rotation.x = (1 - r) * (Math.PI / 2.2);
