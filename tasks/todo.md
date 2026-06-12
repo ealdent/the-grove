@@ -1,52 +1,44 @@
-# Greenhouse To-Do — "Worn greenhouse in a haunted forest" visual overhaul
+# Night lighting + glass redo (greenhouse-todo)
 
-Goal: fully playable 3D world that feels like a messy, wet, worn old greenhouse
-in a haunted forest. Realistic textures, lighting, particles, vines/ivy
-everywhere, a real-looking 3D forest outside, plants that grow and wither.
+## Problems
+1. Night is too dark globally: `environmentIntensity` floor 0.005, exposure 0.45, all fills off → only tight lamp cones visible. Can't see floor, tables, pots.
+2. Lamp spotlights: ~28° half-angle, distance 6, decay 2.2 → tight puddle of light right under the bulb. Hood is a tiny cone and the bulb hangs below it (no parabolic-reflector behavior).
+3. Glass is unlit `MeshBasicMaterial` with a bright grime map at opacity 0.24 — at night it renders as a constant pale-green wash that occludes the dark forest (fireflies, eyes).
+4. All panes share one material; want clearer vertical wall glass vs. more diffuse/translucent roof glass.
 
 ## Plan
-
-- [x] **Texture upgrades**: fBm value-noise helper; wetter/darker dirt floor with
-      wet-sheen roughness map; grimy streaked glass; bark + leaf-litter +
-      ivy/fern/foliage canvas textures.
-- [x] **Real 3D forest**: recursive-branch tree archetypes (leafy + dead) built
-      from merged tapered cylinders with foliage cluster quads at branch tips,
-      instanced in near/mid bands; existing billboards pushed to the far
-      backdrop band only; leaf-litter forest floor plane (with hole for the
-      greenhouse footprint); instanced undergrowth (ferns/bushes); ground mist
-      sprites; firefly particles at night. Wind sway on foliage.
-- [x] **Wet + messy interior**: reflective puddles on the dirt floor; drip
-      particles falling from the roof with ripple rings where they land;
-      floating dust motes; fallen-leaf litter on floor and tables; moss patches
-      on the wood bases; clutter props (stacked crates, watering can, tipped
-      broken pot with shards + soil spill, coiled hose, soil bag).
-- [x] **Vines & ivy**: merged-tube vine stems with one InstancedMesh of ivy
-      leaves — climbers up the walls/mullions, danglers from the cross beams
-      and trellises, hanging baskets with trailing vines, big potted ferns.
-- [x] **Grow & wither**: plants scale up as they age; per-leaf droop/curl as
-      health drops; leaves progressively detach (fallen leaves appear on the
-      soil) when health gets low.
-- [x] **Lighting polish**: day/night fog density + color shift, sheen on leaf
-      material, night-time firefly/mist intensity tied to dayness.
-- [x] **Verify**: node --check, jest suite, manual smoke via local server.
+- [x] Reshape lamp hood into a wider parabolic shade (LatheGeometry, rim ~0.30 m), tuck the bulb up inside it at the focus.
+- [x] Widen spotlights to ~51° half-angle, decay 1.6, distance 10, retune night intensity so the whole 2×3 m table + nearby floor is lit, soft penumbra for rich edge falloff.
+- [x] Decouple the visible light-shaft cone from the spot angle (shaft starts at the shade rim, modest flare).
+- [x] Night ambient floor: dim cool hemisphere moonlight, environmentIntensity floor 0.03, exposure 0.62 at night, warm interior bounce stays on low. Shades glow faintly warm at night.
+- [x] Split glass into wall material (clearer, lighter grime, opacity 0.15) and roof material (greener, more diffuse, opacity 0.32).
+- [x] Darken glass color + drop opacity with nightness so the forest reads through the panes after dark.
+- [x] Slightly thinner night fog (0.009 total vs 0.012) so the woods stay visible.
+- [x] Verify: node --check passes, greenhouse jest suite passes.
 
 ## Review
+- Lamps: hood is now a wide parabolic reflector dish (LatheGeometry, quadratic
+  profile, 0.30 m rim) with the bulb nested at the focus instead of dangling
+  below. Spotlights widened from ~28° to ~51° half-angle with decay 2.2→1.6 and
+  distance 6→10, so each cone covers its whole 2×3 m table with soft penumbra
+  edges and spills a dim pool onto the aisle floor. The additive haze cone was
+  decoupled from the light angle so it still reads as a shaft, not a wall.
+- Night floor: cool moonlit hemisphere (0.12), IBL floor 0.005→0.03, exposure
+  0.45→0.62, warm bounce kept on low — navigable, but lamp pools still dominate
+  and corners stay dark.
+- Glass: split into wall glazing (clearer: lighter grime, opacity 0.15) and
+  roof glazing (greener, heavier film, opacity 0.32). Both are unlit materials,
+  so updateSunAndLighting now dims their tint (×0.22) and opacity (×0.35) with
+  nightness — the forest, fireflies and eyes read through the panes after dark.
+  Night fog thinned (0.012→0.009) and the painted backdrop keeps a moonlit
+  trace (0.06→0.11 floor).
+- Verified with node --check and the greenhouse jest suite (passes). No
+  headless browser in this environment for a visual smoke test.
 
-- All changes live in `utils/greenhouse-todo/app.js` (additive — gameplay,
-  controls, persistence and tests untouched). The greenhouse jest suite still
-  passes; the one failing suite (`arcade/mother-os-defense`) is a pre-existing
-  CommonJS/ESM mismatch unrelated to this work.
-- Forest: 130 instanced 3D trees (5 generated archetypes, 70/30 living/dead)
-  with fissured-bark textures and ragged canopy clumps, backed by a 300-tree
-  billboard wall; leaf-litter/moss forest floor; 280 instanced ferns/bushes;
-  drifting mist sprites; twinkling shader fireflies after dark.
-- Interior: glossy merged-geometry puddles, CPU drip particles with a ripple
-  pool, GPU dust motes, ~42 procedural vines (one merged tube mesh + one
-  instanced ivy-leaf mesh), 5 hanging baskets with trailing strands, 6 big
-  potted ferns, moss + fallen-leaf instancing, and clutter props.
-- Plants: grow from 70 % scale over 1.5 days; wither with per-leaf droop/curl,
-  top-down leaf drop, and shed leaves appearing on the soil.
-- Verified headless in Chromium/SwiftShader with the import-map CDN proxied to
-  a local copy of three@0.160.0: scene builds with 0 console errors,
-  159 geometries / 48 programs, world renders as expected.
+---
 
+# (done) Worn greenhouse in a haunted forest — visual overhaul
+
+Completed earlier; see git history. Forest, wet interior, vines, grow/wither,
+lighting polish all landed in `utils/greenhouse-todo/app.js` with jest suite
+passing.

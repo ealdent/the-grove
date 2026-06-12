@@ -20,7 +20,7 @@ const sharedAssets = {}; // shared textures / materials
 // Sun + lighting (updated each tick)
 let sky, sunLight, skyFill, warmFill;
 let pmremGen, envScene, envSky, envRT; // sky-driven IBL, refreshed with the sun
-const bulbLights = []; // PointLights inside Edison bulbs
+const bulbLights = []; // SpotLights at each lamp's bulb
 const bulbMeshes = []; // bulb glass meshes for emissive control
 const SUN_LOCATION = { lat: 40.7128, lng: -74.0060 }; // NYC — Eastern Time
 let lastSunUpdate = 0;
@@ -647,20 +647,22 @@ function makeWoodMaterial({ repeat = [1, 1], roughness = 0.85, color = 0xffffff 
     });
 }
 
-function getGlassMaterial() {
-    if (sharedAssets.glass) return sharedAssets.glass;
-    // MeshBasicMaterial — unlit, so glass tint is constant from every angle. No envMap
-    // reflections, no specular glare, no view-dependent color. A streaky grime map
-    // (condensation runs, algae film, mineral spots) makes the panes read as decades-old
-    // greenhouse glass rather than clean acrylic.
+// MeshBasicMaterial — unlit, so glass tint is constant from every angle. No envMap
+// reflections, no specular glare, no view-dependent color. A streaky grime map
+// (condensation runs, algae film, mineral spots) makes the panes read as decades-old
+// greenhouse glass rather than clean acrylic. Because the material is unlit, the
+// map renders at full brightness even after dark, so updateSunAndLighting() dims
+// the color and opacity with nightness — otherwise the panes become a pale wall
+// that hides the forest at night.
+function makeGlassMaterial({ base, streaks, algae, spots, opacity }) {
     const SIZE = 256;
     const canvas = document.createElement('canvas');
     canvas.width = canvas.height = SIZE;
     const ctx = canvas.getContext('2d');
-    ctx.fillStyle = '#c0dcc4';
+    ctx.fillStyle = base;
     ctx.fillRect(0, 0, SIZE, SIZE);
     // Vertical condensation streaks running down the pane
-    for (let i = 0; i < 70; i++) {
+    for (let i = 0; i < streaks; i++) {
         const x = Math.random() * SIZE;
         const top = Math.random() * SIZE * 0.5;
         const len = 30 + Math.random() * (SIZE - top);
@@ -675,13 +677,13 @@ function getGlassMaterial() {
         ctx.stroke();
     }
     // Algae film creeping up from the bottom edge
-    const algae = ctx.createLinearGradient(0, SIZE, 0, SIZE * 0.55);
-    algae.addColorStop(0, 'rgba(70,110,70,0.5)');
-    algae.addColorStop(1, 'rgba(70,110,70,0)');
-    ctx.fillStyle = algae;
+    const algaeGrad = ctx.createLinearGradient(0, SIZE, 0, SIZE * 0.55);
+    algaeGrad.addColorStop(0, `rgba(70,110,70,${algae})`);
+    algaeGrad.addColorStop(1, 'rgba(70,110,70,0)');
+    ctx.fillStyle = algaeGrad;
     ctx.fillRect(0, 0, SIZE, SIZE);
     // Mineral spots / old splashes
-    for (let i = 0; i < 220; i++) {
+    for (let i = 0; i < spots; i++) {
         ctx.fillStyle = `rgba(225,235,220,${0.06 + Math.random() * 0.16})`;
         ctx.beginPath();
         ctx.arc(Math.random() * SIZE, Math.random() * SIZE, 0.5 + Math.random() * 2.2, 0, Math.PI * 2);
@@ -690,16 +692,38 @@ function getGlassMaterial() {
     const grimeTex = new THREE.CanvasTexture(canvas);
     configureRepeat(grimeTex, [3, 1], true);
 
-    sharedAssets.glass = new THREE.MeshBasicMaterial({
+    const mat = new THREE.MeshBasicMaterial({
         color: 0xffffff,
         map: grimeTex,
         transparent: true,
-        opacity: 0.24,
+        opacity,
         side: THREE.DoubleSide,
         depthWrite: false,
         fog: true
     });
-    return sharedAssets.glass;
+    mat.userData.dayOpacity = opacity;
+    return mat;
+}
+
+// Vertical wall glazing — the clearer glass. Low-angle light comes in through
+// the sides of a greenhouse, and at night you can see out into the woods.
+function getWallGlassMaterial() {
+    if (sharedAssets.wallGlass) return sharedAssets.wallGlass;
+    sharedAssets.wallGlass = makeGlassMaterial({
+        base: '#d4e3d8', streaks: 40, algae: 0.3, spots: 110, opacity: 0.15
+    });
+    return sharedAssets.wallGlass;
+}
+
+// Roof glazing — more translucent and greener, like old diffusing
+// horticultural glass: it scatters the overhead sun rather than passing a
+// clear view, and collects a heavier film of algae and mineral haze.
+function getRoofGlassMaterial() {
+    if (sharedAssets.roofGlass) return sharedAssets.roofGlass;
+    sharedAssets.roofGlass = makeGlassMaterial({
+        base: '#aed2b6', streaks: 90, algae: 0.55, spots: 280, opacity: 0.32
+    });
+    return sharedAssets.roofGlass;
 }
 
 // Verdigris (oxidized) copper — patinated greenish-blue with mottled texture
@@ -3433,7 +3457,8 @@ function buildGreenhouse() {
     scene.add(legsMesh);
 
     // Greenhouse Structure
-    const glassMat = getGlassMaterial();
+    const glassMat = getWallGlassMaterial();
+    const roofGlassMat = getRoofGlassMaterial();
     const copperMat = getCopperMaterial();
 
     const ghGroup = new THREE.Group();
@@ -3526,12 +3551,12 @@ function buildGreenhouse() {
     // ---- Steeple (gable) roof: two flat panels meeting at the ridge ----
     const roofGeomBox = new THREE.BoxGeometry(slopeLength, 0.08, totalLength);
 
-    const leftRoof = new THREE.Mesh(roofGeomBox, glassMat);
+    const leftRoof = new THREE.Mesh(roofGeomBox, roofGlassMat);
     leftRoof.position.set(-halfWidth / 2, (wallTopY + ridgeY) / 2, zCenter);
     leftRoof.rotation.z = slopeAngle;
     ghGroup.add(leftRoof);
 
-    const rightRoof = new THREE.Mesh(roofGeomBox, glassMat);
+    const rightRoof = new THREE.Mesh(roofGeomBox, roofGlassMat);
     rightRoof.position.set(halfWidth / 2, (wallTopY + ridgeY) / 2, zCenter);
     rightRoof.rotation.z = -slopeAngle;
     ghGroup.add(rightRoof);
@@ -3745,10 +3770,13 @@ function buildGreenhouse() {
     const cordHeight = 0.3;
     const cordCenterY = trellisY - cordHeight / 2;
     const cordBottomY = trellisY - cordHeight;
-    const hoodHeight = 0.18;
+    const hoodHeight = 0.22;
+    const hoodRimR = 0.3;
     const hoodCenterY = cordBottomY - hoodHeight / 2;
     const hoodBottomY = cordBottomY - hoodHeight;
-    const bulbY = hoodBottomY - 0.02;
+    // Bulb nests up inside the shade at the reflector's focus (only the tip of
+    // the glass peeks below the rim) instead of dangling under it.
+    const bulbY = hoodBottomY + 0.05;
 
     // Shared materials — keep ONE per piece so `bulbMat.emissiveIntensity = ...`
     // updates all 20 bulbs in a single write.
@@ -3758,7 +3786,9 @@ function buildGreenhouse() {
         color: 0x3a2515,
         roughness: 0.4,
         metalness: 0.7,
-        side: THREE.DoubleSide
+        side: THREE.DoubleSide,
+        emissive: 0xff9a45,
+        emissiveIntensity: 0 // shades glow faintly warm at night (set per tick)
     });
     const filamentMat = new THREE.MeshBasicMaterial({ color: 0xffaa55 });
     const bulbMat = makeBulbMaterial();
@@ -3767,7 +3797,20 @@ function buildGreenhouse() {
     // Geometries
     const cordGeom = new THREE.CylinderGeometry(0.008, 0.008, cordHeight, 6);
     const socketGeom = new THREE.CylinderGeometry(0.038, 0.046, 0.07, 12);
-    const hoodGeom = new THREE.CylinderGeometry(0.04, 0.18, hoodHeight, 18, 1, true);
+    // Parabolic shade: radius widens from the socket neck to the rim while the
+    // profile drops quadratically — a wide reflector dish with the bulb at its
+    // focus, throwing the light down across the whole table.
+    const hoodProfile = [];
+    const HOOD_SEGS = 10;
+    for (let s = 0; s <= HOOD_SEGS; s++) {
+        const t = s / HOOD_SEGS;
+        hoodProfile.push(new THREE.Vector2(
+            0.045 + (hoodRimR - 0.045) * t,
+            hoodHeight * (1 - t * t)
+        ));
+    }
+    const hoodGeom = new THREE.LatheGeometry(hoodProfile, 24);
+    hoodGeom.translate(0, -hoodHeight / 2, 0); // center on origin like the other pieces
     const bulbGeom = new THREE.SphereGeometry(0.05, 12, 10);
     bulbGeom.scale(1, 1.25, 1);
     const filamentGeom = new THREE.TorusGeometry(0.012, 0.002, 4, 10);
@@ -3781,11 +3824,15 @@ function buildGreenhouse() {
         m.userData.detail = true;
     });
 
-    // Light-shaft cone — narrow (~28°), pointed at the table surface (y=1)
-    const SPOT_ANGLE = Math.PI / 6.4;
+    // Light spread — wide (~51° half-angle): from ~1.5 m above the table top
+    // that covers the full 2×3 m table with penumbra falloff at the edges, and
+    // the cone continues past it to spill a soft pool on the aisle floor.
+    const SPOT_ANGLE = Math.PI / 3.5;
+    // Visible haze cone — narrower than the actual light spread (it starts at
+    // the shade rim and flares modestly) so it reads as a glowing shaft rather
+    // than a giant additive wall.
     const shaftHeight = bulbY - 1.0;            // ends at the table top
-    const shaftBottomR = Math.tan(SPOT_ANGLE) * shaftHeight;
-    const shaftGeom = new THREE.CylinderGeometry(0.02, shaftBottomR, shaftHeight, 18, 1, true);
+    const shaftGeom = new THREE.CylinderGeometry(hoodRimR * 0.9, 0.85, shaftHeight, 18, 1, true);
     const shaftMat = new THREE.MeshBasicMaterial({
         color: 0xffb070,
         transparent: true,
@@ -3820,7 +3867,7 @@ function buildGreenhouse() {
         shaftsMesh.setMatrixAt(i, _lm);
 
         // SpotLight + target object — these can't be instanced.
-        const spot = new THREE.SpotLight(0xffaa55, 0, 6, SPOT_ANGLE, 0.35, 2.2);
+        const spot = new THREE.SpotLight(0xffaa55, 0, 10, SPOT_ANGLE, 0.55, 1.6);
         spot.position.set(p.x, bulbY, p.z);
         const target = new THREE.Object3D();
         target.position.set(p.x, 0, p.z);
@@ -3838,6 +3885,7 @@ function buildGreenhouse() {
     // Module-shared references for night-mode updates.
     sharedAssets._bulbMat = bulbMat;
     sharedAssets._shaftMat = shaftMat;
+    sharedAssets._hoodMat = hoodMat;
 
     // Selectively set shadow casting/receiving:
     // - Skip detail meshes (mullions, slats, bulbs) and transparent glass — they don't
@@ -3846,7 +3894,7 @@ function buildGreenhouse() {
     ghGroup.traverse(obj => {
         if (!obj.isMesh) return;
         const isDetail = obj.userData.detail === true;
-        const isGlass = obj.material === glassMat;
+        const isGlass = obj.material === glassMat || obj.material === roofGlassMat;
         obj.castShadow = !isDetail && !isGlass;
         obj.receiveShadow = !isDetail;
     });
@@ -4200,15 +4248,22 @@ function updateSunAndLighting() {
     // Stronger key light + weaker ambient fill = harder shadows and more
     // contrast, which reads far more photographic than even flat lighting.
     sunLight.intensity = 3.5 * dayness;
-    skyFill.intensity = 0.3 * dayness;                      // off entirely at night
-    warmFill.intensity = 0.6 * dayness;                     // off entirely at night
+    // At night the hemisphere becomes dim, cool moonlight — enough to read the
+    // floor, tables and walls so you can navigate, while the lamp pools stay
+    // the dominant light and the corners keep their deep shadows.
+    skyFill.intensity = 0.3 * dayness + 0.12 * nightness;
+    skyFill.color.setHex(0xb6dbff).lerp(new THREE.Color(0x55688f), nightness);
+    skyFill.groundColor.setHex(0x4a3a2a).lerp(new THREE.Color(0x131820), nightness);
+    // Warm bounce stays on low at night — light kicked off the wood and floor
+    // by the lamp row.
+    warmFill.intensity = 0.6 * dayness + 0.5 * nightness;
 
-    // Global IBL multiplier — collapses ambient PBR fill to near-zero at night so
-    // only direct lamp cones illuminate anything.
-    scene.environmentIntensity = 0.005 + 0.995 * dayness;
+    // Global IBL multiplier — drops to a faint floor at night so direct lamp
+    // cones dominate without crushing everything else to black.
+    scene.environmentIntensity = 0.03 + 0.97 * dayness;
 
     // Renderer exposure also dips at night so any stray brightness stays muted.
-    renderer.toneMappingExposure = 1.02 * dayness + 0.45 * nightness;
+    renderer.toneMappingExposure = 1.02 * dayness + 0.62 * nightness;
 
     // Atmosphere: collapse rayleigh/turbidity at night and hide the Sky mesh entirely
     // when fully night — its pre-dawn glow was leaking through the windows.
@@ -4233,11 +4288,15 @@ function updateSunAndLighting() {
     const bulbsOn = nightness > 0.01;
     bulbLights.forEach(light => {
         light.visible = bulbsOn;
-        light.intensity = nightness * 9;
+        light.intensity = nightness * 10;
     });
     // Bulbs share one material, so a single write handles all 20.
     if (sharedAssets._bulbMat) {
         sharedAssets._bulbMat.emissiveIntensity = nightness * 1.8;
+    }
+    // Lamp shades catch a faint warm glow from their bulbs.
+    if (sharedAssets._hoodMat) {
+        sharedAssets._hoodMat.emissiveIntensity = nightness * 0.22;
     }
 
     // Light shafts: fade in at night, hide entirely during day.
@@ -4248,17 +4307,29 @@ function updateSunAndLighting() {
         mesh.visible = bulbsOn;
     });
 
+    // Glass is unlit (MeshBasicMaterial), so its grime map renders at constant
+    // brightness — left alone it becomes a glowing pale wall after dark. Dim
+    // the tint and thin the opacity with nightness so the woods (fireflies,
+    // eyes, moonlit trees) stay visible through the panes.
+    for (const mat of [sharedAssets.wallGlass, sharedAssets.roofGlass]) {
+        if (!mat) continue;
+        mat.color.setScalar(0.22 + 0.78 * dayness);
+        mat.opacity = mat.userData.dayOpacity * (0.35 + 0.65 * dayness);
+    }
+
     // Humid haze: thicker and colder at night, soft green-grey by day.
     if (scene.fog) {
         // Lighter daytime haze so the forest keeps its depth and color instead
-        // of washing out into the pale sky; thick and cold after dark.
-        scene.fog.density = 0.003 + nightness * 0.009;
+        // of washing out into the pale sky; cold but still see-through after
+        // dark — the woods are part of the night view.
+        scene.fog.density = 0.003 + nightness * 0.006;
         scene.fog.color.setHex(0xb6c9c2).lerp(new THREE.Color(0x070d12), nightness);
     }
 
-    // Painted forest wall darkens to near-black with the night
+    // Painted forest wall darkens with the night but keeps a moonlit trace so
+    // the tree line is still there when you look out through the glass.
     if (sharedAssets._backdropMat) {
-        sharedAssets._backdropMat.color.setScalar(0.06 + 0.94 * dayness);
+        sharedAssets._backdropMat.color.setScalar(0.11 + 0.89 * dayness);
     }
 
     // Fireflies only come out after dark; dust motes show best in daylight.
