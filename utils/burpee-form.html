@@ -1,0 +1,498 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>The Burpee — Form Lab</title>
+<style>
+  :root{
+    --bg:#101418;
+    --panel:#161c22;
+    --line:#2a323b;
+    --ink:#e9e4da;
+    --muted:#8d97a3;
+    --accent:#ff7a3d;
+    --accent-dim:#7a4226;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    background:var(--bg);
+    color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    overflow:hidden;
+  }
+  #scene{position:fixed;inset:0;width:100%;height:100%;display:block;cursor:grab}
+  #scene.dragging{cursor:grabbing}
+
+  /* ---------- header ---------- */
+  header{
+    position:fixed;top:0;left:0;right:0;
+    display:flex;align-items:flex-start;justify-content:space-between;
+    padding:20px 24px;pointer-events:none;z-index:5;
+  }
+  .kicker{
+    font-size:11px;letter-spacing:.32em;text-transform:uppercase;
+    color:var(--accent);font-weight:600;margin-bottom:6px;
+  }
+  h1{
+    font-size:clamp(22px,3.2vw,34px);font-weight:800;letter-spacing:-.01em;
+    line-height:1;
+  }
+  h1 small{display:block;font-size:12px;font-weight:400;color:var(--muted);
+    letter-spacing:.04em;margin-top:8px}
+  .reps{
+    text-align:right;font-variant-numeric:tabular-nums;
+  }
+  .reps .n{font-size:clamp(30px,4vw,44px);font-weight:800;line-height:1;color:var(--ink)}
+  .reps .l{font-size:11px;letter-spacing:.28em;text-transform:uppercase;color:var(--muted);margin-top:4px}
+
+  /* ---------- form checklist ---------- */
+  aside{
+    position:fixed;right:24px;top:50%;transform:translateY(-50%);
+    width:230px;background:color-mix(in srgb,var(--panel) 86%,transparent);
+    border:1px solid var(--line);border-radius:10px;padding:16px 16px 14px;
+    backdrop-filter:blur(6px);z-index:5;
+  }
+  aside h2{font-size:11px;letter-spacing:.28em;text-transform:uppercase;
+    color:var(--muted);font-weight:600;margin-bottom:10px}
+  aside ul{list-style:none}
+  aside li{
+    font-size:12.5px;line-height:1.45;color:var(--muted);
+    padding:6px 0 6px 16px;position:relative;border-top:1px solid var(--line);
+    transition:color .3s;
+  }
+  aside li:first-of-type{border-top:none}
+  aside li::before{
+    content:"";position:absolute;left:0;top:13px;width:6px;height:6px;border-radius:50%;
+    background:var(--line);transition:background .3s;
+  }
+  aside li.on{color:var(--ink)}
+  aside li.on::before{background:var(--accent)}
+
+  /* ---------- bottom: cue + phase strip + controls ---------- */
+  footer{
+    position:fixed;left:0;right:0;bottom:0;z-index:5;
+    padding:0 24px 18px;pointer-events:none;
+  }
+  .cue{
+    text-align:center;margin-bottom:12px;min-height:22px;
+    font-size:clamp(13px,1.6vw,16px);color:var(--ink);
+  }
+  .cue b{color:var(--accent);font-weight:700;letter-spacing:.02em}
+  .strip{
+    display:flex;gap:4px;max-width:880px;margin:0 auto 14px;
+  }
+  .seg{flex:1;pointer-events:none}
+  .seg .bar{height:3px;background:var(--line);border-radius:2px;overflow:hidden}
+  .seg .bar i{display:block;height:100%;width:0%;background:var(--accent)}
+  .seg .name{
+    font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);
+    margin-top:6px;text-align:center;white-space:nowrap;overflow:hidden;
+  }
+  .seg.active .name{color:var(--accent);font-weight:700}
+  .seg.done .bar i{width:100%;background:var(--accent-dim)}
+
+  .controls{
+    display:flex;align-items:center;justify-content:center;gap:14px;
+    pointer-events:auto;
+  }
+  button{
+    background:var(--panel);border:1px solid var(--line);color:var(--ink);
+    border-radius:8px;padding:8px 18px;font-size:13px;font-weight:600;
+    cursor:pointer;letter-spacing:.04em;
+  }
+  button:hover{border-color:var(--accent)}
+  button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+  .speed{display:flex;align-items:center;gap:8px;color:var(--muted);font-size:12px}
+  .speed output{color:var(--ink);font-variant-numeric:tabular-nums;width:34px}
+  input[type=range]{accent-color:var(--accent);width:130px}
+  .hint{font-size:11px;color:var(--muted);letter-spacing:.04em}
+
+  @media (max-width:760px){
+    aside{display:none}
+    .seg .name{font-size:8.5px;letter-spacing:.06em}
+    .hint{display:none}
+    header{padding:14px 16px}
+    footer{padding:0 12px 12px}
+  }
+</style>
+</head>
+<body>
+<canvas id="scene" aria-label="3D figure performing a burpee"></canvas>
+
+<header>
+  <div>
+    <div class="kicker">Form Lab</div>
+    <h1>The Burpee<small>six positions, one straight back</small></h1>
+  </div>
+  <div class="reps"><div class="n" id="repN">0</div><div class="l">Reps</div></div>
+</header>
+
+<aside aria-label="Form checklist">
+  <h2>Correct form</h2>
+  <ul id="checklist">
+    <li data-p="1">Squat down with the chest up; plant the palms flat just in front of the feet.</li>
+    <li data-p="2">Kick both feet back to a plank — one straight line from head to heels, core braced.</li>
+    <li data-p="3">Lower the chest to the floor, elbows tracking about 45° from the torso. No hip sag.</li>
+    <li data-p="4">Press back to plank without letting the hips pike or droop.</li>
+    <li data-p="5">Jump both feet forward, landing flat beside the hands.</li>
+    <li data-p="6">Drive through the heels into a full jump — hips fully extended, arms overhead.</li>
+    <li data-p="7">Land softly with bent knees, ready for the next rep.</li>
+  </ul>
+</aside>
+
+<footer>
+  <div class="cue" id="cue"></div>
+  <div class="strip" id="strip" aria-hidden="true"></div>
+  <div class="controls">
+    <button id="playBtn" aria-pressed="true">Pause</button>
+    <div class="speed">
+      <label for="speed">Speed</label>
+      <input type="range" id="speed" min="0.25" max="2" step="0.05" value="0.8">
+      <output id="speedOut">0.8×</output>
+    </div>
+    <span class="hint">drag to orbit · scroll to zoom</span>
+  </div>
+</footer>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+(function(){
+"use strict";
+
+/* ============================== scene ============================== */
+const canvas = document.getElementById("scene");
+const renderer = new THREE.WebGLRenderer({canvas, antialias:true});
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.outputEncoding = THREE.sRGBEncoding;
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x101418);
+scene.fog = new THREE.Fog(0x101418, 8, 18);
+
+const camera = new THREE.PerspectiveCamera(42, 1, 0.1, 60);
+
+/* lighting: warm key, cool rim, soft fill */
+scene.add(new THREE.HemisphereLight(0x46586a, 0x191510, 0.85));
+const key = new THREE.DirectionalLight(0xfff0dd, 1.15);
+key.position.set(2.6, 4.5, 3.2);
+key.castShadow = true;
+key.shadow.mapSize.set(2048, 2048);
+key.shadow.camera.left = -3; key.shadow.camera.right = 3;
+key.shadow.camera.top = 3;   key.shadow.camera.bottom = -3;
+key.shadow.camera.near = 1;  key.shadow.camera.far = 12;
+key.shadow.bias = -0.0005;
+scene.add(key);
+const rim = new THREE.DirectionalLight(0x6f8fc0, 0.45);
+rim.position.set(-3.5, 2.2, -4);
+scene.add(rim);
+
+/* floor */
+const floor = new THREE.Mesh(
+  new THREE.CircleGeometry(9, 64),
+  new THREE.MeshStandardMaterial({color:0x1a2026, roughness:0.95, metalness:0})
+);
+floor.rotation.x = -Math.PI/2;
+floor.receiveShadow = true;
+scene.add(floor);
+
+const ring = new THREE.Mesh(
+  new THREE.RingGeometry(1.55, 1.585, 96),
+  new THREE.MeshBasicMaterial({color:0xff7a3d, transparent:true, opacity:0.32, side:THREE.DoubleSide})
+);
+ring.rotation.x = -Math.PI/2;
+ring.position.set(0, 0.002, -0.45);
+scene.add(ring);
+
+/* ============================== figure ============================== */
+const skin  = new THREE.MeshStandardMaterial({color:0xc9b8a6, roughness:0.62, metalness:0.04});
+const dark  = new THREE.MeshStandardMaterial({color:0x4c5560, roughness:0.8,  metalness:0.05}); // shorts/shirt
+const joint = new THREE.MeshStandardMaterial({color:0xb3a18d, roughness:0.7,  metalness:0.04});
+
+function shadowed(m){ m.castShadow = true; m.receiveShadow = false; return m; }
+
+/* tapered limb segment whose pivot sits at the top end, pointing down -Y */
+function limbDown(rTop, rBottom, len, mat){
+  const g = new THREE.CylinderGeometry(rTop, rBottom, len, 18);
+  g.translate(0, -len/2, 0);
+  return shadowed(new THREE.Mesh(g, mat));
+}
+function limbUp(rBottom, rTop, len, mat){
+  const g = new THREE.CylinderGeometry(rTop, rBottom, len, 18);
+  g.translate(0, len/2, 0);
+  return shadowed(new THREE.Mesh(g, mat));
+}
+function ball(r, mat, sx, sy, sz){
+  const m = shadowed(new THREE.Mesh(new THREE.SphereGeometry(r, 22, 18), mat));
+  if(sx) m.scale.set(sx, sy, sz);
+  return m;
+}
+
+const root = new THREE.Group();          // pelvis / hips
+scene.add(root);
+
+/* pelvis */
+const pelvis = ball(1, dark, 0.155, 0.105, 0.10);
+pelvis.position.y = -0.02;
+root.add(pelvis);
+
+/* spine + torso */
+const spine = new THREE.Group();
+spine.position.y = 0.08;
+root.add(spine);
+
+const torso = limbUp(0.105, 0.135, 0.42, dark);
+spine.add(torso);
+const chest = ball(1, dark, 0.155, 0.115, 0.105);
+chest.position.set(0, 0.40, 0.005);
+spine.add(chest);
+const neck = limbUp(0.045, 0.04, 0.10, skin);
+neck.position.y = 0.44;
+spine.add(neck);
+
+const headPiv = new THREE.Group();
+headPiv.position.y = 0.52;
+spine.add(headPiv);
+const head = ball(1, skin, 0.085, 0.105, 0.092);
+head.position.set(0, 0.085, 0.012);
+headPiv.add(head);
+const nose = ball(0.018, skin);
+nose.position.set(0, 0.085, 0.105);
+headPiv.add(nose);
+
+/* arms */
+function makeArm(side){ // side: -1 left, +1 right
+  const sh = new THREE.Group();
+  sh.position.set(0.20*side, 0.42, 0);
+  spine.add(sh);
+  sh.add(ball(0.062, dark));
+  sh.add(limbDown(0.052, 0.040, 0.28, skin));
+  const el = new THREE.Group();
+  el.position.y = -0.28;
+  sh.add(el);
+  el.add(ball(0.043, joint));
+  el.add(limbDown(0.040, 0.031, 0.26, skin));
+  const hand = ball(1, skin, 0.040, 0.055, 0.045);
+  hand.position.y = -0.295;
+  el.add(hand);
+  return {sh, el};
+}
+const armL = makeArm(-1), armR = makeArm(1);
+
+/* legs */
+function makeLeg(side){
+  const hip = new THREE.Group();
+  hip.position.set(0.095*side, -0.06, 0);
+  root.add(hip);
+  hip.add(limbDown(0.077, 0.056, 0.42, dark));
+  const knee = new THREE.Group();
+  knee.position.y = -0.42;
+  hip.add(knee);
+  knee.add(ball(0.058, joint));
+  knee.add(limbDown(0.052, 0.035, 0.40, skin));
+  const ankle = new THREE.Group();
+  ankle.position.y = -0.40;
+  knee.add(ankle);
+  const foot = shadowed(new THREE.Mesh(new THREE.BoxGeometry(0.085, 0.055, 0.225), dark));
+  foot.position.set(0, -0.035, 0.055);
+  ankle.add(foot);
+  return {hip, knee, ankle};
+}
+const legL = makeLeg(-1), legR = makeLeg(1);
+
+/* ============================== poses ============================== */
+/* Conventions (rotation.x): pitch/spine + = lean forward, shoulder − = arm
+   forward/overhead, elbow − = flexion, hip − = flexion, knee + = flexion,
+   ankle + = toes down. armZ = lateral arm spread.                       */
+const STAND  = {rootY:0.94, rootZ: 0.00, pitch: 0.00, spine: 0.00, head: 0.00, sh:  0.05, elb:-0.12, hip:-0.02, knee:0.05, ankle: 0.00, armZ:0.08};
+const SQUAT  = {rootY:0.37, rootZ:-0.13, pitch: 0.50, spine: 0.50, head:-0.55, sh: -1.05, elb:-0.12, hip:-2.20, knee:2.40, ankle:-0.50, armZ:0.18};
+const PLANK  = {rootY:0.43, rootZ:-0.25, pitch: 1.24, spine: 0.05, head:-0.45, sh: -1.29, elb:-0.06, hip: 0.00, knee:0.05, ankle: 0.30, armZ:0.10};
+const PUSHUP = {rootY:0.33, rootZ:-0.18, pitch: 1.34, spine: 0.05, head:-0.50, sh: -0.60, elb:-1.05, hip: 0.00, knee:0.06, ankle: 0.18, armZ:0.55};
+const JUMP   = {rootY:1.38, rootZ: 0.00, pitch:-0.06, spine:-0.12, head:-0.05, sh: -2.95, elb:-0.12, hip:-0.30, knee:0.45, ankle: 0.50, armZ:0.25};
+const LAND   = {rootY:0.78, rootZ: 0.00, pitch: 0.12, spine: 0.18, head:-0.10, sh: -0.50, elb:-0.35, hip:-0.85, knee:1.00, ankle:-0.18, armZ:0.12};
+
+/* timeline: {t = end time, pose = target, ease, lift = airborne arc, phase} */
+const SEGS = [
+  {t:0.10, pose:STAND,  ease:"io",  lift:0,    phase:0},
+  {t:0.55, pose:SQUAT,  ease:"io",  lift:0,    phase:1},
+  {t:0.90, pose:PLANK,  ease:"io",  lift:0.07, phase:2},
+  {t:1.30, pose:PUSHUP, ease:"io",  lift:0,    phase:3},
+  {t:1.70, pose:PLANK,  ease:"io",  lift:0,    phase:4},
+  {t:2.05, pose:SQUAT,  ease:"io",  lift:0.09, phase:5},
+  {t:2.35, pose:JUMP,   ease:"out", lift:0,    phase:6},
+  {t:2.62, pose:LAND,   ease:"in",  lift:0,    phase:7},
+  {t:2.85, pose:STAND,  ease:"io",  lift:0,    phase:0},
+];
+const DUR = SEGS[SEGS.length-1].t;
+
+const PHASES = [
+  {name:"Stand",     cue:"<b>Set up.</b> Feet shoulder-width, weight even, eyes forward."},
+  {name:"Squat",     cue:"<b>Squat down.</b> Chest up, hands flat on the floor just in front of the feet."},
+  {name:"Kick back", cue:"<b>Kick back.</b> Shoot both feet back — head to heels in one straight line."},
+  {name:"Push-up",   cue:"<b>Lower.</b> Chest to the floor, elbows about 45° out. Don’t let the hips sag."},
+  {name:"Press up",  cue:"<b>Press.</b> Push the floor away; keep the body rigid, no piking."},
+  {name:"Jump in",   cue:"<b>Jump in.</b> Both feet snap forward, landing flat beside the hands."},
+  {name:"Jump",      cue:"<b>Explode.</b> Full hip extension, arms reach overhead at the top."},
+  {name:"Land",      cue:"<b>Land soft.</b> Knees bent, weight on the mid-foot — straight into the next rep."},
+];
+
+function easeIO(t){ return t*t*(3-2*t); }
+function easeOut(t){ return 1-(1-t)*(1-t); }
+function easeIn(t){ return t*t; }
+const EASE = {io:easeIO, out:easeOut, in:easeIn};
+const lerp = (a,b,t)=>a+(b-a)*t;
+
+function samplePose(time){
+  let prevPose = SEGS[SEGS.length-1].pose, prevT = 0;
+  for(const seg of SEGS){
+    if(time <= seg.t || seg === SEGS[SEGS.length-1]){
+      const span = seg.t - prevT;
+      const u = span > 0 ? Math.min(1, Math.max(0, (time - prevT)/span)) : 1;
+      const e = EASE[seg.ease](u);
+      const out = {};
+      for(const k in seg.pose) out[k] = lerp(prevPose[k], seg.pose[k], e);
+      out.rootY += seg.lift * Math.sin(Math.PI * u);   // small hop arc
+      out._phase = seg.phase;
+      out._u = u;
+      out._segIndex = SEGS.indexOf(seg);
+      return out;
+    }
+    prevPose = seg.pose; prevT = seg.t;
+  }
+}
+
+function applyPose(p){
+  root.position.set(0, p.rootY, p.rootZ);
+  root.rotation.x = p.pitch;
+  spine.rotation.x = p.spine;
+  headPiv.rotation.x = p.head;
+  for(const [arm, s] of [[armL,-1],[armR,1]]){
+    arm.sh.rotation.x = p.sh;
+    arm.sh.rotation.z = -s * p.armZ;
+    arm.el.rotation.x = p.elb;
+  }
+  for(const leg of [legL, legR]){
+    leg.hip.rotation.x = p.hip;
+    leg.knee.rotation.x = p.knee;
+    leg.ankle.rotation.x = p.ankle;
+  }
+}
+
+/* ============================== camera orbit ============================== */
+const target = new THREE.Vector3(0, 0.70, -0.35);
+let theta = 0.85, phi = 1.22, radius = 4.8;
+function updateCamera(){
+  phi = Math.min(1.52, Math.max(0.25, phi));
+  radius = Math.min(11, Math.max(2.2, radius));
+  camera.position.set(
+    target.x + radius * Math.sin(phi) * Math.sin(theta),
+    target.y + radius * Math.cos(phi),
+    target.z + radius * Math.sin(phi) * Math.cos(theta)
+  );
+  camera.lookAt(target);
+}
+let dragging = false, px = 0, py = 0;
+canvas.addEventListener("pointerdown", e => {
+  dragging = true; px = e.clientX; py = e.clientY;
+  canvas.classList.add("dragging");
+  canvas.setPointerCapture(e.pointerId);
+});
+canvas.addEventListener("pointermove", e => {
+  if(!dragging) return;
+  theta -= (e.clientX - px) * 0.0055;
+  phi   -= (e.clientY - py) * 0.0045;
+  px = e.clientX; py = e.clientY;
+  updateCamera();
+});
+canvas.addEventListener("pointerup",   () => { dragging = false; canvas.classList.remove("dragging"); });
+canvas.addEventListener("pointercancel",() => { dragging = false; canvas.classList.remove("dragging"); });
+canvas.addEventListener("wheel", e => {
+  e.preventDefault();
+  radius *= 1 + Math.sign(e.deltaY) * 0.08;
+  updateCamera();
+}, {passive:false});
+
+/* ============================== UI ============================== */
+const strip = document.getElementById("strip");
+const segEls = PHASES.map(ph => {
+  const d = document.createElement("div");
+  d.className = "seg";
+  d.innerHTML = `<div class="bar"><i></i></div><div class="name">${ph.name}</div>`;
+  strip.appendChild(d);
+  return d;
+});
+const cueEl = document.getElementById("cue");
+const repEl = document.getElementById("repN");
+const checkItems = Array.from(document.querySelectorAll("#checklist li"));
+
+let playing = !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+const playBtn = document.getElementById("playBtn");
+function setPlaying(v){
+  playing = v;
+  playBtn.textContent = v ? "Pause" : "Play";
+  playBtn.setAttribute("aria-pressed", String(v));
+}
+setPlaying(playing);
+playBtn.addEventListener("click", () => setPlaying(!playing));
+
+let speed = 0.8;
+const speedInput = document.getElementById("speed");
+const speedOut = document.getElementById("speedOut");
+speedInput.addEventListener("input", () => {
+  speed = parseFloat(speedInput.value);
+  speedOut.textContent = speed.toFixed(2).replace(/0$/,"") + "×";
+});
+
+let lastPhase = -1, reps = 0, prevWrap = 0;
+function updateUI(p, simTime){
+  const wrap = Math.floor(simTime / DUR);
+  if(wrap > prevWrap){ reps = wrap; repEl.textContent = reps; }
+  prevWrap = wrap;
+
+  if(p._phase !== lastPhase){
+    lastPhase = p._phase;
+    cueEl.innerHTML = PHASES[p._phase].cue;
+    checkItems.forEach(li => li.classList.toggle("on", +li.dataset.p === p._phase));
+  }
+  segEls.forEach((el, i) => {
+    const isActive = i === p._phase;
+    el.classList.toggle("active", isActive);
+    /* done = earlier in this rep (phase 0 appears twice; treat by order) */
+    el.classList.toggle("done", !isActive && i < p._phase);
+    el.querySelector("i").style.width = isActive ? (p._u*100).toFixed(1) + "%" : (i < p._phase ? "100%" : "0%");
+  });
+}
+
+/* ============================== loop ============================== */
+function resize(){
+  const w = window.innerWidth, h = window.innerHeight;
+  renderer.setSize(w, h, false);
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+}
+window.addEventListener("resize", resize);
+resize();
+updateCamera();
+
+let simTime = 0, last = performance.now();
+applyPose(samplePose(0));
+updateUI(samplePose(0), 0);
+
+function tick(now){
+  const dt = Math.min(0.05, (now - last) / 1000);
+  last = now;
+  if(playing) simTime += dt * speed;
+  const p = samplePose(simTime % DUR);
+  applyPose(p);
+  updateUI(p, simTime);
+  renderer.render(scene, camera);
+  requestAnimationFrame(tick);
+}
+requestAnimationFrame(tick);
+})();
+</script>
+</body>
+</html>
