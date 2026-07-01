@@ -42,3 +42,19 @@
 Completed earlier; see git history. Forest, wet interior, vines, grow/wither,
 lighting polish all landed in `utils/greenhouse-todo/app.js` with jest suite
 passing.
+
+# (done) MYCELIA — Guardians of the Glowing Grove (tower defense)
+
+Single-file, dependency-free tower defense at
+`tower-def/fugu-xhigh-tower-def.html`. Greenfield build.
+
+- Theme: bioluminescent fungal grove; cute glowing mushroom towers vs. the Blight.
+- Random winding mycelial track generated each game (non-self-intersecting).
+- 5 towers (Dartcap, Puffshroom, Frostfern, Sparkcap, Titanshroom), 4 upgrade
+  tiers each (single / splash / slow-aura / chain-lightning / sniper archetypes).
+- 8 enemy types with distinct speed/HP/armor/heal/ghost traits + 22 waves
+  (bosses at 10/18/22); HP scales with wave.
+- Between-wave building & upgrading, economy (spores), sell for 70% refund.
+- Polished responsive UI, WebAudio SFX, particles, floating text, speed/pause/mute.
+- Verified in headless Chromium: full 22-wave victory, all towers max-tier,
+  desktop + mobile layouts, zero console/page errors.
