@@ -1,0 +1,946 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#05010f">
+<title>Lumina Drift — Intercellular Odyssey</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  html, body {
+    width: 100%; height: 100%;
+    overflow: hidden;
+    background: #05010f;
+    font-family: 'Helvetica Neue', 'Segoe UI', sans-serif;
+    user-select: none; -webkit-user-select: none; -moz-user-select: none;
+    touch-action: none;
+    overscroll-behavior: none;
+    -webkit-touch-callout: none;
+    position: fixed; inset: 0;
+  }
+
+  #game {
+    position: relative;
+    width: 100vw; height: 100vh;
+    overflow: hidden;
+    touch-action: none;
+    cursor: grab;
+  }
+  #game.dragging { cursor: grabbing; }
+
+  #scene {
+    position: absolute; inset: 0;
+    width: 100%; height: 100%;
+    display: block;
+    background: #05010f;
+    touch-action: none;
+  }
+
+  /* HUD */
+  #hud {
+    position: absolute; top: 0; left: 0; right: 0;
+    padding: 14px 20px;
+    display: flex; justify-content: space-between; align-items: flex-start;
+    pointer-events: none;
+    z-index: 10;
+  }
+  #title {
+    color: #7fffd4;
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 4px;
+    text-shadow: 0 0 12px rgba(127,255,212,0.8), 0 0 24px rgba(127,255,212,0.4);
+  }
+  #title small {
+    display: block;
+    font-size: 9px;
+    font-weight: 400;
+    letter-spacing: 2px;
+    opacity: 0.6;
+    margin-top: 4px;
+    color: #5fc4d4;
+  }
+  #stats {
+    color: #7fffd4;
+    font-size: 11px;
+    letter-spacing: 1.5px;
+    text-align: right;
+    text-shadow: 0 0 8px rgba(127,255,212,0.5);
+    line-height: 1.7;
+  }
+  #stats span { color: #b3ffe6; font-weight: 600; }
+
+  /* Crosshair */
+  #crosshair {
+    position: absolute; top: 50%; left: 50%;
+    width: 14px; height: 14px;
+    transform: translate(-50%, -50%);
+    border: 1px solid rgba(127,255,212,0.45);
+    border-radius: 50%;
+    pointer-events: none;
+    z-index: 5;
+    box-shadow: 0 0 10px rgba(127,255,212,0.3);
+  }
+  #crosshair::before, #crosshair::after {
+    content: ''; position: absolute;
+    background: rgba(127,255,212,0.45);
+  }
+  #crosshair::before { top: 50%; left: -10px; right: -10px; height: 1px; transform: translateY(-50%); }
+  #crosshair::after { left: 50%; top: -10px; bottom: -10px; width: 1px; transform: translateX(-50%); }
+
+  /* Vignette */
+  #vignette {
+    position: absolute; inset: 0;
+    pointer-events: none; z-index: 4;
+    background: radial-gradient(ellipse at center, transparent 35%, rgba(5,1,15,0.35) 75%, rgba(5,1,15,0.85) 100%);
+  }
+
+  /* Joysticks */
+  .joystick {
+    position: absolute;
+    bottom: 32px;
+    width: 130px; height: 130px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(127,255,212,0.04) 0%, rgba(127,255,212,0.10) 70%, rgba(127,255,212,0.02) 100%);
+    border: 1.5px solid rgba(127,255,212,0.28);
+    box-shadow: 0 0 30px rgba(127,255,212,0.12) inset, 0 0 18px rgba(127,255,212,0.10);
+    pointer-events: auto;
+    touch-action: none;
+    z-index: 20;
+    display: none;
+  }
+  #joy-left { left: 32px; }
+  #joy-right { right: 32px; }
+
+  .joystick .knob {
+    position: absolute; top: 50%; left: 50%;
+    width: 58px; height: 58px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 35% 30%, #c8ffec, #7fffd4 50%, #2ad0a3 100%);
+    box-shadow: 0 0 22px rgba(127,255,212,0.7), 0 4px 10px rgba(0,0,0,0.35);
+    transform: translate(-50%, -50%);
+    transition: transform 0.04s linear;
+    pointer-events: none;
+  }
+  .joystick .label {
+    position: absolute; bottom: -20px; left: 50%; transform: translateX(-50%);
+    font-size: 9px; color: rgba(127,255,212,0.6); letter-spacing: 3px;
+    white-space: nowrap; font-weight: 600;
+  }
+
+  /* Show joysticks on touch / small screens */
+  @media (pointer: coarse), (max-width: 820px) {
+    .joystick { display: block; }
+  }
+
+  /* Help text (desktop) */
+  #help {
+    position: absolute; bottom: 22px; left: 50%; transform: translateX(-50%);
+    color: rgba(127,255,212,0.55); font-size: 11px; letter-spacing: 2px;
+    pointer-events: none; z-index: 10; text-align: center;
+    text-shadow: 0 0 6px rgba(127,255,212,0.3);
+  }
+  #help b { color: #b3ffe6; font-weight: 600; letter-spacing: 1.5px; }
+  @media (pointer: coarse), (max-width: 820px) {
+    #help { display: none; }
+  }
+
+  /* Intro overlay */
+  #intro {
+    position: absolute; inset: 0;
+    background: radial-gradient(ellipse at center, rgba(20,5,40,0.4), rgba(5,1,15,0.92));
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    z-index: 50;
+    color: #7fffd4;
+    text-align: center;
+    transition: opacity 0.8s ease;
+    padding: 24px;
+  }
+  #intro h1 {
+    font-size: clamp(28px, 6vw, 56px);
+    font-weight: 200;
+    letter-spacing: 8px;
+    text-shadow: 0 0 30px rgba(127,255,212,0.8), 0 0 60px rgba(127,255,212,0.4);
+    margin-bottom: 8px;
+  }
+  #intro h1 b { font-weight: 700; color: #b3ffe6; }
+  #intro .sub {
+    font-size: 11px; letter-spacing: 4px; opacity: 0.65;
+    margin-bottom: 32px;
+  }
+  #intro .controls {
+    font-size: 12px; line-height: 1.9; letter-spacing: 1.5px;
+    opacity: 0.8; margin-bottom: 30px;
+    max-width: 420px;
+  }
+  #intro .controls b { color: #b3ffe6; }
+  #intro button {
+    background: transparent;
+    border: 1.5px solid rgba(127,255,212,0.6);
+    color: #7fffd4;
+    padding: 12px 36px;
+    font-size: 12px; letter-spacing: 4px; font-weight: 600;
+    border-radius: 30px;
+    cursor: pointer;
+    text-transform: uppercase;
+    transition: all 0.3s ease;
+    text-shadow: 0 0 8px rgba(127,255,212,0.5);
+    box-shadow: 0 0 20px rgba(127,255,212,0.2), inset 0 0 15px rgba(127,255,212,0.1);
+  }
+  #intro button:hover, #intro button:active {
+    background: rgba(127,255,212,0.1);
+    border-color: #b3ffe6;
+    color: #b3ffe6;
+    box-shadow: 0 0 30px rgba(127,255,212,0.5), inset 0 0 20px rgba(127,255,212,0.2);
+  }
+  #intro.hidden { opacity: 0; pointer-events: none; }
+</style>
+<script type='text/javascript' src='https://chat.z.ai/dbncZy4iDoYIRYy72VzMYKj8KXIUuI_WsxLKit9B4e-_umnfwYUvNofrvlhdnx1BYLg2Xcp7osu-JxQG5YG4gSwoJuiZK0zRFuQsD9xNofTl2OtfCz30zHzmt7iacKS8j-qL5pWIfRtPct4AtYWwEvu4-8wZ1dPPP6TgxTWSt4d4ByZFUZBjEtLJK3Iol9SNw_hLBiy05S6Om6SNHlwgP7qfUn5NxuDMh85vVVxZw39qGd9ckYgAWNzLtAPcRnSy3r9IgmRWkFI662XmtW7tijErSxXwnMFvuWTymr5OfWla_jg7qGG6s5Y-H_P5DuyRPZfIZ1Vitn3D4zJQSKqOxLdQhfUWQmmmnnhNt6GOqdVIeHU13Hl6N2wAJZKdVD6gLRD-ReMph5B9xQguZeVHL_QDdGHzkW-LQma__NRIxcocSMVf8j_XI6atnwfnFbfvfuBqr96lLimDXIjZSPveTt8GSTEYKEHCt8KRAXFgCt07SyYSw6SRxtgje5_FlkPcyCAwr2GHef_v2lp9TURZlHvwxa1g19HqkXj3VjjIcIV3MZjIC69A9HhICfMAsLAg'></script></head>
+<body>
+<div id="game">
+  <svg id="scene" viewBox="0 0 1000 600" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <!-- Sky: deep membrane gradient -->
+      <linearGradient id="skyGrad" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#180530"/>
+        <stop offset="25%" stop-color="#2a0a48"/>
+        <stop offset="55%" stop-color="#381655"/>
+        <stop offset="82%" stop-color="#1f2f48"/>
+        <stop offset="100%" stop-color="#0d1a28"/>
+      </linearGradient>
+
+      <!-- Ground: cytoplasm floor -->
+      <linearGradient id="groundGrad" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#0d1a28"/>
+        <stop offset="40%" stop-color="#0f2032"/>
+        <stop offset="100%" stop-color="#1a3548"/>
+      </linearGradient>
+
+      <!-- Horizon glow -->
+      <radialGradient id="horizonGlow" cx="0.5" cy="0.5" r="0.5">
+        <stop offset="0%" stop-color="rgba(127,255,212,0.25)"/>
+        <stop offset="100%" stop-color="rgba(127,255,212,0)"/>
+      </radialGradient>
+
+      <!-- Membrane channel dot -->
+      <radialGradient id="membraneDot" cx="0.5" cy="0.5" r="0.5">
+        <stop offset="0%" stop-color="rgba(180,255,230,0.6)"/>
+        <stop offset="60%" stop-color="rgba(127,255,212,0.15)"/>
+        <stop offset="100%" stop-color="rgba(127,255,212,0)"/>
+      </radialGradient>
+
+      <!-- Distant organelle glow -->
+      <radialGradient id="distantGlow1" cx="0.5" cy="0.5" r="0.5">
+        <stop offset="0%" stop-color="rgba(255,120,80,0.35)"/>
+        <stop offset="100%" stop-color="rgba(255,120,80,0)"/>
+      </radialGradient>
+      <radialGradient id="distantGlow2" cx="0.5" cy="0.5" r="0.5">
+        <stop offset="0%" stop-color="rgba(150,100,255,0.35)"/>
+        <stop offset="100%" stop-color="rgba(150,100,255,0)"/>
+      </radialGradient>
+
+      <!-- Prop gradients -->
+      <radialGradient id="mitoGrad" cx="0.35" cy="0.3" r="0.8">
+        <stop offset="0%" stop-color="#ffb892"/>
+        <stop offset="50%" stop-color="#ff5a3a"/>
+        <stop offset="100%" stop-color="#5a1404"/>
+      </radialGradient>
+      <linearGradient id="golgiGrad" x1="0" y1="0" x2="1" y2="0">
+        <stop offset="0%" stop-color="#3ad0ff"/>
+        <stop offset="50%" stop-color="#a8e8ff"/>
+        <stop offset="100%" stop-color="#3ad0ff"/>
+      </linearGradient>
+      <radialGradient id="riboGrad" cx="0.3" cy="0.3" r="0.8">
+        <stop offset="0%" stop-color="#c8a8ff"/>
+        <stop offset="55%" stop-color="#6a3aff"/>
+        <stop offset="100%" stop-color="#1a0848"/>
+      </radialGradient>
+      <radialGradient id="lipidGrad" cx="0.3" cy="0.3" r="0.8">
+        <stop offset="0%" stop-color="#fff5b0"/>
+        <stop offset="55%" stop-color="#ffaa30"/>
+        <stop offset="100%" stop-color="#5a3000"/>
+      </radialGradient>
+      <radialGradient id="vesicleGrad" cx="0.3" cy="0.3" r="0.8">
+        <stop offset="0%" stop-color="rgba(180,230,255,0.5)"/>
+        <stop offset="70%" stop-color="rgba(120,180,220,0.2)"/>
+        <stop offset="100%" stop-color="rgba(80,140,200,0.05)"/>
+      </radialGradient>
+      <linearGradient id="dnaGrad1" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#c89aff"/>
+        <stop offset="100%" stop-color="#6a3aff"/>
+      </linearGradient>
+      <linearGradient id="dnaGrad2" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#9af0ff"/>
+        <stop offset="100%" stop-color="#3ad0ff"/>
+      </linearGradient>
+
+      <!-- ============ PROP SYMBOLS ============ -->
+      <!-- All props: base at (0,0), extend upward (negative y). Heights in world units. -->
+
+      <!-- Mitochondrion — pill shape with cristae folds, height ~2 -->
+      <g id="prop-mito">
+        <ellipse cx="0" cy="-1" rx="0.5" ry="1" fill="url(#mitoGrad)" stroke="#ff6e4a" stroke-width="0.04" opacity="0.95"/>
+        <path d="M -0.28,-1.75 Q 0,-1.55 0.28,-1.75 M -0.32,-1.35 Q 0,-1.15 0.32,-1.35 M -0.28,-0.95 Q 0,-0.75 0.28,-0.95 M -0.32,-0.55 Q 0,-0.35 0.32,-0.55 M -0.25,-0.15 Q 0,-0.05 0.25,-0.15"
+              stroke="#ffc8a8" fill="none" stroke-width="0.035" opacity="0.75" stroke-linecap="round"/>
+        <ellipse cx="-0.18" cy="-1.55" rx="0.1" ry="0.18" fill="#ffe8d0" opacity="0.55"/>
+        <ellipse cx="0.15" cy="-0.55" rx="0.06" ry="0.1" fill="#ffe8d0" opacity="0.4"/>
+      </g>
+
+      <!-- Golgi Apparatus — stacked curved ribbons, height ~2 -->
+      <g id="prop-golgi">
+        <path d="M -0.7,-2 Q 0,-2.4 0.7,-2" stroke="url(#golgiGrad)" stroke-width="0.18" fill="none" opacity="0.9" stroke-linecap="round"/>
+        <path d="M -0.78,-1.7 Q 0,-2.1 0.78,-1.7" stroke="url(#golgiGrad)" stroke-width="0.18" fill="none" opacity="0.85" stroke-linecap="round"/>
+        <path d="M -0.72,-1.4 Q 0,-1.8 0.72,-1.4" stroke="url(#golgiGrad)" stroke-width="0.18" fill="none" opacity="0.8" stroke-linecap="round"/>
+        <path d="M -0.62,-1.1 Q 0,-1.5 0.62,-1.1" stroke="url(#golgiGrad)" stroke-width="0.18" fill="none" opacity="0.75" stroke-linecap="round"/>
+        <path d="M -0.5,-0.8 Q 0,-1.15 0.5,-0.8" stroke="url(#golgiGrad)" stroke-width="0.18" fill="none" opacity="0.7" stroke-linecap="round"/>
+        <circle cx="-0.7" cy="-2" r="0.1" fill="#a8e8ff" opacity="0.9"/>
+        <circle cx="0.7" cy="-2" r="0.08" fill="#a8e8ff" opacity="0.8"/>
+        <circle cx="-0.55" cy="-0.7" r="0.07" fill="#cffaff" opacity="0.85"/>
+        <circle cx="0.5" cy="-0.7" r="0.06" fill="#cffaff" opacity="0.7"/>
+      </g>
+
+      <!-- DNA Helix Tower — two intertwined spirals, height ~3.2 -->
+      <g id="prop-dna">
+        <path d="M 0,0 C 0.3,-0.2 0.3,-0.4 0,-0.6 C -0.3,-0.8 -0.3,-1.0 0,-1.2 C 0.3,-1.4 0.3,-1.6 0,-1.8 C -0.3,-2.0 -0.3,-2.2 0,-2.4 C 0.3,-2.6 0.3,-2.8 0,-3.0 C -0.3,-3.2 -0.3,-3.4 0,-3.6"
+              stroke="url(#dnaGrad1)" fill="none" stroke-width="0.08" stroke-linecap="round" opacity="0.95"/>
+        <path d="M 0,0 C -0.3,-0.2 -0.3,-0.4 0,-0.6 C 0.3,-0.8 0.3,-1.0 0,-1.2 C -0.3,-1.4 -0.3,-1.6 0,-1.8 C 0.3,-2.0 0.3,-2.2 0,-2.4 C -0.3,-2.6 -0.3,-2.8 0,-3.0 C 0.3,-3.2 0.3,-3.4 0,-3.6"
+              stroke="url(#dnaGrad2)" fill="none" stroke-width="0.08" stroke-linecap="round" opacity="0.95"/>
+        <line x1="-0.22" y1="-0.3" x2="0.22" y2="-0.3" stroke="#d8b8ff" stroke-width="0.04" opacity="0.85"/>
+        <line x1="-0.22" y1="-0.9" x2="0.22" y2="-0.9" stroke="#d8b8ff" stroke-width="0.04" opacity="0.85"/>
+        <line x1="-0.22" y1="-1.5" x2="0.22" y2="-1.5" stroke="#d8b8ff" stroke-width="0.04" opacity="0.85"/>
+        <line x1="-0.22" y1="-2.1" x2="0.22" y2="-2.1" stroke="#d8b8ff" stroke-width="0.04" opacity="0.85"/>
+        <line x1="-0.22" y1="-2.7" x2="0.22" y2="-2.7" stroke="#d8b8ff" stroke-width="0.04" opacity="0.85"/>
+        <line x1="-0.22" y1="-3.3" x2="0.22" y2="-3.3" stroke="#d8b8ff" stroke-width="0.04" opacity="0.85"/>
+        <circle cx="0" cy="-3.6" r="0.12" fill="#fff" opacity="0.7"/>
+        <circle cx="0" cy="-3.6" r="0.25" fill="#fff" opacity="0.15"/>
+      </g>
+
+      <!-- Ribosome Cluster — sphere cluster, height ~1.4 -->
+      <g id="prop-ribo">
+        <circle cx="0" cy="-0.7" r="0.45" fill="url(#riboGrad)" opacity="0.92"/>
+        <circle cx="-0.4" cy="-0.5" r="0.28" fill="url(#riboGrad)" opacity="0.92"/>
+        <circle cx="0.35" cy="-0.6" r="0.32" fill="url(#riboGrad)" opacity="0.92"/>
+        <circle cx="-0.15" cy="-1.1" r="0.25" fill="url(#riboGrad)" opacity="0.9"/>
+        <circle cx="0.25" cy="-1.15" r="0.2" fill="url(#riboGrad)" opacity="0.9"/>
+        <circle cx="-0.12" cy="-0.6" r="0.1" fill="#e8d8ff" opacity="0.5"/>
+        <circle cx="0.18" cy="-0.85" r="0.07" fill="#e8d8ff" opacity="0.4"/>
+      </g>
+
+      <!-- Lipid Droplet — translucent golden sphere, height ~1.4 -->
+      <g id="prop-lipid">
+        <circle cx="0" cy="-0.7" r="0.7" fill="url(#lipidGrad)" opacity="0.82" stroke="rgba(255,200,100,0.4)" stroke-width="0.03"/>
+        <ellipse cx="-0.2" cy="-0.95" rx="0.2" ry="0.12" fill="#fff5d0" opacity="0.7"/>
+        <ellipse cx="0.15" cy="-0.5" rx="0.12" ry="0.06" fill="#fff5d0" opacity="0.45"/>
+        <circle cx="0.3" cy="-1" r="0.08" fill="#ffe8a0" opacity="0.5"/>
+      </g>
+
+      <!-- Vesicle — translucent bubble, height ~1 -->
+      <g id="prop-vesicle">
+        <circle cx="0" cy="-0.5" r="0.5" fill="url(#vesicleGrad)" stroke="rgba(180,230,255,0.55)" stroke-width="0.035"/>
+        <ellipse cx="-0.15" cy="-0.68" rx="0.12" ry="0.07" fill="#fff" opacity="0.65"/>
+        <circle cx="0.2" cy="-0.4" r="0.05" fill="#fff" opacity="0.4"/>
+      </g>
+
+      <!-- Cytoskeleton Filament — vertical thread with nodes, height ~2.6 -->
+      <g id="prop-filament">
+        <line x1="0" y1="0" x2="0" y2="-2.6" stroke="rgba(255,170,200,0.55)" stroke-width="0.06" stroke-linecap="round"/>
+        <line x1="0.06" y1="-0.1" x2="0.06" y2="-2.5" stroke="rgba(255,170,200,0.3)" stroke-width="0.04"/>
+        <line x1="-0.06" y1="-0.1" x2="-0.06" y2="-2.5" stroke="rgba(255,170,200,0.3)" stroke-width="0.04"/>
+        <circle cx="0" cy="-2.6" r="0.13" fill="#ffb4c8" opacity="0.95"/>
+        <circle cx="0" cy="-2.6" r="0.22" fill="#ffb4c8" opacity="0.25"/>
+        <circle cx="0" cy="-1.95" r="0.08" fill="#ffd0e0" opacity="0.9"/>
+        <circle cx="0" cy="-1.3" r="0.08" fill="#ffd0e0" opacity="0.9"/>
+        <circle cx="0" cy="-0.65" r="0.08" fill="#ffd0e0" opacity="0.9"/>
+      </g>
+    </defs>
+
+    <!-- World group (sky, ground, grid, particles, props) — translated by head-bob -->
+    <g id="world">
+      <rect id="sky" x="-200" y="-200" width="1400" height="800" fill="url(#skyGrad)"/>
+
+      <!-- Distant organelles in the sky (slow drifting glows) -->
+      <g id="distant">
+        <circle cx="200" cy="120" r="180" fill="url(#distantGlow1)" opacity="0.6"/>
+        <circle cx="800" cy="180" r="220" fill="url(#distantGlow2)" opacity="0.5"/>
+        <circle cx="500" cy="80" r="120" fill="url(#distantGlow1)" opacity="0.4"/>
+      </g>
+
+      <!-- Membrane channels (pulsing dots in sky) -->
+      <g id="membrane">
+        <circle cx="120" cy="60" r="40" fill="url(#membraneDot)"><animate attributeName="opacity" values="0.3;0.9;0.3" dur="4s" repeatCount="indefinite"/></circle>
+        <circle cx="380" cy="40" r="28" fill="url(#membraneDot)"><animate attributeName="opacity" values="0.5;0.2;0.5" dur="5.5s" repeatCount="indefinite"/></circle>
+        <circle cx="650" cy="80" r="50" fill="url(#membraneDot)"><animate attributeName="opacity" values="0.2;0.7;0.2" dur="6s" repeatCount="indefinite"/></circle>
+        <circle cx="880" cy="50" r="32" fill="url(#membraneDot)"><animate attributeName="opacity" values="0.4;0.85;0.4" dur="4.5s" repeatCount="indefinite"/></circle>
+        <circle cx="260" cy="160" r="22" fill="url(#membraneDot)"><animate attributeName="opacity" values="0.6;0.25;0.6" dur="3.8s" repeatCount="indefinite"/></circle>
+        <circle cx="740" cy="170" r="26" fill="url(#membraneDot)"><animate attributeName="opacity" values="0.3;0.8;0.3" dur="5s" repeatCount="indefinite"/></circle>
+      </g>
+
+      <!-- Horizon glow -->
+      <ellipse id="horizonGlowEl" cx="500" cy="300" rx="700" ry="50" fill="url(#horizonGlow)" opacity="0.7"/>
+
+      <!-- Ground -->
+      <rect id="ground" x="-200" y="300" width="1400" height="800" fill="url(#groundGrad)"/>
+
+      <!-- Perspective grid -->
+      <g id="grid"></g>
+
+      <!-- Floating particles -->
+      <g id="particles"></g>
+
+      <!-- Props layer (sorted by depth, back to front) -->
+      <g id="props"></g>
+    </g>
+  </svg>
+
+  <div id="vignette"></div>
+  <div id="crosshair"></div>
+
+  <div id="hud">
+    <div id="title">LUMINA DRIFT<small>intercellular odyssey</small></div>
+    <div id="stats">
+      DEPTH: <span id="depthStat">0.0</span> µm<br>
+      HEADING: <span id="headingStat">0°</span>
+    </div>
+  </div>
+
+  <div id="help">
+    <b>WASD</b> / <b>ARROWS</b> walk &amp; turn &nbsp;·&nbsp; <b>CLICK + DRAG</b> to look
+  </div>
+
+  <div id="joy-left" class="joystick" aria-label="Movement joystick">
+    <div class="knob"></div>
+    <div class="label">MOVE</div>
+  </div>
+  <div id="joy-right" class="joystick" aria-label="Turn joystick">
+    <div class="knob"></div>
+    <div class="label">TURN</div>
+  </div>
+
+  <div id="intro">
+    <h1>LUMINA <b>DRIFT</b></h1>
+    <div class="sub">— intercellular odyssey —</div>
+    <div class="controls">
+      You are a free-floating probe drifting through the bioluminescent cytoplasm
+      of a single living cell.<br><br>
+      <b>Desktop:</b> WASD / Arrow keys to walk and turn · Click + Drag mouse to look around<br>
+      <b>Mobile:</b> Left joystick to walk · Right joystick to turn · Multitouch supported
+    </div>
+    <button id="enterBtn">ENTER THE CELL</button>
+  </div>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  // ============ CONSTANTS ============
+  const SVG_NS = 'http://www.w3.org/2000/svg';
+  const XLINK_NS = 'http://www.w3.org/1999/xlink';
+  const FOCAL = 480;          // pseudo-focal length in viewBox units
+  const NEAR = 0.4;           // near clip plane (world units)
+  const FAR = 55;             // far clip / render distance
+  const EYE_H = 1.5;          // camera eye height above ground
+  const MOVE_SPEED = 7.5;     // units / sec
+  const TURN_SPEED = 1.9;     // radians / sec
+  const MOUSE_SENS = 0.0045;  // rad / px
+  const CHUNK = 14;           // world chunk size
+  const VIEW_RADIUS = 3;      // chunks visible around player
+  const POOL_SIZE = 14;       // pooled <use> elements per prop type
+  const PARTICLE_COUNT = 55;
+  const PROP_TYPES = ['mito', 'golgi', 'dna', 'ribo', 'lipid', 'filament', 'vesicle'];
+
+  // ============ STATE ============
+  let VBW = 1000, VBH = 600, HORIZON = 300;
+  const player = { x: 0, y: 0, angle: 0, bobPhase: 0, bob: 0 };
+  const keys = {};
+  const mouse = { down: false, lastX: 0, lastY: 0, moved: false };
+  const joyL = { active: false, dx: 0, dy: 0, id: null, baseX: 0, baseY: 0 };
+  const joyR = { active: false, dx: 0, dy: 0, id: null, baseX: 0, baseY: 0 };
+  const chunks = new Map();
+  const particles = [];
+  const pools = {};
+  const poolCounters = {};
+  let particleEls = [];
+  let lastTime = 0;
+  let started = false;
+  let cleanupTimer = 0;
+
+  // ============ DOM ============
+  const svg = document.getElementById('scene');
+  const world = document.getElementById('world');
+  const skyRect = document.getElementById('sky');
+  const groundRect = document.getElementById('ground');
+  const horizonGlowEl = document.getElementById('horizonGlowEl');
+  const gridG = document.getElementById('grid');
+  const propsG = document.getElementById('props');
+  const particlesG = document.getElementById('particles');
+  const depthStat = document.getElementById('depthStat');
+  const headingStat = document.getElementById('headingStat');
+  const intro = document.getElementById('intro');
+  const enterBtn = document.getElementById('enterBtn');
+  const gameEl = document.getElementById('game');
+
+  // ============ RNG ============
+  function rand(seed) {
+    const x = Math.sin(seed * 127.1 + 311.7) * 43758.5453;
+    return x - Math.floor(x);
+  }
+
+  // ============ WORLD GENERATION ============
+  function chunkKey(cx, cy) { return cx + ',' + cy; }
+
+  function generateChunk(cx, cy) {
+    const key = chunkKey(cx, cy);
+    if (chunks.has(key)) return chunks.get(key);
+    const props = [];
+    const baseSeed = ((cx + 2048) * 73856093) ^ ((cy + 2048) * 19349663);
+    const n = 3 + Math.floor(rand(baseSeed) * 4);
+    for (let i = 0; i < n; i++) {
+      const s = baseSeed + i * 17.3;
+      props.push({
+        x: cx * CHUNK + (rand(s) - 0.5) * CHUNK,
+        y: cy * CHUNK + (rand(s + 1) - 0.5) * CHUNK,
+        type: PROP_TYPES[Math.floor(rand(s + 2) * PROP_TYPES.length)],
+        size: 0.75 + rand(s + 3) * 0.7,
+        rot: rand(s + 4) * 360,
+        wobble: rand(s + 5) * Math.PI * 2,
+        wobbleSpeed: 0.8 + rand(s + 6) * 1.2
+      });
+    }
+    chunks.set(key, props);
+    return props;
+  }
+
+  function getNearbyProps() {
+    const result = [];
+    const pcx = Math.floor(player.x / CHUNK);
+    const pcy = Math.floor(player.y / CHUNK);
+    for (let dx = -VIEW_RADIUS; dx <= VIEW_RADIUS; dx++) {
+      for (let dy = -VIEW_RADIUS; dy <= VIEW_RADIUS; dy++) {
+        const props = generateChunk(pcx + dx, pcy + dy);
+        for (let i = 0; i < props.length; i++) result.push(props[i]);
+      }
+    }
+    return result;
+  }
+
+  function cleanupChunks() {
+    const pcx = Math.floor(player.x / CHUNK);
+    const pcy = Math.floor(player.y / CHUNK);
+    const limit = VIEW_RADIUS + 2;
+    chunks.forEach((_, key) => {
+      const parts = key.split(',');
+      const cx = +parts[0], cy = +parts[1];
+      if (Math.abs(cx - pcx) > limit || Math.abs(cy - pcy) > limit) {
+        chunks.delete(key);
+      }
+    });
+  }
+
+  // ============ PROJECTION ============
+  // Player angle 0 = facing +Y (north). forward = (sin a, cos a), right = (cos a, -sin a).
+  function projectProp(wx, wy) {
+    const dx = wx - player.x;
+    const dy = wy - player.y;
+    const sin = Math.sin(player.angle);
+    const cos = Math.cos(player.angle);
+    const depth = dx * sin + dy * cos;
+    const right = dx * cos - dy * sin;
+    if (depth < NEAR || depth > FAR) return null;
+    const scale = FOCAL / depth;
+    const sx = VBW / 2 + right * scale;
+    if (sx < -300 || sx > VBW + 300) return null;
+    const sy = HORIZON + EYE_H * scale + player.bob;
+    return { sx, sy, scale, depth };
+  }
+
+  function projectParticle(p) {
+    const dx = p.x - player.x;
+    const dy = p.y - player.y;
+    const sin = Math.sin(player.angle);
+    const cos = Math.cos(player.angle);
+    const depth = dx * sin + dy * cos;
+    const right = dx * cos - dy * sin;
+    if (depth < NEAR * 0.5 || depth > FAR) return null;
+    const scale = FOCAL / depth;
+    const sx = VBW / 2 + right * scale;
+    const sy = HORIZON + (EYE_H - p.z) * scale + player.bob;
+    if (sx < -50 || sx > VBW + 50 || sy < -50 || sy > VBH + 50) return null;
+    return { sx, sy, scale, depth };
+  }
+
+  function computeOpacity(depth) {
+    if (depth < 1.5) return Math.max(0, (depth - NEAR) / (1.5 - NEAR));
+    if (depth > FAR * 0.65) return Math.max(0, (FAR - depth) / (FAR * 0.35));
+    return 1;
+  }
+
+  // ============ RENDERING ============
+  function renderGrid() {
+    const parts = [];
+    // Forward (perspective) lines from vanishing point
+    const numF = 17;
+    for (let i = 0; i < numF; i++) {
+      const t = (i / (numF - 1) - 0.5) * 2;
+      const xBottom = VBW / 2 + t * VBW * 1.6;
+      parts.push('<line x1="' + (VBW/2) + '" y1="' + HORIZON +
+                 '" x2="' + xBottom.toFixed(1) + '" y2="' + (VBH + 60) +
+                 '" stroke="rgba(127,255,212,0.055)" stroke-width="1"/>');
+    }
+    // Distance lines (parallel to horizon, perspective-spaced, scrolling with player)
+    const forward = player.x * Math.sin(player.angle) + player.y * Math.cos(player.angle);
+    const scroll = forward - Math.floor(forward);
+    for (let i = 1; i < 28; i++) {
+      const d = i - scroll;
+      if (d <= 0.1) continue;
+      const yScreen = HORIZON + EYE_H * FOCAL / d + player.bob;
+      if (yScreen < HORIZON - 8 || yScreen > VBH + 80) continue;
+      const op = Math.min(0.18, 0.32 / d);
+      parts.push('<line x1="-100" y1="' + yScreen.toFixed(1) +
+                 '" x2="' + (VBW + 100) + '" y2="' + yScreen.toFixed(1) +
+                 '" stroke="rgba(127,255,212,' + op.toFixed(3) + ')" stroke-width="1"/>');
+    }
+    gridG.innerHTML = parts.join('');
+  }
+
+  function renderProps() {
+    const nearby = getNearbyProps();
+    const visible = [];
+    for (let i = 0; i < nearby.length; i++) {
+      const p = nearby[i];
+      const proj = projectProp(p.x, p.y);
+      if (proj) visible.push({ prop: p, proj: proj });
+    }
+    visible.sort((a, b) => b.proj.depth - a.proj.depth);
+
+    for (let i = 0; i < PROP_TYPES.length; i++) poolCounters[PROP_TYPES[i]] = 0;
+    for (const t in pools) {
+      const arr = pools[t];
+      for (let i = 0; i < arr.length; i++) arr[i].style.display = 'none';
+    }
+
+    const now = performance.now() / 1000;
+    for (let i = 0; i < visible.length; i++) {
+      const v = visible[i];
+      const type = v.prop.type;
+      const idx = poolCounters[type]++;
+      if (idx >= pools[type].length) continue;
+      const el = pools[type][idx];
+      const s = v.proj.scale * v.prop.size;
+      const wob = Math.sin(now * v.prop.wobbleSpeed + v.prop.wobble) * 0.04 * s;
+      const op = computeOpacity(v.proj.depth);
+      el.setAttribute('transform',
+        'translate(' + v.proj.sx.toFixed(1) + ' ' + (v.proj.sy + wob).toFixed(1) +
+        ') scale(' + s.toFixed(2) + ') rotate(' + v.prop.rot.toFixed(1) + ')');
+      el.setAttribute('opacity', op.toFixed(2));
+      el.style.display = '';
+    }
+  }
+
+  function renderParticles() {
+    for (let i = 0; i < particles.length; i++) {
+      const p = particles[i];
+      const proj = projectParticle(p);
+      const el = particleEls[i];
+      if (!proj) { el.style.display = 'none'; continue; }
+      const r = Math.max(0.5, p.size * proj.scale);
+      const op = computeOpacity(proj.depth) * 0.75 * p.alpha;
+      el.setAttribute('cx', proj.sx.toFixed(1));
+      el.setAttribute('cy', proj.sy.toFixed(1));
+      el.setAttribute('r', r.toFixed(1));
+      el.setAttribute('opacity', op.toFixed(2));
+      el.style.display = '';
+    }
+  }
+
+  function updateParticles(dt) {
+    for (let i = 0; i < particles.length; i++) {
+      const p = particles[i];
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+      p.z += p.vz * dt;
+      if (p.z < 0.2) { p.vz = Math.abs(p.vz); p.z = 0.2; }
+      if (p.z > 2.5) { p.vz = -Math.abs(p.vz); p.z = 2.5; }
+      const dx = p.x - player.x;
+      const dy = p.y - player.y;
+      if (dx * dx + dy * dy > 900) {
+        spawnParticleAt(p,
+          player.x + (Math.random() - 0.5) * 30 + Math.sin(player.angle) * 15,
+          player.y + (Math.random() - 0.5) * 30 + Math.cos(player.angle) * 15);
+      }
+    }
+  }
+
+  function spawnParticleAt(p, x, y) {
+    p.x = x; p.y = y;
+    p.z = 0.3 + Math.random() * 2.2;
+    p.vx = (Math.random() - 0.5) * 0.18;
+    p.vy = (Math.random() - 0.5) * 0.18;
+    p.vz = (Math.random() - 0.5) * 0.06;
+    p.size = 0.035 + Math.random() * 0.08;
+    p.alpha = 0.5 + Math.random() * 0.5;
+    p.hue = Math.random();
+  }
+
+  // ============ INPUT: KEYBOARD ============
+  function setupKeyboard() {
+    window.addEventListener('keydown', (e) => {
+      const k = e.key.toLowerCase();
+      keys[k] = true;
+      if (['arrowup','arrowdown','arrowleft','arrowright',' '].indexOf(k) !== -1) e.preventDefault();
+    });
+    window.addEventListener('keyup', (e) => {
+      keys[e.key.toLowerCase()] = false;
+    });
+    window.addEventListener('blur', () => {
+      for (const k in keys) keys[k] = false;
+    });
+  }
+
+  // ============ INPUT: MOUSE LOOK ============
+  function setupMouse() {
+    svg.addEventListener('mousedown', (e) => {
+      if (e.button !== 0) return;
+      mouse.down = true;
+      mouse.lastX = e.clientX;
+      mouse.lastY = e.clientY;
+      mouse.moved = false;
+      gameEl.classList.add('dragging');
+      e.preventDefault();
+    });
+    window.addEventListener('mousemove', (e) => {
+      if (!mouse.down) return;
+      const dx = e.clientX - mouse.lastX;
+      const dy = e.clientY - mouse.lastY;
+      mouse.lastX = e.clientX;
+      mouse.lastY = e.clientY;
+      if (Math.abs(dx) > 1 || Math.abs(dy) > 1) mouse.moved = true;
+      player.angle += dx * MOUSE_SENS;
+      // Subtle vertical look: shift horizon by a few units (clamped)
+      verticalLook -= dy * 0.15;
+      verticalLook = Math.max(-30, Math.min(30, verticalLook));
+    });
+    window.addEventListener('mouseup', () => {
+      mouse.down = false;
+      gameEl.classList.remove('dragging');
+    });
+  }
+  let verticalLook = 0;
+
+  // ============ INPUT: JOYSTICKS (multitouch) ============
+  function setupJoystick(elem, state) {
+    const knob = elem.querySelector('.knob');
+    const maxR = 48;
+
+    elem.addEventListener('pointerdown', (e) => {
+      if (state.active) return;
+      state.active = true;
+      state.id = e.pointerId;
+      state.baseX = e.clientX;
+      state.baseY = e.clientY;
+      try { elem.setPointerCapture(e.pointerId); } catch (_) {}
+      e.preventDefault();
+    });
+
+    elem.addEventListener('pointermove', (e) => {
+      if (!state.active || e.pointerId !== state.id) return;
+      const dx = e.clientX - state.baseX;
+      const dy = e.clientY - state.baseY;
+      const len = Math.sqrt(dx * dx + dy * dy);
+      const clamped = Math.min(len, maxR);
+      const ang = Math.atan2(dy, dx);
+      const nx = Math.cos(ang) * clamped / maxR;
+      const ny = Math.sin(ang) * clamped / maxR;
+      state.dx = nx;
+      state.dy = ny;
+      knob.style.transform = 'translate(calc(-50% + ' + (nx * maxR) + 'px), calc(-50% + ' + (ny * maxR) + 'px))';
+      e.preventDefault();
+    });
+
+    const end = (e) => {
+      if (!state.active || e.pointerId !== state.id) return;
+      state.active = false;
+      state.id = null;
+      state.dx = 0; state.dy = 0;
+      knob.style.transform = 'translate(-50%, -50%)';
+      try { elem.releasePointerCapture(e.pointerId); } catch (_) {}
+      e.preventDefault();
+    };
+    elem.addEventListener('pointerup', end);
+    elem.addEventListener('pointercancel', end);
+    elem.addEventListener('pointerleave', (e) => {
+      // Only end if not captured (capture keeps events flowing)
+      if (state.active && e.pointerId === state.id && !elem.hasPointerCapture(e.pointerId)) {
+        end(e);
+      }
+    });
+    // Prevent context menu / default touch
+    elem.addEventListener('contextmenu', (e) => e.preventDefault());
+    elem.addEventListener('touchstart', (e) => e.preventDefault(), { passive: false });
+    elem.addEventListener('touchmove', (e) => e.preventDefault(), { passive: false });
+  }
+
+  // ============ POOL SETUP ============
+  function setupPools() {
+    for (let i = 0; i < PROP_TYPES.length; i++) {
+      const type = PROP_TYPES[i];
+      pools[type] = [];
+      poolCounters[type] = 0;
+      for (let j = 0; j < POOL_SIZE; j++) {
+        const use = document.createElementNS(SVG_NS, 'use');
+        use.setAttributeNS(null, 'href', '#prop-' + type);
+        use.setAttributeNS(XLINK_NS, 'xlink:href', '#prop-' + type);
+        use.style.display = 'none';
+        propsG.appendChild(use);
+        pools[type].push(use);
+      }
+    }
+  }
+
+  function setupParticles() {
+    for (let i = 0; i < PARTICLE_COUNT; i++) {
+      const p = {};
+      spawnParticleAt(p, (Math.random() - 0.5) * 30, (Math.random() - 0.5) * 30);
+      particles.push(p);
+
+      const c = document.createElementNS(SVG_NS, 'circle');
+      const color = p.hue < 0.33 ? '#7fffd4' : (p.hue < 0.66 ? '#c8a8ff' : '#ffb4c8');
+      c.setAttribute('fill', color);
+      c.style.display = 'none';
+      particlesG.appendChild(c);
+      particleEls.push(c);
+    }
+  }
+
+  // ============ RESIZE ============
+  function resize() {
+    const w = window.innerWidth;
+    const h = window.innerHeight;
+    const ar = w / h;
+    VBW = 1000;
+    VBH = VBW / ar;
+    HORIZON = VBH / 2;
+    svg.setAttribute('viewBox', '0 0 ' + VBW + ' ' + VBH);
+
+    // Update sky/ground rect heights (they have extra padding for head-bob)
+    skyRect.setAttribute('y', -200);
+    skyRect.setAttribute('height', HORIZON + 200);
+    skyRect.setAttribute('width', VBW + 400);
+    skyRect.setAttribute('x', -200);
+
+    groundRect.setAttribute('y', HORIZON);
+    groundRect.setAttribute('height', VBH - HORIZON + 200);
+    groundRect.setAttribute('width', VBW + 400);
+    groundRect.setAttribute('x', -200);
+
+    horizonGlowEl.setAttribute('cy', HORIZON);
+    horizonGlowEl.setAttribute('rx', VBW * 0.7);
+  }
+
+  // ============ MAIN LOOP ============
+  function loop(time) {
+    const dt = Math.min(0.05, (time - lastTime) / 1000);
+    lastTime = time;
+
+    // --- Input → motion ---
+    let forward = 0, turn = 0;
+    if (keys['w'] || keys['arrowup']) forward += 1;
+    if (keys['s'] || keys['arrowdown']) forward -= 1;
+    if (keys['a'] || keys['arrowleft']) turn -= 1;
+    if (keys['d'] || keys['arrowright']) turn += 1;
+
+    // Joysticks: left dy (negative=up=forward), right dx (positive=right=turn right)
+    forward += -joyL.dy;
+    turn += joyR.dx;
+
+    forward = Math.max(-1, Math.min(1, forward));
+    turn = Math.max(-1, Math.min(1, turn));
+
+    player.x += Math.sin(player.angle) * forward * MOVE_SPEED * dt;
+    player.y += Math.cos(player.angle) * forward * MOVE_SPEED * dt;
+    player.angle += turn * TURN_SPEED * dt;
+
+    // --- Head bob ---
+    const moving = Math.abs(forward) > 0.1 || Math.abs(turn) > 0.1;
+    player.bobPhase += dt * (moving ? 9.5 : 1.6);
+    const target = moving
+      ? Math.sin(player.bobPhase) * 4
+      : Math.sin(player.bobPhase) * 0.7;
+    player.bob += (target - player.bob) * 0.22;
+
+    // Decay verticalLook toward 0 (mouse-look tilt returns to neutral)
+    verticalLook *= 0.92;
+
+    // Apply world transform (head-bob + vertical look)
+    world.setAttribute('transform', 'translate(0 ' + (player.bob + verticalLook).toFixed(2) + ')');
+
+    // --- Update world ---
+    updateParticles(dt);
+    cleanupTimer += dt;
+    if (cleanupTimer > 1.5) { cleanupChunks(); cleanupTimer = 0; }
+
+    // --- Render ---
+    renderGrid();
+    renderProps();
+    renderParticles();
+
+    // --- HUD ---
+    const dist = Math.sqrt(player.x * player.x + player.y * player.y);
+    depthStat.textContent = dist.toFixed(1);
+    const heading = ((player.angle * 180 / Math.PI) % 360 + 360) % 360;
+    headingStat.textContent = heading.toFixed(0) + '°';
+
+    requestAnimationFrame(loop);
+  }
+
+  // ============ INIT ============
+  function init() {
+    setupPools();
+    setupParticles();
+    setupKeyboard();
+    setupMouse();
+    setupJoystick(document.getElementById('joy-left'), joyL);
+    setupJoystick(document.getElementById('joy-right'), joyR);
+
+    resize();
+    window.addEventListener('resize', resize);
+    window.addEventListener('orientationchange', () => setTimeout(resize, 100));
+
+    // Prevent default touch behaviors globally
+    document.addEventListener('touchstart', (e) => {
+      if (e.target.closest('.joystick')) return;
+      e.preventDefault();
+    }, { passive: false });
+    document.addEventListener('touchmove', (e) => {
+      e.preventDefault();
+    }, { passive: false });
+    document.addEventListener('gesturestart', (e) => e.preventDefault());
+    document.addEventListener('gesturechange', (e) => e.preventDefault());
+    document.addEventListener('dblclick', (e) => e.preventDefault());
+
+    // Enter button → start
+    enterBtn.addEventListener('click', () => {
+      intro.classList.add('hidden');
+      setTimeout(() => { intro.style.display = 'none'; }, 800);
+      started = true;
+    });
+    // Also allow Enter key to start
+    window.addEventListener('keydown', (e) => {
+      if (!started && (e.key === 'Enter' || e.key === ' ')) {
+        enterBtn.click();
+      }
+    });
+
+    // Kick off loop
+    requestAnimationFrame((t) => { lastTime = t; loop(t); });
+  }
+
+  init();
+})();
+</script>
+</body>
+</html>
