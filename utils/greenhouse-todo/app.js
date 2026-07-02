@@ -4016,29 +4016,36 @@ function createEmptyPotsInstanced() {
     emptyPotInstances = { bodies, rims, soils };
 }
 
+const _potTmpMatrix = new THREE.Matrix4();
+const _potNoRot = new THREE.Quaternion();
+const _potRimRot = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), Math.PI / 2);
+const _potZeroScale = new THREE.Matrix4().makeScale(0, 0, 0);
+const _potBaseScale = new THREE.Vector3(1, 1, 1);
+const _potSoilScale = new THREE.Vector3(1, 0.45, 1);
+const _potTmpVec1 = new THREE.Vector3();
+const _potTmpVec2 = new THREE.Vector3();
+const _potTmpVec3 = new THREE.Vector3();
+
 function setEmptyPotOccupied(index, occupied) {
     if (!emptyPotInstances) return;
     emptyPotOccupied[index] = occupied;
-    const tmp = new THREE.Matrix4();
-    const noRot = new THREE.Quaternion();
-    const rimRot = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), Math.PI / 2);
 
     if (occupied) {
         // Hide via zero-scale matrix
-        const zero = new THREE.Matrix4().makeScale(0, 0, 0);
-        emptyPotInstances.bodies.setMatrixAt(index, zero);
-        emptyPotInstances.rims.setMatrixAt(index, zero);
-        emptyPotInstances.soils.setMatrixAt(index, zero);
+        emptyPotInstances.bodies.setMatrixAt(index, _potZeroScale);
+        emptyPotInstances.rims.setMatrixAt(index, _potZeroScale);
+        emptyPotInstances.soils.setMatrixAt(index, _potZeroScale);
     } else {
         const p = tablePositions[index];
-        const s = new THREE.Vector3(1, 1, 1);
-        const soilS = new THREE.Vector3(1, 0.45, 1);
-        tmp.compose(new THREE.Vector3(p.x, p.y + 0.1, p.z), noRot, s);
-        emptyPotInstances.bodies.setMatrixAt(index, tmp);
-        tmp.compose(new THREE.Vector3(p.x, p.y + 0.205, p.z), rimRot, s);
-        emptyPotInstances.rims.setMatrixAt(index, tmp);
-        tmp.compose(new THREE.Vector3(p.x, p.y + 0.18, p.z), noRot, soilS);
-        emptyPotInstances.soils.setMatrixAt(index, tmp);
+        _potTmpVec1.set(p.x, p.y + 0.1, p.z);
+        _potTmpMatrix.compose(_potTmpVec1, _potNoRot, _potBaseScale);
+        emptyPotInstances.bodies.setMatrixAt(index, _potTmpMatrix);
+        _potTmpVec2.set(p.x, p.y + 0.205, p.z);
+        _potTmpMatrix.compose(_potTmpVec2, _potRimRot, _potBaseScale);
+        emptyPotInstances.rims.setMatrixAt(index, _potTmpMatrix);
+        _potTmpVec3.set(p.x, p.y + 0.18, p.z);
+        _potTmpMatrix.compose(_potTmpVec3, _potNoRot, _potSoilScale);
+        emptyPotInstances.soils.setMatrixAt(index, _potTmpMatrix);
     }
     emptyPotInstances.bodies.instanceMatrix.needsUpdate = true;
     emptyPotInstances.rims.instanceMatrix.needsUpdate = true;
