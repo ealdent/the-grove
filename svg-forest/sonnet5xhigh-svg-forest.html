@@ -1,0 +1,618 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#3a1440">
+<title>CANDYFALL — SVG Forest</title>
+<style>
+  :root{ color-scheme: dark; }
+  *{ box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html,body{
+    margin:0; padding:0; width:100%; height:100vh; height:100dvh;
+    overflow:hidden; position:fixed; inset:0;
+    background:#3a1440;
+    touch-action:none; overscroll-behavior:none;
+    -webkit-user-select:none; user-select:none;
+    -webkit-touch-callout:none;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+  }
+  #game{ position:fixed; inset:0; width:100%; height:100%; touch-action:none; }
+  #scene{ display:block; width:100%; height:100%; touch-action:none; cursor:grab; }
+  #scene:active{ cursor:grabbing; }
+  .prop{ will-change:transform; }
+
+  #hud{
+    position:fixed; top:0; left:0; right:0; z-index:5;
+    display:flex; flex-direction:column; align-items:center; gap:8px;
+    padding-top:max(18px, env(safe-area-inset-top));
+    pointer-events:none;
+    transition:opacity .8s ease;
+  }
+  #hud.hidden{ opacity:0; }
+  #title{
+    font-weight:800; font-size:clamp(1.15rem,3.4vw,1.7rem);
+    color:#fff2fa; letter-spacing:.06em;
+    text-shadow:0 2px 12px rgba(120,20,90,.65), 0 0 24px rgba(255,180,220,.4);
+  }
+  #hint{
+    font-size:clamp(.72rem,2vw,.92rem); color:#ffe3f3;
+    background:rgba(58,20,60,.55); padding:7px 16px; border-radius:999px;
+    backdrop-filter:blur(3px); border:1px solid rgba(255,255,255,.18);
+    white-space:nowrap;
+  }
+  .hint-touch{ display:none; }
+  body.touch-mode .hint-touch{ display:inline; }
+  body.touch-mode .hint-desktop{ display:none; }
+
+  .stick{
+    position:fixed; bottom:max(22px, env(safe-area-inset-bottom));
+    width:clamp(92px,24vw,132px); height:clamp(92px,24vw,132px);
+    border-radius:50%; z-index:10; display:none;
+    background:radial-gradient(circle at 35% 30%, rgba(255,255,255,.28), rgba(58,20,60,.4) 72%);
+    border:2px solid rgba(255,255,255,.4);
+    box-shadow:0 8px 20px rgba(0,0,0,.3), inset 0 0 18px rgba(255,255,255,.08);
+    touch-action:none;
+  }
+  body.touch-mode .stick{ display:block; }
+  #stickL{ left:max(22px, env(safe-area-inset-left)); }
+  #stickR{ right:max(22px, env(safe-area-inset-right)); }
+  .knob{
+    position:absolute; width:42%; height:42%; left:50%; top:50%;
+    margin-left:-21%; margin-top:-21%; border-radius:50%;
+    background:radial-gradient(circle at 35% 30%, #fff, #ff8fc2 55%, #d94f88);
+    box-shadow:0 4px 10px rgba(0,0,0,.4);
+    pointer-events:none;
+  }
+
+  #backlink{
+    position:fixed; z-index:6; top:max(14px, env(safe-area-inset-top)); left:max(14px, env(safe-area-inset-left));
+    color:#ffe3f3; text-decoration:none; font-size:.78rem; opacity:.6;
+    background:rgba(58,20,60,.45); padding:5px 10px; border-radius:999px;
+    transition:opacity .2s;
+  }
+  #backlink:hover{ opacity:1; }
+</style>
+</head>
+<body>
+<div id="game">
+  <svg id="scene" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <linearGradient id="skyGrad" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#6f55c9"/>
+        <stop offset="0.42" stop-color="#b98cf0"/>
+        <stop offset="0.78" stop-color="#ffb3d9"/>
+        <stop offset="1" stop-color="#ffdcee"/>
+      </linearGradient>
+      <linearGradient id="groundGrad" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#ffe3f1"/>
+        <stop offset="0.5" stop-color="#f6a9cf"/>
+        <stop offset="1" stop-color="#c85d93"/>
+      </linearGradient>
+      <linearGradient id="horizonGlowGrad" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#fff6fb" stop-opacity="0"/>
+        <stop offset="0.5" stop-color="#fff6fb" stop-opacity="0.6"/>
+        <stop offset="1" stop-color="#fff6fb" stop-opacity="0"/>
+      </linearGradient>
+      <radialGradient id="sunGlow" cx="0.5" cy="0.5" r="0.5">
+        <stop offset="0" stop-color="#fffef7"/>
+        <stop offset="0.42" stop-color="#fff1b8"/>
+        <stop offset="1" stop-color="#fff1b8" stop-opacity="0"/>
+      </radialGradient>
+      <radialGradient id="vignetteGrad" cx="0.5" cy="0.53" r="0.75">
+        <stop offset="0.55" stop-color="#1a0620" stop-opacity="0"/>
+        <stop offset="1" stop-color="#1a0620" stop-opacity="0.6"/>
+      </radialGradient>
+      <pattern id="caneStripe" width="28" height="28" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+        <rect width="28" height="28" fill="#fff8fb"/>
+        <rect width="14" height="28" fill="#e8384f"/>
+      </pattern>
+      <pattern id="sprinklePattern" width="170" height="170" patternUnits="userSpaceOnUse">
+        <rect x="14" y="24" width="12" height="4.5" rx="2.2" fill="#ff6fa5" transform="rotate(18 20 26)"/>
+        <rect x="64" y="12" width="12" height="4.5" rx="2.2" fill="#7ea8ff" transform="rotate(-35 70 14)"/>
+        <rect x="118" y="30" width="12" height="4.5" rx="2.2" fill="#ffd93d" transform="rotate(55 124 32)"/>
+        <rect x="150" y="70" width="12" height="4.5" rx="2.2" fill="#6ee7c8" transform="rotate(-12 156 72)"/>
+        <rect x="30" y="80" width="12" height="4.5" rx="2.2" fill="#c084fc" transform="rotate(70 36 82)"/>
+        <rect x="90" y="66" width="12" height="4.5" rx="2.2" fill="#ff9ecf" transform="rotate(-50 96 68)"/>
+        <rect x="6" y="120" width="12" height="4.5" rx="2.2" fill="#ffd93d" transform="rotate(24 12 122)"/>
+        <rect x="60" y="128" width="12" height="4.5" rx="2.2" fill="#7ea8ff" transform="rotate(-8 66 130)"/>
+        <rect x="112" y="118" width="12" height="4.5" rx="2.2" fill="#ff6fa5" transform="rotate(40 118 120)"/>
+        <rect x="140" y="146" width="12" height="4.5" rx="2.2" fill="#6ee7c8" transform="rotate(-60 146 148)"/>
+        <rect x="40" y="150" width="12" height="4.5" rx="2.2" fill="#c084fc" transform="rotate(10 46 152)"/>
+        <rect x="150" y="10" width="12" height="4.5" rx="2.2" fill="#ff9ecf" transform="rotate(-25 156 12)"/>
+      </pattern>
+      <filter id="fluffBlur" x="-60%" y="-60%" width="220%" height="220%">
+        <feGaussianBlur stdDeviation="9"/>
+      </filter>
+    </defs>
+
+    <!-- Sky (infinitely far, minimal parallax) -->
+    <g id="sky">
+      <rect x="0" y="0" width="1600" height="900" fill="url(#skyGrad)"/>
+      <circle cx="1170" cy="150" r="150" fill="url(#sunGlow)"/>
+      <circle cx="1170" cy="150" r="72" fill="#fffdf6" opacity="0.9">
+        <animate attributeName="opacity" values="0.82;1;0.82" dur="5s" repeatCount="indefinite"/>
+      </circle>
+      <g id="skyDrift"></g>
+      <path d="M0,478 Q260,432 560,458 T1120,452 T1600,470 L1600,500 L0,500 Z" fill="#f4bede" opacity="0.55"/>
+      <path d="M0,486 Q320,458 700,478 T1600,486 L1600,500 L0,500 Z" fill="#e984b8" opacity="0.5"/>
+    </g>
+    <rect x="0" y="435" width="1600" height="90" fill="url(#horizonGlowGrad)"/>
+
+    <!-- Rig: everything that bobs with the player's steps -->
+    <g id="rig">
+      <rect id="groundBase" x="0" y="470" width="1600" height="430" fill="url(#groundGrad)"/>
+      <rect id="groundSprinkles" x="0" y="470" width="1600" height="430" fill="url(#sprinklePattern)" opacity="0.5"/>
+      <g id="contourLines" stroke="#ffe8f4" stroke-width="2"></g>
+      <g id="world"></g>
+    </g>
+
+    <rect x="0" y="0" width="1600" height="900" fill="url(#vignetteGrad)" style="pointer-events:none"/>
+  </svg>
+
+  <a id="backlink" href="index.html">&larr; back to quests</a>
+
+  <div id="hud">
+    <div id="title">🍭 CANDYFALL</div>
+    <div id="hint">
+      <span class="hint-desktop">WASD / Arrows — walk &amp; turn &nbsp;·&nbsp; Click + drag — look around</span>
+      <span class="hint-touch">Left stick — walk &nbsp;·&nbsp; Right stick — turn</span>
+    </div>
+  </div>
+
+  <div id="stickL" class="stick"><div id="knobL" class="knob"></div></div>
+  <div id="stickR" class="stick"><div id="knobR" class="knob"></div></div>
+</div>
+
+<script>
+(function(){
+  'use strict';
+
+  const svgNS = 'http://www.w3.org/2000/svg';
+  const scene = document.getElementById('scene');
+  const worldG = document.getElementById('world');
+  const rig = document.getElementById('rig');
+  const skyDrift = document.getElementById('skyDrift');
+  const contourLinesG = document.getElementById('contourLines');
+  const hud = document.getElementById('hud');
+  const sprinkleRect = document.getElementById('groundSprinkles');
+  const sprinklePattern = document.getElementById('sprinklePattern');
+
+  const VB_W = 1600, VB_H = 900;
+  const CENTER_X = VB_W / 2;
+  const HORIZON_Y = 470;
+  const EYE_H = 190;
+  const FOCAL = 760;
+  const NEAR = 20;
+  const MIN_PROJECT_DEPTH = 260;
+  const FAR = 3000;
+  const CHUNK = 520;
+  const CHUNK_RADIUS = 8;
+  const TAU = Math.PI * 2;
+
+  function clamp(v, lo, hi){ return v < lo ? lo : (v > hi ? hi : v); }
+  function wrapAngle(a){
+    a = a % TAU;
+    if (a > Math.PI) a -= TAU;
+    if (a < -Math.PI) a += TAU;
+    return a;
+  }
+  function shade(hex, amt){
+    const n = parseInt(hex.slice(1), 16);
+    let r = (n >> 16) + amt, g = ((n >> 8) & 0xff) + amt, b = (n & 0xff) + amt;
+    r = clamp(r, 0, 255); g = clamp(g, 0, 255); b = clamp(b, 0, 255);
+    return '#' + (0x1000000 + (r << 16) + (g << 8) + b).toString(16).slice(1);
+  }
+
+  // ---------- deterministic world generation ----------
+  function hashSeed(cx, cz){
+    let h = (cx * 374761393 + cz * 668265263) ^ 0x9E3779B9;
+    h = (h ^ (h >>> 13)) >>> 0;
+    h = Math.imul(h, 1274126177) >>> 0;
+    return (h ^ (h >>> 16)) >>> 0;
+  }
+  function mulberry32(seed){
+    let a = seed >>> 0;
+    return function(){
+      a |= 0; a = (a + 0x6D2B79F5) | 0;
+      let t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  const PALETTE = ['#ff5c8a', '#ffd93d', '#6ee7c8', '#7ea8ff', '#ff9ecf', '#c084fc', '#ffb54c'];
+  const PROP_TYPES = ['lolli', 'gum', 'cane', 'jaw'];
+  const PROP_WEIGHTS = [0.34, 0.30, 0.22, 0.14];
+
+  function pickType(rand){
+    let r = rand(), acc = 0;
+    for (let i = 0; i < PROP_TYPES.length; i++){
+      acc += PROP_WEIGHTS[i];
+      if (r <= acc) return PROP_TYPES[i];
+    }
+    return PROP_TYPES[PROP_TYPES.length - 1];
+  }
+
+  const chunkCache = new Map();
+  function chunkKey(cx, cz){ return cx + ',' + cz; }
+
+  function getChunkProps(cx, cz){
+    const key = chunkKey(cx, cz);
+    let props = chunkCache.get(key);
+    if (props) return props;
+    const rand = mulberry32(hashSeed(cx, cz));
+    props = [];
+    const count = Math.floor(rand() * 4); // 0-3
+    for (let i = 0; i < count; i++){
+      const lx = (rand() * 0.72 + 0.14) * CHUNK;
+      const lz = (rand() * 0.72 + 0.14) * CHUNK;
+      props.push({
+        id: key + ':' + i,
+        x: cx * CHUNK + lx,
+        z: cz * CHUNK + lz,
+        type: pickType(rand),
+        color: PALETTE[Math.floor(rand() * PALETTE.length)],
+        scale: 0.78 + rand() * 0.55,
+        phase: rand() * 8
+      });
+    }
+    chunkCache.set(key, props);
+    return props;
+  }
+
+  let candidateProps = [];
+  let lastChunkCombo = '';
+
+  function refreshCandidates(px, pz){
+    const pcx = Math.floor(px / CHUNK), pcz = Math.floor(pz / CHUNK);
+    const combo = pcx + ',' + pcz;
+    if (combo === lastChunkCombo) return;
+    lastChunkCombo = combo;
+
+    const list = [];
+    const threshold = (FAR + CHUNK) * (FAR + CHUNK);
+    for (let dz = -CHUNK_RADIUS; dz <= CHUNK_RADIUS; dz++){
+      for (let dx = -CHUNK_RADIUS; dx <= CHUNK_RADIUS; dx++){
+        const cx = pcx + dx, cz = pcz + dz;
+        const ccx = cx * CHUNK + CHUNK / 2, ccz = cz * CHUNK + CHUNK / 2;
+        const ddx = ccx - px, ddz = ccz - pz;
+        if (ddx * ddx + ddz * ddz > threshold) continue;
+        const arr = getChunkProps(cx, cz);
+        for (let i = 0; i < arr.length; i++) list.push(arr[i]);
+      }
+    }
+    candidateProps = list;
+
+    const evictR = CHUNK_RADIUS + 4;
+    for (const k of chunkCache.keys()){
+      const parts = k.split(',');
+      const kx = +parts[0], kz = +parts[1];
+      if (Math.abs(kx - pcx) > evictR || Math.abs(kz - pcz) > evictR) chunkCache.delete(k);
+    }
+  }
+
+  // ---------- prop visuals ----------
+  function spiralPath(turns, maxR){
+    let d = '';
+    const steps = 90;
+    for (let i = 0; i <= steps; i++){
+      const t = i / steps;
+      const ang = t * turns * TAU;
+      const r = t * maxR;
+      const x = Math.cos(ang) * r, y = Math.sin(ang) * r;
+      d += (i === 0 ? 'M' : 'L') + x.toFixed(1) + ',' + y.toFixed(1) + ' ';
+    }
+    return d;
+  }
+  const LOLLI_SPIRAL = spiralPath(2.6, 118);
+
+  function lolliMarkup(color, phase){
+    return '<g>' +
+      '<ellipse cx="0" cy="0" rx="30" ry="11" fill="#00000022"/>' +
+      '<rect x="-13" y="-244" width="26" height="244" rx="12" fill="#fff8fb" stroke="#e8b8cf" stroke-width="2"/>' +
+      '<rect x="-13" y="-244" width="26" height="244" rx="12" fill="url(#caneStripe)" opacity="0.32"/>' +
+      '<g transform="translate(0,-316)">' +
+        '<circle r="126" fill="' + color + '" stroke="#fff" stroke-width="6"/>' +
+        '<path d="' + LOLLI_SPIRAL + '" fill="none" stroke="#fff8fb" stroke-width="12" stroke-linecap="round" opacity="0.92"/>' +
+        '<circle r="126" fill="none" stroke="#ffffff" stroke-width="4" opacity="0.4"/>' +
+      '</g>' +
+      '<animateTransform attributeName="transform" type="rotate" values="-2.5 0 0;2.5 0 0;-2.5 0 0" dur="5.2s" begin="-' + phase + 's" repeatCount="indefinite"/>' +
+    '</g>';
+  }
+
+  function gumMarkup(color, phase){
+    const c2 = shade(color, -18), c3 = shade(color, 16);
+    return '<g>' +
+      '<ellipse cx="-6" cy="4" rx="86" ry="24" fill="#00000022"/>' +
+      '<ellipse cx="-52" cy="-8" rx="58" ry="66" fill="' + c2 + '"/>' +
+      '<ellipse cx="38" cy="-4" rx="66" ry="78" fill="' + color + '"/>' +
+      '<ellipse cx="-6" cy="-32" rx="54" ry="60" fill="' + c3 + '"/>' +
+      '<ellipse cx="-24" cy="-56" rx="16" ry="9" fill="#fff" opacity="0.55"/>' +
+      '<ellipse cx="50" cy="-40" rx="13" ry="7" fill="#fff" opacity="0.5"/>' +
+      '<animateTransform attributeName="transform" type="scale" values="1 1;1 1.045;1 1" dur="3.4s" begin="-' + phase + 's" repeatCount="indefinite"/>' +
+    '</g>';
+  }
+
+  function caneMarkup(color, phase){
+    return '<g>' +
+      '<ellipse cx="-18" cy="0" rx="26" ry="9" fill="#00000022"/>' +
+      '<path d="M -18,0 L -18,-230 Q -18,-296 48,-296 Q 108,-296 108,-250" fill="none" stroke="url(#caneStripe)" stroke-width="36" stroke-linecap="round"/>' +
+      '<path d="M -18,0 L -18,-230 Q -18,-296 48,-296 Q 108,-296 108,-250" fill="none" stroke="#fff" stroke-width="36" stroke-linecap="round" opacity="0.1"/>' +
+      '<circle cx="-18" cy="-52" r="15" fill="' + color + '" stroke="#fff" stroke-width="3"/>' +
+      '<animateTransform attributeName="transform" type="rotate" values="-1.4 -18 0;1.4 -18 0;-1.4 -18 0" dur="6s" begin="-' + phase + 's" repeatCount="indefinite"/>' +
+    '</g>';
+  }
+
+  function jawMarkup(color, phase){
+    const rings = [[92, color], [70, shade(color, 22)], [48, shade(color, -16)], [24, '#fff8fb']];
+    let circles = '';
+    for (let i = 0; i < rings.length; i++) circles += '<circle cx="0" cy="-92" r="' + rings[i][0] + '" fill="' + rings[i][1] + '"/>';
+    return '<g>' +
+      '<ellipse cx="0" cy="0" rx="88" ry="20" fill="#00000022"/>' +
+      circles +
+      '<ellipse cx="-30" cy="-126" rx="20" ry="10" fill="#fff" opacity="0.55"/>' +
+      '<animateTransform attributeName="transform" type="rotate" values="0;6;0;-6;0" dur="9s" begin="-' + phase + 's" repeatCount="indefinite"/>' +
+    '</g>';
+  }
+
+  function buildProp(p){
+    const g = document.createElementNS(svgNS, 'g');
+    g.setAttribute('class', 'prop');
+    if (p.type === 'lolli') g.innerHTML = lolliMarkup(p.color, p.phase);
+    else if (p.type === 'gum') g.innerHTML = gumMarkup(p.color, p.phase);
+    else if (p.type === 'cane') g.innerHTML = caneMarkup(p.color, p.phase);
+    else g.innerHTML = jawMarkup(p.color, p.phase);
+    return g;
+  }
+
+  // ---------- clouds (screen-space, gentle parallax + drift) ----------
+  const CLOUDS = [
+    {x: -100, y: 90, s: 1.1, dur: 130}, {x: 260, y: 210, s: 0.85, dur: 100},
+    {x: 620, y: 70, s: 1.3, dur: 150}, {x: 950, y: 240, s: 0.9, dur: 110},
+    {x: 1300, y: 120, s: 1.0, dur: 140}, {x: 1750, y: 200, s: 1.2, dur: 120}
+  ];
+  CLOUDS.forEach(function(c, i){
+    const g = document.createElementNS(svgNS, 'g');
+    g.setAttribute('transform', 'translate(' + c.x + ',' + c.y + ') scale(' + c.s + ')');
+    g.setAttribute('filter', 'url(#fluffBlur)');
+    g.innerHTML =
+      '<ellipse cx="0" cy="0" rx="70" ry="34" fill="#fff" opacity="0.85"/>' +
+      '<ellipse cx="-55" cy="12" rx="46" ry="26" fill="#fff" opacity="0.75"/>' +
+      '<ellipse cx="58" cy="10" rx="52" ry="28" fill="#fff" opacity="0.8"/>' +
+      '<ellipse cx="10" cy="-20" rx="40" ry="24" fill="#ffeef8" opacity="0.7"/>';
+    const anim = document.createElementNS(svgNS, 'animateTransform');
+    anim.setAttribute('attributeName', 'transform');
+    anim.setAttribute('type', 'translate');
+    anim.setAttribute('additive', 'sum');
+    anim.setAttribute('values', '0,0;' + (-2400) + ',0');
+    anim.setAttribute('dur', c.dur + 's');
+    anim.setAttribute('begin', (-i * c.dur / CLOUDS.length) + 's');
+    anim.setAttribute('repeatCount', 'indefinite');
+    g.appendChild(anim);
+    skyDrift.appendChild(g);
+  });
+
+  // ---------- ground contour lines (treadmill feedback) ----------
+  const LINE_SPACING = 220, LINE_COUNT = 12;
+  const lineEls = [];
+  for (let i = 0; i < LINE_COUNT; i++){
+    const l = document.createElementNS(svgNS, 'line');
+    l.setAttribute('x1', '0'); l.setAttribute('x2', String(VB_W));
+    contourLinesG.appendChild(l);
+    lineEls.push(l);
+  }
+  let groundScroll = 0;
+
+  function updateContourLines(){
+    const cycle = LINE_SPACING * LINE_COUNT;
+    for (let i = 0; i < LINE_COUNT; i++){
+      let depth = ((i * LINE_SPACING - groundScroll) % cycle + cycle) % cycle;
+      depth += MIN_PROJECT_DEPTH * 0.6;
+      const el = lineEls[i];
+      if (depth < NEAR || depth > FAR * 0.8){ el.style.opacity = 0; continue; }
+      const scale = FOCAL / Math.max(depth, MIN_PROJECT_DEPTH);
+      const y = HORIZON_Y + EYE_H * scale;
+      if (y > VB_H + 10){ el.style.opacity = 0; continue; }
+      el.setAttribute('y1', y.toFixed(1));
+      el.setAttribute('y2', y.toFixed(1));
+      el.style.opacity = clamp(1 - depth / (FAR * 0.8), 0, 0.4).toFixed(2);
+    }
+  }
+
+  // ---------- player + input ----------
+  const player = { x: 0, z: 0, angle: 0 };
+  let bobAmp = 0, bobPhase = 0;
+
+  const keys = new Set();
+  const NAV_KEYS = ['arrowup','arrowdown','arrowleft','arrowright',' '];
+  window.addEventListener('keydown', function(e){
+    const k = e.key.toLowerCase();
+    keys.add(k);
+    if (NAV_KEYS.indexOf(k) !== -1) e.preventDefault();
+    dismissHud();
+  }, { passive:false });
+  window.addEventListener('keyup', function(e){ keys.delete(e.key.toLowerCase()); });
+
+  function keyboardInput(){
+    let m = 0, t = 0;
+    if (keys.has('w') || keys.has('arrowup')) m += 1;
+    if (keys.has('s') || keys.has('arrowdown')) m -= 1;
+    if (keys.has('d') || keys.has('arrowright')) t += 1;
+    if (keys.has('a') || keys.has('arrowleft')) t -= 1;
+    return { m: m, t: t };
+  }
+
+  let dragging = false, dragStartX = 0, dragStartAngle = 0;
+  scene.addEventListener('pointerdown', function(e){
+    if (e.pointerType !== 'mouse') return;
+    dragging = true; dragStartX = e.clientX; dragStartAngle = player.angle;
+    scene.setPointerCapture(e.pointerId);
+    dismissHud();
+  });
+  scene.addEventListener('pointermove', function(e){
+    if (!dragging || e.pointerType !== 'mouse') return;
+    const dx = e.clientX - dragStartX;
+    player.angle = wrapAngle(dragStartAngle + dx * 0.0032);
+  });
+  function endDrag(e){ if (e.pointerType === 'mouse') dragging = false; }
+  scene.addEventListener('pointerup', endDrag);
+  scene.addEventListener('pointercancel', endDrag);
+
+  let stickMove = 0, stickTurn = 0;
+  function setupStick(baseId, knobId, onChange){
+    const base = document.getElementById(baseId);
+    const knob = document.getElementById(knobId);
+    let activeId = null;
+
+    function update(e){
+      const r = base.getBoundingClientRect();
+      const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+      const maxR = r.width / 2 - knob.offsetWidth / 2;
+      let dx = e.clientX - cx, dy = e.clientY - cy;
+      const d = Math.hypot(dx, dy);
+      if (d > maxR && d > 0){ dx = dx / d * maxR; dy = dy / d * maxR; }
+      knob.style.transform = 'translate(' + dx.toFixed(1) + 'px,' + dy.toFixed(1) + 'px)';
+      onChange(dx / maxR, dy / maxR);
+    }
+
+    base.addEventListener('pointerdown', function(e){
+      if (activeId !== null) return;
+      activeId = e.pointerId;
+      base.setPointerCapture(e.pointerId);
+      update(e);
+      dismissHud();
+      e.preventDefault();
+    });
+    base.addEventListener('pointermove', function(e){
+      if (e.pointerId !== activeId) return;
+      update(e);
+      e.preventDefault();
+    });
+    function release(e){
+      if (e.pointerId !== activeId) return;
+      activeId = null;
+      knob.style.transform = 'translate(0,0)';
+      onChange(0, 0);
+    }
+    base.addEventListener('pointerup', release);
+    base.addEventListener('pointercancel', release);
+  }
+  setupStick('stickL', 'knobL', function(nx, ny){ stickMove = -ny; });
+  setupStick('stickR', 'knobR', function(nx, ny){ stickTurn = nx; });
+
+  function dismissHud(){ hud.classList.add('hidden'); }
+  setTimeout(dismissHud, 7000);
+
+  const isTouch = ('ontouchstart' in window) || navigator.maxTouchPoints > 0 ||
+    (window.matchMedia && window.matchMedia('(pointer: coarse)').matches);
+  if (isTouch) document.body.classList.add('touch-mode');
+
+  // prevent mobile browser chrome gestures
+  document.addEventListener('touchmove', function(e){ e.preventDefault(); }, { passive:false });
+  document.addEventListener('gesturestart', function(e){ e.preventDefault(); });
+  document.addEventListener('contextmenu', function(e){ e.preventDefault(); });
+
+  // ---------- projection ----------
+  function project(wx, wz, s, c){
+    const relX = wx - player.x, relZ = wz - player.z;
+    const camZ = relX * s + relZ * c;
+    if (camZ < NEAR || camZ > FAR) return null;
+    const camX = relX * c - relZ * s;
+    const projZ = Math.max(camZ, MIN_PROJECT_DEPTH);
+    const scale = FOCAL / projZ;
+    const screenX = CENTER_X + camX * scale;
+    if (screenX < -500 || screenX > VB_W + 500) return null;
+    const screenY = HORIZON_Y + EYE_H * scale;
+    const fog = clamp(1 - Math.max(0, camZ - FAR * 0.55) / (FAR * 0.45), 0.15, 1);
+    return { camZ: camZ, screenX: screenX, screenY: screenY, scale: scale, fog: fog };
+  }
+
+  // ---------- main loop ----------
+  const active = new Map();
+  const MOVE_SPEED = 340, TURN_SPEED = 1.9;
+  let lastT = null;
+
+  function update(dt){
+    const kb = keyboardInput();
+    const moveInput = clamp(kb.m + stickMove, -1, 1);
+    const turnInput = clamp(kb.t + stickTurn, -1, 1);
+
+    player.angle = wrapAngle(player.angle + turnInput * TURN_SPEED * dt);
+    const s = Math.sin(player.angle), c = Math.cos(player.angle);
+    player.x += s * moveInput * MOVE_SPEED * dt;
+    player.z += c * moveInput * MOVE_SPEED * dt;
+    groundScroll += moveInput * MOVE_SPEED * dt;
+
+    const movingAmount = Math.max(Math.abs(moveInput), Math.abs(turnInput) * 0.35);
+    const targetBobAmp = movingAmount > 0.05 ? 1 : 0;
+    bobAmp += (targetBobAmp - bobAmp) * Math.min(1, dt * 6);
+    bobPhase += dt * (7 + movingAmount * 3);
+
+    refreshCandidates(player.x, player.z);
+
+    const skyShift = -(player.angle / TAU) * VB_W * 0.6;
+    skyDrift.setAttribute('transform', 'translate(' + skyShift.toFixed(1) + ',0)');
+
+    const spOff = (groundScroll * 0.4) % 170;
+    sprinklePattern.setAttribute('patternTransform', 'translate(0,' + spOff.toFixed(1) + ')');
+  }
+
+  function render(){
+    const bobY = Math.sin(bobPhase) * 9 * bobAmp;
+    const bobX = Math.sin(bobPhase * 0.5) * 4 * bobAmp;
+    rig.setAttribute('transform', 'translate(' + bobX.toFixed(2) + ',' + bobY.toFixed(2) + ')');
+
+    updateContourLines();
+
+    const s = Math.sin(player.angle), c = Math.cos(player.angle);
+    const visible = [];
+    for (let i = 0; i < candidateProps.length; i++){
+      const p = candidateProps[i];
+      const proj = project(p.x, p.z, s, c);
+      if (proj) visible.push({ p: p, proj: proj });
+    }
+    visible.sort(function(a, b){ return b.proj.camZ - a.proj.camZ; });
+
+    const seen = new Set();
+    for (let i = 0; i < visible.length; i++){
+      const p = visible[i].p, proj = visible[i].proj;
+      seen.add(p.id);
+      let entry = active.get(p.id);
+      if (!entry){
+        const el = buildProp(p);
+        worldG.appendChild(el);
+        entry = { el: el };
+        active.set(p.id, entry);
+      } else {
+        worldG.appendChild(entry.el);
+      }
+      const sc = proj.scale * p.scale;
+      entry.el.setAttribute('transform', 'translate(' + proj.screenX.toFixed(1) + ',' + proj.screenY.toFixed(1) + ') scale(' + sc.toFixed(3) + ')');
+      entry.el.style.opacity = proj.fog.toFixed(2);
+    }
+    active.forEach(function(entry, id){
+      if (!seen.has(id)){
+        entry.el.remove();
+        active.delete(id);
+      }
+    });
+  }
+
+  function frame(t){
+    requestAnimationFrame(frame);
+    if (lastT === null) lastT = t;
+    let dt = (t - lastT) / 1000;
+    lastT = t;
+    if (dt > 0.1) dt = 0.1;
+    update(dt);
+    render();
+  }
+  requestAnimationFrame(frame);
+
+  // debug hook for manual verification
+  window.__candyfall = { player: player, step: function(dt){ update(dt || 0.05); render(); } };
+})();
+</script>
+</body>
+</html>
