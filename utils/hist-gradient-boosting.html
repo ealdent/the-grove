@@ -1,0 +1,778 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Histogram Gradient Boosting — Visual Explainer</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@500;700&display=swap');
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0b0e17;
+      --panel: rgba(15, 20, 35, 0.85);
+      --line: rgba(100, 181, 246, 0.15);
+      --ink: #c4d4e8;
+      --dim: rgba(160, 190, 220, 0.6);
+      --blue: #64b5f6;
+      --green: #4caf82;
+      --orange: #ff9933;
+      --pink: #f48fb1;
+      --violet: #b388ff;
+    }
+
+    body {
+      font-family: 'Share Tech Mono', monospace;
+      background: var(--bg);
+      color: var(--ink);
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    .grid-bg {
+      position: fixed; inset: 0; z-index: 0;
+      background-image:
+        linear-gradient(rgba(60, 130, 200, 0.06) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(60, 130, 200, 0.06) 1px, transparent 1px);
+      background-size: 40px 40px;
+    }
+    .gradient-bg {
+      position: fixed; inset: 0; z-index: 0;
+      background:
+        radial-gradient(ellipse at 30% 20%, rgba(179, 136, 255, 0.07) 0%, transparent 50%),
+        radial-gradient(ellipse at 70% 80%, rgba(100, 200, 180, 0.05) 0%, transparent 50%);
+    }
+
+    .content {
+      position: relative; z-index: 1;
+      max-width: 1060px;
+      margin: 0 auto;
+      padding: clamp(1.5rem, 4vw, 3rem) clamp(1rem, 3vw, 2rem);
+    }
+
+    .back-link {
+      display: inline-block;
+      color: rgba(140, 180, 220, 0.5);
+      text-decoration: none;
+      font-size: 0.85rem;
+      margin-bottom: 1.2rem;
+      transition: color 0.2s;
+    }
+    .back-link:hover { color: var(--violet); }
+
+    h1 {
+      font-family: 'Orbitron', sans-serif;
+      font-weight: 700;
+      font-size: clamp(1.5rem, 4vw, 2.4rem);
+      text-align: center;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--violet);
+      text-shadow: 0 0 30px rgba(179, 136, 255, 0.3);
+      margin-bottom: 0.3em;
+    }
+    .tagline {
+      text-align: center;
+      color: var(--dim);
+      font-size: clamp(0.75rem, 1.5vw, 0.9rem);
+      margin-bottom: clamp(1.5rem, 3vw, 2.2rem);
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+    }
+
+    /* Pipeline strip */
+    .pipeline {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 0.5rem;
+      margin-bottom: clamp(1.5rem, 3vw, 2.2rem);
+    }
+    .pipe-step {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .pipe-chip {
+      padding: 0.45em 0.9em;
+      border-radius: 5px;
+      border: 1px solid var(--line);
+      background: var(--panel);
+      font-size: 0.78rem;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      cursor: default;
+    }
+    .pipe-chip b { display: block; font-size: 0.9rem; letter-spacing: 0.04em; }
+    .pipe-chip.c1 b { color: var(--blue); }
+    .pipe-chip.c2 b { color: var(--orange); }
+    .pipe-chip.c3 b { color: var(--pink); }
+    .pipe-chip.c4 b { color: var(--green); }
+    .pipe-arrow { color: rgba(160,190,220,0.4); font-size: 1.1rem; }
+
+    /* Controls */
+    .controls {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: flex-end;
+      justify-content: center;
+      gap: 1rem 1.6rem;
+      padding: 1rem 1.2rem;
+      border-radius: 6px;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      margin-bottom: 1.2rem;
+    }
+    .ctl { display: flex; flex-direction: column; gap: 0.35rem; }
+    .ctl label {
+      font-size: 0.68rem;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--dim);
+    }
+    .ctl label span { color: var(--violet); }
+    .ctl input[type="range"] { width: 130px; accent-color: #b388ff; }
+    .ctl select {
+      background: #131a2c;
+      color: var(--ink);
+      border: 1px solid var(--line);
+      border-radius: 4px;
+      font-family: inherit;
+      font-size: 0.8rem;
+      padding: 0.3em 0.5em;
+    }
+    .btn {
+      font-family: 'Orbitron', sans-serif;
+      font-weight: 500;
+      font-size: 0.78rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      padding: 0.6em 1.1em;
+      border-radius: 5px;
+      border: 1px solid rgba(179, 136, 255, 0.4);
+      background: rgba(179, 136, 255, 0.12);
+      color: var(--violet);
+      cursor: pointer;
+      transition: background 0.2s, box-shadow 0.2s;
+    }
+    .btn:hover { background: rgba(179, 136, 255, 0.22); box-shadow: 0 0 18px rgba(179,136,255,0.25); }
+    .btn.secondary {
+      border-color: rgba(100, 181, 246, 0.35);
+      background: rgba(100, 181, 246, 0.1);
+      color: var(--blue);
+    }
+    .btn.secondary:hover { background: rgba(100, 181, 246, 0.2); box-shadow: 0 0 18px rgba(100,181,246,0.2); }
+    .btn.ghost {
+      border-color: rgba(160, 190, 220, 0.25);
+      background: transparent;
+      color: var(--dim);
+    }
+    .btn.ghost:hover { color: var(--ink); box-shadow: none; }
+    .btn-row { display: flex; gap: 0.6rem; align-items: center; }
+
+    .status {
+      text-align: center;
+      font-size: 0.78rem;
+      color: var(--dim);
+      margin-bottom: 1.2rem;
+      letter-spacing: 0.05em;
+    }
+    .status b { color: var(--violet); }
+    .status .loss { color: var(--green); }
+
+    /* Panels */
+    .panels {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem;
+      margin-bottom: 1.6rem;
+    }
+    @media (max-width: 760px) { .panels { grid-template-columns: 1fr; } }
+
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 0.9rem 0.9rem 0.6rem;
+      backdrop-filter: blur(8px);
+    }
+    .panel h2 {
+      font-family: 'Orbitron', sans-serif;
+      font-weight: 500;
+      font-size: 0.8rem;
+      letter-spacing: 0.09em;
+      text-transform: uppercase;
+      margin-bottom: 0.15rem;
+    }
+    .panel .sub {
+      font-size: 0.68rem;
+      color: var(--dim);
+      margin-bottom: 0.5rem;
+      line-height: 1.45;
+    }
+    .panel.p-data h2 { color: var(--blue); }
+    .panel.p-resid h2 { color: var(--orange); }
+    .panel.p-hist h2 { color: var(--pink); }
+    .panel.p-loss h2 { color: var(--green); }
+    canvas { display: block; width: 100%; height: auto; border-radius: 4px; }
+
+    /* Explainer cards */
+    .explain-title {
+      font-family: 'Orbitron', sans-serif;
+      font-size: clamp(1rem, 2.4vw, 1.3rem);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--blue);
+      text-align: center;
+      margin: 2rem 0 1rem;
+    }
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 1rem;
+    }
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 1.2rem 1.3rem;
+      font-size: 0.82rem;
+      line-height: 1.65;
+      color: rgba(196, 212, 232, 0.85);
+    }
+    .card h3 {
+      font-family: 'Orbitron', sans-serif;
+      font-weight: 500;
+      font-size: 0.85rem;
+      letter-spacing: 0.07em;
+      text-transform: uppercase;
+      margin-bottom: 0.5rem;
+    }
+    .card.k1 h3 { color: var(--blue); }
+    .card.k2 h3 { color: var(--orange); }
+    .card.k3 h3 { color: var(--pink); }
+    .card.k4 h3 { color: var(--green); }
+    .card code {
+      background: rgba(100, 181, 246, 0.08);
+      border: 1px solid rgba(100, 181, 246, 0.12);
+      border-radius: 3px;
+      padding: 0.05em 0.35em;
+      font-size: 0.78rem;
+      color: #9ecbff;
+    }
+    .card .formula {
+      display: block;
+      text-align: center;
+      margin: 0.6rem 0;
+      padding: 0.5rem;
+      background: rgba(11, 14, 23, 0.6);
+      border: 1px solid var(--line);
+      border-radius: 4px;
+      color: #9ecbff;
+      font-size: 0.8rem;
+      overflow-x: auto;
+      white-space: nowrap;
+    }
+
+    footer {
+      text-align: center;
+      margin-top: clamp(2rem, 4vw, 3rem);
+      padding-bottom: 1rem;
+      font-size: 0.75rem;
+      color: rgba(140, 180, 220, 0.25);
+      letter-spacing: 0.06em;
+    }
+    footer a { color: rgba(140, 180, 220, 0.4); text-decoration: none; }
+    footer a:hover { color: var(--violet); }
+  </style>
+</head>
+<body>
+  <div class="grid-bg"></div>
+  <div class="gradient-bg"></div>
+
+  <div class="content">
+    <a href="index.html" class="back-link">&larr; back to utils</a>
+
+    <h1>Histogram Gradient Boosting</h1>
+    <p class="tagline">How LightGBM &amp; sklearn's HistGradientBoosting actually work</p>
+
+    <div class="pipeline">
+      <div class="pipe-step"><div class="pipe-chip c1"><b>1 · Bin</b>bucket features into ≤255 bins</div><span class="pipe-arrow">→</span></div>
+      <div class="pipe-step"><div class="pipe-chip c2"><b>2 · Gradients</b>residuals of current model</div><span class="pipe-arrow">→</span></div>
+      <div class="pipe-step"><div class="pipe-chip c3"><b>3 · Histogram split</b>scan bins, pick best gain</div><span class="pipe-arrow">→</span></div>
+      <div class="pipe-step"><div class="pipe-chip c4"><b>4 · Boost</b>add tree × learning rate, repeat</div></div>
+    </div>
+
+    <div class="controls">
+      <div class="ctl">
+        <label>Dataset</label>
+        <select id="dataset">
+          <option value="wave">Sine wave</option>
+          <option value="steps">Step function</option>
+          <option value="spike">Bump &amp; dip</option>
+        </select>
+      </div>
+      <div class="ctl">
+        <label>Bins: <span id="binsVal">16</span></label>
+        <input type="range" id="bins" min="4" max="64" step="4" value="16">
+      </div>
+      <div class="ctl">
+        <label>Learning rate: <span id="lrVal">0.30</span></label>
+        <input type="range" id="lr" min="0.05" max="1" step="0.05" value="0.3">
+      </div>
+      <div class="ctl">
+        <label>Max depth: <span id="depthVal">3</span></label>
+        <input type="range" id="depth" min="1" max="5" step="1" value="3">
+      </div>
+      <div class="btn-row">
+        <button class="btn" id="stepBtn">+1 Tree</button>
+        <button class="btn secondary" id="playBtn">▶ Auto-boost</button>
+        <button class="btn ghost" id="resetBtn">↺ Reset</button>
+      </div>
+    </div>
+
+    <p class="status">
+      Trees: <b id="treeCount">0</b> &nbsp;·&nbsp;
+      MSE: <span class="loss" id="mse">–</span> &nbsp;·&nbsp;
+      <span id="hint">prediction starts at the mean — add a tree to fit the residuals</span>
+    </p>
+
+    <div class="panels">
+      <div class="panel p-data">
+        <h2>① Data · Binning · Ensemble Prediction</h2>
+        <p class="sub">Raw points (blue), bin edges (faint columns), and the boosted model's prediction (violet staircase). The model only ever splits at bin edges.</p>
+        <canvas id="cvData"></canvas>
+      </div>
+      <div class="panel p-resid">
+        <h2>② Residuals = Negative Gradients</h2>
+        <p class="sub">What the current ensemble gets wrong. For squared loss, the gradient of each point is just its residual — the next tree is fit to these.</p>
+        <canvas id="cvResid"></canvas>
+      </div>
+      <div class="panel p-hist">
+        <h2>③ Gradient Histogram &amp; Split Scan</h2>
+        <p class="sub">Per-bin gradient sums (bars) for the next tree's root. The gain curve (pink) is computed with one cheap left-to-right scan; the dashed line marks the winning split.</p>
+        <canvas id="cvHist"></canvas>
+      </div>
+      <div class="panel p-loss">
+        <h2>④ Training Loss</h2>
+        <p class="sub">Mean squared error after each boosting round. Small learning rates descend slowly but smoothly; large ones move fast and can overfit the noise.</p>
+        <canvas id="cvLoss"></canvas>
+      </div>
+    </div>
+
+    <h2 class="explain-title">Why histograms?</h2>
+    <div class="cards">
+      <div class="card k1">
+        <h3>1 · Bin once, split forever</h3>
+        Classic gradient boosting must <em>sort</em> every feature at every node to try every possible threshold — <code>O(n log n)</code> per feature, per node. Histogram GBMs discretize each feature into at most 255 buckets <em>once, up front</em> (sklearn uses quantiles, so each bin holds roughly equal data). After that a feature value is just a small integer, and only bin edges are candidate splits. Memory drops too: a <code>uint8</code> per value instead of a <code>float64</code>.
+      </div>
+      <div class="card k2">
+        <h3>2 · Trees fit gradients, not targets</h3>
+        Boosting builds the model in rounds: <code>F₀</code> is a constant (the mean), then each round fits a small tree <code>hₘ</code> to the <em>negative gradient</em> of the loss at the current predictions. For squared error that gradient is simply the residual <code>y − F(x)</code>.
+        <span class="formula">F<sub>m</sub>(x) = F<sub>m−1</sub>(x) + η · h<sub>m</sub>(x)</span>
+        The learning rate <code>η</code> shrinks each step so no single tree dominates — many weak learners, gently stacked.
+      </div>
+      <div class="card k3">
+        <h3>3 · Split finding is a histogram scan</h3>
+        At each node, accumulate two arrays over its samples: <code>ΣGᵢ</code> (gradient sum) and <code>count</code> per bin — one <code>O(n)</code> pass. Then a single sweep across the ≤255 bins evaluates every candidate split:
+        <span class="formula">gain = G²<sub>L</sub>/n<sub>L</sub> + G²<sub>R</sub>/n<sub>R</sub> − G²/n</span>
+        That's panel ③ above. Bonus — the <em>subtraction trick</em>: a child's histogram equals its parent's minus its sibling's, so only the smaller child needs to be built from data.
+      </div>
+      <div class="card k4">
+        <h3>4 · Why it wins in practice</h3>
+        Binning caps the split search at 255 candidates regardless of dataset size, histograms are cache-friendly contiguous arrays, and everything parallelizes cleanly. That's why <code>HistGradientBoosting</code>, LightGBM, and XGBoost's <code>hist</code> mode train orders of magnitude faster than exact GBMs on large data — while giving up almost nothing in accuracy, since super-fine thresholds mostly fit noise anyway. Native missing-value and categorical support fall out of the same design: they're just extra bins.
+      </div>
+    </div>
+
+    <footer>Part of <a href="../">Fun with AI</a> · Utils</footer>
+  </div>
+
+  <script>
+  'use strict';
+
+  // ---------- state ----------
+  const N = 220;
+  let X = [], Y = [];            // raw data
+  let binOf = [], binEdges = []; // binning
+  let pred = [];                 // current ensemble prediction per point
+  let baseline = 0;
+  let trees = 0;
+  let lossHistory = [];
+  let playing = false, playTimer = null;
+
+  const $ = id => document.getElementById(id);
+  const cfg = () => ({
+    bins: +$('bins').value,
+    lr: +$('lr').value,
+    depth: +$('depth').value,
+    dataset: $('dataset').value,
+  });
+
+  // deterministic-ish RNG so resets look familiar per dataset
+  let seed = 42;
+  function rand() { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed / 0x7fffffff; }
+  function gauss() { return (rand() + rand() + rand() + rand() - 2) / 2; }
+
+  const TARGETS = {
+    wave: x => Math.sin(x * Math.PI * 2.2) * 0.8 + 0.3 * x,
+    steps: x => (x < 0.25 ? -0.7 : x < 0.5 ? 0.4 : x < 0.75 ? -0.2 : 0.9),
+    spike: x => 1.4 * Math.exp(-Math.pow((x - 0.3) / 0.09, 2)) - 1.1 * Math.exp(-Math.pow((x - 0.72) / 0.07, 2)),
+  };
+
+  function makeData() {
+    const { dataset } = cfg();
+    seed = dataset === 'wave' ? 42 : dataset === 'steps' ? 7 : 1234;
+    const f = TARGETS[dataset];
+    X = []; Y = [];
+    for (let i = 0; i < N; i++) {
+      const x = rand();
+      X.push(x);
+      Y.push(f(x) + gauss() * 0.22);
+    }
+    const order = X.map((x, i) => i).sort((a, b) => X[a] - X[b]);
+    X = order.map(i => X[i]);
+    Y = order.map(i => Y[i]);
+  }
+
+  // quantile binning: ~equal number of samples per bin (what sklearn does)
+  function makeBins() {
+    const { bins } = cfg();
+    binEdges = [0];
+    for (let b = 1; b < bins; b++) {
+      binEdges.push(X[Math.floor(b * N / bins)]);
+    }
+    binEdges.push(1.0001);
+    binOf = X.map(x => {
+      let b = binEdges.length - 2;
+      for (let i = 1; i < binEdges.length; i++) {
+        if (x < binEdges[i]) { b = i - 1; break; }
+      }
+      return b;
+    });
+  }
+
+  function resetModel() {
+    baseline = Y.reduce((a, b) => a + b, 0) / N;
+    pred = new Array(N).fill(baseline);
+    trees = 0;
+    lossHistory = [mse()];
+    stopPlay();
+    updateStatus();
+    drawAll();
+  }
+
+  function mse() {
+    let s = 0;
+    for (let i = 0; i < N; i++) { const d = Y[i] - pred[i]; s += d * d; }
+    return s / N;
+  }
+
+  // ---------- histogram tree ----------
+  // Node = { lo, hi } bin range + sample idxs. Split by scanning bin histogram.
+  function buildHistogram(idxs, grad) {
+    const nb = binEdges.length - 1;
+    const sumG = new Array(nb).fill(0);
+    const cnt = new Array(nb).fill(0);
+    for (const i of idxs) { sumG[binOf[i]] += grad[i]; cnt[binOf[i]]++; }
+    return { sumG, cnt };
+  }
+
+  function bestSplit(hist) {
+    const nb = hist.sumG.length;
+    const G = hist.sumG.reduce((a, b) => a + b, 0);
+    const n = hist.cnt.reduce((a, b) => a + b, 0);
+    if (n < 4) return null;
+    const parentScore = G * G / n;
+    let best = null, gl = 0, nl = 0;
+    const gains = new Array(nb - 1).fill(null);
+    for (let b = 0; b < nb - 1; b++) {
+      gl += hist.sumG[b]; nl += hist.cnt[b];
+      const nr = n - nl;
+      if (nl < 2 || nr < 2) continue;
+      const gain = gl * gl / nl + (G - gl) * (G - gl) / nr - parentScore;
+      gains[b] = gain;
+      if (!best || gain > best.gain) best = { bin: b, gain, gl, nl };
+    }
+    return best ? { ...best, gains } : null;
+  }
+
+  function buildTree(idxs, grad, depth) {
+    const hist = buildHistogram(idxs, grad);
+    const G = hist.sumG.reduce((a, b) => a + b, 0);
+    const n = idxs.length;
+    if (depth === 0 || n < 4) return { leaf: true, value: G / n };
+    const split = bestSplit(hist);
+    if (!split || split.gain < 1e-6) return { leaf: true, value: G / n };
+    const L = [], R = [];
+    for (const i of idxs) (binOf[i] <= split.bin ? L : R).push(i);
+    return {
+      leaf: false,
+      bin: split.bin,
+      left: buildTree(L, grad, depth - 1),
+      right: buildTree(R, grad, depth - 1),
+    };
+  }
+
+  function treePredictBin(node, b) {
+    while (!node.leaf) node = b <= node.bin ? node.left : node.right;
+    return node.value;
+  }
+
+  function addTree() {
+    const { lr, depth } = cfg();
+    const grad = Y.map((y, i) => y - pred[i]); // negative gradient of squared loss
+    const root = buildTree([...Array(N).keys()], grad, depth);
+    for (let i = 0; i < N; i++) pred[i] += lr * treePredictBin(root, binOf[i]);
+    trees++;
+    lossHistory.push(mse());
+    updateStatus();
+    drawAll(root);
+  }
+
+  // ---------- drawing ----------
+  const DPR = Math.min(window.devicePixelRatio || 1, 2);
+  function setupCanvas(cv, hRatio) {
+    const w = cv.parentElement.clientWidth - 2;
+    const h = Math.max(150, Math.round(w * hRatio));
+    cv.width = w * DPR; cv.height = h * DPR;
+    cv.style.height = h + 'px';
+    const ctx = cv.getContext('2d');
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    return { ctx, w, h };
+  }
+
+  function yRange() {
+    let lo = Math.min(...Y), hi = Math.max(...Y);
+    const pad = (hi - lo) * 0.12;
+    return [lo - pad, hi + pad];
+  }
+
+  function drawData() {
+    const { ctx, w, h } = setupCanvas($('cvData'), 0.62);
+    const [ylo, yhi] = yRange();
+    const px = x => x * w;
+    const py = y => h - (y - ylo) / (yhi - ylo) * h;
+
+    // bin columns
+    for (let b = 0; b < binEdges.length - 1; b++) {
+      if (b % 2 === 0) continue;
+      ctx.fillStyle = 'rgba(100, 181, 246, 0.045)';
+      ctx.fillRect(px(binEdges[b]), 0, px(binEdges[b + 1]) - px(binEdges[b]), h);
+    }
+    ctx.strokeStyle = 'rgba(100, 181, 246, 0.12)';
+    ctx.lineWidth = 1;
+    for (let b = 1; b < binEdges.length - 1; b++) {
+      ctx.beginPath(); ctx.moveTo(px(binEdges[b]), 0); ctx.lineTo(px(binEdges[b]), h); ctx.stroke();
+    }
+
+    // points
+    ctx.fillStyle = 'rgba(100, 181, 246, 0.75)';
+    for (let i = 0; i < N; i++) {
+      ctx.beginPath(); ctx.arc(px(X[i]), py(Y[i]), 2.2, 0, 7); ctx.fill();
+    }
+
+    // ensemble prediction: piecewise constant per bin
+    ctx.strokeStyle = '#b388ff';
+    ctx.lineWidth = 2.4;
+    ctx.shadowColor = 'rgba(179,136,255,0.5)'; ctx.shadowBlur = 8;
+    ctx.beginPath();
+    for (let b = 0; b < binEdges.length - 1; b++) {
+      // average prediction of samples in this bin (fallback: previous value)
+      let s = 0, c = 0;
+      for (let i = 0; i < N; i++) if (binOf[i] === b) { s += pred[i]; c++; }
+      const v = c ? s / c : null;
+      if (v === null) continue;
+      const x0 = px(binEdges[b]), x1 = px(Math.min(binEdges[b + 1], 1));
+      ctx.lineTo(x0, py(v));
+      ctx.lineTo(x1, py(v));
+    }
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+  }
+
+  function drawResiduals(root) {
+    const { ctx, w, h } = setupCanvas($('cvResid'), 0.62);
+    const grad = Y.map((y, i) => y - pred[i]);
+    const m = Math.max(0.4, Math.max(...grad.map(Math.abs)) * 1.15);
+    const px = x => x * w;
+    const py = g => h / 2 - (g / m) * (h / 2);
+
+    // zero line
+    ctx.strokeStyle = 'rgba(160,190,220,0.25)';
+    ctx.setLineDash([4, 4]);
+    ctx.beginPath(); ctx.moveTo(0, h / 2); ctx.lineTo(w, h / 2); ctx.stroke();
+    ctx.setLineDash([]);
+
+    // residual stems + dots
+    for (let i = 0; i < N; i++) {
+      const g = grad[i];
+      ctx.strokeStyle = g >= 0 ? 'rgba(255,153,51,0.28)' : 'rgba(255,153,51,0.28)';
+      ctx.beginPath(); ctx.moveTo(px(X[i]), h / 2); ctx.lineTo(px(X[i]), py(g)); ctx.stroke();
+      ctx.fillStyle = 'rgba(255,153,51,0.85)';
+      ctx.beginPath(); ctx.arc(px(X[i]), py(g), 1.9, 0, 7); ctx.fill();
+    }
+
+    // last tree's fit to previous residuals (drawn against current axis for shape)
+    if (root) {
+      ctx.strokeStyle = '#f48fb1';
+      ctx.lineWidth = 2;
+      ctx.shadowColor = 'rgba(244,143,177,0.5)'; ctx.shadowBlur = 6;
+      ctx.beginPath();
+      for (let b = 0; b < binEdges.length - 1; b++) {
+        const v = treePredictBin(root, b);
+        const x0 = px(binEdges[b]), x1 = px(Math.min(binEdges[b + 1], 1));
+        ctx.lineTo(x0, py(v)); ctx.lineTo(x1, py(v));
+      }
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = 'rgba(244,143,177,0.8)';
+      ctx.font = '10px "Share Tech Mono"';
+      ctx.fillText('← tree just added (before shrinkage)', 8, 14);
+    }
+  }
+
+  function drawHistogram() {
+    const { ctx, w, h } = setupCanvas($('cvHist'), 0.62);
+    const grad = Y.map((y, i) => y - pred[i]);
+    const hist = buildHistogram([...Array(N).keys()], grad);
+    const split = bestSplit(hist);
+    const nb = hist.sumG.length;
+    const bw = w / nb;
+    const gm = Math.max(0.2, Math.max(...hist.sumG.map(Math.abs)) * 1.2);
+    const midY = h * 0.62;
+
+    // gradient-sum bars
+    for (let b = 0; b < nb; b++) {
+      const v = hist.sumG[b];
+      const bh = (v / gm) * (h * 0.34);
+      ctx.fillStyle = v >= 0 ? 'rgba(255,153,51,0.6)' : 'rgba(100,181,246,0.6)';
+      ctx.fillRect(b * bw + 1.5, Math.min(midY, midY - bh), bw - 3, Math.abs(bh));
+      ctx.strokeStyle = 'rgba(196,212,232,0.15)';
+      ctx.strokeRect(b * bw + 1.5, Math.min(midY, midY - bh), bw - 3, Math.abs(bh));
+    }
+    ctx.strokeStyle = 'rgba(160,190,220,0.3)';
+    ctx.beginPath(); ctx.moveTo(0, midY); ctx.lineTo(w, midY); ctx.stroke();
+
+    // gain curve along candidate splits
+    if (split && split.gains) {
+      const valid = split.gains.filter(g => g !== null);
+      const gmax = Math.max(...valid, 1e-9);
+      ctx.strokeStyle = '#f48fb1';
+      ctx.lineWidth = 1.8;
+      ctx.beginPath();
+      let started = false;
+      for (let b = 0; b < split.gains.length; b++) {
+        if (split.gains[b] === null) continue;
+        const gx = (b + 1) * bw;
+        const gy = h - 8 - (split.gains[b] / gmax) * (h * 0.28);
+        if (!started) { ctx.moveTo(gx, gy); started = true; } else ctx.lineTo(gx, gy);
+      }
+      ctx.stroke();
+
+      // best split marker
+      const sx = (split.bin + 1) * bw;
+      ctx.strokeStyle = '#b388ff';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([6, 4]);
+      ctx.beginPath(); ctx.moveTo(sx, 0); ctx.lineTo(sx, h); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = '#b388ff';
+      ctx.font = '10px "Share Tech Mono"';
+      const label = 'best split · gain ' + split.gain.toFixed(2);
+      const tx = sx + 6 + 120 > w ? sx - ctx.measureText(label).width - 8 : sx + 6;
+      ctx.fillText(label, tx, 13);
+    }
+
+    ctx.fillStyle = 'rgba(196,212,232,0.5)';
+    ctx.font = '10px "Share Tech Mono"';
+    ctx.fillText('ΣG per bin', 8, midY - h * 0.34 - 4 < 12 ? 24 : midY - h * 0.34 - 4);
+    ctx.fillStyle = 'rgba(244,143,177,0.7)';
+    ctx.fillText('split gain →', 8, h - 12);
+  }
+
+  function drawLoss() {
+    const { ctx, w, h } = setupCanvas($('cvLoss'), 0.62);
+    if (lossHistory.length < 1) return;
+    const maxL = lossHistory[0] * 1.08;
+    const n = Math.max(lossHistory.length, 12);
+    const px = i => 30 + (i / (n - 1)) * (w - 42);
+    const py = l => 10 + (1 - l / maxL) * (h - 34);
+
+    // axes
+    ctx.strokeStyle = 'rgba(160,190,220,0.25)';
+    ctx.beginPath(); ctx.moveTo(28, 8); ctx.lineTo(28, h - 22); ctx.lineTo(w - 8, h - 22); ctx.stroke();
+    ctx.fillStyle = 'rgba(196,212,232,0.5)';
+    ctx.font = '10px "Share Tech Mono"';
+    ctx.fillText(maxL.toFixed(2), 2, 16);
+    ctx.fillText('0', 16, h - 24);
+    ctx.fillText('boosting rounds →', w / 2 - 45, h - 6);
+
+    // curve
+    ctx.strokeStyle = '#4caf82';
+    ctx.lineWidth = 2.2;
+    ctx.shadowColor = 'rgba(76,175,130,0.5)'; ctx.shadowBlur = 6;
+    ctx.beginPath();
+    lossHistory.forEach((l, i) => i === 0 ? ctx.moveTo(px(i), py(l)) : ctx.lineTo(px(i), py(l)));
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = '#4caf82';
+    lossHistory.forEach((l, i) => { ctx.beginPath(); ctx.arc(px(i), py(l), 2.4, 0, 7); ctx.fill(); });
+  }
+
+  function drawAll(lastRoot) {
+    drawData();
+    drawResiduals(lastRoot || null);
+    drawHistogram();
+    drawLoss();
+  }
+
+  function updateStatus() {
+    $('treeCount').textContent = trees;
+    $('mse').textContent = mse().toFixed(4);
+    $('hint').textContent = trees === 0
+      ? 'prediction starts at the mean — add a tree to fit the residuals'
+      : trees < 5
+        ? 'each tree fits what the last ones missed'
+        : 'residuals flatten toward noise as the ensemble converges';
+  }
+
+  // ---------- controls ----------
+  function fullReset() {
+    makeData();
+    makeBins();
+    resetModel();
+  }
+  function stopPlay() {
+    playing = false;
+    if (playTimer) { clearInterval(playTimer); playTimer = null; }
+    $('playBtn').textContent = '▶ Auto-boost';
+  }
+
+  $('stepBtn').addEventListener('click', () => { stopPlay(); addTree(); });
+  $('playBtn').addEventListener('click', () => {
+    if (playing) { stopPlay(); return; }
+    playing = true;
+    $('playBtn').textContent = '⏸ Pause';
+    playTimer = setInterval(() => {
+      addTree();
+      if (trees >= 60) stopPlay();
+    }, 420);
+  });
+  $('resetBtn').addEventListener('click', fullReset);
+  $('dataset').addEventListener('change', fullReset);
+  $('bins').addEventListener('input', () => {
+    $('binsVal').textContent = $('bins').value;
+    makeBins();
+    resetModel();
+  });
+  $('lr').addEventListener('input', () => { $('lrVal').textContent = (+$('lr').value).toFixed(2); });
+  $('depth').addEventListener('input', () => { $('depthVal').textContent = $('depth').value; });
+
+  let resizeT;
+  window.addEventListener('resize', () => { clearTimeout(resizeT); resizeT = setTimeout(() => drawAll(), 150); });
+
+  fullReset();
+  </script>
+</body>
+</html>
