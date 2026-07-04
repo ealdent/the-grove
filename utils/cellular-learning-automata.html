@@ -323,6 +323,14 @@
 
     <div class="controls">
       <div class="ctl">
+        <label>Example Problem</label>
+        <select id="exampleSelect">
+          <option value="consensus">1. Global Consensus</option>
+          <option value="checkerboard">2. Checkerboard</option>
+          <option value="stripes">3. Horizontal Stripes</option>
+        </select>
+      </div>
+      <div class="ctl">
         <label>Grid Size: <span id="sizeVal">30</span></label>
         <input type="range" id="gridSize" min="10" max="100" step="10" value="30">
       </div>
@@ -397,9 +405,9 @@
         <span class="formula">p<sub>i</sub> ← (1 - β)p<sub>i</sub></span>
         <span class="formula">p<sub>j</sub> ← β/(r-1) + (1 - β)p<sub>j</sub></span>
       </div>
-      <div class="card k4">
-        <h3>4 · Emergent Consensus</h3>
-        Our environment rule is simple: a cell gets a reward if its action matches the majority of its 8 neighbors (Moore neighborhood). Otherwise, it gets a penalty. Though no cell can see the whole grid, the local desire to agree with neighbors creates a cascading effect. Over time, domains of consensus form, merge, and stabilize, showcasing how distributed RL agents can solve global coordination problems.
+      <div class="card k4" id="descCard">
+        <h3 id="descTitle">4 · Emergent Consensus</h3>
+        <span id="descText">Our environment rule is simple: a cell gets a reward if its action matches the majority of its 8 neighbors (Moore neighborhood). Otherwise, it gets a penalty. Though no cell can see the whole grid, the local desire to agree with neighbors creates a cascading effect. Over time, domains of consensus form, merge, and stabilize, showcasing how distributed RL agents can solve global coordination problems.</span>
       </div>
     </div>
 
@@ -413,6 +421,7 @@
 
   // Configuration
   const cfg = () => ({
+    example: $('exampleSelect').value,
     size: parseInt($('gridSize').value, 10),
     alpha: parseFloat($('alpha').value),
     beta: parseFloat($('beta').value)
@@ -456,32 +465,57 @@
   // Calculate rewards based on neighborhood
   function evaluateEnvironment() {
     let totalReward = 0;
+    const { example } = cfg();
+    
     for (let y = 0; y < size; y++) {
       for (let x = 0; x < size; x++) {
         let idx = y * size + x;
         let myAction = actions[idx];
+        let r = 0;
         
-        // Count neighbors of the same action (Moore neighborhood with wrap-around)
-        let sameCount = 0;
-        for (let dy = -1; dy <= 1; dy++) {
-          for (let dx = -1; dx <= 1; dx++) {
-            if (dx === 0 && dy === 0) continue;
-            let ny = (y + dy + size) % size;
-            let nx = (x + dx + size) % size;
-            if (actions[ny * size + nx] === myAction) {
-              sameCount++;
+        if (example === 'consensus') {
+          // Count neighbors of the same action (Moore neighborhood with wrap-around)
+          let sameCount = 0;
+          for (let dy = -1; dy <= 1; dy++) {
+            for (let dx = -1; dx <= 1; dx++) {
+              if (dx === 0 && dy === 0) continue;
+              let ny = (y + dy + size) % size;
+              let nx = (x + dx + size) % size;
+              if (actions[ny * size + nx] === myAction) sameCount++;
             }
           }
+          // Reward if matches majority of 8 neighbors (>= 4 matches)
+          if (sameCount >= 4) r = 1;
+        } else if (example === 'checkerboard') {
+          // von Neumann neighborhood (4 cardinal directions), want to be different
+          let sameCount = 0;
+          let dirs = [[-1, 0], [1, 0], [0, -1], [0, 1]];
+          for (let [dx, dy] of dirs) {
+            let ny = (y + dy + size) % size;
+            let nx = (x + dx + size) % size;
+            if (actions[ny * size + nx] === myAction) sameCount++;
+          }
+          // Reward if 0 or 1 neighbor matches (i.e. mostly different)
+          if (sameCount <= 1) r = 1;
+        } else if (example === 'stripes') {
+          // Anisotropic: want to match Left/Right, but differ from Top/Bottom
+          let score = 0;
+          let left = actions[y * size + ((x - 1 + size) % size)];
+          let right = actions[y * size + ((x + 1) % size)];
+          let top = actions[((y - 1 + size) % size) * size + x];
+          let bottom = actions[((y + 1) % size) * size + x];
+          
+          if (left === myAction) score++;
+          if (right === myAction) score++;
+          if (top !== myAction) score++;
+          if (bottom !== myAction) score++;
+          
+          // Reward if >= 3 of the 4 conditions are met
+          if (score >= 3) r = 1;
         }
         
-        // Reward if matches majority of 8 neighbors (>= 4 matches)
-        // Adjusting threshold to >= 4 makes it slightly easier to reach consensus
-        if (sameCount >= 4) {
-          rewards[idx] = 1;
-          totalReward++;
-        } else {
-          rewards[idx] = 0;
-        }
+        rewards[idx] = r;
+        if (r === 1) totalReward++;
       }
     }
     return totalReward / (size * size);
@@ -694,6 +728,21 @@
   });
   
   $('resetBtn').addEventListener('click', initGrid);
+  
+  $('exampleSelect').addEventListener('change', () => {
+    const val = $('exampleSelect').value;
+    if (val === 'consensus') {
+      $('descTitle').textContent = '4 · Emergent Consensus';
+      $('descText').textContent = 'A cell gets a reward if its action matches the majority of its 8 neighbors (Moore neighborhood). Otherwise, it gets a penalty. The local desire to agree with neighbors creates a cascading effect where domains of consensus form, merge, and stabilize.';
+    } else if (val === 'checkerboard') {
+      $('descTitle').textContent = '4 · Anti-coordination';
+      $('descText').textContent = 'A cell gets a reward if its action DIFFERS from its 4 cardinal neighbors (North, South, East, West). This forces neighboring cells to choose opposing colors. The grid must locally coordinate to break symmetry and form an alternating checkerboard pattern.';
+    } else if (val === 'stripes') {
+      $('descTitle').textContent = '4 · Anisotropic Rules';
+      $('descText').textContent = 'A cell gets a reward if it MATCHES its East/West neighbors, but DIFFERS from its North/South neighbors. This introduces directional preference (anisotropy) into the environment, causing the cells to self-organize into stable horizontal stripes over time.';
+    }
+    initGrid();
+  });
   
   $('gridSize').addEventListener('input', () => {
     $('sizeVal').textContent = $('gridSize').value;
