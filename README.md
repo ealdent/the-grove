@@ -19,3 +19,6 @@ A collection of games, tools, and experiments built with AI — hosted on GitHub
 3. Site appears at `https://<user>.github.io/<repo>/`.
 
 No build step needed — all static HTML.
+
+---
+*Note: This repository is a living collection and is frequently updated.*
