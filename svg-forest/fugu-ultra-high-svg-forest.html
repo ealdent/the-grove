@@ -1,0 +1,666 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>Chroma Tidelands — Pure SVG First-Person Exploration</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --ink: #071020;
+      --cyan: #57fff3;
+      --pink: #ff64cf;
+      --gold: #ffe58a;
+      --violet: #8d7cff;
+      --glass: rgba(144, 255, 244, 0.24);
+    }
+
+    * { box-sizing: border-box; }
+
+    html,
+    body {
+      margin: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      overscroll-behavior: none;
+      touch-action: none;
+      background: #060818;
+      color: white;
+      font-family: ui-rounded, "SF Pro Rounded", "Avenir Next", system-ui, sans-serif;
+      -webkit-user-select: none;
+      user-select: none;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    body {
+      position: fixed;
+      inset: 0;
+    }
+
+    #app {
+      position: fixed;
+      inset: 0;
+      overflow: hidden;
+      background:
+        radial-gradient(circle at 50% 20%, rgba(92, 255, 243, 0.14), transparent 28%),
+        linear-gradient(180deg, #070a24 0%, #111344 48%, #081423 100%);
+      cursor: grab;
+    }
+
+    #app.dragging { cursor: grabbing; }
+
+    #world {
+      display: block;
+      width: 100vw;
+      height: 100dvh;
+      min-height: 100vh;
+      touch-action: none;
+    }
+
+    .joystick {
+      position: fixed;
+      bottom: max(22px, env(safe-area-inset-bottom));
+      width: clamp(118px, 24vw, 168px);
+      height: clamp(118px, 24vw, 168px);
+      border-radius: 50%;
+      z-index: 5;
+      touch-action: none;
+      pointer-events: auto;
+      border: 1px solid rgba(150, 255, 244, 0.34);
+      background:
+        radial-gradient(circle at 50% 50%, rgba(139, 255, 245, 0.16) 0 34%, transparent 35%),
+        radial-gradient(circle at 50% 50%, transparent 0 62%, rgba(255, 100, 207, 0.15) 63% 66%, transparent 67%),
+        rgba(6, 13, 35, 0.36);
+      box-shadow: 0 12px 30px rgba(0, 0, 0, 0.35), inset 0 0 28px rgba(77, 255, 238, 0.12);
+      opacity: 0.92;
+    }
+
+    .joystick::before,
+    .joystick::after {
+      content: "";
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%);
+      background: rgba(144, 255, 244, 0.23);
+      border-radius: 999px;
+      pointer-events: none;
+    }
+
+    .joystick::before { width: 64%; height: 2px; }
+    .joystick::after { width: 2px; height: 64%; }
+
+    #leftJoystick { left: max(20px, env(safe-area-inset-left)); }
+    #rightJoystick { right: max(20px, env(safe-area-inset-right)); }
+
+    .stick-knob {
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      width: 42%;
+      height: 42%;
+      transform: translate(-50%, -50%);
+      border-radius: 50%;
+      pointer-events: none;
+      background:
+        radial-gradient(circle at 32% 28%, rgba(255,255,255,0.8), transparent 16%),
+        radial-gradient(circle at 50% 55%, rgba(87,255,243,0.86), rgba(255,100,207,0.78) 58%, rgba(95,69,255,0.68));
+      border: 1px solid rgba(255, 255, 255, 0.44);
+      box-shadow: 0 0 20px rgba(87, 255, 243, 0.42), 0 8px 18px rgba(0,0,0,0.35);
+    }
+
+    .stick-label {
+      position: absolute;
+      left: 50%;
+      bottom: -1.65rem;
+      transform: translateX(-50%);
+      color: rgba(231, 255, 252, 0.72);
+      font-size: clamp(0.66rem, 2vw, 0.8rem);
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      text-shadow: 0 1px 8px rgba(0,0,0,0.8);
+      pointer-events: none;
+      white-space: nowrap;
+    }
+
+    @media (hover: hover) and (pointer: fine) {
+      .joystick { opacity: 0.38; }
+      .joystick:hover { opacity: 0.82; }
+    }
+
+    @media (max-width: 760px) {
+      .joystick { bottom: max(18px, env(safe-area-inset-bottom)); }
+      #world { height: 100svh; }
+    }
+  </style>
+</head>
+<body>
+  <main id="app" aria-label="Chroma Tidelands first-person pure SVG exploration game">
+    <svg id="world" viewBox="0 0 1000 700" preserveAspectRatio="xMidYMid slice" role="img" aria-label="A first-person view into the endless Chroma Tidelands, rendered entirely with SVG shapes">
+      <defs>
+        <linearGradient id="skyGrad" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stop-color="#07091e"/>
+          <stop offset="0.38" stop-color="#151a58"/>
+          <stop offset="0.72" stop-color="#2f386b"/>
+          <stop offset="1" stop-color="#244453"/>
+        </linearGradient>
+        <linearGradient id="groundGrad" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stop-color="#163f56"/>
+          <stop offset="0.52" stop-color="#102a3e"/>
+          <stop offset="1" stop-color="#07111e"/>
+        </linearGradient>
+        <radialGradient id="moonGlow" cx="50%" cy="50%" r="50%">
+          <stop offset="0" stop-color="#fbffcf" stop-opacity="1"/>
+          <stop offset="0.35" stop-color="#9effff" stop-opacity="0.72"/>
+          <stop offset="1" stop-color="#61d8ff" stop-opacity="0"/>
+        </radialGradient>
+        <radialGradient id="sunkenGlow" cx="50%" cy="52%" r="70%">
+          <stop offset="0" stop-color="#73fff0" stop-opacity="0.38"/>
+          <stop offset="0.48" stop-color="#675cff" stop-opacity="0.12"/>
+          <stop offset="1" stop-color="#000000" stop-opacity="0"/>
+        </radialGradient>
+        <linearGradient id="glassCyan" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stop-color="#e9fff9" stop-opacity="0.9"/>
+          <stop offset="0.45" stop-color="#51fff1" stop-opacity="0.72"/>
+          <stop offset="1" stop-color="#307cff" stop-opacity="0.72"/>
+        </linearGradient>
+        <linearGradient id="glassPink" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stop-color="#fff2ad" stop-opacity="0.95"/>
+          <stop offset="0.5" stop-color="#ff64cf" stop-opacity="0.76"/>
+          <stop offset="1" stop-color="#7b58ff" stop-opacity="0.68"/>
+        </linearGradient>
+        <filter id="softGlow" x="-60%" y="-60%" width="220%" height="220%">
+          <feGaussianBlur stdDeviation="3" result="blur"/>
+          <feMerge>
+            <feMergeNode in="blur"/>
+            <feMergeNode in="SourceGraphic"/>
+          </feMerge>
+        </filter>
+        <filter id="farHaze" x="-40%" y="-40%" width="180%" height="180%">
+          <feGaussianBlur stdDeviation="1.1"/>
+        </filter>
+      </defs>
+
+      <rect x="0" y="0" width="1000" height="700" fill="url(#skyGrad)"/>
+      <g id="skyLayer">
+        <ellipse cx="780" cy="112" rx="90" ry="90" fill="url(#moonGlow)" opacity="0.82"/>
+        <ellipse cx="782" cy="112" rx="32" ry="32" fill="#fffbd7" opacity="0.78"/>
+        <path d="M-30 194 C 160 105, 300 250, 480 164 S 790 134, 1060 205" fill="none" stroke="#57fff3" stroke-width="18" stroke-opacity="0.08"/>
+        <path d="M-40 232 C 190 162, 334 298, 536 205 S 822 174, 1060 252" fill="none" stroke="#ff64cf" stroke-width="12" stroke-opacity="0.09"/>
+        <g id="starLayer"></g>
+      </g>
+      <rect x="0" y="306" width="1000" height="394" fill="url(#groundGrad)"/>
+      <ellipse cx="500" cy="389" rx="650" ry="160" fill="url(#sunkenGlow)" opacity="0.82"/>
+      <g id="groundLayer"></g>
+      <g id="objectLayer"></g>
+      <g id="hudLayer">
+        <rect x="24" y="22" width="360" height="78" rx="18" fill="rgba(3,8,25,0.48)" stroke="rgba(117,255,242,0.34)"/>
+        <text x="44" y="52" fill="#eafffb" font-size="24" font-weight="800" letter-spacing="1.2">CHROMA TIDELANDS</text>
+        <text x="45" y="78" fill="rgba(234,255,251,0.74)" font-size="14">WASD / arrows to move and turn · drag to look · dual joysticks on touch</text>
+        <text id="coordReadout" x="955" y="42" text-anchor="end" fill="rgba(234,255,251,0.68)" font-size="13" letter-spacing="1.1">0 · 0</text>
+        <path d="M492 350 L508 350 M500 342 L500 358" stroke="rgba(255,255,255,0.58)" stroke-width="2" stroke-linecap="round"/>
+      </g>
+    </svg>
+
+    <div id="leftJoystick" class="joystick" aria-label="Move joystick">
+      <div class="stick-knob"></div>
+      <span class="stick-label">move</span>
+    </div>
+    <div id="rightJoystick" class="joystick" aria-label="Turn joystick">
+      <div class="stick-knob"></div>
+      <span class="stick-label">turn</span>
+    </div>
+  </main>
+
+  <script>
+    (() => {
+      'use strict';
+
+      const SVG_NS = 'http://www.w3.org/2000/svg';
+      const app = document.getElementById('app');
+      const world = document.getElementById('world');
+      const objectLayer = document.getElementById('objectLayer');
+      const groundLayer = document.getElementById('groundLayer');
+      const starLayer = document.getElementById('starLayer');
+      const coordReadout = document.getElementById('coordReadout');
+      const leftJoystick = document.getElementById('leftJoystick');
+      const rightJoystick = document.getElementById('rightJoystick');
+      const leftKnob = leftJoystick.querySelector('.stick-knob');
+      const rightKnob = rightJoystick.querySelector('.stick-knob');
+
+      const WORLD_W = 1000;
+      const WORLD_H = 700;
+      const HORIZON_BASE = 318;
+      const FOCAL_LENGTH = 420;
+      const CELL_SIZE = 26;
+      const VIEW_RADIUS = 132;
+      const FOV_SIDE = 1.26;
+      const keys = new Set();
+      const pool = [];
+      const visibleNodes = [];
+      let lastTime = performance.now();
+      let bobPhase = 0;
+      let viewportScale = 1;
+
+      const camera = {
+        x: 0,
+        y: 0,
+        angle: 0,
+        pitch: 0
+      };
+
+      const mobile = {
+        move: 0,
+        turn: 0,
+        leftVector: { x: 0, y: 0 },
+        rightVector: { x: 0, y: 0 }
+      };
+      let leftPointerId = null;
+      let rightPointerId = null;
+      let dragPointerId = null;
+      let lastPointerX = 0;
+      let lastPointerY = 0;
+
+      const propTemplates = {
+        prismTree: `
+          <ellipse cx="0" cy="0" rx="18" ry="5" fill="#06101e" opacity="0.34"/>
+          <path d="M-5 0 C-7 -35 -4 -70 0 -114 C6 -70 8 -35 5 0 Z" fill="#143b51" stroke="#57fff3" stroke-opacity="0.42" stroke-width="1.2"/>
+          <path d="M0 -106 L-36 -62 L-10 -55 Z" fill="url(#glassCyan)" stroke="#bafff8" stroke-opacity="0.68" stroke-width="1.3"/>
+          <path d="M0 -114 L36 -66 L10 -55 Z" fill="url(#glassPink)" stroke="#ffd1f2" stroke-opacity="0.66" stroke-width="1.3"/>
+          <path d="M-8 -75 L-52 -36 L-17 -31 Z" fill="#42f5dc" opacity="0.54" stroke="#bcfff8" stroke-opacity="0.45"/>
+          <path d="M8 -78 L54 -40 L17 -32 Z" fill="#ff68ce" opacity="0.52" stroke="#ffd1f2" stroke-opacity="0.42"/>
+          <circle cx="0" cy="-92" r="5" fill="#fff6ad" filter="url(#softGlow)"/>
+        `,
+        tideBell: `
+          <ellipse cx="0" cy="0" rx="22" ry="6" fill="#040915" opacity="0.38"/>
+          <ellipse cx="0" cy="-62" rx="31" ry="23" fill="url(#glassPink)" stroke="#ffe2f8" stroke-opacity="0.7" stroke-width="1.4" filter="url(#softGlow)"/>
+          <path d="M-28 -57 C-18 -31 18 -31 28 -57 C16 -48 -16 -48 -28 -57 Z" fill="#57fff3" opacity="0.35"/>
+          <path d="M-18 -42 C-18 -16 -32 -13 -28 7" fill="none" stroke="#57fff3" stroke-opacity="0.72" stroke-width="3" stroke-linecap="round"/>
+          <path d="M0 -40 C0 -12 9 -7 5 16" fill="none" stroke="#fff6ad" stroke-opacity="0.76" stroke-width="3" stroke-linecap="round"/>
+          <path d="M18 -42 C16 -17 33 -11 25 8" fill="none" stroke="#ff64cf" stroke-opacity="0.72" stroke-width="3" stroke-linecap="round"/>
+          <circle cx="-10" cy="-68" r="4" fill="#ffffff" opacity="0.82"/>
+        `,
+        arcGate: `
+          <ellipse cx="0" cy="0" rx="48" ry="8" fill="#030714" opacity="0.42"/>
+          <path d="M-48 0 C-50 -70 -26 -119 0 -119 C26 -119 50 -70 48 0" fill="none" stroke="#5dfff1" stroke-opacity="0.72" stroke-width="10" stroke-linecap="round"/>
+          <path d="M-33 -1 C-35 -57 -17 -92 0 -92 C17 -92 35 -57 33 -1" fill="none" stroke="#ff64cf" stroke-opacity="0.66" stroke-width="5" stroke-linecap="round"/>
+          <path d="M-48 0 L-28 0 L-32 -48 L-50 -35 Z" fill="url(#glassCyan)" opacity="0.55"/>
+          <path d="M48 0 L28 0 L32 -48 L50 -35 Z" fill="url(#glassPink)" opacity="0.55"/>
+          <circle cx="0" cy="-119" r="8" fill="#fff6ad" filter="url(#softGlow)"/>
+          <path d="M-18 -74 L0 -90 L18 -74 L0 -58 Z" fill="#ffe58a" opacity="0.62"/>
+        `,
+        shardBloom: `
+          <ellipse cx="0" cy="0" rx="24" ry="6" fill="#020611" opacity="0.4"/>
+          <path d="M-8 0 L-18 -50 L-2 -38 Z" fill="url(#glassCyan)" stroke="#befff8" stroke-opacity="0.5"/>
+          <path d="M4 0 L10 -72 L24 -15 Z" fill="url(#glassPink)" stroke="#ffd8f6" stroke-opacity="0.5"/>
+          <path d="M-2 0 L2 -56 L13 -4 Z" fill="#fff1a6" opacity="0.76" stroke="#fffbd7" stroke-opacity="0.45"/>
+          <circle cx="5" cy="-38" r="4" fill="#57fff3" opacity="0.8" filter="url(#softGlow)"/>
+        `
+      };
+
+      function svgEl(name, attrs = {}) {
+        const el = document.createElementNS(SVG_NS, name);
+        for (const [key, value] of Object.entries(attrs)) el.setAttribute(key, value);
+        return el;
+      }
+
+      function setupStars() {
+        const stars = [];
+        for (let i = 0; i < 92; i++) {
+          const h = hash(i * 19.17, i * 7.31);
+          const x = (h % 1000);
+          const y = 24 + (hash(i + 10, i + 20) % 245);
+          const r = 0.7 + (hash(i + 2, i + 4) % 20) / 22;
+          const star = svgEl('circle', {
+            cx: x.toFixed(1),
+            cy: y.toFixed(1),
+            r: r.toFixed(2),
+            fill: i % 5 === 0 ? '#ffeaa6' : '#dffffb',
+            opacity: (0.32 + (hash(i + 5, i + 9) % 50) / 100).toFixed(2)
+          });
+          stars.push(star);
+        }
+        starLayer.append(...stars);
+      }
+
+      function hash(a, b) {
+        let x = Math.sin(a * 127.1 + b * 311.7) * 43758.5453123;
+        return Math.floor((x - Math.floor(x)) * 1000000);
+      }
+
+      function rand01(a, b, salt = 0) {
+        return (hash(a + salt * 13.37, b - salt * 9.91) % 10000) / 10000;
+      }
+
+      function generateChunk(cellX, cellY) {
+        const count = 1 + (hash(cellX, cellY) % 3);
+        const objects = [];
+        for (let i = 0; i < count; i++) {
+          const seed = hash(cellX + i * 2.17, cellY - i * 3.11);
+          const rx = rand01(cellX, cellY, i + 1);
+          const ry = rand01(cellY, cellX, i + 5);
+          const typePick = seed % 100;
+          const type = typePick < 38 ? 'prismTree' : typePick < 61 ? 'tideBell' : typePick < 78 ? 'arcGate' : 'shardBloom';
+          const x = (cellX + rx) * CELL_SIZE;
+          const y = (cellY + ry) * CELL_SIZE;
+          const nearPath = Math.abs(((x * 0.37 + y * 0.22) % 22) - 11) < 2.15;
+          if (nearPath && type === 'arcGate') continue;
+          objects.push({
+            id: `${cellX}:${cellY}:${i}`,
+            x,
+            y,
+            type,
+            height: type === 'arcGate' ? 1.3 : type === 'prismTree' ? 1.15 : type === 'tideBell' ? 0.82 : 0.68,
+            spin: (seed % 628) / 100,
+            sway: rand01(cellX, cellY, i + 9) * Math.PI * 2
+          });
+        }
+        return objects;
+      }
+
+      function collectObjects() {
+        const cx = Math.floor(camera.x / CELL_SIZE);
+        const cy = Math.floor(camera.y / CELL_SIZE);
+        const cells = Math.ceil(VIEW_RADIUS / CELL_SIZE);
+        const items = [];
+        for (let gx = cx - cells; gx <= cx + cells; gx++) {
+          for (let gy = cy - cells; gy <= cy + cells; gy++) {
+            items.push(...generateChunk(gx, gy));
+          }
+        }
+        return items;
+      }
+
+      function acquireNode(type) {
+        const node = pool.pop() || svgEl('g');
+        if (node.dataset.type !== type) {
+          node.dataset.type = type;
+          node.innerHTML = propTemplates[type];
+        }
+        visibleNodes.push(node);
+        if (!node.parentNode) objectLayer.appendChild(node);
+        node.style.display = '';
+        return node;
+      }
+
+      function recycleUnused(startIndex) {
+        while (visibleNodes.length > startIndex) {
+          const node = visibleNodes.pop();
+          node.style.display = 'none';
+          pool.push(node);
+        }
+      }
+
+      function projectPoint(obj, time) {
+        const dx = obj.x - camera.x;
+        const dy = obj.y - camera.y;
+        const sin = Math.sin(camera.angle);
+        const cos = Math.cos(camera.angle);
+        const side = dx * cos - dy * sin;
+        const depth = dx * sin + dy * cos;
+        if (depth < 2.2 || depth > VIEW_RADIUS || Math.abs(side / depth) > FOV_SIDE) return null;
+        const scale = FOCAL_LENGTH / depth;
+        const headBob = Math.sin(bobPhase) * 4.8;
+        const horizon = HORIZON_BASE + camera.pitch + headBob;
+        let baseY = horizon + 270 / depth + 72 * scale;
+        if (obj.type === 'tideBell') baseY -= 18 * scale + Math.sin(time * 0.002 + obj.sway) * 9 * scale;
+        const screenX = WORLD_W / 2 + (side / depth) * FOCAL_LENGTH;
+        return { screenX, baseY, scale: scale * obj.height, depth, side };
+      }
+
+      function drawGround(time) {
+        groundLayer.replaceChildren();
+        const headBob = Math.sin(bobPhase) * 4.8;
+        const horizon = HORIZON_BASE + camera.pitch + headBob;
+        const glow = svgEl('path', {
+          d: `M0 ${horizon + 14} C245 ${horizon - 30}, 730 ${horizon - 24}, 1000 ${horizon + 16} L1000 700 L0 700 Z`,
+          fill: 'rgba(32,255,224,0.055)'
+        });
+        groundLayer.appendChild(glow);
+
+        for (let i = 0; i < 18; i++) {
+          const dist = 4 + i * 7.5 + ((camera.x * Math.sin(camera.angle) + camera.y * Math.cos(camera.angle)) % 7.5);
+          const y = horizon + 315 / dist + i * 6.5;
+          const width = 1180 - i * 34;
+          const opacity = Math.max(0.04, 0.22 - i * 0.009);
+          const ring = svgEl('path', {
+            d: `M${500 - width / 2} ${y} C${280} ${y - 12}, ${720} ${y - 12}, ${500 + width / 2} ${y}`,
+            fill: 'none',
+            stroke: i % 3 === 0 ? '#ff64cf' : '#57fff3',
+            'stroke-width': Math.max(0.6, 3.2 - i * 0.13).toFixed(2),
+            'stroke-opacity': opacity.toFixed(3)
+          });
+          groundLayer.appendChild(ring);
+        }
+
+        for (let lane = -7; lane <= 7; lane++) {
+          const bend = Math.sin(camera.angle + lane * 0.2) * 26;
+          const topX = 500 + lane * 24 + bend;
+          const bottomX = 500 + lane * 98 - ((camera.x * 2 + camera.y) % 98);
+          const ray = svgEl('path', {
+            d: `M${topX} ${horizon + 4} L${bottomX} 716`,
+            stroke: lane === 0 ? '#fff6ad' : '#57fff3',
+            'stroke-width': lane === 0 ? 2 : 1.1,
+            'stroke-opacity': lane === 0 ? 0.18 : 0.08,
+            fill: 'none'
+          });
+          groundLayer.appendChild(ray);
+        }
+      }
+
+      function render(time) {
+        drawGround(time);
+        const items = collectObjects();
+        const renderables = [];
+        for (const item of items) {
+          const projected = projectPoint(item, time);
+          if (projected) renderables.push({ item, projected });
+        }
+        renderables.sort((a, b) => b.projected.depth - a.projected.depth);
+
+        let used = 0;
+        for (const { item, projected } of renderables.slice(0, 145)) {
+          const node = used < visibleNodes.length ? visibleNodes[used] : acquireNode(item.type);
+          if (node.dataset.type !== item.type) {
+            node.dataset.type = item.type;
+            node.innerHTML = propTemplates[item.type];
+          }
+          const far = Math.min(1, projected.depth / VIEW_RADIUS);
+          const alpha = (1 - far * 0.58).toFixed(3);
+          const drift = item.type === 'tideBell' ? Math.sin(time * 0.0017 + item.sway) * 7 : Math.sin(time * 0.001 + item.sway) * 1.8;
+          const rotate = item.type === 'shardBloom' ? (Math.sin(item.spin) * 4).toFixed(2) : (Math.sin(item.spin) * 2).toFixed(2);
+          node.setAttribute('transform', `translate(${projected.screenX.toFixed(2)} ${(projected.baseY + drift).toFixed(2)}) scale(${projected.scale.toFixed(3)}) rotate(${rotate})`);
+          node.setAttribute('opacity', alpha);
+          node.setAttribute('filter', projected.depth > 82 ? 'url(#farHaze)' : '');
+          node.style.display = '';
+          if (!node.parentNode) objectLayer.appendChild(node);
+          used++;
+        }
+        recycleUnused(used);
+        coordReadout.textContent = `${camera.x.toFixed(0)} · ${camera.y.toFixed(0)}`;
+      }
+
+      function update(dt) {
+        const forwardKey = (keys.has('KeyW') || keys.has('ArrowUp') ? 1 : 0) - (keys.has('KeyS') || keys.has('ArrowDown') ? 1 : 0);
+        const keyboardTurn = (keys.has('KeyD') || keys.has('ArrowRight') ? 1 : 0) - (keys.has('KeyA') || keys.has('ArrowLeft') ? 1 : 0);
+        const turnInput = keyboardTurn + mobile.turn;
+        const moveInput = Math.max(-1, Math.min(1, forwardKey + mobile.move));
+        const moving = Math.abs(moveInput) > 0.02 || Math.abs(turnInput) > 0.02;
+
+        camera.angle += turnInput * dt * 1.85;
+        const speed = keys.has('ShiftLeft') || keys.has('ShiftRight') ? 26 : 17;
+        camera.x += Math.sin(camera.angle) * moveInput * speed * dt;
+        camera.y += Math.cos(camera.angle) * moveInput * speed * dt;
+
+        if (moving) bobPhase += dt * (7.5 + Math.abs(moveInput) * 4.2);
+        else bobPhase *= Math.pow(0.05, dt);
+      }
+
+      function frame(now) {
+        const dt = Math.min(0.05, (now - lastTime) / 1000);
+        lastTime = now;
+        update(dt);
+        render(now);
+        requestAnimationFrame(frame);
+      }
+
+      function updateViewportScale() {
+        const rect = world.getBoundingClientRect();
+        viewportScale = WORLD_W / Math.max(1, rect.width);
+      }
+
+      function bindKeyboard() {
+        window.addEventListener('keydown', (event) => {
+          if (['KeyW', 'KeyS', 'KeyA', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'ShiftLeft', 'ShiftRight'].includes(event.code)) {
+            keys.add(event.code);
+            event.preventDefault();
+          }
+        }, { passive: false });
+        window.addEventListener('keyup', (event) => {
+          keys.delete(event.code);
+          if (event.code.startsWith('Arrow')) event.preventDefault();
+        }, { passive: false });
+      }
+
+      function bindMouseLook() {
+        app.addEventListener('pointerdown', (event) => {
+          if (event.target.closest('.joystick')) return;
+          if (dragPointerId !== null) return;
+          dragPointerId = event.pointerId;
+          lastPointerX = event.clientX;
+          lastPointerY = event.clientY;
+          app.classList.add('dragging');
+          app.setPointerCapture(event.pointerId);
+          event.preventDefault();
+        }, { passive: false });
+
+        app.addEventListener('pointermove', (event) => {
+          if (event.pointerId !== dragPointerId) return;
+          const dx = event.clientX - lastPointerX;
+          const dy = event.clientY - lastPointerY;
+          lastPointerX = event.clientX;
+          lastPointerY = event.clientY;
+          camera.angle += dx * 0.0042;
+          camera.pitch = Math.max(-62, Math.min(64, camera.pitch + dy * 0.28));
+          event.preventDefault();
+        }, { passive: false });
+
+        const endDrag = (event) => {
+          if (event.pointerId !== dragPointerId) return;
+          dragPointerId = null;
+          app.classList.remove('dragging');
+          event.preventDefault();
+        };
+        app.addEventListener('pointerup', endDrag, { passive: false });
+        app.addEventListener('pointercancel', endDrag, { passive: false });
+      }
+
+      function knobVector(event, joystick) {
+        const rect = joystick.getBoundingClientRect();
+        const cx = rect.left + rect.width / 2;
+        const cy = rect.top + rect.height / 2;
+        const max = rect.width * 0.34;
+        let x = event.clientX - cx;
+        let y = event.clientY - cy;
+        const len = Math.hypot(x, y);
+        if (len > max) {
+          x = x / len * max;
+          y = y / len * max;
+        }
+        return { x, y, max };
+      }
+
+      function placeKnob(knob, vector) {
+        knob.style.transform = `translate(calc(-50% + ${vector.x}px), calc(-50% + ${vector.y}px))`;
+      }
+
+      function resetKnob(knob) {
+        knob.style.transform = 'translate(-50%, -50%)';
+      }
+
+      function bindJoysticks() {
+        leftJoystick.addEventListener('pointerdown', (event) => {
+          if (leftPointerId !== null) return;
+          leftPointerId = event.pointerId;
+          leftJoystick.setPointerCapture(event.pointerId);
+          const v = knobVector(event, leftJoystick);
+          mobile.leftVector = v;
+          mobile.move = Math.max(-1, Math.min(1, -v.y / v.max));
+          placeKnob(leftKnob, v);
+          event.preventDefault();
+        }, { passive: false });
+
+        rightJoystick.addEventListener('pointerdown', (event) => {
+          if (rightPointerId !== null) return;
+          rightPointerId = event.pointerId;
+          rightJoystick.setPointerCapture(event.pointerId);
+          const v = knobVector(event, rightJoystick);
+          mobile.rightVector = v;
+          mobile.turn = Math.max(-1, Math.min(1, v.x / v.max));
+          placeKnob(rightKnob, v);
+          event.preventDefault();
+        }, { passive: false });
+
+        leftJoystick.addEventListener('pointermove', (event) => {
+          if (event.pointerId !== leftPointerId) return;
+          const v = knobVector(event, leftJoystick);
+          mobile.leftVector = v;
+          mobile.move = Math.max(-1, Math.min(1, -v.y / v.max));
+          placeKnob(leftKnob, v);
+          event.preventDefault();
+        }, { passive: false });
+
+        rightJoystick.addEventListener('pointermove', (event) => {
+          if (event.pointerId !== rightPointerId) return;
+          const v = knobVector(event, rightJoystick);
+          mobile.rightVector = v;
+          mobile.turn = Math.max(-1, Math.min(1, v.x / v.max));
+          placeKnob(rightKnob, v);
+          event.preventDefault();
+        }, { passive: false });
+
+        const leftEnd = (event) => {
+          if (event.pointerId !== leftPointerId) return;
+          leftPointerId = null;
+          mobile.leftVector = { x: 0, y: 0 };
+          mobile.move = 0;
+          resetKnob(leftKnob);
+          event.preventDefault();
+        };
+        const rightEnd = (event) => {
+          if (event.pointerId !== rightPointerId) return;
+          rightPointerId = null;
+          mobile.rightVector = { x: 0, y: 0 };
+          mobile.turn = 0;
+          resetKnob(rightKnob);
+          event.preventDefault();
+        };
+
+        leftJoystick.addEventListener('pointerup', leftEnd, { passive: false });
+        leftJoystick.addEventListener('pointercancel', leftEnd, { passive: false });
+        rightJoystick.addEventListener('pointerup', rightEnd, { passive: false });
+        rightJoystick.addEventListener('pointercancel', rightEnd, { passive: false });
+      }
+
+      function preventMobileBrowserGestures() {
+        window.addEventListener('touchmove', (event) => event.preventDefault(), { passive: false });
+        window.addEventListener('gesturestart', (event) => event.preventDefault(), { passive: false });
+        window.addEventListener('contextmenu', (event) => event.preventDefault());
+        window.addEventListener('wheel', (event) => {
+          if (event.ctrlKey) event.preventDefault();
+        }, { passive: false });
+      }
+
+      setupStars();
+      updateViewportScale();
+      bindKeyboard();
+      bindMouseLook();
+      bindJoysticks();
+      preventMobileBrowserGestures();
+      window.addEventListener('resize', updateViewportScale);
+      requestAnimationFrame(frame);
+    })();
+  </script>
+</body>
+</html>

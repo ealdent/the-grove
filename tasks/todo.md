@@ -58,3 +58,39 @@ Single-file, dependency-free tower defense at
 - Polished responsive UI, WebAudio SFX, particles, floating text, speed/pause/mute.
 - Verified in headless Chromium: full 22-wave victory, all towers max-tier,
   desktop + mobile layouts, zero console/page errors.
+
+---
+
+# SVG Forest — fugu-ultra-high fresh build (ACTIVE)
+
+## Goal
+Create a new single-file, pure-SVG, first-person exploration game at `svg-forest/fugu-ultra-high-svg-forest.html`, add it to `svg-forest/index.html`, then commit and push to `main`.
+
+## Hard requirements
+- [x] Fresh implementation without using other repo game files or prior conversation history.
+- [x] Single HTML file with inline CSS/JS and pure SVG rendering only.
+- [x] No `<canvas>`, WebGL, Three.js, or external image assets.
+- [x] Creative cohesive theme with sky, ground, and at least 2–3 stylized SVG props.
+- [x] First-person 3D/2.5D exploration with indefinite/dynamic world.
+- [x] Depth illusion via distance scaling/sorting and efficient SVG creation/cleanup.
+- [x] Subtle movement head bob.
+- [x] Desktop WASD/arrow controls plus mouse click-drag look.
+- [x] Mobile responsive layout with two HTML/CSS virtual joysticks.
+- [x] True multitouch: left joystick moves while right joystick turns simultaneously.
+- [x] Prevent default mobile gestures.
+- [x] Add a tile to `svg-forest/index.html`.
+- [x] Verify, commit, and push to `main`.
+
+## Plan
+- [x] Write a fresh validation script in `/tmp` and run it red before implementation.
+- [x] Implement the game file from scratch with SVG DOM pooling and projected 2.5D props.
+- [x] Update only the required index tile.
+- [x] Run static and syntax verification plus git review.
+- [x] Commit and push only the requested game/index changes and this task record.
+
+## Review
+- Built `svg-forest/fugu-ultra-high-svg-forest.html` as a fresh pure-SVG first-person exploration game named Chroma Tidelands.
+- Implemented deterministic cell/chunk generation, distance projection, scale/depth sorting, SVG group pooling, ground redraw cleanup, and movement head bob.
+- Added desktop keyboard/mouse controls and independent pointer-id mobile joysticks so walking and turning can happen at the same time.
+- Added the tile to `svg-forest/index.html`.
+- Verification run: `/tmp/validate_svg_forest.py` passes and inline JavaScript `node --check` passes.
