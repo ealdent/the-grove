@@ -1,3 +1,54 @@
+# Tower Defense Game — opus48-ultra (ACTIVE)
+
+## Goal
+Single-file, dependency-free HTML tower defense. Greenfield & original.
+Unique theme w/ wow-factor, cute cartoony look, professional UI, responsive, random track.
+
+## Hard requirements
+- [x] 5 tower types, each with 4 upgrades (Tardy/Splashcap/Frost/Bolt/Sunny)
+- [x] Enemies with varied speed + strength (14 types incl. 4 bosses)
+- [x] 20+ distinct waves with variation (24 hand-authored waves)
+- [x] Between-wave upgrade phase (build phase + 🐚 Send Wave, send-early bonus)
+- [x] Nice UI / professional feel (glassy HUD, tide gauge, upgrade card)
+- [x] Cute cartoony appearance (procedural googly-eyed jelly blobs)
+- [x] Responsive (aspect-fit + compact <640 CSS + portrait rotate hint)
+- [x] Random track each load (Catmull-Rom silt current, fresh each game)
+- [x] No dependencies — pure HTML/CSS/JS, opens directly in browser (verified: 0 external refs)
+
+## Plan
+- [x] Phase 1 — Design workflow: WINNER "Tidepool Tactics: Defenders of the Droplet"
+- [x] Phase 2 — Build the single HTML file (~2000 lines, main loop)
+- [x] Phase 3 — Verify in browser: 0 console errors, full 24-wave win, responsive layouts
+- [x] Phase 4 — Adversarial review workflow (17 confirmed findings) + all fixed & re-verified
+- [x] Phase 5 — Add tile to tower-def/index.html (Opus 4.8 · Ultra · 💧 Tidepool Tactics)
+- [ ] Phase 6 — Commit + push to main
+
+## Constraints / notes
+- Design must NOT reuse prior chats or repo ideas. Steered AWAY from the existing
+  MYCELIA fungal/mushroom/"grove" theme (chose a magnified tide-pool droplet).
+- Only read tower-def/index.html AFTER the game existed, to match tile format.
+
+## Review
+- **Theme (wow-factor):** a single magnified drop of seawater. The signature mechanic
+  is a live TIDE CLOCK (~30s): HIGH TIDE speeds enemies + extends splash/chain range;
+  LOW TIDE slows/exposes them with "drying" DoT + surges Sun income; every tide flip
+  fires a free synchronized volley. Water body physically breathes in/out.
+- **Towers:** Tardy (sniper/pierce), Splashcap (splash), Frost (slow cone), Bolt (chain),
+  Sunny (economy/buff) — each mechanically distinct, 4 upgrade tiers each.
+- **Enemies:** grump swarm, fast-blink zippo, armored barnacle, floaty foram, splitter
+  rotifer→broodlings, tower-disabling copperhead raider, regen slime, segmented siphon,
+  + 4 bosses (Crab Claw, Moon Jelly, Pincer Kings, Great Red Bloom finale).
+- **Balance:** tuned so a strong build wins comfortably, a minimal build is a coin-flip
+  and can lose at bosses, and no defense loses at wave 5 — tense but fair.
+- **Verification:** headless sim of full 24-wave playthroughs (WIN, 0 errors); tiered
+  builds mapped the difficulty gradient; visual QA of start/combat/boss/build/victory +
+  desktop/landscape-mobile/compact layouts.
+- **Review pass:** 4-lens adversarial workflow → 17 confirmed findings (frost-shatter
+  cascade, tide-gauge swallowing clicks, unused tideHint, splitters dying on spawn under
+  AoE, stale/short-stage upgrade card, dead upgrade stats, etc.) — ALL fixed and re-verified.
+
+---
+
 # Night lighting + glass redo (greenhouse-todo)
 
 ## Problems
@@ -34,6 +85,35 @@
   trace (0.06→0.11 floor).
 - Verified with node --check and the greenhouse jest suite (passes). No
   headless browser in this environment for a visual smoke test.
+
+---
+
+# GitHub Pages Deploy Failure Investigation
+
+## Plan
+- [x] Confirm repository Pages configuration and current default branch.
+- [x] Inspect recent failed automatic Pages deployment runs from GitHub Actions.
+- [x] Compare failing logs against recent repository changes and Pages limits.
+- [x] Identify the root cause, confidence level, and smallest remediation path.
+
+## Review
+- Repo Pages config is `legacy` GitHub Pages, deployed from `main` `/`, at
+  `https://ealdent.github.io/the-grove/`.
+- Failed deployments were not source/build failures. The artifact upload step
+  succeeded, then `actions/deploy-pages@v5` failed while polling GitHub Pages.
+- July 2 failures (`28600611267`, `28607343557`) repeatedly reported
+  `Current status: deployment_queued` until the deploy step timed out after
+  600000 ms and canceled the deployment.
+- July 4/5 failures (`28717572745`, `28740138657`) created deployments and then
+  failed with `Deployment failed, try again later.`
+- GitHub Status has a matching July 2 Pages incident for slow/failing Pages
+  deployments. The repo also has successful deployments after the incident,
+  including latest run `28749004839`, so this is a GitHub Pages deployment
+  backend/intermittent queue issue, not a bad site artifact.
+- Smallest remediation: no code change required. Re-run/trigger a fresh Pages
+  deploy when it happens. If it keeps recurring, toggle Pages source off/on or
+  switch to an explicit checked-in workflow with concurrency cancellation so old
+  deploys do not linger.
 
 ---
 
