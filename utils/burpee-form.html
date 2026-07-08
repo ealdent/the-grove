@@ -410,10 +410,130 @@ for(const [hx, hz, hr] of [[-10, -24, 9], [3, -27, 12], [13, -23, 8]]){
 }
 
 /* ============================== figure: athletic woman ============================== */
-const skin  = new THREE.MeshStandardMaterial({color:C(0xd8a081), roughness:0.52, metalness:0});
-const hair  = new THREE.MeshStandardMaterial({color:C(0x3a2a1d), roughness:0.48, metalness:0.05});
-const top   = new THREE.MeshStandardMaterial({color:C(0x5d6e57), roughness:0.78, metalness:0}); // sage sports top
-const legg  = new THREE.MeshStandardMaterial({color:C(0x383d43), roughness:0.72, metalness:0}); // charcoal leggings
+/* procedural body textures — mottled skin, hair strands, knit fabric */
+function texCanvas(size, draw){
+  const c = document.createElement("canvas");
+  c.width = c.height = size;
+  draw(c.getContext("2d"), size);
+  const t = new THREE.CanvasTexture(c);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  return t;
+}
+let tseed = 11;
+const trnd = () => { tseed = (tseed * 16807) % 2147483647; return tseed / 2147483647; };
+
+/* skin color: soft blotches of warmer/cooler tone over a tan base, plus speckle */
+const skinMap = texCanvas(512, (x, s) => {
+  x.fillStyle = "#d9a183"; x.fillRect(0, 0, s, s);
+  const tones = ["#cf8f70", "#e2af90", "#d49a7e", "#c98b6d", "#e6b697"];
+  for(let i = 0; i < 240; i++){
+    x.fillStyle = tones[(trnd() * tones.length) | 0];
+    x.globalAlpha = 0.05 + trnd() * 0.06;
+    const r = 8 + trnd() * 46;
+    x.beginPath();
+    x.ellipse(trnd() * s, trnd() * s, r, r * (0.5 + trnd() * 0.8), trnd() * Math.PI, 0, Math.PI * 2);
+    x.fill();
+  }
+  x.globalAlpha = 1;
+  for(let i = 0; i < 2600; i++){
+    x.fillStyle = trnd() < 0.5 ? "rgba(120,70,50,0.07)" : "rgba(255,230,210,0.06)";
+    x.fillRect(trnd() * s, trnd() * s, 1.4, 1.4);
+  }
+});
+skinMap.encoding = THREE.sRGBEncoding;
+skinMap.repeat.set(2, 2);
+
+/* skin relief: pore-level noise plus soft undulations */
+const skinBump = texCanvas(256, (x, s) => {
+  x.fillStyle = "#808080"; x.fillRect(0, 0, s, s);
+  for(let i = 0; i < 9000; i++){
+    const g = (108 + trnd() * 40) | 0;
+    x.fillStyle = `rgb(${g},${g},${g})`;
+    x.fillRect(trnd() * s, trnd() * s, 1, 1);
+  }
+  for(let i = 0; i < 40; i++){
+    const g = (118 + trnd() * 20) | 0;
+    x.fillStyle = `rgba(${g},${g},${g},0.25)`;
+    x.beginPath(); x.arc(trnd() * s, trnd() * s, 10 + trnd() * 30, 0, Math.PI * 2); x.fill();
+  }
+});
+skinBump.repeat.set(3, 3);
+
+/* skin sheen: patchy roughness so highlights break up instead of reading plastic */
+const skinRough = texCanvas(256, (x, s) => {
+  x.fillStyle = "#7d7d7d"; x.fillRect(0, 0, s, s);
+  for(let i = 0; i < 70; i++){
+    const g = (105 + trnd() * 45) | 0;
+    x.fillStyle = `rgba(${g},${g},${g},0.5)`;
+    x.beginPath(); x.arc(trnd() * s, trnd() * s, 14 + trnd() * 40, 0, Math.PI * 2); x.fill();
+  }
+});
+skinRough.repeat.set(2, 2);
+
+/* hair: vertical strand streaks (longitudinal on the sphere = flowing from the crown) */
+function hairStrands(x, s, colorMode){
+  x.fillStyle = colorMode ? "#33241a" : "#808080";
+  x.fillRect(0, 0, s, s);
+  const shades = colorMode
+    ? ["#241811", "#3d2b1c", "#4a3522", "#5a4128", "#1e140d"]
+    : ["#6a6a6a", "#747474", "#8c8c8c", "#989898", "#606060"];
+  for(let i = 0; i < 600; i++){
+    x.strokeStyle = shades[(trnd() * shades.length) | 0];
+    x.globalAlpha = 0.35 + trnd() * 0.4;
+    x.lineWidth = 0.8 + trnd() * 1.6;
+    const px = trnd() * s, wob = (trnd() - 0.5) * 14;
+    x.beginPath();
+    x.moveTo(px, 0);
+    x.quadraticCurveTo(px + wob, s / 2, px + (trnd() - 0.5) * 10, s);
+    x.stroke();
+  }
+  x.globalAlpha = 1;
+}
+const hairMap = texCanvas(256, (x, s) => hairStrands(x, s, true));
+hairMap.encoding = THREE.sRGBEncoding;
+hairMap.repeat.set(4, 1);
+const hairBump = texCanvas(256, (x, s) => hairStrands(x, s, false));
+hairBump.repeat.set(4, 1);
+
+/* fabric: heathered color mottle + knit dot-grid relief, shared by top and leggings */
+const fabricMottle = texCanvas(256, (x, s) => {
+  x.fillStyle = "#ffffff"; x.fillRect(0, 0, s, s);
+  for(let i = 0; i < 4000; i++){
+    const g = (215 + trnd() * 40) | 0;
+    x.fillStyle = `rgba(${g},${g},${g},0.5)`;
+    x.fillRect(trnd() * s, trnd() * s, 1.6, 1.6);
+  }
+});
+fabricMottle.encoding = THREE.sRGBEncoding;
+fabricMottle.repeat.set(3, 3);
+const knitBump = texCanvas(128, (x, s) => {
+  x.fillStyle = "#808080"; x.fillRect(0, 0, s, s);
+  for(let y = 0; y < s; y += 3){
+    const off = ((y / 3) % 2) ? 1.5 : 0;
+    for(let xx = 0; xx < s; xx += 3){
+      x.fillStyle = "rgba(96,96,96,0.8)";
+      x.fillRect(xx + off, y, 1.5, 1.5);
+    }
+  }
+});
+knitBump.repeat.set(6, 6);
+
+const skin = new THREE.MeshStandardMaterial({
+  color:0xffffff, map:skinMap, bumpMap:skinBump, bumpScale:0.0035,
+  roughnessMap:skinRough, roughness:1, metalness:0
+});
+const hair = new THREE.MeshStandardMaterial({
+  color:0xffffff, map:hairMap, bumpMap:hairBump, bumpScale:0.003,
+  roughness:0.5, metalness:0.05
+});
+const top = new THREE.MeshStandardMaterial({   // sage sports top
+  color:C(0x5d6e57), map:fabricMottle, bumpMap:knitBump, bumpScale:0.0015,
+  roughness:0.8, metalness:0
+});
+const legg = new THREE.MeshStandardMaterial({  // charcoal leggings
+  color:C(0x383d43), map:fabricMottle, bumpMap:knitBump, bumpScale:0.0015,
+  roughness:0.72, metalness:0
+});
 const shoeU = new THREE.MeshStandardMaterial({color:C(0xece9e2), roughness:0.6,  metalness:0}); // sneaker upper
 const shoeS = new THREE.MeshStandardMaterial({color:C(0xc9c5ba), roughness:0.8,  metalness:0}); // sole
 const lipM  = new THREE.MeshStandardMaterial({color:C(0xb06a5a), roughness:0.6,  metalness:0});
@@ -456,15 +576,10 @@ root.add(spine);
 spine.add(lathePart(
   [[0.104,-0.02],[0.092,0.07],[0.088,0.13],[0.096,0.19],[0.102,0.23]],
   skin, 0.74));
-/* sports top over ribcage/chest */
+/* sports top over ribcage/chest — bust built into the profile, no add-on bumps */
 spine.add(lathePart(
-  [[0.100,0.20],[0.111,0.27],[0.115,0.33],[0.102,0.40],[0.078,0.45]],
-  top, 0.78));
-for(const s of [-1, 1]){
-  const b = ball(0.05, top, 1, 0.85, 0.6);
-  b.position.set(0.05 * s, 0.315, 0.045);
-  spine.add(b);
-}
+  [[0.100,0.20],[0.113,0.27],[0.120,0.31],[0.116,0.35],[0.097,0.41],[0.076,0.45]],
+  top, 0.80));
 
 const neck = shadowed(new THREE.Mesh(new THREE.CylinderGeometry(0.031, 0.036, 0.12, 16), skin));
 neck.position.y = 0.47;
@@ -632,7 +747,8 @@ function applyPose(p){
 
 /* ============================== camera orbit ============================== */
 const target = new THREE.Vector3(0, 0.70, -0.35);
-let theta = 0.85, phi = 1.22, radius = 4.8;
+let theta = 0.85, phi = 1.22;
+let radius = parseFloat(new URLSearchParams(location.search).get("r")) || 4.8;  /* ?r= initial zoom */
 function updateCamera(){
   phi = Math.min(1.52, Math.max(0.25, phi));
   radius = Math.min(11, Math.max(2.2, radius));
