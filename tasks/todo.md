@@ -56,6 +56,23 @@ Usage concentration = segment usage share vs population share (Pareto).
   preview DOM (Leaky bucket peak 2,125 > active 1,743 = declining base; Best-in-class
   grows to 9,345). Funnel sums to 100%, no console errors. Card added first in utils grid.
 
+### Follow-up: Unit Economics (cost/revenue per day)
+- Added cost-per-day and revenue-per-day modeling tied to the engagement segments.
+- New "Unit Economics" control group: revenue/subscriber/mo (blended ARPU) + cost/day
+  sliders for heavy/medium/light active users (defaults $0.50 / $0.10 / $0.02 per the
+  user's guidance; ARPU $10/mo).
+- computeModel now returns `econ`: monthly revenue (active x price) and cost
+  (Σ activeSeg x costPerDay x 30.44), profit, horizon totals, per-user/day blended +
+  per-segment margins, and MRR/cost/margin run-rate at month H.
+- New panel: loss/profit headline callout, 4 econ stats (revenue run-rate, cost to serve,
+  gross margin, gross profit over horizon), a revenue-vs-cost canvas chart, and per-segment
+  margin bars (rev vs cost, red when a segment is underwater).
+- Key insight surfaced: at $10/mo a heavy user ($0.50/day) LOSES $0.17/day; medium/light
+  subsidize for a 57% blended margin. Best-in-class ($13/mo, $0.40 cost) flips heavy to +$0.03.
+- Verified: no console errors; all 4 presets compute correct econ via preview DOM; headless
+  desktop screenshot shows the panel + chart render; preview mobile viewport (375px) confirms
+  overflowX=0 (only the explainer formulas scroll, by design). Explainer + presets updated.
+
 ---
 
 # Tower Defense Game — opus48-ultra (ACTIVE)
