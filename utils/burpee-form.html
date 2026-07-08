@@ -6,13 +6,13 @@
 <title>The Burpee — Form Lab</title>
 <style>
   :root{
-    --bg:#101418;
-    --panel:#161c22;
-    --line:#2a323b;
-    --ink:#e9e4da;
-    --muted:#8d97a3;
-    --accent:#ff7a3d;
-    --accent-dim:#7a4226;
+    --bg:#e8e1d1;
+    --panel:rgba(250,246,238,.84);
+    --line:#c9bda3;
+    --ink:#2d2721;
+    --muted:#83795f;
+    --accent:#b23a24;
+    --accent-dim:#d9a08f;
   }
   *{margin:0;padding:0;box-sizing:border-box}
   html,body{height:100%}
@@ -50,7 +50,7 @@
   /* ---------- form checklist ---------- */
   aside{
     position:fixed;right:24px;top:50%;transform:translateY(-50%);
-    width:230px;background:color-mix(in srgb,var(--panel) 86%,transparent);
+    width:230px;background:var(--panel);
     border:1px solid var(--line);border-radius:10px;padding:16px 16px 14px;
     backdrop-filter:blur(6px);z-index:5;
   }
@@ -78,6 +78,7 @@
   .cue{
     text-align:center;margin-bottom:12px;min-height:22px;
     font-size:clamp(13px,1.6vw,16px);color:var(--ink);
+    text-shadow:0 1px 0 rgba(250,246,238,.7);
   }
   .cue b{color:var(--accent);font-weight:700;letter-spacing:.02em}
   .strip{
@@ -119,11 +120,11 @@
 </style>
 </head>
 <body>
-<canvas id="scene" aria-label="3D figure performing a burpee"></canvas>
+<canvas id="scene" aria-label="3D woman performing a burpee inside an enso circle in a Japanese zen garden"></canvas>
 
 <header>
   <div>
-    <div class="kicker">Form Lab</div>
+    <div class="kicker">Form Lab · Zen Garden</div>
     <h1>The Burpee<small>six positions, one straight back</small></h1>
   </div>
   <div class="reps"><div class="n" id="repN">0</div><div class="l">Reps</div></div>
@@ -168,65 +169,267 @@ renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.outputEncoding = THREE.sRGBEncoding;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.0;
+/* r128 outputEncoding double-gammas raw hex colors; feed materials linear color */
+const C = hex => new THREE.Color(hex).convertSRGBToLinear();
 
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x101418);
-scene.fog = new THREE.Fog(0x101418, 8, 18);
+scene.background = new THREE.Color(0xe9e2d2);
+scene.fog = new THREE.Fog(0xe9e2d2, 9, 26);
 
 const camera = new THREE.PerspectiveCamera(42, 1, 0.1, 60);
 
-/* lighting: warm key, cool rim, soft fill */
-scene.add(new THREE.HemisphereLight(0x46586a, 0x191510, 0.85));
-const key = new THREE.DirectionalLight(0xfff0dd, 1.15);
-key.position.set(2.6, 4.5, 3.2);
+/* lighting: warm morning sun, bright sky, cool bounce */
+scene.add(new THREE.HemisphereLight(0xfdf3e0, 0xa89a7e, 0.5));
+const key = new THREE.DirectionalLight(0xffe9cb, 1.15);
+key.position.set(3.4, 5.2, 2.8);
 key.castShadow = true;
 key.shadow.mapSize.set(2048, 2048);
-key.shadow.camera.left = -3; key.shadow.camera.right = 3;
-key.shadow.camera.top = 3;   key.shadow.camera.bottom = -3;
-key.shadow.camera.near = 1;  key.shadow.camera.far = 12;
+key.shadow.camera.left = -5; key.shadow.camera.right = 5;
+key.shadow.camera.top = 5;   key.shadow.camera.bottom = -5;
+key.shadow.camera.near = 1;  key.shadow.camera.far = 14;
 key.shadow.bias = -0.0005;
 scene.add(key);
-const rim = new THREE.DirectionalLight(0x6f8fc0, 0.45);
+const rim = new THREE.DirectionalLight(0xc7d3e2, 0.35);
 rim.position.set(-3.5, 2.2, -4);
 scene.add(rim);
 
-/* floor */
-const floor = new THREE.Mesh(
-  new THREE.CircleGeometry(9, 64),
-  new THREE.MeshStandardMaterial({color:0x1a2026, roughness:0.95, metalness:0})
+/* ============================== zen garden ============================== */
+/* raked sand, drawn as concentric rings around the enso */
+function makeSandTexture(){
+  const c = document.createElement("canvas");
+  c.width = c.height = 1024;
+  const x = c.getContext("2d");
+  x.fillStyle = "#dbd1b8";
+  x.fillRect(0, 0, 1024, 1024);
+  /* grain speckle (deterministic) */
+  let s = 7;
+  const rnd = () => { s = (s * 16807) % 2147483647; return s / 2147483647; };
+  for(let i = 0; i < 14000; i++){
+    const g = 165 + Math.floor(rnd() * 60);
+    x.fillStyle = `rgba(${g},${g-14},${g-42},0.16)`;
+    x.fillRect(rnd() * 1024, rnd() * 1024, 1.6, 1.6);
+  }
+  /* rake grooves */
+  for(let r = 26; r < 1480; r += 12){
+    x.strokeStyle = "rgba(112,98,72,0.20)";
+    x.lineWidth = 2.6;
+    x.beginPath(); x.arc(512, 512, r, 0, Math.PI * 2); x.stroke();
+    x.strokeStyle = "rgba(255,250,238,0.28)";
+    x.lineWidth = 1.4;
+    x.beginPath(); x.arc(512, 512, r + 3.4, 0, Math.PI * 2); x.stroke();
+  }
+  const tex = new THREE.CanvasTexture(c);
+  tex.encoding = THREE.sRGBEncoding;
+  tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
+  return tex;
+}
+const sandTex = makeSandTexture();
+const sand = new THREE.Mesh(
+  new THREE.CircleGeometry(14, 80),
+  new THREE.MeshStandardMaterial({map:sandTex, bumpMap:sandTex, bumpScale:0.012, roughness:1, metalness:0})
 );
-floor.rotation.x = -Math.PI/2;
-floor.receiveShadow = true;
-scene.add(floor);
+sand.rotation.x = -Math.PI/2;
+sand.position.z = -0.35;           /* rake rings centred on the enso */
+sand.receiveShadow = true;
+scene.add(sand);
 
-const ring = new THREE.Mesh(
-  new THREE.RingGeometry(1.55, 1.585, 96),
-  new THREE.MeshBasicMaterial({color:0xff7a3d, transparent:true, opacity:0.32, side:THREE.DoubleSide})
+/* enso — a single imperfect ink brush circle, open at the top left */
+function makeEnsoTexture(){
+  const c = document.createElement("canvas");
+  c.width = c.height = 1024;
+  const x = c.getContext("2d");
+  x.translate(512, 512);
+  x.lineCap = "round";
+  const START = -Math.PI * 0.62, END = START + Math.PI * 1.86;  /* leave a gap */
+  const R = 340;
+  /* main stroke: many short arcs, width swelling then tapering like a brush */
+  const STEPS = 150;
+  for(let i = 0; i < STEPS; i++){
+    const u = i / (STEPS - 1);
+    const a0 = START + (END - START) * u;
+    const a1 = a0 + (END - START) / STEPS + 0.012;
+    const w = 10 + 46 * Math.sin(Math.min(1, u * 1.25) * Math.PI);   /* thick middle, thin tail */
+    const wobble = Math.sin(u * 23) * 3 + Math.sin(u * 7) * 5;
+    x.strokeStyle = `rgba(44,38,30,${0.92 - u * 0.25})`;
+    x.lineWidth = w;
+    x.beginPath();
+    x.arc(0, 0, R + wobble, a0, a1);
+    x.stroke();
+  }
+  /* dry-brush streaks */
+  for(let k = 0; k < 5; k++){
+    x.strokeStyle = "rgba(44,38,30,0.18)";
+    x.lineWidth = 3;
+    x.beginPath();
+    x.arc(0, 0, R - 26 + k * 13, START + 0.15 + k * 0.05, END - 0.35 - k * 0.1);
+    x.stroke();
+  }
+  const tex = new THREE.CanvasTexture(c);
+  tex.encoding = THREE.sRGBEncoding;
+  tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
+  return tex;
+}
+const enso = new THREE.Mesh(
+  new THREE.PlaneGeometry(4.7, 4.7),
+  new THREE.MeshStandardMaterial({
+    map:makeEnsoTexture(), transparent:true, roughness:1, metalness:0,
+    depthWrite:false, polygonOffset:true, polygonOffsetFactor:-2
+  })
 );
-ring.rotation.x = -Math.PI/2;
-ring.position.set(0, 0.002, -0.45);
-scene.add(ring);
+enso.rotation.x = -Math.PI/2;
+enso.rotation.z = Math.PI * 0.75;      /* open end toward the back left */
+enso.position.set(0, 0.012, -0.35);
+enso.receiveShadow = true;
+scene.add(enso);
 
-/* ============================== figure ============================== */
-const skin  = new THREE.MeshStandardMaterial({color:0xc9b8a6, roughness:0.62, metalness:0.04});
-const dark  = new THREE.MeshStandardMaterial({color:0x4c5560, roughness:0.8,  metalness:0.05}); // shorts/shirt
-const joint = new THREE.MeshStandardMaterial({color:0xb3a18d, roughness:0.7,  metalness:0.04});
+/* rocks — deterministically displaced dodecahedra on moss pads */
+function rock(r, px, pz, seed){
+  const g = new THREE.DodecahedronGeometry(r, 1);
+  const pos = g.attributes.position, v = new THREE.Vector3();
+  for(let i = 0; i < pos.count; i++){
+    v.fromBufferAttribute(pos, i);
+    const n = Math.sin(v.x * 12.9 + v.y * 78.2 + v.z * 37.7 + seed) * 43758.5;
+    const f = 1 + (n - Math.floor(n) - 0.5) * 0.36;
+    pos.setXYZ(i, v.x * f, v.y * f, v.z * f);
+  }
+  g.computeVertexNormals();
+  const m = new THREE.Mesh(g, new THREE.MeshStandardMaterial({color:C(0x8d8779), roughness:0.95}));
+  m.scale.y = 0.68;
+  m.position.set(px, r * 0.42, pz);
+  m.castShadow = m.receiveShadow = true;
+  scene.add(m);
+  const moss = new THREE.Mesh(
+    new THREE.CircleGeometry(r * 1.5, 26),
+    new THREE.MeshStandardMaterial({color:C(0x77855c), roughness:1})
+  );
+  moss.rotation.x = -Math.PI/2;
+  moss.position.set(px, 0.006, pz);
+  moss.receiveShadow = true;
+  scene.add(moss);
+}
+rock(0.55, -2.25, -2.7, 1.7);
+rock(0.32, -1.55, -2.35, 4.2);
+rock(0.20, -2.75, -2.05, 9.1);
+rock(0.42,  2.45, -2.1, 6.4);
+
+/* stone lantern (toro) */
+(function lantern(){
+  const stone = new THREE.MeshStandardMaterial({color:C(0x99937f), roughness:0.95});
+  const grp = new THREE.Group();
+  grp.position.set(3.0, 0, -3.7);
+  const add = (geo, y) => {
+    const m = new THREE.Mesh(geo, stone);
+    m.position.y = y; m.castShadow = m.receiveShadow = true;
+    grp.add(m); return m;
+  };
+  add(new THREE.CylinderGeometry(0.34, 0.44, 0.18, 20), 0.09);
+  add(new THREE.CylinderGeometry(0.14, 0.17, 0.55, 16), 0.45);
+  add(new THREE.CylinderGeometry(0.30, 0.24, 0.09, 20), 0.77);
+  add(new THREE.BoxGeometry(0.34, 0.30, 0.34), 0.97);
+  const roof = add(new THREE.ConeGeometry(0.38, 0.24, 6), 1.24);
+  roof.rotation.y = Math.PI/6;
+  add(new THREE.SphereGeometry(0.06, 12, 10), 1.42);
+  /* warm light windows */
+  const glow = new THREE.MeshStandardMaterial({color:C(0xffe6b8), emissive:C(0xffc878), emissiveIntensity:0.7, roughness:0.6});
+  for(const [dx, dz, ry] of [[0, 0.171, 0], [0, -0.171, 0], [0.171, 0, Math.PI/2], [-0.171, 0, Math.PI/2]]){
+    const w = new THREE.Mesh(new THREE.PlaneGeometry(0.15, 0.17), glow);
+    w.position.set(dx, 0.97, dz);
+    w.rotation.y = ry + (dz < 0 ? Math.PI : 0);
+    grp.add(w);
+  }
+  scene.add(grp);
+})();
+
+/* japanese maple, red foliage */
+(function maple(){
+  const grp = new THREE.Group();
+  grp.position.set(-3.5, 0, -4.8);
+  const bark = new THREE.MeshStandardMaterial({color:C(0x4c3b2b), roughness:0.9});
+  const t1 = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.14, 1.3, 10), bark);
+  t1.position.y = 0.65; t1.rotation.z = 0.10; t1.castShadow = true;
+  grp.add(t1);
+  const t2 = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.08, 0.9, 10), bark);
+  t2.position.set(0.22, 1.5, 0); t2.rotation.z = 0.34; t2.castShadow = true;
+  grp.add(t2);
+  const reds = [0xa8402c, 0xbd5230, 0x93321f, 0xb04a2e];
+  const blobs = [[0, 2.0, 0, 0.85], [0.75, 1.85, 0.15, 0.62], [-0.6, 1.8, -0.1, 0.58],
+                 [0.25, 2.4, -0.2, 0.6], [-0.25, 2.25, 0.3, 0.5], [0.9, 2.2, -0.15, 0.42]];
+  blobs.forEach((b, i) => {
+    const f = new THREE.Mesh(
+      new THREE.SphereGeometry(b[3], 14, 12),
+      new THREE.MeshStandardMaterial({color:C(reds[i % reds.length]), roughness:0.92})
+    );
+    f.position.set(b[0], b[1], b[2]);
+    f.scale.y = 0.66;
+    f.castShadow = true;
+    grp.add(f);
+  });
+  scene.add(grp);
+})();
+
+/* bamboo grove */
+(function bamboo(){
+  const grp = new THREE.Group();
+  grp.position.set(4.7, 0, -5.9);
+  const greens = [0x6f8657, 0x7a9160, 0x66804f];
+  const stalks = [[-0.5, 3.6, 0.04], [0, 4.1, -0.02], [0.45, 3.3, 0.06], [0.85, 3.9, -0.05], [-0.9, 3.1, 0.02]];
+  stalks.forEach((st, i) => {
+    const mat = new THREE.MeshStandardMaterial({color:C(greens[i % 3]), roughness:0.8});
+    const s = new THREE.Mesh(new THREE.CylinderGeometry(0.042, 0.05, st[1], 10), mat);
+    s.position.set(st[0], st[1]/2, i * 0.12 - 0.25);
+    s.rotation.z = st[2];
+    s.castShadow = true;
+    grp.add(s);
+    for(let y = 0.55; y < st[1]; y += 0.62){
+      const ring = new THREE.Mesh(new THREE.CylinderGeometry(0.049, 0.049, 0.025, 10),
+        new THREE.MeshStandardMaterial({color:C(0x54663e), roughness:0.85}));
+      ring.position.set(st[0] + Math.sin(st[2]) * y, y, i * 0.12 - 0.25);
+      ring.rotation.z = st[2];
+      grp.add(ring);
+    }
+    const leaf = new THREE.Mesh(new THREE.SphereGeometry(0.45, 10, 8),
+      new THREE.MeshStandardMaterial({color:C(0x74895a), roughness:0.95}));
+    leaf.position.set(st[0] + Math.sin(st[2]) * st[1] * 0.9, st[1] * 0.92, i * 0.12 - 0.25);
+    leaf.scale.set(1, 0.55, 1);
+    leaf.castShadow = true;
+    grp.add(leaf);
+  });
+  scene.add(grp);
+})();
+
+/* misty hills behind everything */
+for(const [hx, hz, hr] of [[-10, -24, 9], [3, -27, 12], [13, -23, 8]]){
+  const hill = new THREE.Mesh(
+    new THREE.SphereGeometry(hr, 24, 16),
+    new THREE.MeshStandardMaterial({color:0xb0b5a0, roughness:1})  /* raw = mist-pale on purpose */
+  );
+  hill.position.set(hx, -hr * 0.62, hz);
+  scene.add(hill);
+}
+
+/* ============================== figure: athletic woman ============================== */
+const skin  = new THREE.MeshStandardMaterial({color:C(0xd8a081), roughness:0.52, metalness:0});
+const hair  = new THREE.MeshStandardMaterial({color:C(0x3a2a1d), roughness:0.48, metalness:0.05});
+const top   = new THREE.MeshStandardMaterial({color:C(0x5d6e57), roughness:0.78, metalness:0}); // sage sports top
+const legg  = new THREE.MeshStandardMaterial({color:C(0x383d43), roughness:0.72, metalness:0}); // charcoal leggings
+const shoeU = new THREE.MeshStandardMaterial({color:C(0xece9e2), roughness:0.6,  metalness:0}); // sneaker upper
+const shoeS = new THREE.MeshStandardMaterial({color:C(0xc9c5ba), roughness:0.8,  metalness:0}); // sole
+const lipM  = new THREE.MeshStandardMaterial({color:C(0xb06a5a), roughness:0.6,  metalness:0});
+const eyeM  = new THREE.MeshStandardMaterial({color:C(0x2d2320), roughness:0.35, metalness:0});
 
 function shadowed(m){ m.castShadow = true; m.receiveShadow = false; return m; }
 
-/* tapered limb segment whose pivot sits at the top end, pointing down -Y */
-function limbDown(rTop, rBottom, len, mat){
-  const g = new THREE.CylinderGeometry(rTop, rBottom, len, 18);
-  g.translate(0, -len/2, 0);
-  return shadowed(new THREE.Mesh(g, mat));
-}
-function limbUp(rBottom, rTop, len, mat){
-  const g = new THREE.CylinderGeometry(rTop, rBottom, len, 18);
-  g.translate(0, len/2, 0);
-  return shadowed(new THREE.Mesh(g, mat));
+/* lathe a limb/torso profile: pts = [[radius, y], ...] bottom→top; zScale flattens front-to-back */
+function lathePart(pts, mat, zScale){
+  const g = new THREE.LatheGeometry(pts.map(p => new THREE.Vector2(p[0], p[1])), 28);
+  const m = shadowed(new THREE.Mesh(g, mat));
+  m.scale.z = zScale || 1;
+  return m;
 }
 function ball(r, mat, sx, sy, sz){
-  const m = shadowed(new THREE.Mesh(new THREE.SphereGeometry(r, 22, 18), mat));
+  const m = shadowed(new THREE.Mesh(new THREE.SphereGeometry(r, 24, 20), mat));
   if(sx) m.scale.set(sx, sy, sz);
   return m;
 }
@@ -234,71 +437,117 @@ function ball(r, mat, sx, sy, sz){
 const root = new THREE.Group();          // pelvis / hips
 scene.add(root);
 
-/* pelvis */
-const pelvis = ball(1, dark, 0.155, 0.105, 0.10);
-pelvis.position.y = -0.02;
-root.add(pelvis);
+/* hips + glutes (leggings) — same pivot as before so all poses still land */
+root.add(lathePart(
+  [[0.068,-0.16],[0.106,-0.10],[0.136,-0.03],[0.130,0.04],[0.110,0.10],[0.098,0.13]],
+  legg, 0.80));
+for(const s of [-1, 1]){
+  const g = ball(0.066, legg, 1, 0.9, 0.82);
+  g.position.set(0.052 * s, -0.055, -0.072);
+  root.add(g);
+}
 
 /* spine + torso */
 const spine = new THREE.Group();
 spine.position.y = 0.08;
 root.add(spine);
 
-const torso = limbUp(0.105, 0.135, 0.42, dark);
-spine.add(torso);
-const chest = ball(1, dark, 0.155, 0.115, 0.105);
-chest.position.set(0, 0.40, 0.005);
-spine.add(chest);
-const neck = limbUp(0.045, 0.04, 0.10, skin);
-neck.position.y = 0.44;
+/* bare midriff */
+spine.add(lathePart(
+  [[0.104,-0.02],[0.092,0.07],[0.088,0.13],[0.096,0.19],[0.102,0.23]],
+  skin, 0.74));
+/* sports top over ribcage/chest */
+spine.add(lathePart(
+  [[0.100,0.20],[0.111,0.27],[0.115,0.33],[0.102,0.40],[0.078,0.45]],
+  top, 0.78));
+for(const s of [-1, 1]){
+  const b = ball(0.05, top, 1, 0.85, 0.6);
+  b.position.set(0.05 * s, 0.315, 0.045);
+  spine.add(b);
+}
+
+const neck = shadowed(new THREE.Mesh(new THREE.CylinderGeometry(0.031, 0.036, 0.12, 16), skin));
+neck.position.y = 0.47;
 spine.add(neck);
 
+/* head + face + hair (bun) */
 const headPiv = new THREE.Group();
 headPiv.position.y = 0.52;
 spine.add(headPiv);
-const head = ball(1, skin, 0.085, 0.105, 0.092);
-head.position.set(0, 0.085, 0.012);
-headPiv.add(head);
-const nose = ball(0.018, skin);
-nose.position.set(0, 0.085, 0.105);
-headPiv.add(nose);
 
-/* arms */
+const skull = ball(0.082, skin, 0.92, 1.12, 0.98);
+skull.position.set(0, 0.075, 0.008);
+headPiv.add(skull);
+const scalp = ball(0.084, hair, 0.97, 1.1, 1.0);
+scalp.position.set(0, 0.093, -0.02);
+headPiv.add(scalp);
+const bun = ball(0.042, hair);
+bun.position.set(0, 0.132, -0.098);
+headPiv.add(bun);
+const nose = ball(0.013, skin);
+nose.position.set(0, 0.063, 0.086);
+headPiv.add(nose);
+for(const s of [-1, 1]){
+  const eye = ball(0.0085, eyeM);
+  eye.position.set(0.03 * s, 0.083, 0.071);
+  headPiv.add(eye);
+  const ear = ball(0.014, skin, 0.5, 1, 0.8);
+  ear.position.set(0.074 * s, 0.072, 0.004);
+  headPiv.add(ear);
+}
+const lips = ball(0.014, lipM, 1.1, 0.42, 0.6);
+lips.position.set(0, 0.038, 0.079);
+headPiv.add(lips);
+
+/* arms — same pivots and segment lengths as the original rig */
 function makeArm(side){ // side: -1 left, +1 right
   const sh = new THREE.Group();
-  sh.position.set(0.20*side, 0.42, 0);
+  sh.position.set(0.175 * side, 0.42, 0);
   spine.add(sh);
-  sh.add(ball(0.062, dark));
-  sh.add(limbDown(0.052, 0.040, 0.28, skin));
+  const delt = ball(0.052, skin, 1, 0.9, 0.9);
+  sh.add(delt);
+  sh.add(lathePart(   // upper arm with a hint of bicep
+    [[0.030,-0.29],[0.035,-0.26],[0.042,-0.15],[0.046,-0.05],[0.043,0.02]],
+    skin, 0.94));
   const el = new THREE.Group();
   el.position.y = -0.28;
   sh.add(el);
-  el.add(ball(0.043, joint));
-  el.add(limbDown(0.040, 0.031, 0.26, skin));
-  const hand = ball(1, skin, 0.040, 0.055, 0.045);
+  el.add(ball(0.036, skin));
+  el.add(lathePart(   // forearm taper
+    [[0.021,-0.27],[0.025,-0.23],[0.034,-0.12],[0.036,-0.04],[0.034,0.01]],
+    skin, 0.94));
+  const hand = ball(1, skin, 0.036, 0.052, 0.042);
   hand.position.y = -0.295;
   el.add(hand);
   return {sh, el};
 }
 const armL = makeArm(-1), armR = makeArm(1);
 
-/* legs */
+/* legs — leggings, defined calves, running shoes */
 function makeLeg(side){
   const hip = new THREE.Group();
-  hip.position.set(0.095*side, -0.06, 0);
+  hip.position.set(0.095 * side, -0.06, 0);
   root.add(hip);
-  hip.add(limbDown(0.077, 0.056, 0.42, dark));
+  hip.add(lathePart(   // thigh
+    [[0.044,-0.44],[0.055,-0.41],[0.067,-0.30],[0.078,-0.17],[0.085,-0.06],[0.082,0.02]],
+    legg, 0.92));
   const knee = new THREE.Group();
   knee.position.y = -0.42;
   hip.add(knee);
-  knee.add(ball(0.058, joint));
-  knee.add(limbDown(0.052, 0.035, 0.40, skin));
+  knee.add(ball(0.049, legg));
+  knee.add(lathePart(  // calf bulge to slim ankle
+    [[0.025,-0.42],[0.029,-0.36],[0.043,-0.24],[0.054,-0.13],[0.048,-0.02],[0.043,0.02]],
+    legg, 0.94));
   const ankle = new THREE.Group();
   ankle.position.y = -0.40;
   knee.add(ankle);
-  const foot = shadowed(new THREE.Mesh(new THREE.BoxGeometry(0.085, 0.055, 0.225), dark));
-  foot.position.set(0, -0.035, 0.055);
-  ankle.add(foot);
+  ankle.add(ball(0.028, skin));
+  const upper = ball(1, shoeU, 0.047, 0.040, 0.112);
+  upper.position.set(0, -0.028, 0.058);
+  ankle.add(upper);
+  const sole = shadowed(new THREE.Mesh(new THREE.BoxGeometry(0.088, 0.028, 0.235), shoeS));
+  sole.position.set(0, -0.05, 0.055);
+  ankle.add(sole);
   return {hip, knee, ankle};
 }
 const legL = makeLeg(-1), legR = makeLeg(1);
@@ -477,7 +726,8 @@ window.addEventListener("resize", resize);
 resize();
 updateCamera();
 
-let simTime = 0, last = performance.now();
+let simTime = parseFloat(new URLSearchParams(location.search).get("t")) || 0;  /* ?t= seeks into the rep */
+let last = performance.now();
 applyPose(samplePose(0));
 updateUI(samplePose(0), 0);
 
