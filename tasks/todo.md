@@ -1,3 +1,63 @@
+# App Adoption & Usage Model — utils calculator (ACTIVE)
+
+## Goal
+Configurable model + visualization for app adoption, retention, trial funnel, and
+usage distribution over a multi-month horizon. Fitness app as the default scenario.
+Self-contained HTML in `utils/`, matching house style. Grounded in cited industry stats.
+
+## Model design
+Per-signup funnel (fate of each new signup in first ~month):
+1. immediateCancel = signups x pImmediateCancel
+2. neverReturn (trial abandon) = (signups - immediateCancel) x pNeverReturn
+3. engaged = remaining; activated = engaged x pConvert; trialChurn = engaged - activated
+
+Retention of activated users: R(t) = coreFloor + (1-coreFloor) x monthlyRetention^t
+Active(month T) = sum over join-cohorts m<=T of activated_m x R(T-m)
+Segment split of active base into heavy/medium/light w/ per-segment sessions/week.
+Usage concentration = segment usage share vs population share (Pareto).
+
+## Plan
+- [x] Research industry benchmarks (2 background agents)
+- [x] Design the model math
+- [x] Build `utils/app-adoption-model.html` (shell, controls, computeModel, KPIs, charts, stats, explainer)
+- [x] Add card to `utils/index.html`
+- [x] Verify (headless Chrome desktop + mobile; preview DOM for all 4 presets — no console errors)
+- [ ] Commit + push to origin/main
+
+## Industry stats gathered (with sources)
+- Fitness trial->paid conversion 6.7%, best category; churn peaks month 3 — RevenueCat State of Subscription Apps 2024
+- Heavy/Medium/Light = top 20% / mid 30% / bottom 50% by time — comScore Segment Metrix 2007
+- 90-9-1 participation inequality — Nielsen Norman Group 2006
+- Whales ~1-2% of players -> 50-70% of IAP revenue; top 10% spenders = 70% revenue — Tapjoy/Adweek
+- Fitness: 75%+ open >=2x/week, 25%+ are "addicts" at 10+ sessions/week — Flurry 2017
+- Logged workouts ~1.8-2.05/week — JMIR mHealth 2026
+- DAU/MAU 10-20% typical, 25%+ excellent (Sequoia/Mixpanel); fitness ~20-30% (softer)
+- (awaiting) retention D1/D7/D30, trial abandon, immediate cancel, monthly churn
+
+## Review
+- Built `utils/app-adoption-model.html`: a self-contained cohort calculator matching
+  house style (Orbitron/Inter/Share Tech Mono, blueprint bg, emerald accent #34d399).
+- Model: monthly sign-up cohorts → trial funnel (immediate cancel / never return /
+  trial churn / activated) → retention superposition R(t)=core+(1-core)·ret^t →
+  heavy/medium/light segmentation → Pareto usage concentration. Pure `computeModel(P)`.
+- 13 live sliders + seasonality (flat/launch/New Year) + 4 presets (Fitness avg,
+  New Year's surge, Best-in-class, Leaky bucket). Every source-anchored slider cites
+  its benchmark inline.
+- Visuals: 6 KPI cards, stacked-area active-users-over-time (canvas), single-cohort
+  retention curve w/ loyal-core asymptote (canvas), fate-of-sign-ups funnel bar,
+  usage-concentration Pareto bars (users vs usage), 22-stat industry benchmark grid
+  with citations, and a formula explainer.
+- Defaults grounded in cited stats: comScore 20/30/50 H/M/L, RevenueCat fitness
+  trial→paid 44.5%, Qonversion 39% 24h-cancel, Localytics ~23% one-and-done,
+  Peloton/RetentionCheck ~8-9%/mo churn, Flurry/JMIR ~2 workouts/wk.
+- Verification: preview harness reports innerWidth=0 (canvas unverifiable there), so
+  used headless Chrome at 1200px (desktop) and 390px (mobile) — charts render correctly,
+  responsive layout stacks cleanly. All 4 presets computed distinct sensible results via
+  preview DOM (Leaky bucket peak 2,125 > active 1,743 = declining base; Best-in-class
+  grows to 9,345). Funnel sums to 100%, no console errors. Card added first in utils grid.
+
+---
+
 # Tower Defense Game — opus48-ultra (ACTIVE)
 
 ## Goal

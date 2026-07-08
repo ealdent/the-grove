@@ -1,0 +1,917 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>App Adoption &amp; Usage Model — Cohort Calculator</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@500;700&family=Inter:wght@400;500;600;700&display=swap');
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #07090e;
+      --panel: rgba(15, 20, 35, 0.66);
+      --panel-2: rgba(20, 27, 44, 0.8);
+      --line: rgba(52, 211, 153, 0.16);
+      --line-soft: rgba(140, 180, 220, 0.12);
+      --ink: #e6edf5;
+      --dim: rgba(170, 195, 222, 0.62);
+      --dimmer: rgba(150, 178, 208, 0.4);
+      /* semantic palette */
+      --accent: #34d399;   /* emerald — activated / heavy / growth */
+      --blue: #64b5f6;     /* medium users */
+      --slate: #7688a0;    /* light users */
+      --violet: #b388ff;   /* trial churn */
+      --amber: #ffb020;    /* never return */
+      --orange: #ff8a4c;
+      --red: #ff6b6b;      /* immediate cancel */
+      --cyan: #4dd0e1;
+    }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background: var(--bg);
+      color: var(--ink);
+      min-height: 100vh;
+      overflow-x: hidden;
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    .grid-bg {
+      position: fixed; inset: 0; z-index: 0;
+      background-image:
+        linear-gradient(rgba(52, 211, 153, 0.035) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(52, 211, 153, 0.035) 1px, transparent 1px);
+      background-size: 40px 40px;
+    }
+    .gradient-bg {
+      position: fixed; inset: 0; z-index: 0;
+      background:
+        radial-gradient(circle at 12% 40%, rgba(52, 211, 153, 0.08) 0%, transparent 42%),
+        radial-gradient(circle at 88% 25%, rgba(100, 181, 246, 0.06) 0%, transparent 42%),
+        radial-gradient(circle at 55% 90%, rgba(179, 136, 255, 0.05) 0%, transparent 45%);
+    }
+
+    .content {
+      position: relative; z-index: 1;
+      max-width: 1140px;
+      margin: 0 auto;
+      padding: clamp(1.6rem, 4vw, 3.4rem) clamp(1rem, 3vw, 2rem);
+    }
+
+    .back-link {
+      display: inline-flex; align-items: center; gap: 0.4rem;
+      color: var(--dim);
+      text-decoration: none;
+      font-size: 0.85rem;
+      font-family: 'Share Tech Mono', monospace;
+      margin-bottom: 1.8rem;
+      transition: color 0.2s, transform 0.2s;
+    }
+    .back-link:hover { color: var(--accent); transform: translateX(-4px); }
+
+    h1 {
+      font-family: 'Orbitron', sans-serif;
+      font-weight: 700;
+      font-size: clamp(1.7rem, 4vw, 2.9rem);
+      text-align: center;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: var(--ink);
+      margin-bottom: 0.25em;
+      line-height: 1.1;
+    }
+    h1 span {
+      background: linear-gradient(135deg, var(--accent), var(--cyan));
+      -webkit-background-clip: text; background-clip: text;
+      -webkit-text-fill-color: transparent;
+      text-shadow: 0 0 40px rgba(52, 211, 153, 0.3);
+    }
+    .tagline {
+      text-align: center; color: var(--dim);
+      font-size: clamp(0.9rem, 1.5vw, 1.05rem);
+      max-width: 620px; margin: 0 auto clamp(1.8rem, 4vw, 2.6rem);
+    }
+
+    /* ── Presets ─────────────────────────────── */
+    .presets {
+      display: flex; flex-wrap: wrap; justify-content: center;
+      gap: 0.55rem; margin-bottom: 1.8rem;
+    }
+    .preset-btn {
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 0.76rem; letter-spacing: 0.03em;
+      color: var(--dim);
+      background: var(--panel);
+      border: 1px solid var(--line-soft);
+      padding: 0.5rem 0.85rem; border-radius: 999px;
+      cursor: pointer; transition: all 0.18s;
+      white-space: nowrap;
+    }
+    .preset-btn:hover { color: var(--ink); border-color: var(--accent); }
+    .preset-btn.active {
+      color: #05130d; background: var(--accent);
+      border-color: var(--accent); font-weight: 700;
+    }
+
+    /* ── Layout ──────────────────────────────── */
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--line-soft);
+      border-radius: 12px;
+      padding: clamp(1.1rem, 2.4vw, 1.6rem);
+      backdrop-filter: blur(7px);
+      margin-bottom: 1.3rem;
+    }
+    .panel > h2 {
+      font-family: 'Orbitron', sans-serif;
+      font-size: 0.82rem; font-weight: 700;
+      letter-spacing: 0.14em; text-transform: uppercase;
+      color: var(--accent); margin-bottom: 0.35rem;
+      display: flex; align-items: center; gap: 0.5rem;
+    }
+    .panel > h2 .h2-note {
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 0.66rem; letter-spacing: 0.04em;
+      color: var(--dimmer); text-transform: none; font-weight: 400;
+    }
+
+    /* Controls */
+    .ctl-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+      gap: 1rem 1.6rem;
+    }
+    .ctl-group { }
+    .ctl-group h3 {
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 0.7rem; letter-spacing: 0.1em; text-transform: uppercase;
+      color: var(--cyan); margin-bottom: 0.7rem;
+      padding-bottom: 0.35rem; border-bottom: 1px solid var(--line-soft);
+    }
+    .ctl { margin-bottom: 0.85rem; }
+    .ctl:last-child { margin-bottom: 0; }
+    .ctl label {
+      display: flex; justify-content: space-between; align-items: baseline;
+      font-size: 0.82rem; margin-bottom: 0.28rem; gap: 0.5rem;
+    }
+    .ctl label .lab { color: var(--dim); }
+    .ctl label .val {
+      font-family: 'Share Tech Mono', monospace;
+      color: var(--ink); font-size: 0.86rem;
+      background: var(--panel-2); padding: 0.05rem 0.45rem; border-radius: 5px;
+      border: 1px solid var(--line-soft);
+    }
+    .ctl input[type="range"] {
+      width: 100%; accent-color: var(--accent); cursor: pointer; height: 4px;
+    }
+    .ctl select {
+      width: 100%; font-family: 'Share Tech Mono', monospace; font-size: 0.82rem;
+      background: var(--panel-2); color: var(--ink);
+      border: 1px solid var(--line-soft); border-radius: 6px;
+      padding: 0.4rem 0.5rem; cursor: pointer;
+    }
+    .ctl .src {
+      display: block; font-size: 0.66rem; color: var(--dimmer);
+      margin-top: 0.2rem; font-style: italic;
+    }
+    .ctl.warn label .val { color: var(--amber); border-color: rgba(255,176,32,0.4); }
+
+    /* KPI cards */
+    .kpi-row {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(155px, 1fr));
+      gap: 0.8rem; margin-bottom: 1.3rem;
+    }
+    .kpi {
+      background: var(--panel); border: 1px solid var(--line-soft);
+      border-left: 3px solid var(--accent);
+      border-radius: 10px; padding: 0.85rem 0.95rem;
+      backdrop-filter: blur(7px);
+    }
+    .kpi .k-val {
+      font-family: 'Orbitron', sans-serif; font-weight: 700;
+      font-size: clamp(1.25rem, 2.6vw, 1.65rem); line-height: 1.1;
+      color: var(--ink);
+    }
+    .kpi .k-sub { font-size: 0.72rem; color: var(--accent); margin-top: 0.1rem; font-family: 'Share Tech Mono', monospace; }
+    .kpi .k-lab { font-size: 0.74rem; color: var(--dim); margin-top: 0.32rem; }
+    .kpi.c-blue { border-left-color: var(--blue); } .kpi.c-blue .k-sub { color: var(--blue); }
+    .kpi.c-red { border-left-color: var(--red); } .kpi.c-red .k-sub { color: var(--red); }
+    .kpi.c-violet { border-left-color: var(--violet); } .kpi.c-violet .k-sub { color: var(--violet); }
+    .kpi.c-cyan { border-left-color: var(--cyan); } .kpi.c-cyan .k-sub { color: var(--cyan); }
+    .kpi.c-amber { border-left-color: var(--amber); } .kpi.c-amber .k-sub { color: var(--amber); }
+
+    /* Charts */
+    .chart-title {
+      font-size: 0.95rem; font-weight: 600; color: var(--ink); margin-bottom: 0.15rem;
+    }
+    .chart-sub { font-size: 0.76rem; color: var(--dim); margin-bottom: 0.9rem; }
+    canvas { display: block; width: 100%; }
+    #cvArea { height: 320px; }
+    #cvRet { height: 240px; }
+
+    .two-up {
+      display: grid; grid-template-columns: 1.35fr 1fr; gap: 1.3rem;
+      align-items: stretch;
+    }
+    .two-up > .panel { margin-bottom: 0; }
+
+    .legend { display: flex; flex-wrap: wrap; gap: 0.9rem; margin-top: 0.8rem; }
+    .legend .item { display: inline-flex; align-items: center; gap: 0.4rem; font-size: 0.76rem; color: var(--dim); }
+    .legend .swatch { width: 12px; height: 12px; border-radius: 3px; flex: 0 0 auto; }
+
+    /* Funnel */
+    .funnel-bar {
+      display: flex; width: 100%; height: 46px; border-radius: 8px; overflow: hidden;
+      border: 1px solid var(--line-soft); margin-bottom: 1rem;
+    }
+    .funnel-bar .fseg {
+      display: flex; align-items: center; justify-content: center;
+      font-size: 0.68rem; font-weight: 700; color: #04120c;
+      font-family: 'Share Tech Mono', monospace; min-width: 0; overflow: hidden;
+      transition: width 0.4s ease;
+    }
+    .funnel-legend { display: grid; grid-template-columns: 1fr 1fr; gap: 0.55rem 1rem; }
+    .funnel-legend .fl {
+      display: flex; align-items: center; gap: 0.55rem; font-size: 0.8rem;
+    }
+    .funnel-legend .fl .dot { width: 11px; height: 11px; border-radius: 3px; flex: 0 0 auto; }
+    .funnel-legend .fl .fl-txt { color: var(--dim); flex: 1; min-width: 0; }
+    .funnel-legend .fl .fl-num { font-family: 'Share Tech Mono', monospace; color: var(--ink); white-space: nowrap; }
+    .funnel-legend .fl .fl-num b { color: var(--ink); }
+    .funnel-legend .fl .fl-num span { color: var(--dimmer); }
+
+    /* Usage concentration */
+    .usage-headline {
+      font-size: 0.95rem; color: var(--ink); margin-bottom: 1.1rem;
+      padding: 0.7rem 0.9rem; border-radius: 8px;
+      background: linear-gradient(90deg, rgba(52,211,153,0.12), transparent);
+      border-left: 3px solid var(--accent);
+    }
+    .usage-headline b { color: var(--accent); }
+    .conc-bar-wrap { margin-bottom: 1rem; }
+    .conc-bar-wrap .cb-label {
+      font-size: 0.75rem; color: var(--dim); margin-bottom: 0.32rem;
+      font-family: 'Share Tech Mono', monospace; letter-spacing: 0.04em; text-transform: uppercase;
+    }
+    .conc-bar {
+      display: flex; width: 100%; height: 34px; border-radius: 7px; overflow: hidden;
+      border: 1px solid var(--line-soft);
+    }
+    .conc-bar .cseg {
+      display: flex; align-items: center; justify-content: center;
+      font-size: 0.7rem; font-weight: 700; color: #04120c;
+      font-family: 'Share Tech Mono', monospace; overflow: hidden;
+      transition: width 0.4s ease;
+    }
+
+    /* Stats reference */
+    .stat-groups { display: grid; gap: 1.3rem; }
+    .stat-cat h3 {
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 0.72rem; letter-spacing: 0.1em; text-transform: uppercase;
+      color: var(--cyan); margin-bottom: 0.7rem;
+    }
+    .stat-cards {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 0.75rem;
+    }
+    .stat-card {
+      background: var(--panel-2); border: 1px solid var(--line-soft);
+      border-radius: 9px; padding: 0.75rem 0.85rem;
+    }
+    .stat-card .s-val {
+      font-family: 'Orbitron', sans-serif; font-weight: 700; font-size: 1.15rem;
+      color: var(--accent); line-height: 1.15;
+    }
+    .stat-card .s-lab { font-size: 0.78rem; color: var(--ink); margin-top: 0.25rem; }
+    .stat-card .s-src { font-size: 0.66rem; color: var(--dimmer); margin-top: 0.35rem; font-style: italic; }
+    .stat-note {
+      font-size: 0.76rem; color: var(--dim); margin-top: 1.1rem;
+      padding-top: 0.9rem; border-top: 1px solid var(--line-soft);
+    }
+    .stat-note a { color: var(--cyan); text-decoration: none; }
+    .stat-note a:hover { text-decoration: underline; }
+
+    /* Explainer */
+    .explain p { font-size: 0.86rem; color: var(--dim); margin-bottom: 0.7rem; }
+    .explain b { color: var(--ink); font-weight: 600; }
+    .explain code {
+      font-family: 'Share Tech Mono', monospace; font-size: 0.82rem;
+      background: var(--panel-2); color: var(--accent);
+      padding: 0.1rem 0.4rem; border-radius: 5px; border: 1px solid var(--line-soft);
+    }
+    .explain .formula {
+      display: block; font-family: 'Share Tech Mono', monospace; font-size: 0.8rem;
+      background: var(--panel-2); border: 1px solid var(--line-soft);
+      border-radius: 8px; padding: 0.7rem 0.9rem; margin: 0.5rem 0 0.9rem;
+      color: var(--ink); overflow-x: auto; white-space: nowrap;
+    }
+    .explain .formula .c { color: var(--dimmer); }
+
+    footer {
+      text-align: center; margin-top: 2.6rem; padding-bottom: 1rem;
+      font-size: 0.75rem; color: var(--dimmer); letter-spacing: 0.05em;
+      font-family: 'Share Tech Mono', monospace;
+    }
+    footer a { color: var(--dim); text-decoration: none; }
+    footer a:hover { color: var(--accent); }
+
+    @media (max-width: 780px) {
+      .two-up { grid-template-columns: 1fr; }
+      .funnel-legend { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="grid-bg"></div>
+  <div class="gradient-bg"></div>
+
+  <div class="content">
+    <a href="index.html" class="back-link">&larr; back to utils</a>
+
+    <h1>App Adoption &amp; <span>Usage Model</span></h1>
+    <p class="tagline">
+      A cohort calculator for subscription-app growth. Model who signs up, who bails on the
+      trial, who sticks around month after month, and how a heavy-using few drive most of the
+      usage. Tuned with real fitness-app benchmarks — configure any scenario.
+    </p>
+
+    <div class="presets" id="presets"></div>
+
+    <!-- CONTROLS -->
+    <div class="panel">
+      <h2>Model Inputs <span class="h2-note">drag to explore — everything recalculates live</span></h2>
+      <div class="ctl-grid">
+        <div class="ctl-group">
+          <h3>Acquisition</h3>
+          <div class="ctl">
+            <label><span class="lab">New sign-ups / month</span><span class="val" id="v_signups"></span></label>
+            <input type="range" id="signups" min="100" max="20000" step="100">
+          </div>
+          <div class="ctl">
+            <label><span class="lab">Time horizon</span><span class="val" id="v_horizon"></span></label>
+            <input type="range" id="horizon" min="3" max="24" step="1">
+          </div>
+          <div class="ctl">
+            <label><span class="lab">Seasonality</span></label>
+            <select id="seasonality">
+              <option value="flat">Flat — steady sign-ups</option>
+              <option value="launch">Launch spike — big month 1</option>
+              <option value="newyear">New Year surge — January boom</option>
+            </select>
+            <span class="src">New Year: Jan ×3.5. "Quitters' Day" is the 2nd Fri of Jan — Strava</span>
+          </div>
+        </div>
+
+        <div class="ctl-group">
+          <h3>Trial Funnel</h3>
+          <div class="ctl">
+            <label><span class="lab">Cancel immediately</span><span class="val" id="v_imm"></span></label>
+            <input type="range" id="imm" min="0" max="0.5" step="0.01">
+            <span class="src">39% of trials cancel in first 24h — Qonversion</span>
+          </div>
+          <div class="ctl">
+            <label><span class="lab">Start &amp; never return</span><span class="val" id="v_never"></span></label>
+            <input type="range" id="never" min="0" max="0.6" step="0.01">
+            <span class="src">~23% open an app once, never again — Localytics</span>
+          </div>
+          <div class="ctl">
+            <label><span class="lab">Convert (of engaged)</span><span class="val" id="v_conv"></span></label>
+            <input type="range" id="conv" min="0.05" max="0.9" step="0.01">
+            <span class="src">Fitness trial→paid ≈ 44% — RevenueCat 2024</span>
+          </div>
+        </div>
+
+        <div class="ctl-group">
+          <h3>Retention</h3>
+          <div class="ctl">
+            <label><span class="lab">Monthly retention</span><span class="val" id="v_ret"></span></label>
+            <input type="range" id="ret" min="0.5" max="0.99" step="0.01">
+            <span class="src">Fitness churn ≈ 8–9%/mo → ~91% retained — Peloton, RetentionCheck</span>
+          </div>
+          <div class="ctl">
+            <label><span class="lab">Loyal core (never churns)</span><span class="val" id="v_core"></span></label>
+            <input type="range" id="core" min="0" max="0.6" step="0.01">
+            <span class="src">&lt;20% keep regular gym habits past 8 weeks — gym industry</span>
+          </div>
+        </div>
+
+        <div class="ctl-group">
+          <h3>Engagement Mix</h3>
+          <div class="ctl">
+            <label><span class="lab">Heavy users</span><span class="val" id="v_sh"></span></label>
+            <input type="range" id="sh" min="0.02" max="0.6" step="0.01">
+          </div>
+          <div class="ctl">
+            <label><span class="lab">Medium users</span><span class="val" id="v_sm"></span></label>
+            <input type="range" id="sm" min="0.05" max="0.7" step="0.01">
+          </div>
+          <div class="ctl">
+            <label><span class="lab">Light users</span><span class="val" id="v_sl"></span></label>
+            <span class="src" style="margin-top:0.15rem">auto = remainder. Heavy/Med/Light default 20/30/50 — comScore</span>
+          </div>
+          <div class="ctl">
+            <label><span class="lab">Sessions/wk — heavy</span><span class="val" id="v_uh"></span></label>
+            <input type="range" id="uh" min="1" max="20" step="0.5">
+          </div>
+          <div class="ctl">
+            <label><span class="lab">Sessions/wk — medium</span><span class="val" id="v_um"></span></label>
+            <input type="range" id="um" min="0.5" max="10" step="0.25">
+          </div>
+          <div class="ctl">
+            <label><span class="lab">Sessions/wk — light</span><span class="val" id="v_ul"></span></label>
+            <input type="range" id="ul" min="0" max="5" step="0.1">
+            <span class="src">25% of fitness users log 10+/wk; avg ~2/wk — Flurry, JMIR</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- KPIs -->
+    <div class="kpi-row" id="kpis"></div>
+
+    <!-- HERO CHART -->
+    <div class="panel">
+      <div class="chart-title">Active users over time</div>
+      <div class="chart-sub">Monthly active base, stacked by engagement segment. Each cohort decays along the retention curve; new sign-ups refill the top.</div>
+      <canvas id="cvArea"></canvas>
+      <div class="legend" id="areaLegend"></div>
+    </div>
+
+    <div class="two-up" style="margin-bottom:1.3rem;">
+      <!-- RETENTION CURVE -->
+      <div class="panel">
+        <div class="chart-title">Retention curve (one cohort)</div>
+        <div class="chart-sub">Of 100 users who activate this month, how many are still active N months later.</div>
+        <canvas id="cvRet"></canvas>
+      </div>
+      <!-- FUNNEL -->
+      <div class="panel">
+        <div class="chart-title">Fate of every sign-up</div>
+        <div class="chart-sub">Where the whole acquired base ends up.</div>
+        <div class="funnel-bar" id="funnelBar"></div>
+        <div class="funnel-legend" id="funnelLegend"></div>
+      </div>
+    </div>
+
+    <!-- USAGE CONCENTRATION -->
+    <div class="panel">
+      <h2>Usage Concentration <span class="h2-note">the Pareto reality — a few heavy users drive most of the activity</span></h2>
+      <div class="usage-headline" id="usageHeadline"></div>
+      <div class="conc-bar-wrap">
+        <div class="cb-label">Share of active users</div>
+        <div class="conc-bar" id="usersBar"></div>
+      </div>
+      <div class="conc-bar-wrap" style="margin-bottom:0;">
+        <div class="cb-label">Share of total usage (sessions)</div>
+        <div class="conc-bar" id="usageBar"></div>
+      </div>
+      <div class="legend" id="concLegend"></div>
+    </div>
+
+    <!-- INDUSTRY STATS -->
+    <div class="panel">
+      <h2>Industry Benchmarks <span class="h2-note">the evidence base behind the defaults</span></h2>
+      <div class="stat-groups" id="statGroups"></div>
+      <p class="stat-note" id="statNote"></p>
+    </div>
+
+    <!-- EXPLAINER -->
+    <div class="panel explain">
+      <h2>How The Model Works</h2>
+      <p>Each month a fresh cohort of sign-ups enters and is routed through a <b>trial funnel</b>. Whatever
+        fraction survives to <b>activate</b> then decays along a <b>retention curve</b>, and every active user
+        is classed as a heavy, medium, or light user with its own session rate. Totals are the sum over all cohorts.</p>
+      <p><b>1 · Trial funnel</b> — for a cohort of <code>S</code> sign-ups:</p>
+      <span class="formula">immediateCancel = S · p<sub>cancel</sub> <span class="c">// bail within hours</span></span>
+      <span class="formula">neverReturn = (S − immediateCancel) · p<sub>never</sub> <span class="c">// ghost after 1 session</span></span>
+      <span class="formula">activated = engaged · p<sub>convert</sub> &nbsp;&nbsp; trialChurn = engaged − activated</span>
+      <p><b>2 · Retention</b> — activated users persist with a decaying rate plus a loyal floor:</p>
+      <span class="formula">R(t) = coreFloor + (1 − coreFloor) · monthlyRetention<sup>t</sup></span>
+      <span class="formula">Active(T) = Σ<sub>m ≤ T</sub> activated<sub>m</sub> · R(T − m) <span class="c">// superpose cohorts</span></span>
+      <p><b>3 · Usage</b> — the active base splits into heavy/medium/light; total sessions weight each segment
+        by its per-week rate. Because heavy users log many multiples of a light user's sessions, they dominate
+        total usage even though they're the smallest group — the Pareto effect.</p>
+      <p style="color:var(--dimmer);font-size:0.78rem;">
+        <b style="color:var(--dim)">Modeling caveat:</b> subscription-renewal retention (RevenueCat/Adapty) and app-open
+        retention (AppsFlyer/Localytics) are measured differently. Here "activated" ≈ a committed/subscribed user, so its
+        retention is gentler than raw first-week app-open curves. Treat outputs as directional planning estimates, not forecasts.
+      </p>
+    </div>
+
+    <footer>
+      Part of <a href="index.html">Utils</a> · <a href="../">Fun with AI</a> · modeled with Claude Opus 4.8
+    </footer>
+  </div>
+
+  <script>
+  const $ = id => document.getElementById(id);
+
+  /* ─────────── Presets ─────────── */
+  const PRESETS = {
+    'Fitness — industry avg': {
+      signups: 2000, horizon: 12, seasonality: 'flat',
+      imm: 0.15, never: 0.22, conv: 0.42, ret: 0.88, core: 0.15,
+      sh: 0.20, sm: 0.30, uh: 8, um: 2.5, ul: 0.6
+    },
+    "New Year's surge": {
+      signups: 1500, horizon: 12, seasonality: 'newyear',
+      imm: 0.18, never: 0.30, conv: 0.40, ret: 0.82, core: 0.12,
+      sh: 0.18, sm: 0.28, uh: 8, um: 2.5, ul: 0.6
+    },
+    'Best-in-class': {
+      signups: 2000, horizon: 12, seasonality: 'flat',
+      imm: 0.08, never: 0.12, conv: 0.55, ret: 0.96, core: 0.35,
+      sh: 0.25, sm: 0.35, uh: 10, um: 3, ul: 0.8
+    },
+    'Leaky bucket': {
+      signups: 3000, horizon: 12, seasonality: 'launch',
+      imm: 0.25, never: 0.35, conv: 0.25, ret: 0.75, core: 0.05,
+      sh: 0.12, sm: 0.25, uh: 6, um: 2, ul: 0.4
+    }
+  };
+
+  /* ─────────── State ─────────── */
+  const P = {};
+  function readInputs() {
+    P.signupsPerMonth = +$('signups').value;
+    P.horizon = +$('horizon').value;
+    P.seasonality = $('seasonality').value;
+    P.pImmediateCancel = +$('imm').value;
+    P.pNeverReturn = +$('never').value;
+    P.pConvert = +$('conv').value;
+    P.monthlyRetention = +$('ret').value;
+    P.coreFloor = +$('core').value;
+    let sh = +$('sh').value, sm = +$('sm').value;
+    // keep heavy+medium < 1 so light stays positive
+    if (sh + sm > 0.95) { sm = Math.max(0.05, 0.95 - sh); $('sm').value = sm; }
+    const sl = Math.max(0, 1 - sh - sm);
+    P.share = { heavy: sh, medium: sm, light: sl };
+    P.usage = { heavy: +$('uh').value, medium: +$('um').value, light: +$('ul').value };
+  }
+
+  /* ─────────── The model ─────────── */
+  function seasonal(m, mode) {
+    if (mode === 'launch') return m === 0 ? 5 : m === 1 ? 2 : m === 2 ? 1.2 : 1;
+    if (mode === 'newyear') { const k = m % 12; return k === 0 ? 3.5 : k === 1 ? 1.4 : k === 2 ? 0.8 : k === 11 ? 1.3 : 1; }
+    return 1;
+  }
+
+  function computeModel(p) {
+    const H = p.horizon;
+    const R = t => p.coreFloor + (1 - p.coreFloor) * Math.pow(p.monthlyRetention, t);
+    const signupsArr = [], activatedArr = [];
+    const funnel = { signups: 0, immediateCancel: 0, neverReturn: 0, trialChurn: 0, activated: 0 };
+    for (let m = 0; m < H; m++) {
+      const s = p.signupsPerMonth * seasonal(m, p.seasonality);
+      const imm = s * p.pImmediateCancel;
+      const afterImm = s - imm;
+      const never = afterImm * p.pNeverReturn;
+      const engaged = afterImm - never;
+      const activated = engaged * p.pConvert;
+      const trialChurn = engaged - activated;
+      signupsArr.push(s); activatedArr.push(activated);
+      funnel.signups += s; funnel.immediateCancel += imm; funnel.neverReturn += never;
+      funnel.trialChurn += trialChurn; funnel.activated += activated;
+    }
+    const months = [], activeTotal = [], seg = { heavy: [], medium: [], light: [] };
+    const sessionsByMonth = []; let totalSessions = 0;
+    const u = p.usage;
+    for (let t = 0; t < H; t++) {
+      let a = 0;
+      for (let j = 0; j <= t; j++) a += activatedArr[j] * R(t - j);
+      activeTotal.push(a);
+      const h = a * p.share.heavy, md = a * p.share.medium, l = a * p.share.light;
+      seg.heavy.push(h); seg.medium.push(md); seg.light.push(l);
+      const wk = h * u.heavy + md * u.medium + l * u.light;
+      const mo = wk * 4.345; sessionsByMonth.push(mo); totalSessions += mo;
+      months.push(t + 1);
+    }
+    const wAvg = p.share.heavy * u.heavy + p.share.medium * u.medium + p.share.light * u.light;
+    const denom = wAvg || 1;
+    const usageShare = {
+      heavy: (p.share.heavy * u.heavy) / denom,
+      medium: (p.share.medium * u.medium) / denom,
+      light: (p.share.light * u.light) / denom
+    };
+    const activeNow = activeTotal[H - 1] || 0;
+    const peak = Math.max(...activeTotal, 0);
+    return {
+      H, months, signupsArr, activatedArr, funnel, activeTotal, seg,
+      usageShare, wAvg, totalSessions, sessionsByMonth, activeNow, peak, R,
+      activationRate: funnel.activated / (funnel.signups || 1),
+      wastedRate: (funnel.immediateCancel + funnel.neverReturn) / (funnel.signups || 1),
+      stickiness: Math.min(1, wAvg / 7)
+    };
+  }
+
+  /* ─────────── Formatting ─────────── */
+  const nf = new Intl.NumberFormat('en-US');
+  const fmt = n => nf.format(Math.round(n));
+  function fmtBig(n) {
+    n = Math.round(n);
+    if (n >= 1e6) return (n / 1e6).toFixed(n >= 1e7 ? 0 : 1) + 'M';
+    if (n >= 1e4) return (n / 1e3).toFixed(0) + 'K';
+    return nf.format(n);
+  }
+  const pct = x => (x * 100).toFixed(x < 0.1 ? 1 : 0) + '%';
+
+  /* ─────────── Canvas helper ─────────── */
+  function fitCanvas(cv) {
+    const dpr = window.devicePixelRatio || 1;
+    const rect = cv.getBoundingClientRect();
+    const w = Math.max(1, rect.width), h = Math.max(1, rect.height);
+    cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr);
+    const ctx = cv.getContext('2d');
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    return { ctx, w, h };
+  }
+  const CSS = k => getComputedStyle(document.documentElement).getPropertyValue(k).trim();
+
+  /* ─────────── Draw: stacked area ─────────── */
+  function drawArea(M) {
+    const { ctx, w, h } = fitCanvas($('cvArea'));
+    ctx.clearRect(0, 0, w, h);
+    const padL = 52, padR = 14, padT = 12, padB = 28;
+    const pw = w - padL - padR, ph = h - padT - padB, H = M.H;
+    const maxY = (M.peak * 1.1) || 1;
+    const xAt = i => padL + (H <= 1 ? pw / 2 : pw * i / (H - 1));
+    const yAt = v => padT + ph - ph * (v / maxY);
+
+    // gridlines + y labels
+    ctx.font = '10px "Share Tech Mono"';
+    ctx.textBaseline = 'middle';
+    const ticks = 4;
+    for (let g = 0; g <= ticks; g++) {
+      const v = maxY * g / ticks, y = yAt(v);
+      ctx.strokeStyle = 'rgba(140,180,220,0.08)';
+      ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(w - padR, y); ctx.stroke();
+      ctx.fillStyle = 'rgba(150,178,208,0.5)'; ctx.textAlign = 'right';
+      ctx.fillText(fmtBig(v), padL - 8, y);
+    }
+
+    // stacked bands: light (bottom) -> medium -> heavy (top)
+    const bands = [
+      { arr: M.seg.light, fill: 'rgba(118,136,160,0.5)', line: CSS('--slate') },
+      { arr: M.seg.medium, fill: 'rgba(100,181,246,0.5)', line: CSS('--blue') },
+      { arr: M.seg.heavy, fill: 'rgba(52,211,153,0.55)', line: CSS('--accent') }
+    ];
+    const base = new Array(H).fill(0);
+    for (const b of bands) {
+      ctx.beginPath();
+      for (let i = 0; i < H; i++) { const x = xAt(i), y = yAt(base[i] + b.arr[i]); i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y); }
+      for (let i = H - 1; i >= 0; i--) ctx.lineTo(xAt(i), yAt(base[i]));
+      ctx.closePath(); ctx.fillStyle = b.fill; ctx.fill();
+      ctx.beginPath();
+      for (let i = 0; i < H; i++) { const x = xAt(i), y = yAt(base[i] + b.arr[i]); i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y); }
+      ctx.strokeStyle = b.line; ctx.lineWidth = 1.6; ctx.stroke();
+      for (let i = 0; i < H; i++) base[i] += b.arr[i];
+    }
+
+    // x labels
+    ctx.fillStyle = 'rgba(150,178,208,0.55)'; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+    const step = H <= 12 ? Math.max(1, Math.ceil(H / 6)) : Math.ceil(H / 6);
+    for (let i = 0; i < H; i += step) ctx.fillText('M' + (i + 1), xAt(i), h - padB + 8);
+    if ((H - 1) % step !== 0) ctx.fillText('M' + H, xAt(H - 1), h - padB + 8);
+  }
+
+  /* ─────────── Draw: retention curve ─────────── */
+  function drawRetention(M) {
+    const { ctx, w, h } = fitCanvas($('cvRet'));
+    ctx.clearRect(0, 0, w, h);
+    const padL = 40, padR = 14, padT = 12, padB = 26;
+    const pw = w - padL - padR, ph = h - padT - padB, H = M.H;
+    const xAt = i => padL + (H <= 1 ? pw / 2 : pw * i / (H - 1));
+    const yAt = v => padT + ph - ph * v; // v in 0..1
+
+    ctx.font = '10px "Share Tech Mono"'; ctx.textBaseline = 'middle';
+    for (let g = 0; g <= 4; g++) {
+      const v = g / 4, y = yAt(v);
+      ctx.strokeStyle = 'rgba(140,180,220,0.08)'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(w - padR, y); ctx.stroke();
+      ctx.fillStyle = 'rgba(150,178,208,0.5)'; ctx.textAlign = 'right';
+      ctx.fillText(Math.round(v * 100) + '%', padL - 7, y);
+    }
+
+    // loyal core asymptote
+    const core = P.coreFloor;
+    ctx.strokeStyle = 'rgba(179,136,255,0.5)'; ctx.setLineDash([4, 4]); ctx.lineWidth = 1.2;
+    ctx.beginPath(); ctx.moveTo(padL, yAt(core)); ctx.lineTo(w - padR, yAt(core)); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = 'rgba(179,136,255,0.8)'; ctx.textAlign = 'left'; ctx.textBaseline = 'bottom';
+    ctx.fillText('loyal core ' + pct(core), padL + 4, yAt(core) - 2);
+
+    // curve area + line
+    ctx.beginPath();
+    for (let i = 0; i < H; i++) { const x = xAt(i), y = yAt(M.R(i)); i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y); }
+    ctx.lineTo(xAt(H - 1), yAt(0)); ctx.lineTo(xAt(0), yAt(0)); ctx.closePath();
+    ctx.fillStyle = 'rgba(52,211,153,0.14)'; ctx.fill();
+    ctx.beginPath();
+    for (let i = 0; i < H; i++) { const x = xAt(i), y = yAt(M.R(i)); i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y); }
+    ctx.strokeStyle = CSS('--accent'); ctx.lineWidth = 2.4;
+    ctx.shadowColor = 'rgba(52,211,153,0.4)'; ctx.shadowBlur = 8; ctx.stroke(); ctx.shadowBlur = 0;
+
+    // marker dots at a few months with labels
+    ctx.font = '9.5px "Share Tech Mono"';
+    [0, Math.min(2, H - 1), Math.min(5, H - 1), H - 1].filter((v, i, a) => a.indexOf(v) === i).forEach(i => {
+      const x = xAt(i), y = yAt(M.R(i));
+      ctx.fillStyle = CSS('--accent'); ctx.beginPath(); ctx.arc(x, y, 2.8, 0, 7); ctx.fill();
+      ctx.fillStyle = 'rgba(230,237,245,0.85)'; ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
+      ctx.fillText(pct(M.R(i)), x, y - 6);
+    });
+
+    // x labels
+    ctx.fillStyle = 'rgba(150,178,208,0.55)'; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+    const step = Math.max(1, Math.ceil(H / 6));
+    for (let i = 0; i < H; i += step) ctx.fillText('M' + i, xAt(i), h - padB + 7);
+  }
+
+  /* ─────────── Render: KPIs ─────────── */
+  function renderKPIs(M) {
+    const cards = [
+      { cls: '', val: fmtBig(M.funnel.signups), sub: P.horizon + ' mo', lab: 'Total sign-ups acquired' },
+      { cls: 'c-blue', val: fmtBig(M.funnel.activated), sub: pct(M.activationRate) + ' of sign-ups', lab: 'Ever activated (stuck past trial)' },
+      { cls: '', val: fmtBig(M.activeNow), sub: 'peak ' + fmtBig(M.peak), lab: 'Active users at month ' + M.H },
+      { cls: 'c-red', val: fmtBig(M.funnel.immediateCancel + M.funnel.neverReturn), sub: pct(M.wastedRate) + ' of sign-ups', lab: 'Bounced (cancelled / never returned)' },
+      { cls: 'c-cyan', val: M.wAvg.toFixed(1), sub: '≈ ' + pct(M.stickiness) + ' DAU/MAU', lab: 'Avg sessions / active user / week' },
+      { cls: 'c-violet', val: fmtBig(M.totalSessions), sub: 'over ' + M.H + ' mo', lab: 'Total sessions logged' }
+    ];
+    $('kpis').innerHTML = cards.map(c =>
+      `<div class="kpi ${c.cls}"><div class="k-val">${c.val}</div><div class="k-sub">${c.sub}</div><div class="k-lab">${c.lab}</div></div>`
+    ).join('');
+  }
+
+  /* ─────────── Render: funnel ─────────── */
+  function renderFunnel(M) {
+    const f = M.funnel, tot = f.signups || 1;
+    const segs = [
+      { key: 'activated', label: 'Activated & retained', color: CSS('--accent'), n: f.activated },
+      { key: 'trialChurn', label: 'Tried, didn’t convert', color: CSS('--violet'), n: f.trialChurn },
+      { key: 'never', label: 'Started, never returned', color: CSS('--amber'), n: f.neverReturn },
+      { key: 'imm', label: 'Cancelled immediately', color: CSS('--red'), n: f.immediateCancel }
+    ];
+    $('funnelBar').innerHTML = segs.map(s => {
+      const p = s.n / tot;
+      return `<div class="fseg" style="width:${(p * 100).toFixed(2)}%;background:${s.color}">${p > 0.06 ? Math.round(p * 100) + '%' : ''}</div>`;
+    }).join('');
+    $('funnelLegend').innerHTML = segs.map(s => {
+      const p = s.n / tot;
+      return `<div class="fl"><span class="dot" style="background:${s.color}"></span>
+        <span class="fl-txt">${s.label}</span>
+        <span class="fl-num"><b>${fmtBig(s.n)}</b> <span>· ${pct(p)}</span></span></div>`;
+    }).join('');
+  }
+
+  /* ─────────── Render: usage concentration ─────────── */
+  function renderUsage(M) {
+    const segColors = { heavy: CSS('--accent'), medium: CSS('--blue'), light: CSS('--slate') };
+    const share = P.share, use = M.usageShare;
+    $('usageHeadline').innerHTML =
+      `The heaviest <b>${pct(share.heavy)}</b> of your active users drive <b>${pct(use.heavy)}</b> of all sessions.
+       The lightest <b>${pct(share.light)}</b> account for just <b>${pct(use.light)}</b>.`;
+    const mkBar = (obj) => ['heavy', 'medium', 'light'].map(k => {
+      const p = obj[k];
+      return `<div class="cseg" style="width:${(p * 100).toFixed(2)}%;background:${segColors[k]}">${p > 0.08 ? Math.round(p * 100) + '%' : ''}</div>`;
+    }).join('');
+    $('usersBar').innerHTML = mkBar(share);
+    $('usageBar').innerHTML = mkBar(use);
+    $('concLegend').innerHTML = [
+      ['heavy', 'Heavy users'], ['medium', 'Medium users'], ['light', 'Light users']
+    ].map(([k, lab]) =>
+      `<span class="item"><span class="swatch" style="background:${segColors[k]}"></span>${lab} · ${M.usageShare[k] !== undefined ? P.usage[k] + '/wk' : ''}</span>`
+    ).join('');
+  }
+
+  /* ─────────── Render: area legend ─────────── */
+  function renderAreaLegend() {
+    const items = [
+      ['--accent', 'Heavy'], ['--blue', 'Medium'], ['--slate', 'Light']
+    ];
+    $('areaLegend').innerHTML = items.map(([c, l]) =>
+      `<span class="item"><span class="swatch" style="background:${CSS(c)}"></span>${l}</span>`
+    ).join('');
+  }
+
+  /* ─────────── Value readouts ─────────── */
+  function updateReadouts() {
+    $('v_signups').textContent = fmt(P.signupsPerMonth) + '/mo';
+    $('v_horizon').textContent = P.horizon + ' mo';
+    $('v_imm').textContent = pct(P.pImmediateCancel);
+    $('v_never').textContent = pct(P.pNeverReturn);
+    $('v_conv').textContent = pct(P.pConvert);
+    $('v_ret').textContent = pct(P.monthlyRetention);
+    $('v_core').textContent = pct(P.coreFloor);
+    $('v_sh').textContent = pct(P.share.heavy);
+    $('v_sm').textContent = pct(P.share.medium);
+    $('v_sl').textContent = pct(P.share.light);
+    $('v_uh').textContent = P.usage.heavy + '/wk';
+    $('v_um').textContent = P.usage.medium + '/wk';
+    $('v_ul').textContent = P.usage.light + '/wk';
+  }
+
+  /* ─────────── Main update ─────────── */
+  let lastM = null;
+  function update() {
+    readInputs();
+    updateReadouts();
+    const M = computeModel(P);
+    lastM = M;
+    renderKPIs(M);
+    drawArea(M);
+    drawRetention(M);
+    renderFunnel(M);
+    renderUsage(M);
+  }
+
+  /* ─────────── Presets wiring ─────────── */
+  function applyPreset(name) {
+    const p = PRESETS[name];
+    if (!p) return;
+    $('signups').value = p.signups; $('horizon').value = p.horizon; $('seasonality').value = p.seasonality;
+    $('imm').value = p.imm; $('never').value = p.never; $('conv').value = p.conv;
+    $('ret').value = p.ret; $('core').value = p.core;
+    $('sh').value = p.sh; $('sm').value = p.sm;
+    $('uh').value = p.uh; $('um').value = p.um; $('ul').value = p.ul;
+    [...document.querySelectorAll('.preset-btn')].forEach(b => b.classList.toggle('active', b.dataset.name === name));
+    update();
+  }
+  function buildPresets() {
+    $('presets').innerHTML = Object.keys(PRESETS).map(n =>
+      `<button class="preset-btn" data-name="${n}">${n}</button>`).join('');
+    [...document.querySelectorAll('.preset-btn')].forEach(b =>
+      b.addEventListener('click', () => applyPreset(b.dataset.name)));
+  }
+  // any manual edit clears the active preset highlight
+  function markCustom() {
+    [...document.querySelectorAll('.preset-btn')].forEach(b => b.classList.remove('active'));
+  }
+
+  /* ─────────── Industry stats content ─────────── */
+  const STATS = [
+    { cat: 'Retention & habit formation', items: [
+      { v: '77%', l: 'of daily active users lost within the first 3 days', s: 'Quettra / Andrew Chen' },
+      { v: '~27% → ~3%', l: 'Day-1 to Day-30 retention (Health & Fitness)', s: 'AppsFlyer, 2024' },
+      { v: '<20%', l: 'keep regular gym habits past 8 weeks', s: 'gym industry / Bloomberg' },
+      { v: '43%', l: 'expect to quit their New Year’s resolution by February', s: 'Strava "Quitters’ Day"' }
+    ]},
+    { cat: 'Trial & conversion', items: [
+      { v: '44.5%', l: 'Health & Fitness free-trial → paid', s: 'RevenueCat, 2024' },
+      { v: '37.3%', l: 'all-app free-trial → paid (down from 40.5%)', s: 'RevenueCat, 2024' },
+      { v: '31% vs 9%', l: 'opt-out (card) vs opt-in (no card) trial conversion', s: 'ChartMogul' },
+      { v: '2–5%', l: 'typical freemium free → paid', s: 'Userpilot / Lenny’s' }
+    ]},
+    { cat: 'Abandonment & cancellation', items: [
+      { v: '~23%', l: 'open an app once and never return', s: 'Localytics, 2016' },
+      { v: '39%', l: 'of trial users cancel within the first 24 hours', s: 'Qonversion, 2020' },
+      { v: '~37%', l: 'average user activation rate', s: 'Userpilot, 2024' },
+      { v: '86%', l: 'of trial converters convert on Day 0', s: 'Adapty, 2026' }
+    ]},
+    { cat: 'Churn', items: [
+      { v: '8–9% / mo', l: 'fitness subscription churn (Peloton 8.4%)', s: 'Peloton SEC / RetentionCheck' },
+      { v: '~2% / mo', l: 'top-quartile fitness churn (~22%/yr)', s: 'RetentionCheck, 2026' },
+      { v: '17%', l: 'monthly-plan 12-month retention (all apps)', s: 'RevenueCat, 2025' },
+      { v: '59% → 28%', l: 'renewal decay from R1 to R5', s: 'Adapty, 2026' }
+    ]},
+    { cat: 'Engagement & power users', items: [
+      { v: '20/30/50', l: 'heavy / medium / light split by time spent', s: 'comScore Segment Metrix' },
+      { v: '25%+', l: 'of fitness users log 10+ sessions/week ("addicts")', s: 'Flurry, 2017' },
+      { v: '~1.8–2.0', l: 'logged workouts per week (average user)', s: 'JMIR mHealth, 2026' },
+      { v: '1–2% → 50–70%', l: 'whales as share of players → share of revenue', s: 'Tapjoy / Adweek' },
+      { v: '10–20%', l: 'typical DAU/MAU (25%+ is excellent)', s: 'Sequoia / Mixpanel' },
+      { v: '90-9-1', l: 'lurk / engage / create participation inequality', s: 'Nielsen Norman Group' }
+    ]}
+  ];
+  function buildStats() {
+    $('statGroups').innerHTML = STATS.map(g =>
+      `<div class="stat-cat"><h3>${g.cat}</h3><div class="stat-cards">` +
+      g.items.map(it => `<div class="stat-card"><div class="s-val">${it.v}</div><div class="s-lab">${it.l}</div><div class="s-src">${it.s}</div></div>`).join('') +
+      `</div></div>`
+    ).join('');
+    $('statNote').innerHTML =
+      'Anchor inputs to primary aggregators — <b>RevenueCat</b>, <b>Adapty</b>, <b>AppsFlyer</b>, <b>Qonversion</b>, ' +
+      '<b>comScore</b>, <b>Flurry</b>, <b>Nielsen</b>. Headline blog figures ("77% gone in 3 days", "40–60% of January ' +
+      'sign-ups gone by February") are directional, not measured. Subscription-renewal and app-open retention are ' +
+      'measured differently — keep the two funnels separate.';
+  }
+
+  /* ─────────── Init ─────────── */
+  ['signups','horizon','seasonality','imm','never','conv','ret','core','sh','sm','uh','um','ul']
+    .forEach(id => {
+      const el = $(id);
+      el.addEventListener('input', () => { markCustom(); update(); });
+    });
+
+  let rz;
+  window.addEventListener('resize', () => { clearTimeout(rz); rz = setTimeout(() => { if (lastM) { drawArea(lastM); drawRetention(lastM); } }, 150); });
+
+  buildPresets();
+  buildStats();
+  renderAreaLegend();
+  applyPreset('Fitness — industry avg');
+  </script>
+</body>
+</html>
