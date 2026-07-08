@@ -158,6 +158,7 @@
 </footer>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
 <script>
 (function(){
 "use strict";
@@ -409,263 +410,47 @@ for(const [hx, hz, hr] of [[-10, -24, 9], [3, -27, 12], [13, -23, 8]]){
   scene.add(hill);
 }
 
-/* ============================== figure: athletic woman ============================== */
-/* procedural body textures — mottled skin, hair strands, knit fabric */
-function texCanvas(size, draw){
-  const c = document.createElement("canvas");
-  c.width = c.height = size;
-  draw(c.getContext("2d"), size);
-  const t = new THREE.CanvasTexture(c);
-  t.wrapS = t.wrapT = THREE.RepeatWrapping;
-  return t;
-}
-let tseed = 11;
-const trnd = () => { tseed = (tseed * 16807) % 2147483647; return tseed / 2147483647; };
+/* ============================== figure: Michelle (Mixamo-rigged woman) ============================== */
+const MODEL_URL = "https://cdn.jsdelivr.net/gh/mrdoob/three.js@r160/examples/models/gltf/Michelle.glb";
+const HIP_H = 0.94;             /* hip height the pose keyframes are tuned for */
+const figure = new THREE.Group();
+scene.add(figure);
 
-/* skin color: soft blotches of warmer/cooler tone over a tan base, plus speckle */
-const skinMap = texCanvas(512, (x, s) => {
-  x.fillStyle = "#d9a183"; x.fillRect(0, 0, s, s);
-  const tones = ["#cf8f70", "#e2af90", "#d49a7e", "#c98b6d", "#e6b697"];
-  for(let i = 0; i < 240; i++){
-    x.fillStyle = tones[(trnd() * tones.length) | 0];
-    x.globalAlpha = 0.05 + trnd() * 0.06;
-    const r = 8 + trnd() * 46;
-    x.beginPath();
-    x.ellipse(trnd() * s, trnd() * s, r, r * (0.5 + trnd() * 0.8), trnd() * Math.PI, 0, Math.PI * 2);
-    x.fill();
-  }
-  x.globalAlpha = 1;
-  for(let i = 0; i < 2600; i++){
-    x.fillStyle = trnd() < 0.5 ? "rgba(120,70,50,0.07)" : "rgba(255,230,210,0.06)";
-    x.fillRect(trnd() * s, trnd() * s, 1.4, 1.4);
-  }
-});
-skinMap.encoding = THREE.sRGBEncoding;
-skinMap.repeat.set(2, 2);
-
-/* skin relief: pore-level noise plus soft undulations */
-const skinBump = texCanvas(256, (x, s) => {
-  x.fillStyle = "#808080"; x.fillRect(0, 0, s, s);
-  for(let i = 0; i < 9000; i++){
-    const g = (108 + trnd() * 40) | 0;
-    x.fillStyle = `rgb(${g},${g},${g})`;
-    x.fillRect(trnd() * s, trnd() * s, 1, 1);
-  }
-  for(let i = 0; i < 40; i++){
-    const g = (118 + trnd() * 20) | 0;
-    x.fillStyle = `rgba(${g},${g},${g},0.25)`;
-    x.beginPath(); x.arc(trnd() * s, trnd() * s, 10 + trnd() * 30, 0, Math.PI * 2); x.fill();
-  }
-});
-skinBump.repeat.set(3, 3);
-
-/* skin sheen: patchy roughness so highlights break up instead of reading plastic */
-const skinRough = texCanvas(256, (x, s) => {
-  x.fillStyle = "#7d7d7d"; x.fillRect(0, 0, s, s);
-  for(let i = 0; i < 70; i++){
-    const g = (105 + trnd() * 45) | 0;
-    x.fillStyle = `rgba(${g},${g},${g},0.5)`;
-    x.beginPath(); x.arc(trnd() * s, trnd() * s, 14 + trnd() * 40, 0, Math.PI * 2); x.fill();
-  }
-});
-skinRough.repeat.set(2, 2);
-
-/* hair: vertical strand streaks (longitudinal on the sphere = flowing from the crown) */
-function hairStrands(x, s, colorMode){
-  x.fillStyle = colorMode ? "#33241a" : "#808080";
-  x.fillRect(0, 0, s, s);
-  const shades = colorMode
-    ? ["#241811", "#3d2b1c", "#4a3522", "#5a4128", "#1e140d"]
-    : ["#6a6a6a", "#747474", "#8c8c8c", "#989898", "#606060"];
-  for(let i = 0; i < 600; i++){
-    x.strokeStyle = shades[(trnd() * shades.length) | 0];
-    x.globalAlpha = 0.35 + trnd() * 0.4;
-    x.lineWidth = 0.8 + trnd() * 1.6;
-    const px = trnd() * s, wob = (trnd() - 0.5) * 14;
-    x.beginPath();
-    x.moveTo(px, 0);
-    x.quadraticCurveTo(px + wob, s / 2, px + (trnd() - 0.5) * 10, s);
-    x.stroke();
-  }
-  x.globalAlpha = 1;
-}
-const hairMap = texCanvas(256, (x, s) => hairStrands(x, s, true));
-hairMap.encoding = THREE.sRGBEncoding;
-hairMap.repeat.set(4, 1);
-const hairBump = texCanvas(256, (x, s) => hairStrands(x, s, false));
-hairBump.repeat.set(4, 1);
-
-/* fabric: heathered color mottle + knit dot-grid relief, shared by top and leggings */
-const fabricMottle = texCanvas(256, (x, s) => {
-  x.fillStyle = "#ffffff"; x.fillRect(0, 0, s, s);
-  for(let i = 0; i < 4000; i++){
-    const g = (215 + trnd() * 40) | 0;
-    x.fillStyle = `rgba(${g},${g},${g},0.5)`;
-    x.fillRect(trnd() * s, trnd() * s, 1.6, 1.6);
-  }
-});
-fabricMottle.encoding = THREE.sRGBEncoding;
-fabricMottle.repeat.set(3, 3);
-const knitBump = texCanvas(128, (x, s) => {
-  x.fillStyle = "#808080"; x.fillRect(0, 0, s, s);
-  for(let y = 0; y < s; y += 3){
-    const off = ((y / 3) % 2) ? 1.5 : 0;
-    for(let xx = 0; xx < s; xx += 3){
-      x.fillStyle = "rgba(96,96,96,0.8)";
-      x.fillRect(xx + off, y, 1.5, 1.5);
+let rig = null, loadFailed = false;
+new THREE.GLTFLoader().load(MODEL_URL, gltf => {
+  const model = gltf.scene;
+  model.traverse(o => {
+    if(o.isMesh){
+      o.castShadow = true;
+      o.frustumCulled = false;                     /* bones travel far from the bind box */
+      if(o.material) o.material.metalness = 0;     /* skin is not metal */
     }
+  });
+  figure.add(model);
+  figure.updateMatrixWorld(true);
+
+  /* GLTFLoader sanitizes node names (strips the colon in "mixamorig:Hips") */
+  const getBone = n => model.getObjectByName("mixamorig" + n) || model.getObjectByName("mixamorig:" + n);
+  const hipPos = new THREE.Vector3();
+  getBone("Hips").getWorldPosition(hipPos);
+  figure.scale.setScalar(HIP_H / hipPos.y);        /* normalize her hip height to the rig */
+  figure.updateMatrixWorld(true);
+
+  /* capture bind-pose world orientation of every driven bone */
+  const names = ["Hips","Spine","Spine1","Spine2","Neck","Head",
+                 "LeftArm","LeftForeArm","RightArm","RightForeArm",
+                 "LeftUpLeg","LeftLeg","LeftFoot","RightUpLeg","RightLeg","RightFoot"];
+  const bones = {}, bind = {};
+  for(const n of names){
+    bones[n] = getBone(n);
+    bind[n] = bones[n].getWorldQuaternion(new THREE.Quaternion());
   }
+  rig = {bones, bind};
+  lastPhase = -1;                                  /* repaint the cue now that she's here */
+}, undefined, () => {
+  loadFailed = true;
+  cueEl.innerHTML = "<b>Model failed to load.</b> Check your connection and refresh.";
 });
-knitBump.repeat.set(6, 6);
-
-const skin = new THREE.MeshStandardMaterial({
-  color:0xffffff, map:skinMap, bumpMap:skinBump, bumpScale:0.0035,
-  roughnessMap:skinRough, roughness:1, metalness:0
-});
-const hair = new THREE.MeshStandardMaterial({
-  color:0xffffff, map:hairMap, bumpMap:hairBump, bumpScale:0.003,
-  roughness:0.5, metalness:0.05
-});
-const top = new THREE.MeshStandardMaterial({   // sage sports top
-  color:C(0x5d6e57), map:fabricMottle, bumpMap:knitBump, bumpScale:0.0015,
-  roughness:0.8, metalness:0
-});
-const legg = new THREE.MeshStandardMaterial({  // charcoal leggings
-  color:C(0x383d43), map:fabricMottle, bumpMap:knitBump, bumpScale:0.0015,
-  roughness:0.72, metalness:0
-});
-const shoeU = new THREE.MeshStandardMaterial({color:C(0xece9e2), roughness:0.6,  metalness:0}); // sneaker upper
-const shoeS = new THREE.MeshStandardMaterial({color:C(0xc9c5ba), roughness:0.8,  metalness:0}); // sole
-const lipM  = new THREE.MeshStandardMaterial({color:C(0xb06a5a), roughness:0.6,  metalness:0});
-const eyeM  = new THREE.MeshStandardMaterial({color:C(0x2d2320), roughness:0.35, metalness:0});
-
-function shadowed(m){ m.castShadow = true; m.receiveShadow = false; return m; }
-
-/* lathe a limb/torso profile: pts = [[radius, y], ...] bottom→top; zScale flattens front-to-back */
-function lathePart(pts, mat, zScale){
-  const g = new THREE.LatheGeometry(pts.map(p => new THREE.Vector2(p[0], p[1])), 28);
-  const m = shadowed(new THREE.Mesh(g, mat));
-  m.scale.z = zScale || 1;
-  return m;
-}
-function ball(r, mat, sx, sy, sz){
-  const m = shadowed(new THREE.Mesh(new THREE.SphereGeometry(r, 24, 20), mat));
-  if(sx) m.scale.set(sx, sy, sz);
-  return m;
-}
-
-const root = new THREE.Group();          // pelvis / hips
-scene.add(root);
-
-/* hips + glutes (leggings) — same pivot as before so all poses still land */
-root.add(lathePart(
-  [[0.068,-0.16],[0.106,-0.10],[0.136,-0.03],[0.130,0.04],[0.110,0.10],[0.098,0.13]],
-  legg, 0.80));
-for(const s of [-1, 1]){
-  const g = ball(0.066, legg, 1, 0.9, 0.82);
-  g.position.set(0.052 * s, -0.055, -0.072);
-  root.add(g);
-}
-
-/* spine + torso */
-const spine = new THREE.Group();
-spine.position.y = 0.08;
-root.add(spine);
-
-/* bare midriff */
-spine.add(lathePart(
-  [[0.104,-0.02],[0.092,0.07],[0.088,0.13],[0.096,0.19],[0.102,0.23]],
-  skin, 0.74));
-/* sports top over ribcage/chest — bust built into the profile, no add-on bumps */
-spine.add(lathePart(
-  [[0.100,0.20],[0.113,0.27],[0.120,0.31],[0.116,0.35],[0.097,0.41],[0.076,0.45]],
-  top, 0.80));
-
-const neck = shadowed(new THREE.Mesh(new THREE.CylinderGeometry(0.031, 0.036, 0.12, 16), skin));
-neck.position.y = 0.47;
-spine.add(neck);
-
-/* head + face + hair (bun) */
-const headPiv = new THREE.Group();
-headPiv.position.y = 0.52;
-spine.add(headPiv);
-
-const skull = ball(0.082, skin, 0.92, 1.12, 0.98);
-skull.position.set(0, 0.075, 0.008);
-headPiv.add(skull);
-const scalp = ball(0.084, hair, 0.97, 1.1, 1.0);
-scalp.position.set(0, 0.093, -0.02);
-headPiv.add(scalp);
-const bun = ball(0.042, hair);
-bun.position.set(0, 0.132, -0.098);
-headPiv.add(bun);
-const nose = ball(0.013, skin);
-nose.position.set(0, 0.063, 0.086);
-headPiv.add(nose);
-for(const s of [-1, 1]){
-  const eye = ball(0.0085, eyeM);
-  eye.position.set(0.03 * s, 0.083, 0.071);
-  headPiv.add(eye);
-  const ear = ball(0.014, skin, 0.5, 1, 0.8);
-  ear.position.set(0.074 * s, 0.072, 0.004);
-  headPiv.add(ear);
-}
-const lips = ball(0.014, lipM, 1.1, 0.42, 0.6);
-lips.position.set(0, 0.038, 0.079);
-headPiv.add(lips);
-
-/* arms — same pivots and segment lengths as the original rig */
-function makeArm(side){ // side: -1 left, +1 right
-  const sh = new THREE.Group();
-  sh.position.set(0.175 * side, 0.42, 0);
-  spine.add(sh);
-  const delt = ball(0.052, skin, 1, 0.9, 0.9);
-  sh.add(delt);
-  sh.add(lathePart(   // upper arm with a hint of bicep
-    [[0.030,-0.29],[0.035,-0.26],[0.042,-0.15],[0.046,-0.05],[0.043,0.02]],
-    skin, 0.94));
-  const el = new THREE.Group();
-  el.position.y = -0.28;
-  sh.add(el);
-  el.add(ball(0.036, skin));
-  el.add(lathePart(   // forearm taper
-    [[0.021,-0.27],[0.025,-0.23],[0.034,-0.12],[0.036,-0.04],[0.034,0.01]],
-    skin, 0.94));
-  const hand = ball(1, skin, 0.036, 0.052, 0.042);
-  hand.position.y = -0.295;
-  el.add(hand);
-  return {sh, el};
-}
-const armL = makeArm(-1), armR = makeArm(1);
-
-/* legs — leggings, defined calves, running shoes */
-function makeLeg(side){
-  const hip = new THREE.Group();
-  hip.position.set(0.095 * side, -0.06, 0);
-  root.add(hip);
-  hip.add(lathePart(   // thigh
-    [[0.044,-0.44],[0.055,-0.41],[0.067,-0.30],[0.078,-0.17],[0.085,-0.06],[0.082,0.02]],
-    legg, 0.92));
-  const knee = new THREE.Group();
-  knee.position.y = -0.42;
-  hip.add(knee);
-  knee.add(ball(0.049, legg));
-  knee.add(lathePart(  // calf bulge to slim ankle
-    [[0.025,-0.42],[0.029,-0.36],[0.043,-0.24],[0.054,-0.13],[0.048,-0.02],[0.043,0.02]],
-    legg, 0.94));
-  const ankle = new THREE.Group();
-  ankle.position.y = -0.40;
-  knee.add(ankle);
-  ankle.add(ball(0.028, skin));
-  const upper = ball(1, shoeU, 0.047, 0.040, 0.112);
-  upper.position.set(0, -0.028, 0.058);
-  ankle.add(upper);
-  const sole = shadowed(new THREE.Mesh(new THREE.BoxGeometry(0.088, 0.028, 0.235), shoeS));
-  sole.position.set(0, -0.05, 0.055);
-  ankle.add(sole);
-  return {hip, knee, ankle};
-}
-const legL = makeLeg(-1), legR = makeLeg(1);
 
 /* ============================== poses ============================== */
 /* Conventions (rotation.x): pitch/spine + = lean forward, shoulder − = arm
@@ -673,8 +458,8 @@ const legL = makeLeg(-1), legR = makeLeg(1);
    ankle + = toes down. armZ = lateral arm spread.                       */
 const STAND  = {rootY:0.94, rootZ: 0.00, pitch: 0.00, spine: 0.00, head: 0.00, sh:  0.05, elb:-0.12, hip:-0.02, knee:0.05, ankle: 0.00, armZ:0.08};
 const SQUAT  = {rootY:0.37, rootZ:-0.13, pitch: 0.50, spine: 0.50, head:-0.55, sh: -1.05, elb:-0.12, hip:-2.20, knee:2.40, ankle:-0.50, armZ:0.18};
-const PLANK  = {rootY:0.43, rootZ:-0.25, pitch: 1.24, spine: 0.05, head:-0.45, sh: -1.29, elb:-0.06, hip: 0.00, knee:0.05, ankle: 0.30, armZ:0.10};
-const PUSHUP = {rootY:0.33, rootZ:-0.18, pitch: 1.34, spine: 0.05, head:-0.50, sh: -0.60, elb:-1.05, hip: 0.00, knee:0.06, ankle: 0.18, armZ:0.55};
+const PLANK  = {rootY:0.41, rootZ:-0.25, pitch: 1.24, spine: 0.05, head:-0.45, sh: -1.29, elb:-0.06, hip: 0.00, knee:0.05, ankle: 0.30, armZ:0.10};
+const PUSHUP = {rootY:0.31, rootZ:-0.18, pitch: 1.34, spine: 0.05, head:-0.50, sh: -0.70, elb:-1.05, hip: 0.00, knee:0.06, ankle: 0.18, armZ:0.40};
 const JUMP   = {rootY:1.38, rootZ: 0.00, pitch:-0.06, spine:-0.12, head:-0.05, sh: -2.95, elb:-0.12, hip:-0.30, knee:0.45, ankle: 0.50, armZ:0.25};
 const LAND   = {rootY:0.78, rootZ: 0.00, pitch: 0.12, spine: 0.18, head:-0.10, sh: -0.50, elb:-0.35, hip:-0.85, knee:1.00, ankle:-0.18, armZ:0.12};
 
@@ -728,20 +513,45 @@ function samplePose(time){
   }
 }
 
+/* Retarget the figure-space pose onto Michelle's skeleton.
+   For each joint: desired world = delta(figure-space) * bindWorld, then
+   local = parentWorld^-1 * desired. Deltas compose down each chain, so the
+   original keyframes drive the rig regardless of Mixamo bone axes.        */
+const AX_X = new THREE.Vector3(1,0,0), AX_Y = new THREE.Vector3(0,1,0), AX_Z = new THREE.Vector3(0,0,1);
+const Qx = a => new THREE.Quaternion().setFromAxisAngle(AX_X, a);
+const Qy = a => new THREE.Quaternion().setFromAxisAngle(AX_Y, a);
+const Qz = a => new THREE.Quaternion().setFromAxisAngle(AX_Z, a);
+const _pq = new THREE.Quaternion(), _wq = new THREE.Quaternion();
+function poseBone(name, delta){
+  const b = rig.bones[name];
+  _wq.copy(delta).multiply(rig.bind[name]);
+  b.parent.getWorldQuaternion(_pq);
+  b.quaternion.copy(_pq.invert()).multiply(_wq);
+}
+const ARM_DROP = 1.35;   /* T-pose arms -> hanging at her sides */
+
 function applyPose(p){
-  root.position.set(0, p.rootY, p.rootZ);
-  root.rotation.x = p.pitch;
-  spine.rotation.x = p.spine;
-  headPiv.rotation.x = p.head;
-  for(const [arm, s] of [[armL,-1],[armR,1]]){
-    arm.sh.rotation.x = p.sh;
-    arm.sh.rotation.z = -s * p.armZ;
-    arm.el.rotation.x = p.elb;
-  }
-  for(const leg of [legL, legR]){
-    leg.hip.rotation.x = p.hip;
-    leg.knee.rotation.x = p.knee;
-    leg.ankle.rotation.x = p.ankle;
+  if(!rig) return;
+  figure.position.set(0, p.rootY - HIP_H, p.rootZ);
+
+  const dHips = Qx(p.pitch);
+  poseBone("Hips", dHips);
+  const dS0 = dHips.clone().multiply(Qx(p.spine * 0.45)); poseBone("Spine",  dS0);
+  const dS1 = dS0.clone().multiply(Qx(p.spine * 0.35));   poseBone("Spine1", dS1);
+  const dS2 = dS1.clone().multiply(Qx(p.spine * 0.20));   poseBone("Spine2", dS2);
+  const dNk = dS2.clone().multiply(Qx(p.head * 0.35));    poseBone("Neck",   dNk);
+  poseBone("Head", dNk.clone().multiply(Qx(p.head * 0.65)));
+
+  for(const s of [1, -1]){                       /* 1 = Left, -1 = Right */
+    const side = s > 0 ? "Left" : "Right";
+    const dArm = dS2.clone().multiply(Qx(p.sh)).multiply(Qz(-s * (ARM_DROP - p.armZ)));
+    poseBone(side + "Arm", dArm);
+    poseBone(side + "ForeArm", dArm.clone().multiply(Qy(s * p.elb)));
+    const dTh = dHips.clone().multiply(Qx(p.hip));
+    poseBone(side + "UpLeg", dTh);
+    const dSh = dTh.clone().multiply(Qx(p.knee));
+    poseBone(side + "Leg", dSh);
+    poseBone(side + "Foot", dSh.clone().multiply(Qx(p.ankle)));
   }
 }
 
@@ -819,7 +629,7 @@ function updateUI(p, simTime){
 
   if(p._phase !== lastPhase){
     lastPhase = p._phase;
-    cueEl.innerHTML = PHASES[p._phase].cue;
+    cueEl.innerHTML = loadFailed ? cueEl.innerHTML : (rig ? PHASES[p._phase].cue : "<b>Loading</b> the athlete\u2026");
     checkItems.forEach(li => li.classList.toggle("on", +li.dataset.p === p._phase));
   }
   segEls.forEach((el, i) => {
@@ -858,6 +668,14 @@ function tick(now){
   requestAnimationFrame(tick);
 }
 requestAnimationFrame(tick);
+
+/* debug hook for pose calibration */
+window.__lab = {
+  get rig(){ return rig; },
+  figure, samplePose, applyPose,
+  seek: t => { simTime = t; },
+  frame: () => { const p = samplePose(simTime % DUR); applyPose(p); renderer.render(scene, camera); return p; }
+};
 })();
 </script>
 </body>
