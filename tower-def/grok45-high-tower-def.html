@@ -1,0 +1,2737 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no" />
+<title>Stitchlight Defense — The Quilted Sky</title>
+<style>
+  :root {
+    --sky-top: #c9e4ff;
+    --sky-mid: #f3d9ff;
+    --sky-bot: #ffe8d6;
+    --panel: rgba(255, 252, 248, 0.92);
+    --panel-solid: #fffaf5;
+    --ink: #3d2c4a;
+    --muted: #7a6688;
+    --accent: #ff6b9d;
+    --accent-2: #7c6cff;
+    --gold: #f0b429;
+    --mint: #3ecf8e;
+    --coral: #ff7a59;
+    --sky-blue: #5bb8ff;
+    --lavender: #b48ef0;
+    --cream: #fff6ec;
+    --shadow: 0 10px 30px rgba(61, 44, 74, 0.12);
+    --radius: 18px;
+    --font: "Segoe UI", system-ui, -apple-system, sans-serif;
+    --safe-t: env(safe-area-inset-top, 0px);
+    --safe-b: env(safe-area-inset-bottom, 0px);
+    --safe-l: env(safe-area-inset-left, 0px);
+    --safe-r: env(safe-area-inset-right, 0px);
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    height: 100%;
+    overflow: hidden;
+    font-family: var(--font);
+    color: var(--ink);
+    background: linear-gradient(165deg, var(--sky-top), var(--sky-mid) 45%, var(--sky-bot));
+    -webkit-tap-highlight-color: transparent;
+    user-select: none;
+    touch-action: manipulation;
+  }
+
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    background:
+      radial-gradient(circle at 12% 18%, rgba(255,255,255,0.55) 0 40px, transparent 70px),
+      radial-gradient(circle at 78% 12%, rgba(255,255,255,0.4) 0 50px, transparent 90px),
+      radial-gradient(circle at 60% 80%, rgba(255,255,255,0.35) 0 70px, transparent 120px);
+    z-index: 0;
+  }
+
+  #app {
+    position: relative;
+    z-index: 1;
+    height: 100%;
+    display: grid;
+    grid-template-rows: auto 1fr auto;
+    padding: max(0.5rem, var(--safe-t)) max(0.5rem, var(--safe-r)) max(0.5rem, var(--safe-b)) max(0.5rem, var(--safe-l));
+    gap: 0.5rem;
+    max-width: 1400px;
+    margin: 0 auto;
+  }
+
+  /* ===== TOP BAR ===== */
+  .topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.6rem;
+    flex-wrap: wrap;
+    background: var(--panel);
+    border: 2px solid rgba(255,255,255,0.8);
+    border-radius: var(--radius);
+    padding: 0.55rem 0.85rem;
+    box-shadow: var(--shadow);
+  }
+
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
+    min-width: 0;
+  }
+
+  .brand-mark {
+    width: 38px;
+    height: 38px;
+    border-radius: 12px;
+    background: linear-gradient(135deg, #ff8fb8, #b48ef0);
+    display: grid;
+    place-items: center;
+    font-size: 1.15rem;
+    box-shadow: 0 4px 12px rgba(180, 142, 240, 0.35);
+    flex-shrink: 0;
+  }
+
+  .brand h1 {
+    font-size: clamp(0.95rem, 2.5vw, 1.2rem);
+    letter-spacing: 0.02em;
+    line-height: 1.15;
+    white-space: nowrap;
+  }
+
+  .brand p {
+    font-size: 0.68rem;
+    color: var(--muted);
+    letter-spacing: 0.04em;
+  }
+
+  .stats {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    justify-content: flex-end;
+  }
+
+  .stat {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    background: var(--cream);
+    border: 1.5px solid rgba(61, 44, 74, 0.08);
+    border-radius: 999px;
+    padding: 0.35rem 0.7rem;
+    font-weight: 700;
+    font-size: 0.85rem;
+    min-height: 36px;
+  }
+
+  .stat .ico { font-size: 0.95rem; }
+  .stat.hearts { color: #e85d7a; }
+  .stat.coins { color: #c98900; }
+  .stat.wave { color: var(--accent-2); }
+  .stat.score { color: var(--mint); }
+
+  /* ===== MAIN ===== */
+  .main {
+    display: grid;
+    grid-template-columns: 1fr minmax(240px, 300px);
+    gap: 0.5rem;
+    min-height: 0;
+  }
+
+  .stage-wrap {
+    position: relative;
+    min-height: 0;
+    background: var(--panel);
+    border: 2px solid rgba(255,255,255,0.85);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    overflow: hidden;
+  }
+
+  canvas#game {
+    display: block;
+    width: 100%;
+    height: 100%;
+    cursor: crosshair;
+  }
+
+  .stage-hint {
+    position: absolute;
+    left: 50%;
+    bottom: 12px;
+    transform: translateX(-50%);
+    background: rgba(61, 44, 74, 0.72);
+    color: #fff;
+    font-size: 0.75rem;
+    padding: 0.4rem 0.85rem;
+    border-radius: 999px;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.25s ease;
+    white-space: nowrap;
+    max-width: 92%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .stage-hint.show { opacity: 1; }
+
+  .sidebar {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    min-height: 0;
+    overflow: auto;
+  }
+
+  .panel {
+    background: var(--panel);
+    border: 2px solid rgba(255,255,255,0.85);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    padding: 0.75rem;
+  }
+
+  .panel h2 {
+    font-size: 0.72rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 0.55rem;
+  }
+
+  .tower-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.45rem;
+  }
+
+  .tower-btn {
+    appearance: none;
+    border: 2px solid rgba(61, 44, 74, 0.08);
+    background: var(--cream);
+    border-radius: 14px;
+    padding: 0.55rem 0.4rem;
+    cursor: pointer;
+    text-align: center;
+    transition: transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+    color: var(--ink);
+    font: inherit;
+    min-height: 88px;
+  }
+  .tower-btn:hover:not(:disabled) {
+    transform: translateY(-2px);
+    border-color: var(--accent-2);
+    box-shadow: 0 6px 16px rgba(124, 108, 255, 0.18);
+  }
+  .tower-btn.selected {
+    border-color: var(--accent);
+    background: #fff0f5;
+    box-shadow: 0 0 0 3px rgba(255, 107, 157, 0.2);
+  }
+  .tower-btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+  .tower-btn .emoji { font-size: 1.45rem; line-height: 1; display: block; margin-bottom: 0.2rem; }
+  .tower-btn .name { font-size: 0.72rem; font-weight: 700; display: block; }
+  .tower-btn .cost { font-size: 0.68rem; color: #c98900; font-weight: 700; margin-top: 0.15rem; display: block; }
+  .tower-btn .tag {
+    display: inline-block;
+    margin-top: 0.25rem;
+    font-size: 0.58rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--muted);
+    background: rgba(61,44,74,0.06);
+    padding: 0.12rem 0.35rem;
+    border-radius: 999px;
+  }
+
+  .detail {
+    min-height: 120px;
+  }
+  .detail.empty {
+    display: grid;
+    place-items: center;
+    color: var(--muted);
+    font-size: 0.82rem;
+    text-align: center;
+    padding: 1rem 0.5rem;
+  }
+  .detail .title-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    margin-bottom: 0.35rem;
+  }
+  .detail .title-row strong { font-size: 0.95rem; }
+  .detail .lvl {
+    font-size: 0.68rem;
+    font-weight: 700;
+    color: var(--accent-2);
+    background: rgba(124,108,255,0.12);
+    padding: 0.2rem 0.5rem;
+    border-radius: 999px;
+  }
+  .detail .desc {
+    font-size: 0.78rem;
+    color: var(--muted);
+    line-height: 1.4;
+    margin-bottom: 0.55rem;
+  }
+  .bars { display: grid; gap: 0.3rem; margin-bottom: 0.6rem; }
+  .bar-row {
+    display: grid;
+    grid-template-columns: 52px 1fr 28px;
+    gap: 0.35rem;
+    align-items: center;
+    font-size: 0.68rem;
+    color: var(--muted);
+  }
+  .bar-track {
+    height: 8px;
+    background: rgba(61,44,74,0.08);
+    border-radius: 999px;
+    overflow: hidden;
+  }
+  .bar-fill {
+    height: 100%;
+    border-radius: 999px;
+    background: linear-gradient(90deg, var(--accent-2), var(--accent));
+  }
+  .actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.4rem;
+  }
+  .btn {
+    appearance: none;
+    border: none;
+    border-radius: 12px;
+    padding: 0.6rem 0.7rem;
+    font: inherit;
+    font-weight: 700;
+    font-size: 0.78rem;
+    cursor: pointer;
+    transition: transform 0.12s ease, filter 0.12s ease, opacity 0.12s ease;
+    min-height: 42px;
+  }
+  .btn:hover:not(:disabled) { transform: translateY(-1px); filter: brightness(1.03); }
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+  .btn-primary {
+    background: linear-gradient(135deg, #ff8fb8, #ff6b9d);
+    color: white;
+    box-shadow: 0 4px 14px rgba(255, 107, 157, 0.35);
+  }
+  .btn-secondary {
+    background: linear-gradient(135deg, #8f9bff, #7c6cff);
+    color: white;
+    box-shadow: 0 4px 14px rgba(124, 108, 255, 0.3);
+  }
+  .btn-danger {
+    background: #ffe4e4;
+    color: #c23b4e;
+  }
+  .btn-ghost {
+    background: var(--cream);
+    color: var(--ink);
+    border: 1.5px solid rgba(61,44,74,0.08);
+  }
+  .btn-wide { grid-column: 1 / -1; }
+
+  .controls {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.4rem;
+  }
+
+  /* ===== BOTTOM ===== */
+  .bottombar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.6rem;
+    flex-wrap: wrap;
+    background: var(--panel);
+    border: 2px solid rgba(255,255,255,0.85);
+    border-radius: var(--radius);
+    padding: 0.55rem 0.85rem;
+    box-shadow: var(--shadow);
+  }
+  .wave-msg {
+    font-size: 0.82rem;
+    color: var(--muted);
+    flex: 1;
+    min-width: 140px;
+  }
+  .wave-msg strong { color: var(--ink); }
+  .bottom-actions {
+    display: flex;
+    gap: 0.4rem;
+    flex-wrap: wrap;
+  }
+
+  /* ===== OVERLAYS ===== */
+  .overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 50;
+    display: grid;
+    place-items: center;
+    padding: 1rem;
+    background: rgba(61, 44, 74, 0.52);
+  }
+  .overlay.hidden { display: none; }
+  .modal {
+    width: min(440px, 100%);
+    background: var(--panel-solid);
+    border-radius: 24px;
+    padding: 1.6rem 1.4rem 1.3rem;
+    box-shadow: 0 25px 60px rgba(61, 44, 74, 0.28);
+    border: 2px solid rgba(255,255,255,0.9);
+    text-align: center;
+    animation: popIn 0.35s cubic-bezier(0.2, 0.9, 0.3, 1.2);
+  }
+  @keyframes popIn {
+    from { opacity: 0; transform: scale(0.92) translateY(10px); }
+    to { opacity: 1; transform: scale(1) translateY(0); }
+  }
+  .modal .hero {
+    font-size: 2.6rem;
+    line-height: 1;
+    margin-bottom: 0.4rem;
+  }
+  .modal h2 {
+    font-size: 1.45rem;
+    margin-bottom: 0.35rem;
+    letter-spacing: 0.01em;
+  }
+  .modal p {
+    color: var(--muted);
+    font-size: 0.9rem;
+    line-height: 1.5;
+    margin-bottom: 0.9rem;
+  }
+  .modal .features {
+    display: grid;
+    gap: 0.4rem;
+    text-align: left;
+    margin: 0.8rem 0 1.1rem;
+  }
+  .modal .features li {
+    list-style: none;
+    background: var(--cream);
+    border-radius: 12px;
+    padding: 0.55rem 0.7rem;
+    font-size: 0.8rem;
+    color: var(--ink);
+  }
+  .modal .features li span { margin-right: 0.35rem; }
+  .modal .btn { width: 100%; margin-top: 0.35rem; }
+  .modal .scoreline {
+    font-size: 1.05rem;
+    font-weight: 800;
+    color: var(--accent-2);
+    margin-bottom: 0.8rem;
+  }
+
+  .toast {
+    position: fixed;
+    top: max(1rem, var(--safe-t));
+    left: 50%;
+    transform: translateX(-50%) translateY(-120%);
+    z-index: 60;
+    background: rgba(61, 44, 74, 0.9);
+    color: white;
+    padding: 0.65rem 1.1rem;
+    border-radius: 999px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+    transition: transform 0.3s ease;
+    pointer-events: none;
+    max-width: 90vw;
+    text-align: center;
+  }
+  .toast.show { transform: translateX(-50%) translateY(0); }
+
+  a.back-link {
+    position: fixed;
+    top: max(0.6rem, var(--safe-t));
+    left: max(0.6rem, var(--safe-l));
+    z-index: 40;
+    font-size: 0.72rem;
+    color: rgba(61,44,74,0.55);
+    text-decoration: none;
+    background: rgba(255,255,255,0.7);
+    padding: 0.35rem 0.6rem;
+    border-radius: 999px;
+    border: 1px solid rgba(255,255,255,0.9);
+  }
+  a.back-link:hover { color: var(--ink); }
+
+  /* ===== RESPONSIVE ===== */
+  @media (max-width: 900px) {
+    #app {
+      grid-template-rows: auto 1fr auto auto;
+      gap: 0.4rem;
+    }
+    .main {
+      grid-template-columns: 1fr;
+      grid-template-rows: minmax(240px, 1fr) auto;
+    }
+    .sidebar {
+      display: grid;
+      grid-template-columns: 1.2fr 1fr;
+      overflow: visible;
+    }
+    .panel.towers-panel { grid-column: 1 / -1; }
+    .tower-grid { grid-template-columns: repeat(5, 1fr); }
+    .tower-btn {
+      min-height: 72px;
+      padding: 0.4rem 0.2rem;
+    }
+    .tower-btn .name { font-size: 0.62rem; }
+    .tower-btn .tag { display: none; }
+  }
+
+  @media (max-width: 560px) {
+    .topbar { padding: 0.45rem 0.55rem; }
+    .brand-mark { width: 32px; height: 32px; font-size: 1rem; }
+    .brand h1 { font-size: 0.88rem; }
+    .brand p { display: none; }
+    .stat { font-size: 0.75rem; padding: 0.28rem 0.5rem; min-height: 32px; }
+    .sidebar { grid-template-columns: 1fr; }
+    .tower-grid { grid-template-columns: repeat(5, 1fr); gap: 0.3rem; }
+    .tower-btn .cost { font-size: 0.6rem; }
+    .tower-btn .emoji { font-size: 1.2rem; }
+    .bottombar { flex-direction: column; align-items: stretch; }
+    .bottom-actions { width: 100%; }
+    .bottom-actions .btn { flex: 1; }
+    .wave-msg { text-align: center; font-size: 0.75rem; }
+    a.back-link { font-size: 0.65rem; padding: 0.28rem 0.5rem; }
+  }
+
+  @media (max-height: 700px) and (min-width: 901px) {
+    .tower-btn { min-height: 70px; padding: 0.4rem; }
+    .detail { min-height: 90px; }
+  }
+</style>
+</head>
+<body>
+<a class="back-link" href="./index.html">← Arcade</a>
+<div id="toast" class="toast" role="status"></div>
+
+<div id="app">
+  <header class="topbar">
+    <div class="brand">
+      <div class="brand-mark" aria-hidden="true">🧵</div>
+      <div>
+        <h1>Stitchlight Defense</h1>
+        <p>The Quilted Sky</p>
+      </div>
+    </div>
+    <div class="stats">
+      <div class="stat hearts" title="Lives"><span class="ico">❤️</span><span id="lives">20</span></div>
+      <div class="stat coins" title="Thread coins"><span class="ico">🪙</span><span id="coins">120</span></div>
+      <div class="stat wave" title="Wave"><span class="ico">🌊</span><span id="waveLabel">0 / 24</span></div>
+      <div class="stat score" title="Score"><span class="ico">⭐</span><span id="score">0</span></div>
+    </div>
+  </header>
+
+  <div class="main">
+    <div class="stage-wrap">
+      <canvas id="game" width="900" height="560"></canvas>
+      <div id="stageHint" class="stage-hint">Select a tower, then tap a soft patch beside the seam</div>
+    </div>
+
+    <aside class="sidebar">
+      <section class="panel towers-panel">
+        <h2>Sewing Kit</h2>
+        <div class="tower-grid" id="towerGrid"></div>
+      </section>
+
+      <section class="panel detail" id="detailPanel">
+        <div class="empty">Pick a tower type or tap a placed tower to upgrade between waves.</div>
+      </section>
+
+      <section class="panel">
+        <h2>Controls</h2>
+        <div class="controls">
+          <button class="btn btn-ghost" id="btnSell" disabled>Sell</button>
+          <button class="btn btn-danger" id="btnCancel">Cancel</button>
+          <button class="btn btn-secondary btn-wide" id="btnUpgrade" disabled>Upgrade</button>
+        </div>
+      </section>
+    </aside>
+  </div>
+
+  <footer class="bottombar">
+    <div class="wave-msg" id="waveMsg"><strong>Intermission</strong> — place towers, then start the first wave.</div>
+    <div class="bottom-actions">
+      <button class="btn btn-ghost" id="btnSpeed" title="Game speed">1×</button>
+      <button class="btn btn-primary" id="btnWave">Start Wave 1</button>
+    </div>
+  </footer>
+</div>
+
+<!-- Start overlay -->
+<div id="startOverlay" class="overlay">
+  <div class="modal">
+    <div class="hero">🧵✨</div>
+    <h2>Stitchlight Defense</h2>
+    <p>A living quilt drifts through the pastel sky. Unravelers march the golden seam — keep the Heart Patch whole!</p>
+    <ul class="features">
+      <li><span>🪡</span> Five cozy towers, four upgrades each</li>
+      <li><span>🗺️</span> Brand-new random seam-path every run</li>
+      <li><span>🌊</span> 24 waves of thread-beasts &amp; bosses</li>
+      <li><span>⏸️</span> Upgrade freely between waves</li>
+    </ul>
+    <button class="btn btn-primary" id="btnStart">Begin Sewing</button>
+  </div>
+</div>
+
+<!-- End overlay -->
+<div id="endOverlay" class="overlay hidden">
+  <div class="modal">
+    <div class="hero" id="endHero">🎉</div>
+    <h2 id="endTitle">Victory!</h2>
+    <p id="endText">The quilt holds firm against the night.</p>
+    <div class="scoreline" id="endScore">Score: 0</div>
+    <button class="btn btn-primary" id="btnRestart">New Quilt</button>
+  </div>
+</div>
+
+<script>
+(() => {
+  "use strict";
+
+  // ═══════════════════════════════════════════════════════════
+  //  STITCHLIGHT DEFENSE — Quilted Sky TD
+  //  Self-contained canvas tower defense. No dependencies.
+  // ═══════════════════════════════════════════════════════════
+
+  const W = 900;
+  const H = 560;
+  const TOTAL_WAVES = 24;
+  const START_LIVES = 20;
+  const START_COINS = 130;
+  const CELL = 40;
+  const PATH_W = 42;
+
+  const canvas = document.getElementById("game");
+  const ctx = canvas.getContext("2d");
+  const bgCanvas = document.createElement("canvas");
+  bgCanvas.width = W;
+  bgCanvas.height = H;
+  const bgCtx = bgCanvas.getContext("2d");
+
+  // UI refs
+  const $ = (id) => document.getElementById(id);
+  const el = {
+    lives: $("lives"),
+    coins: $("coins"),
+    waveLabel: $("waveLabel"),
+    score: $("score"),
+    waveMsg: $("waveMsg"),
+    stageHint: $("stageHint"),
+    towerGrid: $("towerGrid"),
+    detail: $("detailPanel"),
+    btnWave: $("btnWave"),
+    btnSpeed: $("btnSpeed"),
+    btnSell: $("btnSell"),
+    btnCancel: $("btnCancel"),
+    btnUpgrade: $("btnUpgrade"),
+    startOverlay: $("startOverlay"),
+    endOverlay: $("endOverlay"),
+    endHero: $("endHero"),
+    endTitle: $("endTitle"),
+    endText: $("endText"),
+    endScore: $("endScore"),
+    toast: $("toast"),
+    btnStart: $("btnStart"),
+    btnRestart: $("btnRestart"),
+  };
+
+  // ─── Utilities ───────────────────────────────────────────
+  const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+  const lerp = (a, b, t) => a + (b - a) * t;
+  const dist = (ax, ay, bx, by) => Math.hypot(bx - ax, by - ay);
+  const rand = (a, b) => a + Math.random() * (b - a);
+  const randi = (a, b) => (a + Math.floor(Math.random() * (b - a + 1)));
+  const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
+  const soft = (t) => t * t * (3 - 2 * t);
+
+  function toast(msg, ms = 1800) {
+    el.toast.textContent = msg;
+    el.toast.classList.add("show");
+    clearTimeout(toast._t);
+    toast._t = setTimeout(() => el.toast.classList.remove("show"), ms);
+  }
+
+  function hint(msg, ms = 2400) {
+    el.stageHint.textContent = msg;
+    el.stageHint.classList.add("show");
+    clearTimeout(hint._t);
+    hint._t = setTimeout(() => el.stageHint.classList.remove("show"), ms);
+  }
+
+  // ─── Tower definitions (5 kinds × 4 levels) ──────────────
+  // level index 0..3
+  const TOWERS = {
+    button: {
+      id: "button",
+      name: "Button Barrage",
+      emoji: "🔘",
+      tag: "Rapid",
+      color: "#5bb8ff",
+      color2: "#2f8fd6",
+      desc: "Fires shiny buttons at the nearest Unraveler. Fast, precise, and cheap.",
+      baseCost: 50,
+      upgrades: [
+        { dmg: 8,  range: 120, rate: 2.6, cost: 0  },
+        { dmg: 13, range: 135, rate: 3.1, cost: 45 },
+        { dmg: 20, range: 150, rate: 3.7, cost: 80 },
+        { dmg: 30, range: 170, rate: 4.4, cost: 130 },
+      ],
+    },
+    pompom: {
+      id: "pompom",
+      name: "Pom-Pom Mortar",
+      emoji: "🧶",
+      tag: "Splash",
+      color: "#ff7a59",
+      color2: "#e85a3a",
+      desc: "Lobs fluffy pom-poms that burst into a cloud of yarn. Great for packs.",
+      baseCost: 85,
+      upgrades: [
+        { dmg: 14, range: 115, rate: 1.0, splash: 48, cost: 0  },
+        { dmg: 22, range: 125, rate: 1.15, splash: 56, cost: 65 },
+        { dmg: 34, range: 140, rate: 1.3, splash: 66, cost: 110 },
+        { dmg: 50, range: 155, rate: 1.5, splash: 78, cost: 170 },
+      ],
+    },
+    silk: {
+      id: "silk",
+      name: "Silk Snare",
+      emoji: "🕸️",
+      tag: "Slow",
+      color: "#b48ef0",
+      color2: "#8f6ad0",
+      desc: "Spins sticky silk that slows foes and nibbles with gentle DoT.",
+      baseCost: 70,
+      upgrades: [
+        { dmg: 3,  range: 110, rate: 1.8, slow: 0.45, slowT: 1.6, dot: 2, cost: 0  },
+        { dmg: 5,  range: 125, rate: 2.0, slow: 0.40, slowT: 1.9, dot: 4, cost: 55 },
+        { dmg: 8,  range: 140, rate: 2.3, slow: 0.34, slowT: 2.2, dot: 7, cost: 95 },
+        { dmg: 12, range: 155, rate: 2.6, slow: 0.28, slowT: 2.6, dot: 11, cost: 150 },
+      ],
+    },
+    spindle: {
+      id: "spindle",
+      name: "Static Spindle",
+      emoji: "⚡",
+      tag: "Chain",
+      color: "#f0b429",
+      color2: "#d49610",
+      desc: "Crackles with static that leaps between Unravelers along the seam.",
+      baseCost: 110,
+      upgrades: [
+        { dmg: 16, range: 130, rate: 1.15, chain: 2, chainFall: 0.7, cost: 0  },
+        { dmg: 24, range: 145, rate: 1.3,  chain: 3, chainFall: 0.72, cost: 85 },
+        { dmg: 36, range: 160, rate: 1.45, chain: 4, chainFall: 0.75, cost: 140 },
+        { dmg: 52, range: 175, rate: 1.65, chain: 5, chainFall: 0.78, cost: 210 },
+      ],
+    },
+    loom: {
+      id: "loom",
+      name: "Warmth Loom",
+      emoji: "🌸",
+      tag: "Aura",
+      color: "#ff6b9d",
+      color2: "#e84d82",
+      desc: "Weaves cozy auras that empower nearby towers and gently toast enemies.",
+      baseCost: 120,
+      upgrades: [
+        { dmg: 2,  range: 100, rate: 1.5, buff: 0.15, aura: 95,  cost: 0  },
+        { dmg: 4,  range: 110, rate: 1.7, buff: 0.22, aura: 110, cost: 90 },
+        { dmg: 7,  range: 120, rate: 1.9, buff: 0.30, aura: 125, cost: 150 },
+        { dmg: 11, range: 130, rate: 2.2, buff: 0.40, aura: 145, cost: 230 },
+      ],
+    },
+  };
+  const TOWER_ORDER = ["button", "pompom", "silk", "spindle", "loom"];
+
+  // ─── Enemy definitions ───────────────────────────────────
+  const ENEMIES = {
+    lintling: {
+      name: "Lintling",
+      emoji: "☁️",
+      hp: 28, speed: 78, reward: 8, armor: 0, radius: 11,
+      color: "#e8e0f0", color2: "#c8bdd8",
+    },
+    spool: {
+      name: "Spool Sprite",
+      emoji: "🧵",
+      hp: 55, speed: 52, reward: 14, armor: 1, radius: 13,
+      color: "#ffb4c8", color2: "#e88aa8",
+    },
+    buttonbeast: {
+      name: "Button Beast",
+      emoji: "🟤",
+      hp: 140, speed: 32, reward: 22, armor: 4, radius: 16,
+      color: "#c4a882", color2: "#9a7a55",
+    },
+    snipper: {
+      name: "Snipper",
+      emoji: "✂️",
+      hp: 48, speed: 95, reward: 16, armor: 0, radius: 12,
+      color: "#a8d8ff", color2: "#6ab0e8",
+    },
+    mothkin: {
+      name: "Mothkin",
+      emoji: "🦋",
+      hp: 70, speed: 70, reward: 18, armor: 2, radius: 13,
+      color: "#d4c4ff", color2: "#a894e0",
+      resistSlow: 0.45,
+    },
+    tangle: {
+      name: "Tangle Titan",
+      emoji: "🪢",
+      hp: 520, speed: 26, reward: 60, armor: 6, radius: 22,
+      color: "#7c6cff", color2: "#5548c0",
+      boss: true,
+    },
+    unraveler: {
+      name: "Grand Unraveler",
+      emoji: "👾",
+      hp: 1100, speed: 22, reward: 120, armor: 8, radius: 26,
+      color: "#3d2c4a", color2: "#6b4d7a",
+      boss: true,
+    },
+  };
+
+  // ─── Wave table (24 waves) ───────────────────────────────
+  function buildWaves() {
+    const waves = [];
+    // helper: spawn groups
+    const g = (type, count, gap = 0.55) => ({ type, count, gap });
+
+    waves.push({ // 1
+      name: "First Frays",
+      groups: [g("lintling", 8, 0.7)],
+      bonus: 30,
+    });
+    waves.push({ // 2
+      name: "Lint Parade",
+      groups: [g("lintling", 12, 0.55)],
+      bonus: 35,
+    });
+    waves.push({ // 3
+      name: "Spools Arrive",
+      groups: [g("lintling", 6, 0.5), g("spool", 5, 0.75)],
+      bonus: 40,
+    });
+    waves.push({ // 4
+      name: "Quick Snips",
+      groups: [g("snipper", 6, 0.45), g("lintling", 8, 0.4)],
+      bonus: 45,
+    });
+    waves.push({ // 5 — mini boss mix
+      name: "Button March",
+      groups: [g("buttonbeast", 3, 1.4), g("spool", 6, 0.6)],
+      bonus: 55,
+    });
+    waves.push({ // 6
+      name: "Mixed Threads",
+      groups: [g("lintling", 10, 0.4), g("spool", 6, 0.55), g("snipper", 4, 0.5)],
+      bonus: 50,
+    });
+    waves.push({ // 7
+      name: "Mothkin Flutter",
+      groups: [g("mothkin", 7, 0.6), g("lintling", 8, 0.4)],
+      bonus: 55,
+    });
+    waves.push({ // 8
+      name: "Heavy Stitch",
+      groups: [g("buttonbeast", 5, 1.1), g("spool", 8, 0.5)],
+      bonus: 60,
+    });
+    waves.push({ // 9
+      name: "Rush Hour",
+      groups: [g("snipper", 14, 0.32), g("mothkin", 5, 0.5)],
+      bonus: 65,
+    });
+    waves.push({ // 10 — boss
+      name: "Tangle Titan!",
+      groups: [g("spool", 8, 0.45), g("tangle", 1, 0), g("lintling", 12, 0.35)],
+      bonus: 100,
+    });
+    waves.push({ // 11
+      name: "Aftershock",
+      groups: [g("mothkin", 10, 0.5), g("buttonbeast", 4, 1.0)],
+      bonus: 70,
+    });
+    waves.push({ // 12
+      name: "Seam Splitters",
+      groups: [g("snipper", 10, 0.35), g("spool", 10, 0.45), g("lintling", 10, 0.3)],
+      bonus: 75,
+    });
+    waves.push({ // 13
+      name: "Armored Spools",
+      groups: [g("buttonbeast", 8, 0.9), g("mothkin", 8, 0.5)],
+      bonus: 80,
+    });
+    waves.push({ // 14
+      name: "Double Dash",
+      groups: [g("snipper", 18, 0.28), g("mothkin", 8, 0.4)],
+      bonus: 85,
+    });
+    waves.push({ // 15 — boss
+      name: "Twin Tanglers",
+      groups: [g("tangle", 2, 2.5), g("spool", 12, 0.4)],
+      bonus: 130,
+    });
+    waves.push({ // 16
+      name: "Needle Storm",
+      groups: [g("lintling", 20, 0.25), g("snipper", 12, 0.3), g("mothkin", 6, 0.45)],
+      bonus: 90,
+    });
+    waves.push({ // 17
+      name: "Quilt Crushers",
+      groups: [g("buttonbeast", 10, 0.75), g("mothkin", 10, 0.4)],
+      bonus: 95,
+    });
+    waves.push({ // 18
+      name: "Chaos Spool",
+      groups: [g("spool", 16, 0.35), g("snipper", 10, 0.3), g("buttonbeast", 5, 0.85)],
+      bonus: 100,
+    });
+    waves.push({ // 19
+      name: "Night Moths",
+      groups: [g("mothkin", 18, 0.35), g("tangle", 1, 1.5)],
+      bonus: 110,
+    });
+    waves.push({ // 20 — boss
+      name: "Grand Unraveler!",
+      groups: [g("buttonbeast", 6, 0.7), g("unraveler", 1, 0), g("snipper", 14, 0.28)],
+      bonus: 180,
+    });
+    waves.push({ // 21
+      name: "Frayed Nerves",
+      groups: [g("lintling", 25, 0.22), g("mothkin", 12, 0.35), g("spool", 12, 0.35)],
+      bonus: 120,
+    });
+    waves.push({ // 22
+      name: "All Hands",
+      groups: [g("snipper", 16, 0.28), g("buttonbeast", 8, 0.65), g("mothkin", 10, 0.35), g("tangle", 1, 2)],
+      bonus: 140,
+    });
+    waves.push({ // 23
+      name: "Last Fray",
+      groups: [g("tangle", 2, 2), g("mothkin", 14, 0.32), g("buttonbeast", 8, 0.6), g("snipper", 14, 0.25)],
+      bonus: 160,
+    });
+    waves.push({ // 24 — finale
+      name: "Seamageddon",
+      groups: [
+        g("unraveler", 1, 0),
+        g("tangle", 2, 2.2),
+        g("snipper", 20, 0.22),
+        g("mothkin", 14, 0.3),
+        g("buttonbeast", 8, 0.55),
+      ],
+      bonus: 250,
+    });
+    return waves;
+  }
+
+  // ─── Game state ──────────────────────────────────────────
+  let state;
+
+  function freshState() {
+    return {
+      running: false,
+      phase: "intermission", // intermission | combat | won | lost
+      lives: START_LIVES,
+      coins: START_COINS,
+      score: 0,
+      wave: 0,
+      speed: 1,
+      path: [],
+      pathLen: 0,
+      pathCum: [],
+      pathCells: new Set(),
+      blocked: new Set(),
+      towers: [],
+      enemies: [],
+      projectiles: [],
+      particles: [],
+      floats: [],
+      chains: [],
+      selectedTowerType: null,
+      selectedTower: null,
+      hover: null,
+      spawnQueue: [],
+      spawnTimer: 0,
+      waveActive: false,
+      waves: buildWaves(),
+      decor: [],
+      bgDirty: true,
+      time: 0,
+      lastTs: 0,
+      pointer: { x: 0, y: 0, inside: false },
+      ghostOk: false,
+      ghostX: 0,
+      ghostY: 0,
+    };
+  }
+
+  // ─── Path generation ─────────────────────────────────────
+  function cellKey(cx, cy) { return cx + "," + cy; }
+
+  function generatePath() {
+    const cols = Math.floor(W / CELL);
+    const rows = Math.floor(H / CELL);
+    const marginX = 1;
+    const marginY = 1;
+
+    // random walk with preferred horizontal bias + occasional big turns
+    let attempts = 0;
+    while (attempts++ < 80) {
+      const startY = randi(marginY + 1, rows - marginY - 2);
+      let cx = 0;
+      let cy = startY;
+      const cells = [[cx, cy]];
+      const visited = new Set([cellKey(cx, cy)]);
+      let stuck = 0;
+      let lastDir = 1; // 0N 1E 2S 3W
+
+      while (cx < cols - 1 && stuck < 40) {
+        const opts = [];
+        // prefer east
+        const candidates = [
+          [1, 0, 1, 5],  // E weight 5
+          [0, -1, 0, 2], // N
+          [0, 1, 2, 2],  // S
+          [-1, 0, 3, 0.4], // W rare
+        ];
+        for (const [dx, dy, dir, w] of candidates) {
+          const nx = cx + dx;
+          const ny = cy + dy;
+          if (nx < 0 || ny < marginY || nx >= cols || ny >= rows - marginY) continue;
+          const k = cellKey(nx, ny);
+          if (visited.has(k)) continue;
+          // avoid sharp reverse unless needed
+          let weight = w;
+          if (dir === lastDir) weight *= 1.6;
+          if ((dir + 2) % 4 === lastDir) weight *= 0.25;
+          // keep away from edges slightly
+          if (ny <= marginY || ny >= rows - marginY - 1) weight *= 0.5;
+          opts.push({ nx, ny, dir, weight });
+        }
+        if (!opts.length) {
+          stuck++;
+          // force step east if possible
+          if (cx + 1 < cols && !visited.has(cellKey(cx + 1, cy))) {
+            cx++;
+            cells.push([cx, cy]);
+            visited.add(cellKey(cx, cy));
+            lastDir = 1;
+            continue;
+          }
+          break;
+        }
+        const total = opts.reduce((s, o) => s + o.weight, 0);
+        let r = Math.random() * total;
+        let chosen = opts[0];
+        for (const o of opts) {
+          r -= o.weight;
+          if (r <= 0) { chosen = o; break; }
+        }
+        cx = chosen.nx;
+        cy = chosen.ny;
+        lastDir = chosen.dir;
+        cells.push([cx, cy]);
+        visited.add(cellKey(cx, cy));
+        // occasional double-step meander
+        if (Math.random() < 0.12 && cx < cols - 2) {
+          // already moved
+        }
+      }
+
+      // require reaching right edge and enough length
+      if (cx >= cols - 1 && cells.length >= 18) {
+        // convert to world points (cell centers) with smoothing
+        const pts = cells.map(([x, y]) => ({
+          x: x * CELL + CELL / 2,
+          y: y * CELL + CELL / 2,
+        }));
+        // ensure start/end at edges
+        pts[0].x = 0;
+        pts[pts.length - 1].x = W;
+
+        // smooth by inserting midpoints and Chaikin-like passes
+        let smooth = pts;
+        for (let p = 0; p < 2; p++) {
+          const next = [smooth[0]];
+          for (let i = 0; i < smooth.length - 1; i++) {
+            const a = smooth[i];
+            const b = smooth[i + 1];
+            next.push({ x: lerp(a.x, b.x, 0.25), y: lerp(a.y, b.y, 0.25) });
+            next.push({ x: lerp(a.x, b.x, 0.75), y: lerp(a.y, b.y, 0.75) });
+          }
+          next.push(smooth[smooth.length - 1]);
+          smooth = next;
+        }
+
+        // path cells for placement blocking (also neighbors for thick path)
+        const pathCells = new Set();
+        for (const [x, y] of cells) {
+          pathCells.add(cellKey(x, y));
+        }
+
+        // cumulative length
+        const cum = [0];
+        let len = 0;
+        for (let i = 1; i < smooth.length; i++) {
+          len += dist(smooth[i - 1].x, smooth[i - 1].y, smooth[i].x, smooth[i].y);
+          cum.push(len);
+        }
+
+        return { path: smooth, pathLen: len, pathCum: cum, pathCells, gridCells: cells };
+      }
+    }
+
+    // fallback simple S-curve
+    const fallback = [];
+    for (let i = 0; i <= 20; i++) {
+      const t = i / 20;
+      fallback.push({
+        x: t * W,
+        y: H * 0.5 + Math.sin(t * Math.PI * 2) * H * 0.22,
+      });
+    }
+    const cum = [0];
+    let len = 0;
+    for (let i = 1; i < fallback.length; i++) {
+      len += dist(fallback[i - 1].x, fallback[i - 1].y, fallback[i].x, fallback[i].y);
+      cum.push(len);
+    }
+    return { path: fallback, pathLen: len, pathCum: cum, pathCells: new Set(), gridCells: [] };
+  }
+
+  function pointOnPath(s) {
+    const path = state.path;
+    const cum = state.pathCum;
+    s = clamp(s, 0, state.pathLen);
+    // binary search
+    let lo = 0, hi = cum.length - 1;
+    while (lo < hi - 1) {
+      const mid = (lo + hi) >> 1;
+      if (cum[mid] < s) lo = mid; else hi = mid;
+    }
+    const segLen = cum[hi] - cum[lo] || 1;
+    const t = (s - cum[lo]) / segLen;
+    const a = path[lo];
+    const b = path[hi];
+    return { x: lerp(a.x, b.x, t), y: lerp(a.y, b.y, t) };
+  }
+
+  function distToPath(x, y) {
+    let best = Infinity;
+    const path = state.path;
+    for (let i = 0; i < path.length - 1; i++) {
+      const a = path[i], b = path[i + 1];
+      const dx = b.x - a.x, dy = b.y - a.y;
+      const l2 = dx * dx + dy * dy || 1;
+      let t = ((x - a.x) * dx + (y - a.y) * dy) / l2;
+      t = clamp(t, 0, 1);
+      const px = a.x + t * dx, py = a.y + t * dy;
+      const d = dist(x, y, px, py);
+      if (d < best) best = d;
+    }
+    return best;
+  }
+
+  // ─── Decor ───────────────────────────────────────────────
+  function generateDecor() {
+    const decor = [];
+    for (let i = 0; i < 28; i++) {
+      let x, y, tries = 0;
+      do {
+        x = rand(30, W - 30);
+        y = rand(30, H - 30);
+        tries++;
+      } while (distToPath(x, y) < PATH_W + 18 && tries < 30);
+      if (tries >= 30) continue;
+      decor.push({
+        kind: pick(["patch", "button", "cloud", "star", "pin"]),
+        x, y,
+        r: rand(10, 28),
+        rot: rand(0, Math.PI * 2),
+        hue: pick(["#ffd6e8", "#d6e8ff", "#e8ffd6", "#fff0c8", "#f0d6ff", "#ffe0d0"]),
+        seed: Math.random(),
+      });
+    }
+    return decor;
+  }
+
+  // ─── Placement ───────────────────────────────────────────
+  function canPlace(x, y) {
+    if (x < 28 || y < 28 || x > W - 28 || y > H - 28) return false;
+    if (distToPath(x, y) < PATH_W * 0.72) return false;
+    for (const t of state.towers) {
+      if (dist(x, y, t.x, t.y) < 46) return false;
+    }
+    return true;
+  }
+
+  function snapPlace(x, y) {
+    // soft snap to grid for cleaner look
+    const sx = Math.round(x / 20) * 20;
+    const sy = Math.round(y / 20) * 20;
+    return { x: sx, y: sy };
+  }
+
+  // ─── Towers ──────────────────────────────────────────────
+  function towerStats(t) {
+    const def = TOWERS[t.type];
+    return def.upgrades[t.level];
+  }
+
+  function upgradeCost(t) {
+    const def = TOWERS[t.type];
+    if (t.level >= 3) return null;
+    return def.upgrades[t.level + 1].cost;
+  }
+
+  function sellValue(t) {
+    const def = TOWERS[t.type];
+    let spent = def.baseCost;
+    for (let i = 1; i <= t.level; i++) spent += def.upgrades[i].cost;
+    return Math.floor(spent * 0.65);
+  }
+
+  function placeTower(type, x, y) {
+    const def = TOWERS[type];
+    if (state.coins < def.baseCost) {
+      toast("Not enough thread coins!");
+      return false;
+    }
+    if (!canPlace(x, y)) {
+      toast("Can't stitch there!");
+      return false;
+    }
+    state.coins -= def.baseCost;
+    const tower = {
+      id: Math.random().toString(36).slice(2),
+      type,
+      x, y,
+      level: 0,
+      cooldown: 0,
+      angle: 0,
+      bob: Math.random() * Math.PI * 2,
+    };
+    state.towers.push(tower);
+    state.selectedTower = tower;
+    state.selectedTowerType = null;
+    updateUI();
+    spawnParticles(x, y, def.color, 10);
+    return true;
+  }
+
+  function getAuraBuff(x, y) {
+    let buff = 0;
+    for (const t of state.towers) {
+      if (t.type !== "loom") continue;
+      const st = towerStats(t);
+      const d = dist(x, y, t.x, t.y);
+      if (d <= st.aura) buff = Math.max(buff, st.buff);
+    }
+    return buff;
+  }
+
+  // ─── Enemies ─────────────────────────────────────────────
+  function spawnEnemy(type) {
+    const def = ENEMIES[type];
+    // scale HP slightly with wave
+    const scale = 1 + (state.wave - 1) * 0.045;
+    const e = {
+      id: Math.random().toString(36).slice(2),
+      type,
+      s: 0,
+      hp: def.hp * scale,
+      maxHp: def.hp * scale,
+      speed: def.speed,
+      reward: def.reward + Math.floor(state.wave * 0.4),
+      armor: def.armor,
+      radius: def.radius,
+      slow: 1,
+      slowTimer: 0,
+      dot: 0,
+      dotTimer: 0,
+      hitFlash: 0,
+      wiggle: Math.random() * Math.PI * 2,
+      dead: false,
+      reached: false,
+    };
+    const p = pointOnPath(0);
+    e.x = p.x;
+    e.y = p.y;
+    state.enemies.push(e);
+  }
+
+  function damageEnemy(e, raw, color) {
+    if (e.dead) return;
+    const dmg = Math.max(1, raw - e.armor * 0.65);
+    e.hp -= dmg;
+    e.hitFlash = 0.12;
+    spawnFloat(e.x, e.y - e.radius, Math.round(dmg), color || "#fff");
+    if (e.hp <= 0) {
+      e.dead = true;
+      state.coins += e.reward;
+      state.score += e.reward * 3 + Math.floor(e.maxHp);
+      spawnParticles(e.x, e.y, ENEMIES[e.type].color2, 14);
+      // boss bonus particles
+      if (ENEMIES[e.type].boss) {
+        spawnParticles(e.x, e.y, "#f0b429", 24);
+        toast(`${ENEMIES[e.type].name} unraveled! +${e.reward}🪙`);
+      }
+    }
+  }
+
+  // ─── Combat ──────────────────────────────────────────────
+  function findTarget(tower, range) {
+    let best = null;
+    let bestS = -1;
+    for (const e of state.enemies) {
+      if (e.dead || e.reached) continue;
+      const d = dist(tower.x, tower.y, e.x, e.y);
+      if (d <= range && e.s > bestS) {
+        bestS = e.s;
+        best = e;
+      }
+    }
+    return best;
+  }
+
+  function fireTower(tower, dt) {
+    const def = TOWERS[tower.type];
+    const st = towerStats(tower);
+    tower.cooldown -= dt;
+    if (tower.cooldown > 0) return;
+
+    const buff = getAuraBuff(tower.x, tower.y);
+    // loom itself doesn't get its own damage buff for firing logic beyond dmg
+    const dmgMul = 1 + (tower.type === "loom" ? 0 : buff);
+
+    if (tower.type === "loom") {
+      // aura DoT tick on nearby enemies + visual
+      let hit = false;
+      for (const e of state.enemies) {
+        if (e.dead) continue;
+        if (dist(tower.x, tower.y, e.x, e.y) <= st.aura) {
+          damageEnemy(e, st.dmg * (1 + buff * 0.5), def.color);
+          hit = true;
+        }
+      }
+      tower.cooldown = 1 / st.rate;
+      if (hit) spawnParticles(tower.x, tower.y, def.color, 3);
+      return;
+    }
+
+    const target = findTarget(tower, st.range);
+    if (!target) return;
+
+    tower.angle = Math.atan2(target.y - tower.y, target.x - tower.x);
+    tower.cooldown = 1 / st.rate;
+
+    if (tower.type === "button") {
+      state.projectiles.push({
+        kind: "button",
+        x: tower.x, y: tower.y,
+        tx: target.x, ty: target.y,
+        targetId: target.id,
+        speed: 380,
+        dmg: st.dmg * dmgMul,
+        color: def.color,
+        r: 5 + tower.level,
+      });
+    } else if (tower.type === "pompom") {
+      state.projectiles.push({
+        kind: "pompom",
+        x: tower.x, y: tower.y,
+        tx: target.x, ty: target.y,
+        targetId: target.id,
+        speed: 260,
+        dmg: st.dmg * dmgMul,
+        splash: st.splash,
+        color: def.color,
+        r: 7 + tower.level,
+        arc: 0,
+      });
+    } else if (tower.type === "silk") {
+      // instant silk bolt with slow
+      damageEnemy(target, st.dmg * dmgMul, def.color);
+      const resist = ENEMIES[target.type].resistSlow || 0;
+      const slowAmt = lerp(st.slow, 1, resist);
+      target.slow = Math.min(target.slow, slowAmt);
+      target.slowTimer = Math.max(target.slowTimer, st.slowT);
+      target.dot = Math.max(target.dot, st.dot * dmgMul);
+      target.dotTimer = Math.max(target.dotTimer, st.slowT);
+      // visual strand
+      state.chains.push({
+        points: [{ x: tower.x, y: tower.y }, { x: target.x, y: target.y }],
+        life: 0.18,
+        maxLife: 0.18,
+        color: def.color,
+        width: 2,
+      });
+      spawnParticles(target.x, target.y, def.color, 4);
+    } else if (tower.type === "spindle") {
+      // chain lightning
+      const hit = new Set();
+      let current = target;
+      let dmg = st.dmg * dmgMul;
+      const points = [{ x: tower.x, y: tower.y }];
+      for (let c = 0; c <= st.chain && current; c++) {
+        damageEnemy(current, dmg, def.color);
+        hit.add(current.id);
+        points.push({ x: current.x, y: current.y });
+        dmg *= st.chainFall;
+        // next nearest
+        let next = null;
+        let bestD = 95 + tower.level * 10;
+        for (const e of state.enemies) {
+          if (e.dead || hit.has(e.id)) continue;
+          const d = dist(current.x, current.y, e.x, e.y);
+          if (d < bestD) {
+            bestD = d;
+            next = e;
+          }
+        }
+        current = next;
+      }
+      state.chains.push({
+        points,
+        life: 0.22,
+        maxLife: 0.22,
+        color: def.color,
+        width: 2.5,
+        jagged: true,
+      });
+    }
+  }
+
+  function updateProjectiles(dt) {
+    const next = [];
+    for (const p of state.projectiles) {
+      // home slightly toward target if alive
+      let tx = p.tx, ty = p.ty;
+      if (p.targetId) {
+        const t = state.enemies.find((e) => e.id === p.targetId && !e.dead);
+        if (t) { tx = t.x; ty = t.y; p.tx = tx; p.ty = ty; }
+      }
+      const d = dist(p.x, p.y, tx, ty);
+      const step = p.speed * dt;
+      if (d <= step + 6) {
+        // impact
+        if (p.kind === "pompom") {
+          for (const e of state.enemies) {
+            if (e.dead) continue;
+            if (dist(tx, ty, e.x, e.y) <= p.splash) {
+              const fall = 1 - dist(tx, ty, e.x, e.y) / p.splash * 0.4;
+              damageEnemy(e, p.dmg * fall, p.color);
+            }
+          }
+          spawnParticles(tx, ty, p.color, 16);
+          // ring
+          state.particles.push({
+            kind: "ring", x: tx, y: ty, r: 4, maxR: p.splash,
+            life: 0.3, maxLife: 0.3, color: p.color,
+          });
+        } else {
+          const t = state.enemies.find((e) => e.id === p.targetId && !e.dead);
+          if (t) damageEnemy(t, p.dmg, p.color);
+          else {
+            // splash nearest
+            for (const e of state.enemies) {
+              if (!e.dead && dist(tx, ty, e.x, e.y) < 20) {
+                damageEnemy(e, p.dmg, p.color);
+                break;
+              }
+            }
+          }
+          spawnParticles(tx, ty, p.color, 6);
+        }
+      } else {
+        const ang = Math.atan2(ty - p.y, tx - p.x);
+        p.x += Math.cos(ang) * step;
+        p.y += Math.sin(ang) * step;
+        if (p.kind === "pompom") p.arc += dt * 10;
+        next.push(p);
+      }
+    }
+    state.projectiles = next;
+  }
+
+  // ─── Particles / floats ──────────────────────────────────
+  function spawnParticles(x, y, color, n) {
+    for (let i = 0; i < n; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const sp = rand(30, 120);
+      state.particles.push({
+        kind: "dot",
+        x, y,
+        vx: Math.cos(a) * sp,
+        vy: Math.sin(a) * sp - 20,
+        life: rand(0.3, 0.7),
+        maxLife: 0.7,
+        color,
+        r: rand(2, 5),
+      });
+    }
+  }
+
+  function spawnFloat(x, y, text, color) {
+    state.floats.push({
+      x: x + rand(-6, 6), y,
+      text: String(text),
+      color,
+      life: 0.7,
+      maxLife: 0.7,
+    });
+  }
+
+  function updateParticles(dt) {
+    state.particles = state.particles.filter((p) => {
+      p.life -= dt;
+      if (p.kind === "dot") {
+        p.x += p.vx * dt;
+        p.y += p.vy * dt;
+        p.vy += 80 * dt;
+      } else if (p.kind === "ring") {
+        p.r = lerp(4, p.maxR, 1 - p.life / p.maxLife);
+      }
+      return p.life > 0;
+    });
+    state.floats = state.floats.filter((f) => {
+      f.life -= dt;
+      f.y -= 28 * dt;
+      return f.life > 0;
+    });
+    state.chains = state.chains.filter((c) => {
+      c.life -= dt;
+      return c.life > 0;
+    });
+  }
+
+  // ─── Waves ───────────────────────────────────────────────
+  function startWave() {
+    if (state.phase !== "intermission") return;
+    if (state.wave >= TOTAL_WAVES) return;
+    state.wave++;
+    state.phase = "combat";
+    state.waveActive = true;
+    state.selectedTowerType = null;
+    const w = state.waves[state.wave - 1];
+    state.spawnQueue = [];
+    for (const g of w.groups) {
+      for (let i = 0; i < g.count; i++) {
+        state.spawnQueue.push({ type: g.type, gap: i === 0 ? 0.15 : g.gap });
+      }
+      // small pause between groups
+      if (state.spawnQueue.length) {
+        state.spawnQueue[state.spawnQueue.length - 1].gap += 0.6;
+      }
+    }
+    state.spawnTimer = 0.4;
+    updateUI();
+    hint(`Wave ${state.wave}: ${w.name}`);
+    toast(`🌊 ${w.name}`);
+  }
+
+  function checkWaveEnd() {
+    if (!state.waveActive) return;
+    if (state.spawnQueue.length > 0) return;
+    if (state.enemies.some((e) => !e.dead && !e.reached)) return;
+    // wave complete
+    state.waveActive = false;
+    state.phase = "intermission";
+    const w = state.waves[state.wave - 1];
+    state.coins += w.bonus;
+    state.score += w.bonus * 2 + state.lives * 2;
+    spawnParticles(W * 0.5, H * 0.4, "#f0b429", 20);
+    toast(`Wave cleared! +${w.bonus}🪙`);
+    if (state.wave >= TOTAL_WAVES) {
+      endGame(true);
+    } else {
+      updateUI();
+      hint("Intermission — upgrade towers, then start the next wave");
+    }
+  }
+
+  function endGame(won) {
+    state.phase = won ? "won" : "lost";
+    state.running = false;
+    el.endHero.textContent = won ? "🏆✨" : "💔🧵";
+    el.endTitle.textContent = won ? "Quilt Preserved!" : "Unraveled…";
+    el.endText.textContent = won
+      ? "The Heart Patch shines. The Seamstress of the Skies tips her thimble to you."
+      : "The Unravelers snipped the last stitch. Try a new quilt path!";
+    el.endScore.textContent = `Score: ${state.score.toLocaleString()}  ·  Waves: ${state.wave}/${TOTAL_WAVES}`;
+    el.endOverlay.classList.remove("hidden");
+    updateUI();
+  }
+
+  // ─── Update loop ─────────────────────────────────────────
+  function update(dt) {
+    state.time += dt;
+    if (state.phase !== "combat") {
+      // idle bob for towers still
+      for (const t of state.towers) t.bob += dt * 2;
+      updateParticles(dt);
+      return;
+    }
+
+    // spawn
+    if (state.spawnQueue.length) {
+      state.spawnTimer -= dt;
+      if (state.spawnTimer <= 0) {
+        const job = state.spawnQueue.shift();
+        spawnEnemy(job.type);
+        state.spawnTimer = job.gap || 0.5;
+      }
+    }
+
+    // enemies
+    for (const e of state.enemies) {
+      if (e.dead || e.reached) continue;
+      if (e.slowTimer > 0) {
+        e.slowTimer -= dt;
+        if (e.slowTimer <= 0) e.slow = 1;
+      }
+      if (e.dotTimer > 0) {
+        e.dotTimer -= dt;
+        e._dotAcc = (e._dotAcc || 0) + dt;
+        if (e._dotAcc >= 0.25) {
+          damageEnemy(e, e.dot * e._dotAcc, "#b48ef0");
+          e._dotAcc = 0;
+        }
+        if (e.dotTimer <= 0) { e.dot = 0; e._dotAcc = 0; }
+      }
+      if (e.hitFlash > 0) e.hitFlash -= dt;
+      e.wiggle += dt * 6;
+
+      const spd = e.speed * e.slow;
+      e.s += spd * dt;
+      if (e.s >= state.pathLen) {
+        e.reached = true;
+        e.dead = true;
+        const loss = ENEMIES[e.type].boss ? 3 : 1;
+        state.lives -= loss;
+        spawnParticles(e.x, e.y, "#ff6b9d", 10);
+        if (state.lives <= 0) {
+          state.lives = 0;
+          endGame(false);
+          return;
+        }
+      } else {
+        const p = pointOnPath(e.s);
+        e.x = p.x;
+        e.y = p.y + Math.sin(e.wiggle) * 2;
+      }
+    }
+    // prune dead occasionally
+    if (state.enemies.length > 80) {
+      state.enemies = state.enemies.filter((e) => !e.dead || e.hitFlash > 0);
+    } else {
+      state.enemies = state.enemies.filter((e) => !e.dead);
+    }
+
+    // towers
+    for (const t of state.towers) {
+      t.bob += dt * 2.5;
+      fireTower(t, dt);
+    }
+
+    updateProjectiles(dt);
+    updateParticles(dt);
+    checkWaveEnd();
+  }
+
+  // ─── Rendering ───────────────────────────────────────────
+  function rebuildBackground() {
+    const c = bgCtx;
+    // soft sky quilt base
+    const g = c.createLinearGradient(0, 0, 0, H);
+    g.addColorStop(0, "#d9ecff");
+    g.addColorStop(0.45, "#f3e0ff");
+    g.addColorStop(1, "#ffe9d8");
+    c.fillStyle = g;
+    c.fillRect(0, 0, W, H);
+
+    // patchwork grid
+    c.save();
+    c.globalAlpha = 0.18;
+    const patchColors = ["#ffd6e8", "#d6f0ff", "#e8ffd6", "#fff0c8", "#f0d6ff"];
+    const pw = 90, ph = 80;
+    for (let y = 0, row = 0; y < H; y += ph, row++) {
+      for (let x = 0, col = 0; x < W; x += pw, col++) {
+        c.fillStyle = patchColors[(row + col) % patchColors.length];
+        c.beginPath();
+        roundRectOn(c, x + 3, y + 3, pw - 6, ph - 6, 10);
+        c.fill();
+      }
+    }
+    c.restore();
+
+    // stitch grid lines
+    c.save();
+    c.strokeStyle = "rgba(61,44,74,0.06)";
+    c.lineWidth = 1;
+    c.setLineDash([3, 6]);
+    for (let x = 0; x < W; x += 40) {
+      c.beginPath(); c.moveTo(x, 0); c.lineTo(x, H); c.stroke();
+    }
+    for (let y = 0; y < H; y += 40) {
+      c.beginPath(); c.moveTo(0, y); c.lineTo(W, y); c.stroke();
+    }
+    c.setLineDash([]);
+    c.restore();
+
+    // decor (static kinds only — stars twinkle live)
+    for (const d of state.decor) {
+      if (d.kind === "star") continue;
+      drawDecorOn(c, d, false);
+    }
+
+    // path
+    const path = state.path;
+    if (path.length >= 2) {
+      c.save();
+      c.lineJoin = "round";
+      c.lineCap = "round";
+      c.strokeStyle = "rgba(61,44,74,0.12)";
+      c.lineWidth = PATH_W + 10;
+      c.beginPath();
+      c.moveTo(path[0].x, path[0].y + 4);
+      for (let i = 1; i < path.length; i++) c.lineTo(path[i].x, path[i].y + 4);
+      c.stroke();
+
+      const pg = c.createLinearGradient(0, 0, W, H);
+      pg.addColorStop(0, "#ffe29a");
+      pg.addColorStop(0.5, "#f0c14a");
+      pg.addColorStop(1, "#ffd27a");
+      c.strokeStyle = pg;
+      c.lineWidth = PATH_W;
+      c.beginPath();
+      c.moveTo(path[0].x, path[0].y);
+      for (let i = 1; i < path.length; i++) c.lineTo(path[i].x, path[i].y);
+      c.stroke();
+
+      c.strokeStyle = "#fff8e8";
+      c.lineWidth = PATH_W * 0.62;
+      c.beginPath();
+      c.moveTo(path[0].x, path[0].y);
+      for (let i = 1; i < path.length; i++) c.lineTo(path[i].x, path[i].y);
+      c.stroke();
+
+      c.strokeStyle = "rgba(200, 140, 40, 0.45)";
+      c.lineWidth = 2;
+      c.setLineDash([6, 8]);
+      c.beginPath();
+      c.moveTo(path[0].x, path[0].y);
+      for (let i = 1; i < path.length; i++) c.lineTo(path[i].x, path[i].y);
+      c.stroke();
+      c.setLineDash([]);
+      c.restore();
+    }
+
+    state.bgDirty = false;
+  }
+
+  function drawDecorOn(c, d, animate) {
+    c.save();
+    c.translate(d.x, d.y);
+    c.rotate(d.rot);
+    c.globalAlpha = 0.55;
+    if (d.kind === "patch") {
+      c.fillStyle = d.hue;
+      c.strokeStyle = "rgba(61,44,74,0.12)";
+      c.lineWidth = 1.5;
+      roundRectOn(c, -d.r, -d.r * 0.75, d.r * 2, d.r * 1.5, 6);
+      c.fill();
+      c.stroke();
+      c.strokeStyle = "rgba(61,44,74,0.15)";
+      c.beginPath();
+      c.moveTo(-d.r * 0.4, -d.r * 0.3);
+      c.lineTo(d.r * 0.4, d.r * 0.3);
+      c.moveTo(d.r * 0.4, -d.r * 0.3);
+      c.lineTo(-d.r * 0.4, d.r * 0.3);
+      c.stroke();
+    } else if (d.kind === "button") {
+      c.fillStyle = d.hue;
+      c.beginPath();
+      c.arc(0, 0, d.r * 0.45, 0, Math.PI * 2);
+      c.fill();
+      c.fillStyle = "rgba(61,44,74,0.2)";
+      c.beginPath();
+      c.arc(-d.r * 0.12, -d.r * 0.08, 1.5, 0, Math.PI * 2);
+      c.arc(d.r * 0.12, -d.r * 0.08, 1.5, 0, Math.PI * 2);
+      c.fill();
+    } else if (d.kind === "cloud") {
+      c.fillStyle = "rgba(255,255,255,0.7)";
+      c.beginPath();
+      c.arc(-d.r * 0.3, 0, d.r * 0.4, 0, Math.PI * 2);
+      c.arc(d.r * 0.15, -d.r * 0.15, d.r * 0.5, 0, Math.PI * 2);
+      c.arc(d.r * 0.45, 0.05, d.r * 0.35, 0, Math.PI * 2);
+      c.fill();
+    } else if (d.kind === "star") {
+      c.fillStyle = "#ffe08a";
+      c.globalAlpha = animate
+        ? 0.4 + Math.sin(state.time * 2 + d.seed * 10) * 0.15
+        : 0.45;
+      drawStarOn(c, 0, 0, 5, d.r * 0.25, d.r * 0.12);
+    } else if (d.kind === "pin") {
+      c.fillStyle = "#ff8fb8";
+      c.beginPath();
+      c.arc(0, -d.r * 0.3, 4, 0, Math.PI * 2);
+      c.fill();
+      c.strokeStyle = "rgba(61,44,74,0.25)";
+      c.lineWidth = 1.5;
+      c.beginPath();
+      c.moveTo(0, -d.r * 0.15);
+      c.lineTo(0, d.r * 0.4);
+      c.stroke();
+    }
+    c.restore();
+  }
+
+  function drawPortal(x, y, color, label) {
+    ctx.save();
+    ctx.translate(x, y);
+    const pulse = 1 + Math.sin(state.time * 3) * 0.06;
+    ctx.scale(pulse, pulse);
+    ctx.fillStyle = color;
+    ctx.globalAlpha = 0.25;
+    ctx.beginPath();
+    ctx.arc(0, 0, 28, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = "#fff";
+    ctx.beginPath();
+    ctx.arc(0, 0, 18, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 3;
+    ctx.stroke();
+    ctx.fillStyle = color;
+    ctx.font = "bold 11px system-ui,sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(label, 0, 1);
+    ctx.restore();
+  }
+
+  function drawTower(t, ghost) {
+    const def = TOWERS[t.type];
+    const st = towerStats(t);
+    const bob = ghost ? 0 : Math.sin(t.bob) * 2;
+    ctx.save();
+    ctx.translate(t.x, t.y + bob);
+    if (ghost) ctx.globalAlpha = 0.55;
+
+    // aura for loom
+    if (t.type === "loom" || (ghost && t.type === "loom")) {
+      const aura = st.aura || 95;
+      ctx.beginPath();
+      ctx.arc(0, 0, aura, 0, Math.PI * 2);
+      ctx.fillStyle = "rgba(255,107,157,0.08)";
+      ctx.fill();
+      ctx.strokeStyle = "rgba(255,107,157,0.25)";
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([4, 6]);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+
+    // range ring when selected
+    if (!ghost && state.selectedTower === t) {
+      ctx.beginPath();
+      ctx.arc(0, -bob, st.range, 0, Math.PI * 2);
+      ctx.strokeStyle = def.color + "88";
+      ctx.lineWidth = 2;
+      ctx.setLineDash([5, 5]);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+
+    // soft shadow
+    ctx.fillStyle = "rgba(61,44,74,0.12)";
+    ctx.beginPath();
+    ctx.ellipse(0, 14, 16, 6, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // body by type
+    if (t.type === "button") drawButtonTower(def, t.level);
+    else if (t.type === "pompom") drawPompomTower(def, t.level);
+    else if (t.type === "silk") drawSilkTower(def, t.level);
+    else if (t.type === "spindle") drawSpindleTower(def, t.level, t.angle);
+    else if (t.type === "loom") drawLoomTower(def, t.level);
+
+    // level pips
+    if (!ghost) {
+      for (let i = 0; i < 4; i++) {
+        ctx.beginPath();
+        ctx.arc(-12 + i * 8, 20, 2.4, 0, Math.PI * 2);
+        ctx.fillStyle = i <= t.level ? def.color : "rgba(61,44,74,0.12)";
+        ctx.fill();
+      }
+    }
+
+    // selection ring
+    if (!ghost && state.selectedTower === t) {
+      ctx.strokeStyle = def.color;
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.arc(0, 0, 24, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+
+    ctx.restore();
+  }
+
+  function drawButtonTower(def, level) {
+    // stack of buttons
+    for (let i = 0; i <= Math.min(level, 2); i++) {
+      const y = -i * 5;
+      const r = 14 - i;
+      const grd = ctx.createRadialGradient(-3, y - 3, 2, 0, y, r);
+      grd.addColorStop(0, "#fff");
+      grd.addColorStop(0.4, def.color);
+      grd.addColorStop(1, def.color2);
+      ctx.fillStyle = grd;
+      ctx.beginPath();
+      ctx.arc(0, y, r, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = "rgba(255,255,255,0.6)";
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      // holes
+      ctx.fillStyle = "rgba(61,44,74,0.25)";
+      ctx.beginPath();
+      ctx.arc(-4, y - 2, 1.8, 0, Math.PI * 2);
+      ctx.arc(4, y - 2, 1.8, 0, Math.PI * 2);
+      ctx.arc(-4, y + 4, 1.8, 0, Math.PI * 2);
+      ctx.arc(4, y + 4, 1.8, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    if (level >= 3) {
+      // crown spark
+      ctx.fillStyle = "#ffe08a";
+      drawStar(0, -28, 4, 5, 2);
+    }
+  }
+
+  function drawPompomTower(def, level) {
+    // mortar cup
+    ctx.fillStyle = def.color2;
+    ctx.beginPath();
+    ctx.moveTo(-12, 8);
+    ctx.lineTo(-8, -6);
+    ctx.lineTo(8, -6);
+    ctx.lineTo(12, 8);
+    ctx.closePath();
+    ctx.fill();
+    // fluffy ball
+    ctx.fillStyle = def.color;
+    for (const [ox, oy, r] of [[0, -10, 12], [-7, -8, 8], [7, -8, 8], [0, -16, 7], [-5, -14, 6], [5, -14, 6]]) {
+      ctx.beginPath();
+      ctx.arc(ox, oy - level, r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.fillStyle = "rgba(255,255,255,0.5)";
+    ctx.beginPath();
+    ctx.arc(-3, -14 - level, 3, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  function drawSilkTower(def, level) {
+    // web base
+    ctx.strokeStyle = def.color;
+    ctx.lineWidth = 1.5;
+    ctx.globalAlpha = 0.7;
+    for (let i = 0; i < 6; i++) {
+      const a = (i / 6) * Math.PI * 2 + state.time * 0.3;
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.lineTo(Math.cos(a) * (16 + level * 2), Math.sin(a) * (16 + level * 2));
+      ctx.stroke();
+    }
+    ctx.beginPath();
+    ctx.arc(0, 0, 10 + level, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+    // spider-like bobbin
+    const grd = ctx.createRadialGradient(-2, -2, 1, 0, 0, 12);
+    grd.addColorStop(0, "#fff");
+    grd.addColorStop(1, def.color);
+    ctx.fillStyle = grd;
+    ctx.beginPath();
+    ctx.arc(0, 0, 11, 0, Math.PI * 2);
+    ctx.fill();
+    // cute eyes
+    ctx.fillStyle = "#3d2c4a";
+    ctx.beginPath();
+    ctx.arc(-3.5, -1, 1.6, 0, Math.PI * 2);
+    ctx.arc(3.5, -1, 1.6, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  function drawSpindleTower(def, level, angle) {
+    // base disc
+    ctx.fillStyle = def.color2;
+    ctx.beginPath();
+    ctx.arc(0, 6, 12, 0, Math.PI * 2);
+    ctx.fill();
+    // spindle pole
+    ctx.strokeStyle = "#fff0c0";
+    ctx.lineWidth = 4;
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.moveTo(0, 8);
+    ctx.lineTo(0, -16 - level * 2);
+    ctx.stroke();
+    // spinning yarn
+    ctx.strokeStyle = def.color;
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    for (let i = 0; i < 18; i++) {
+      const t = i / 17;
+      const y = 4 - t * (20 + level * 2);
+      const x = Math.sin(t * Math.PI * 4 + state.time * 8 + angle) * (8 - t * 3);
+      if (i === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+    // spark tip
+    ctx.fillStyle = "#fff7c0";
+    ctx.beginPath();
+    ctx.arc(0, -18 - level * 2, 4 + Math.sin(state.time * 10) * 1, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  function drawLoomTower(def, level) {
+    // loom frame
+    ctx.fillStyle = "#e8c89a";
+    ctx.fillRect(-14, -12, 28, 22);
+    ctx.strokeStyle = "#c4a06e";
+    ctx.lineWidth = 2;
+    ctx.strokeRect(-14, -12, 28, 22);
+    // threads
+    for (let i = 0; i < 5 + level; i++) {
+      const x = -10 + i * (20 / (4 + level));
+      ctx.strokeStyle = i % 2 ? def.color : def.color2;
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(x, -10);
+      ctx.lineTo(x + Math.sin(state.time * 3 + i) * 2, 8);
+      ctx.stroke();
+    }
+    // flower top
+    ctx.fillStyle = def.color;
+    for (let i = 0; i < 5; i++) {
+      const a = (i / 5) * Math.PI * 2 + state.time;
+      ctx.beginPath();
+      ctx.ellipse(Math.cos(a) * 7, -18 + Math.sin(a) * 5, 5, 3.5, a, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.fillStyle = "#ffe08a";
+    ctx.beginPath();
+    ctx.arc(0, -18, 4, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  function drawEnemy(e) {
+    const def = ENEMIES[e.type];
+    ctx.save();
+    ctx.translate(e.x, e.y);
+    const squash = 1 + Math.sin(e.wiggle * 2) * 0.05;
+    ctx.scale(squash, 2 - squash);
+
+    if (e.hitFlash > 0) {
+      ctx.globalAlpha = 0.85;
+      ctx.filter = "brightness(1.8)";
+    }
+
+    // shadow
+    ctx.fillStyle = "rgba(61,44,74,0.15)";
+    ctx.beginPath();
+    ctx.ellipse(0, e.radius + 2, e.radius * 0.8, e.radius * 0.3, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    if (def.boss) {
+      // glow
+      ctx.fillStyle = def.color + "44";
+      ctx.beginPath();
+      ctx.arc(0, 0, e.radius + 10 + Math.sin(state.time * 4) * 3, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // body
+    const grd = ctx.createRadialGradient(-e.radius * 0.3, -e.radius * 0.3, 2, 0, 0, e.radius);
+    grd.addColorStop(0, "#fff");
+    grd.addColorStop(0.35, def.color);
+    grd.addColorStop(1, def.color2);
+    ctx.fillStyle = grd;
+    ctx.beginPath();
+    ctx.arc(0, 0, e.radius, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = "rgba(255,255,255,0.5)";
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    // face
+    ctx.fillStyle = "#3d2c4a";
+    const eyeY = -2;
+    ctx.beginPath();
+    ctx.arc(-4, eyeY, 2, 0, Math.PI * 2);
+    ctx.arc(4, eyeY, 2, 0, Math.PI * 2);
+    ctx.fill();
+    // smile or frown for bosses
+    ctx.strokeStyle = "#3d2c4a";
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    if (def.boss) {
+      ctx.arc(0, 5, 5, 0.15 * Math.PI, 0.85 * Math.PI);
+    } else {
+      ctx.arc(0, 3, 4, 0.1 * Math.PI, 0.9 * Math.PI);
+    }
+    ctx.stroke();
+
+    // type-specific flair
+    if (e.type === "snipper") {
+      ctx.strokeStyle = def.color2;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(-e.radius - 2, -4);
+      ctx.lineTo(-e.radius + 4, 4);
+      ctx.moveTo(e.radius + 2, -4);
+      ctx.lineTo(e.radius - 4, 4);
+      ctx.stroke();
+    } else if (e.type === "mothkin") {
+      ctx.fillStyle = "rgba(212,196,255,0.7)";
+      ctx.beginPath();
+      ctx.ellipse(-e.radius, -2, 8, 5, -0.4, 0, Math.PI * 2);
+      ctx.ellipse(e.radius, -2, 8, 5, 0.4, 0, Math.PI * 2);
+      ctx.fill();
+    } else if (e.type === "buttonbeast") {
+      ctx.fillStyle = "rgba(61,44,74,0.2)";
+      ctx.beginPath();
+      ctx.arc(-3, 0, 2, 0, Math.PI * 2);
+      ctx.arc(3, 0, 2, 0, Math.PI * 2);
+      ctx.fill();
+    } else if (e.type === "spool") {
+      ctx.strokeStyle = def.color2;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(0, 0, e.radius * 0.55, 0, Math.PI * 1.4);
+      ctx.stroke();
+    }
+
+    ctx.filter = "none";
+    ctx.globalAlpha = 1;
+
+    // HP bar
+    if (e.hp < e.maxHp) {
+      const bw = e.radius * 2.2;
+      const bh = 4;
+      const y = -e.radius - 10;
+      ctx.fillStyle = "rgba(61,44,74,0.25)";
+      roundRect(-bw / 2, y, bw, bh, 2);
+      ctx.fill();
+      const pct = clamp(e.hp / e.maxHp, 0, 1);
+      ctx.fillStyle = pct > 0.4 ? "#3ecf8e" : "#ff6b9d";
+      roundRect(-bw / 2, y, bw * pct, bh, 2);
+      ctx.fill();
+    }
+
+    // slow indicator
+    if (e.slow < 0.95) {
+      ctx.fillStyle = "rgba(180,142,240,0.7)";
+      ctx.font = "10px serif";
+      ctx.fillText("❄", e.radius * 0.4, -e.radius);
+    }
+
+    ctx.restore();
+  }
+
+  function drawProjectiles() {
+    for (const p of state.projectiles) {
+      ctx.save();
+      ctx.translate(p.x, p.y);
+      if (p.kind === "button") {
+        ctx.rotate(state.time * 10);
+        ctx.fillStyle = p.color;
+        ctx.beginPath();
+        ctx.arc(0, 0, p.r, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = "rgba(255,255,255,0.7)";
+        ctx.beginPath();
+        ctx.arc(-1.5, -1, 1.2, 0, Math.PI * 2);
+        ctx.arc(1.5, -1, 1.2, 0, Math.PI * 2);
+        ctx.fill();
+      } else if (p.kind === "pompom") {
+        ctx.fillStyle = p.color;
+        for (const [ox, oy] of [[0, 0], [-3, -2], [3, -1], [0, -4], [2, 2]]) {
+          ctx.beginPath();
+          ctx.arc(ox, oy, p.r * 0.55, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+      ctx.restore();
+    }
+
+    // chains / silk
+    for (const c of state.chains) {
+      const a = c.life / c.maxLife;
+      ctx.save();
+      ctx.globalAlpha = a;
+      ctx.strokeStyle = c.color;
+      ctx.lineWidth = c.width;
+      ctx.lineJoin = "round";
+      ctx.shadowColor = c.color;
+      ctx.shadowBlur = 8;
+      ctx.beginPath();
+      for (let i = 0; i < c.points.length; i++) {
+        let { x, y } = c.points[i];
+        if (c.jagged && i > 0 && i < c.points.length - 1) {
+          x += Math.sin(i * 12 + state.time * 40) * 4;
+          y += Math.cos(i * 10 + state.time * 40) * 4;
+        }
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+      ctx.restore();
+    }
+  }
+
+  function drawParticles() {
+    for (const p of state.particles) {
+      const a = p.life / p.maxLife;
+      ctx.save();
+      ctx.globalAlpha = a;
+      if (p.kind === "dot") {
+        ctx.fillStyle = p.color;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.r * a, 0, Math.PI * 2);
+        ctx.fill();
+      } else if (p.kind === "ring") {
+        ctx.strokeStyle = p.color;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+    for (const f of state.floats) {
+      const a = f.life / f.maxLife;
+      ctx.save();
+      ctx.globalAlpha = a;
+      ctx.fillStyle = f.color;
+      ctx.font = "bold 12px system-ui,sans-serif";
+      ctx.textAlign = "center";
+      ctx.strokeStyle = "rgba(61,44,74,0.35)";
+      ctx.lineWidth = 3;
+      ctx.strokeText(f.text, f.x, f.y);
+      ctx.fillText(f.text, f.x, f.y);
+      ctx.restore();
+    }
+  }
+
+  function drawGhost() {
+    if (!state.selectedTowerType || !state.pointer.inside) return;
+    const type = state.selectedTowerType;
+    const def = TOWERS[type];
+    const st = def.upgrades[0];
+    const { x, y } = snapPlace(state.pointer.x, state.pointer.y);
+    const ok = canPlace(x, y) && state.coins >= def.baseCost;
+    state.ghostOk = ok;
+    state.ghostX = x;
+    state.ghostY = y;
+
+    // range
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(x, y, st.range, 0, Math.PI * 2);
+    ctx.fillStyle = ok ? "rgba(62,207,142,0.12)" : "rgba(255,107,157,0.12)";
+    ctx.fill();
+    ctx.strokeStyle = ok ? "rgba(62,207,142,0.55)" : "rgba(255,107,157,0.55)";
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.restore();
+
+    drawTower({ type, x, y, level: 0, bob: 0, angle: 0 }, true);
+  }
+
+  function drawUIOverlay() {
+    // phase banner
+    if (state.phase === "intermission" && state.wave > 0 && state.wave < TOTAL_WAVES) {
+      ctx.save();
+      ctx.fillStyle = "rgba(61,44,74,0.5)";
+      roundRect(W / 2 - 90, 12, 180, 28, 14);
+      ctx.fill();
+      ctx.fillStyle = "#fff";
+      ctx.font = "bold 13px system-ui,sans-serif";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText("✂️ Intermission", W / 2, 26);
+      ctx.restore();
+    }
+  }
+
+  function render() {
+    if (state.bgDirty) rebuildBackground();
+    ctx.drawImage(bgCanvas, 0, 0);
+
+    // twinkling stars + pulsing portals (live)
+    for (const d of state.decor) {
+      if (d.kind === "star") drawDecorOn(ctx, d, true);
+    }
+    if (state.path.length >= 2) {
+      const start = state.path[0];
+      const end = state.path[state.path.length - 1];
+      drawPortal(start.x + 18, start.y, "#b48ef0", "IN");
+      drawPortal(end.x - 18, end.y, "#ff6b9d", "♥");
+    }
+
+    // towers sorted by y for depth
+    const towers = [...state.towers].sort((a, b) => a.y - b.y);
+    for (const t of towers) drawTower(t, false);
+
+    for (const e of state.enemies) {
+      if (!e.dead) drawEnemy(e);
+    }
+
+    drawProjectiles();
+    drawParticles();
+    drawGhost();
+    drawUIOverlay();
+  }
+
+  // ─── Canvas helpers ──────────────────────────────────────
+  function roundRectOn(c, x, y, w, h, r) {
+    const rr = Math.min(r, w / 2, h / 2);
+    c.beginPath();
+    c.moveTo(x + rr, y);
+    c.arcTo(x + w, y, x + w, y + h, rr);
+    c.arcTo(x + w, y + h, x, y + h, rr);
+    c.arcTo(x, y + h, x, y, rr);
+    c.arcTo(x, y, x + w, y, rr);
+    c.closePath();
+  }
+
+  function roundRect(x, y, w, h, r) {
+    roundRectOn(ctx, x, y, w, h, r);
+  }
+
+  function drawStarOn(c, x, y, spikes, outer, inner) {
+    let rot = Math.PI / 2 * 3;
+    let cx = x, cy = y;
+    const step = Math.PI / spikes;
+    c.beginPath();
+    c.moveTo(cx, cy - outer);
+    for (let i = 0; i < spikes; i++) {
+      cx = x + Math.cos(rot) * outer;
+      cy = y + Math.sin(rot) * outer;
+      c.lineTo(cx, cy);
+      rot += step;
+      cx = x + Math.cos(rot) * inner;
+      cy = y + Math.sin(rot) * inner;
+      c.lineTo(cx, cy);
+      rot += step;
+    }
+    c.lineTo(x, y - outer);
+    c.closePath();
+    c.fill();
+  }
+
+  function drawStar(x, y, spikes, outer, inner) {
+    drawStarOn(ctx, x, y, spikes, outer, inner);
+  }
+
+  // ─── Coordinate mapping ──────────────────────────────────
+  function canvasPos(evt) {
+    const rect = canvas.getBoundingClientRect();
+    const clientX = evt.touches ? evt.touches[0].clientX : evt.clientX;
+    const clientY = evt.touches ? evt.touches[0].clientY : evt.clientY;
+    return {
+      x: ((clientX - rect.left) / rect.width) * W,
+      y: ((clientY - rect.top) / rect.height) * H,
+    };
+  }
+
+  // ─── UI ──────────────────────────────────────────────────
+  function buildTowerButtons() {
+    el.towerGrid.innerHTML = "";
+    for (const id of TOWER_ORDER) {
+      const def = TOWERS[id];
+      const btn = document.createElement("button");
+      btn.className = "tower-btn";
+      btn.type = "button";
+      btn.dataset.type = id;
+      btn.innerHTML = `
+        <span class="emoji">${def.emoji}</span>
+        <span class="name">${def.name.split(" ")[0]}</span>
+        <span class="cost">🪙 ${def.baseCost}</span>
+        <span class="tag">${def.tag}</span>
+      `;
+      btn.addEventListener("click", () => {
+        if (state.phase === "won" || state.phase === "lost") return;
+        if (state.selectedTowerType === id) {
+          state.selectedTowerType = null;
+        } else {
+          state.selectedTowerType = id;
+          state.selectedTower = null;
+          hint(`Place ${def.name} on a soft patch beside the seam`);
+        }
+        updateUI();
+      });
+      el.towerGrid.appendChild(btn);
+    }
+  }
+
+  function statBar(label, value, max) {
+    const pct = clamp(value / max, 0, 1) * 100;
+    return `
+      <div class="bar-row">
+        <span>${label}</span>
+        <div class="bar-track"><div class="bar-fill" style="width:${pct}%"></div></div>
+        <span>${Math.round(value)}</span>
+      </div>`;
+  }
+
+  function renderDetail() {
+    if (state.selectedTower) {
+      const t = state.selectedTower;
+      const def = TOWERS[t.type];
+      const st = towerStats(t);
+      const upCost = upgradeCost(t);
+      const buff = getAuraBuff(t.x, t.y);
+      el.detail.classList.remove("empty");
+      el.detail.innerHTML = `
+        <div class="title-row">
+          <strong>${def.emoji} ${def.name}</strong>
+          <span class="lvl">Lv ${t.level + 1}/4</span>
+        </div>
+        <div class="desc">${def.desc}${buff > 0 && t.type !== "loom" ? ` <em>(+${Math.round(buff * 100)}% warmth)</em>` : ""}</div>
+        <div class="bars">
+          ${statBar("DMG", st.dmg * (1 + (t.type === "loom" ? 0 : buff)), 60)}
+          ${statBar("RNG", st.range, 180)}
+          ${statBar("SPD", st.rate, 5)}
+        </div>
+        <div class="desc" style="margin:0">
+          ${upCost != null
+            ? `Next upgrade: <strong style="color:#c98900">🪙 ${upCost}</strong>`
+            : `<strong style="color:var(--mint)">Max stitch reached!</strong>`}
+          · Sell for 🪙 ${sellValue(t)}
+        </div>
+      `;
+      el.btnUpgrade.disabled = upCost == null || state.coins < upCost || state.phase === "won" || state.phase === "lost";
+      el.btnUpgrade.textContent = upCost != null ? `Upgrade 🪙 ${upCost}` : "Max Level";
+      el.btnSell.disabled = state.phase === "won" || state.phase === "lost";
+      return;
+    }
+
+    if (state.selectedTowerType) {
+      const def = TOWERS[state.selectedTowerType];
+      const st = def.upgrades[0];
+      el.detail.classList.remove("empty");
+      el.detail.innerHTML = `
+        <div class="title-row">
+          <strong>${def.emoji} ${def.name}</strong>
+          <span class="lvl">${def.tag}</span>
+        </div>
+        <div class="desc">${def.desc}</div>
+        <div class="bars">
+          ${statBar("DMG", st.dmg, 60)}
+          ${statBar("RNG", st.range, 180)}
+          ${statBar("SPD", st.rate, 5)}
+        </div>
+        <div class="desc" style="margin:0">Cost: <strong style="color:#c98900">🪙 ${def.baseCost}</strong> · Click the quilt to place</div>
+      `;
+      el.btnUpgrade.disabled = true;
+      el.btnUpgrade.textContent = "Upgrade";
+      el.btnSell.disabled = true;
+      return;
+    }
+
+    el.detail.classList.add("empty");
+    el.detail.innerHTML = `<div class="empty">${
+      state.phase === "intermission"
+        ? "Pick a tower type or tap a placed tower to upgrade between waves."
+        : "Combat is on! Select towers to inspect. Upgrades unlock between waves."
+    }</div>`;
+    el.btnUpgrade.disabled = true;
+    el.btnUpgrade.textContent = "Upgrade";
+    el.btnSell.disabled = true;
+  }
+
+  function updateUI() {
+    el.lives.textContent = state.lives;
+    el.coins.textContent = Math.floor(state.coins);
+    el.waveLabel.textContent = `${state.wave} / ${TOTAL_WAVES}`;
+    el.score.textContent = state.score.toLocaleString();
+
+    // tower buttons
+    for (const btn of el.towerGrid.querySelectorAll(".tower-btn")) {
+      const id = btn.dataset.type;
+      const def = TOWERS[id];
+      btn.classList.toggle("selected", state.selectedTowerType === id);
+      btn.disabled = state.coins < def.baseCost && state.selectedTowerType !== id;
+    }
+
+    // wave button
+    if (state.phase === "intermission" && state.wave < TOTAL_WAVES) {
+      el.btnWave.disabled = false;
+      el.btnWave.textContent = state.wave === 0 ? "Start Wave 1" : `Start Wave ${state.wave + 1}`;
+      const next = state.waves[state.wave];
+      el.waveMsg.innerHTML = state.wave === 0
+        ? `<strong>Intermission</strong> — stitch your defenses, then start Wave 1.`
+        : `<strong>Wave ${state.wave} cleared!</strong> Next: ${next.name}. Upgrade freely.`;
+    } else if (state.phase === "combat") {
+      el.btnWave.disabled = true;
+      el.btnWave.textContent = "Wave in progress…";
+      const w = state.waves[state.wave - 1];
+      const left = state.enemies.filter((e) => !e.dead).length + state.spawnQueue.length;
+      el.waveMsg.innerHTML = `<strong>Wave ${state.wave}: ${w.name}</strong> — ${left} Unravelers remaining`;
+    } else if (state.phase === "won") {
+      el.btnWave.disabled = true;
+      el.btnWave.textContent = "Victory";
+      el.waveMsg.innerHTML = `<strong>The quilt holds!</strong> Final score ${state.score.toLocaleString()}.`;
+    } else if (state.phase === "lost") {
+      el.btnWave.disabled = true;
+      el.btnWave.textContent = "Defeated";
+      el.waveMsg.innerHTML = `<strong>Unraveled…</strong> Reach Wave ${TOTAL_WAVES} next time!`;
+    }
+
+    el.btnSpeed.textContent = state.speed + "×";
+    renderDetail();
+  }
+
+  // ─── Input ───────────────────────────────────────────────
+  function onPointerMove(evt) {
+    const p = canvasPos(evt);
+    state.pointer.x = p.x;
+    state.pointer.y = p.y;
+    state.pointer.inside = true;
+  }
+
+  function onPointerLeave() {
+    state.pointer.inside = false;
+  }
+
+  function onPointerDown(evt) {
+    evt.preventDefault();
+    const p = canvasPos(evt);
+    state.pointer.x = p.x;
+    state.pointer.y = p.y;
+    state.pointer.inside = true;
+
+    // place tower?
+    if (state.selectedTowerType) {
+      const snap = snapPlace(p.x, p.y);
+      if (placeTower(state.selectedTowerType, snap.x, snap.y)) {
+        // keep type selected for multi-place if affordable
+        if (state.coins < TOWERS[state.selectedTowerType].baseCost) {
+          state.selectedTowerType = null;
+        }
+      }
+      updateUI();
+      return;
+    }
+
+    // select tower
+    let hit = null;
+    let best = 28;
+    for (const t of state.towers) {
+      const d = dist(p.x, p.y, t.x, t.y);
+      if (d < best) { best = d; hit = t; }
+    }
+    state.selectedTower = hit;
+    updateUI();
+  }
+
+  // ─── Buttons ─────────────────────────────────────────────
+  el.btnWave.addEventListener("click", () => {
+    if (state.phase === "intermission") startWave();
+  });
+
+  el.btnSpeed.addEventListener("click", () => {
+    state.speed = state.speed === 1 ? 2 : state.speed === 2 ? 3 : 1;
+    updateUI();
+  });
+
+  el.btnCancel.addEventListener("click", () => {
+    state.selectedTowerType = null;
+    state.selectedTower = null;
+    updateUI();
+  });
+
+  el.btnSell.addEventListener("click", () => {
+    const t = state.selectedTower;
+    if (!t) return;
+    const val = sellValue(t);
+    state.coins += val;
+    state.towers = state.towers.filter((x) => x !== t);
+    spawnParticles(t.x, t.y, TOWERS[t.type].color, 12);
+    state.selectedTower = null;
+    toast(`Sold for 🪙 ${val}`);
+    updateUI();
+  });
+
+  el.btnUpgrade.addEventListener("click", () => {
+    const t = state.selectedTower;
+    if (!t) return;
+    // Allow upgrades anytime (user asked for between waves, but also during is nicer UX)
+    // Prefer intermission — still allow during combat for quality of life
+    const cost = upgradeCost(t);
+    if (cost == null) return;
+    if (state.coins < cost) {
+      toast("Not enough thread coins!");
+      return;
+    }
+    state.coins -= cost;
+    t.level++;
+    spawnParticles(t.x, t.y, TOWERS[t.type].color, 14);
+    toast(`${TOWERS[t.type].name} → Lv ${t.level + 1}!`);
+    updateUI();
+  });
+
+  el.btnStart.addEventListener("click", () => {
+    el.startOverlay.classList.add("hidden");
+    startGame();
+  });
+
+  el.btnRestart.addEventListener("click", () => {
+    el.endOverlay.classList.add("hidden");
+    startGame();
+  });
+
+  canvas.addEventListener("mousemove", onPointerMove);
+  canvas.addEventListener("mouseleave", onPointerLeave);
+  canvas.addEventListener("mousedown", onPointerDown);
+  canvas.addEventListener("touchstart", onPointerDown, { passive: false });
+  canvas.addEventListener("touchmove", (e) => {
+    e.preventDefault();
+    onPointerMove(e);
+  }, { passive: false });
+
+  // keyboard
+  window.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") {
+      state.selectedTowerType = null;
+      state.selectedTower = null;
+      updateUI();
+    }
+    if (e.key === " " && state.phase === "intermission") {
+      e.preventDefault();
+      startWave();
+    }
+    if (e.key >= "1" && e.key <= "5") {
+      const id = TOWER_ORDER[+e.key - 1];
+      state.selectedTowerType = state.selectedTowerType === id ? null : id;
+      state.selectedTower = null;
+      updateUI();
+    }
+    if ((e.key === "u" || e.key === "U") && state.selectedTower) {
+      el.btnUpgrade.click();
+    }
+    if ((e.key === "s" || e.key === "S") && state.selectedTower && !e.metaKey && !e.ctrlKey) {
+      el.btnSell.click();
+    }
+  });
+
+  // ─── Resize: canvas internal size fixed, CSS scales ──────
+  function fitCanvas() {
+    // keep internal resolution fixed for consistent gameplay
+    const wrap = canvas.parentElement;
+    const rect = wrap.getBoundingClientRect();
+    // canvas already CSS 100% — no DPR redraw of game logic size
+    // Optional: set style aspect
+    const aspect = W / H;
+    let cw = rect.width;
+    let ch = rect.height;
+    if (cw / ch > aspect) {
+      // tall — letterbox width
+    }
+    // nothing special needed; CSS handles it
+  }
+  window.addEventListener("resize", fitCanvas);
+
+  // ─── Main loop ───────────────────────────────────────────
+  function frame(ts) {
+    if (!state.lastTs) state.lastTs = ts;
+    let dt = (ts - state.lastTs) / 1000;
+    state.lastTs = ts;
+    dt = Math.min(dt, 0.05) * state.speed;
+
+    if (state.running || state.phase === "intermission" || state.phase === "combat") {
+      update(dt);
+      render();
+      // light UI refresh for enemy counts
+      if (state.phase === "combat" && Math.floor(state.time * 4) !== Math.floor((state.time - dt) * 4)) {
+        updateUI();
+      }
+    }
+    requestAnimationFrame(frame);
+  }
+
+  function startGame() {
+    state = freshState();
+    const gen = generatePath();
+    state.path = gen.path;
+    state.pathLen = gen.pathLen;
+    state.pathCum = gen.pathCum;
+    state.pathCells = gen.pathCells;
+    state.decor = generateDecor();
+    state.bgDirty = true;
+    state.running = true;
+    state.phase = "intermission";
+    buildTowerButtons();
+    updateUI();
+    hint("Select a tower from the Sewing Kit, then place it on the quilt");
+    fitCanvas();
+    render();
+  }
+
+  // boot
+  state = freshState();
+  const gen = generatePath();
+  state.path = gen.path;
+  state.pathLen = gen.pathLen;
+  state.pathCum = gen.pathCum;
+  state.pathCells = gen.pathCells;
+  state.decor = generateDecor();
+  state.bgDirty = true;
+  buildTowerButtons();
+  updateUI();
+  render();
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
