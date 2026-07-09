@@ -1,0 +1,1149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <title>Lumina Sporewood — SVG First-Person Forest</title>
+  <style>
+    :root {
+      --hud: #9dffd0;
+      --hud-dim: rgba(157, 255, 208, 0.55);
+      --panel: rgba(6, 14, 28, 0.72);
+      --stick-ring: rgba(120, 240, 200, 0.35);
+      --stick-knob: rgba(120, 255, 210, 0.85);
+      --safe-b: env(safe-area-inset-bottom, 0px);
+      --safe-l: env(safe-area-inset-left, 0px);
+      --safe-r: env(safe-area-inset-right, 0px);
+      --safe-t: env(safe-area-inset-top, 0px);
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: #050a14;
+      color: var(--hud);
+      font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+      touch-action: none;
+      overscroll-behavior: none;
+      -webkit-overflow-scrolling: auto;
+      user-select: none;
+      -webkit-user-select: none;
+      -webkit-touch-callout: none;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    #game {
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: #050a14;
+    }
+
+    #world {
+      display: block;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+    }
+
+    /* HUD */
+    #hud {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      z-index: 10;
+    }
+
+    .title-bar {
+      position: absolute;
+      top: max(0.75rem, var(--safe-t));
+      left: 50%;
+      transform: translateX(-50%);
+      text-align: center;
+      padding: 0.55rem 1.1rem;
+      border-radius: 999px;
+      background: var(--panel);
+      border: 1px solid rgba(120, 255, 200, 0.22);
+      backdrop-filter: blur(8px);
+      box-shadow: 0 0 24px rgba(40, 255, 180, 0.12);
+    }
+
+    .title-bar h1 {
+      font-size: clamp(0.78rem, 2.4vw, 1rem);
+      font-weight: 700;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: #b8ffe0;
+      text-shadow: 0 0 12px rgba(80, 255, 190, 0.55);
+    }
+
+    .title-bar p {
+      margin-top: 0.15rem;
+      font-size: clamp(0.58rem, 1.8vw, 0.72rem);
+      color: var(--hud-dim);
+      letter-spacing: 0.04em;
+    }
+
+    #coords {
+      position: absolute;
+      top: max(0.75rem, var(--safe-t));
+      left: max(0.75rem, var(--safe-l));
+      font-size: 0.7rem;
+      font-variant-numeric: tabular-nums;
+      letter-spacing: 0.04em;
+      color: var(--hud-dim);
+      background: var(--panel);
+      border: 1px solid rgba(120, 255, 200, 0.15);
+      border-radius: 10px;
+      padding: 0.4rem 0.65rem;
+      backdrop-filter: blur(6px);
+    }
+
+    #hint {
+      position: absolute;
+      bottom: calc(1.1rem + var(--safe-b));
+      left: 50%;
+      transform: translateX(-50%);
+      max-width: min(92vw, 28rem);
+      text-align: center;
+      font-size: clamp(0.62rem, 1.9vw, 0.78rem);
+      line-height: 1.45;
+      color: var(--hud-dim);
+      background: var(--panel);
+      border: 1px solid rgba(120, 255, 200, 0.14);
+      border-radius: 12px;
+      padding: 0.55rem 0.9rem;
+      backdrop-filter: blur(6px);
+      transition: opacity 1.2s ease;
+    }
+
+    #hint.fade { opacity: 0; pointer-events: none; }
+
+    /* Virtual joysticks — HTML/CSS overlays */
+    .joystick {
+      position: absolute;
+      bottom: calc(1.5rem + var(--safe-b));
+      width: min(38vw, 148px);
+      height: min(38vw, 148px);
+      z-index: 20;
+      pointer-events: auto;
+      touch-action: none;
+      display: none;
+    }
+
+    .joystick.left { left: calc(1.1rem + var(--safe-l)); }
+    .joystick.right { right: calc(1.1rem + var(--safe-r)); }
+
+    .joystick .base {
+      position: absolute;
+      inset: 0;
+      border-radius: 50%;
+      background: radial-gradient(circle at 50% 45%, rgba(30, 70, 90, 0.35), rgba(6, 16, 30, 0.55));
+      border: 2px solid var(--stick-ring);
+      box-shadow:
+        inset 0 0 24px rgba(40, 255, 190, 0.08),
+        0 0 18px rgba(20, 180, 140, 0.12);
+    }
+
+    .joystick .knob {
+      position: absolute;
+      width: 42%;
+      height: 42%;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%);
+      border-radius: 50%;
+      background: radial-gradient(circle at 35% 30%, #d8fff0, var(--stick-knob) 55%, #2a8a70);
+      box-shadow:
+        0 0 16px rgba(80, 255, 200, 0.45),
+        inset 0 2px 6px rgba(255, 255, 255, 0.35);
+      will-change: transform;
+    }
+
+    .joystick .label {
+      position: absolute;
+      bottom: -1.35rem;
+      left: 0;
+      right: 0;
+      text-align: center;
+      font-size: 0.62rem;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--hud-dim);
+    }
+
+    /* Show joysticks on coarse pointers / touch-primary */
+    @media (hover: none), (pointer: coarse) {
+      .joystick { display: block; }
+      #hint .desk { display: none; }
+      #hint .mob { display: inline; }
+    }
+
+    @media (hover: hover) and (pointer: fine) {
+      .joystick { display: none; }
+      #hint .desk { display: inline; }
+      #hint .mob { display: none; }
+    }
+
+    /* Always show sticks when forced (JS can toggle) */
+    body.touch-ui .joystick { display: block; }
+    body.touch-ui #hint .desk { display: none; }
+    body.touch-ui #hint .mob { display: inline; }
+
+    /* Crosshair */
+    .crosshair {
+      position: absolute;
+      left: 50%;
+      top: 48%;
+      width: 14px;
+      height: 14px;
+      transform: translate(-50%, -50%);
+      opacity: 0.35;
+    }
+    .crosshair::before,
+    .crosshair::after {
+      content: "";
+      position: absolute;
+      background: #9dffd0;
+      border-radius: 1px;
+    }
+    .crosshair::before {
+      left: 50%; top: 0; width: 1.5px; height: 100%;
+      transform: translateX(-50%);
+    }
+    .crosshair::after {
+      top: 50%; left: 0; height: 1.5px; width: 100%;
+      transform: translateY(-50%);
+    }
+  </style>
+</head>
+<body>
+  <div id="game">
+    <svg id="world" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 600" preserveAspectRatio="xMidYMid slice">
+      <defs>
+        <!-- Sky -->
+        <linearGradient id="skyGrad" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#050816"/>
+          <stop offset="38%" stop-color="#0c1a3a"/>
+          <stop offset="68%" stop-color="#1a2458"/>
+          <stop offset="100%" stop-color="#3a2868"/>
+        </linearGradient>
+
+        <linearGradient id="auroraA" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stop-color="#2bffc0" stop-opacity="0"/>
+          <stop offset="40%" stop-color="#3dffa8" stop-opacity="0.28"/>
+          <stop offset="70%" stop-color="#7a6bff" stop-opacity="0.18"/>
+          <stop offset="100%" stop-color="#2bffc0" stop-opacity="0"/>
+        </linearGradient>
+
+        <linearGradient id="auroraB" x1="1" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#ff6bd6" stop-opacity="0"/>
+          <stop offset="45%" stop-color="#c06bff" stop-opacity="0.16"/>
+          <stop offset="100%" stop-color="#4bffd0" stop-opacity="0"/>
+        </linearGradient>
+
+        <!-- Ground -->
+        <linearGradient id="groundGrad" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#1a2840"/>
+          <stop offset="35%" stop-color="#0f2a28"/>
+          <stop offset="100%" stop-color="#061410"/>
+        </linearGradient>
+
+        <linearGradient id="fogGrad" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#1a2458" stop-opacity="0.55"/>
+          <stop offset="100%" stop-color="#0a1830" stop-opacity="0"/>
+        </linearGradient>
+
+        <radialGradient id="moonGlow" cx="50%" cy="50%" r="50%">
+          <stop offset="0%" stop-color="#e8fff8" stop-opacity="0.95"/>
+          <stop offset="45%" stop-color="#a8ffe0" stop-opacity="0.35"/>
+          <stop offset="100%" stop-color="#60ffc0" stop-opacity="0"/>
+        </radialGradient>
+
+        <radialGradient id="pathGlow" cx="50%" cy="0%" r="80%">
+          <stop offset="0%" stop-color="#2affb0" stop-opacity="0.14"/>
+          <stop offset="100%" stop-color="#0a2018" stop-opacity="0"/>
+        </radialGradient>
+
+        <!-- Prop fills -->
+        <linearGradient id="stemGrad" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#c8ffe8"/>
+          <stop offset="100%" stop-color="#3a8a70"/>
+        </linearGradient>
+
+        <radialGradient id="capGrad" cx="40%" cy="35%" r="65%">
+          <stop offset="0%" stop-color="#b8ff70"/>
+          <stop offset="45%" stop-color="#3dff9a"/>
+          <stop offset="100%" stop-color="#0a6a58"/>
+        </radialGradient>
+
+        <radialGradient id="capGradPink" cx="40%" cy="35%" r="65%">
+          <stop offset="0%" stop-color="#ffd0f0"/>
+          <stop offset="50%" stop-color="#ff6bc8"/>
+          <stop offset="100%" stop-color="#7a2080"/>
+        </radialGradient>
+
+        <radialGradient id="capGradBlue" cx="40%" cy="35%" r="65%">
+          <stop offset="0%" stop-color="#d0f8ff"/>
+          <stop offset="50%" stop-color="#4ec8ff"/>
+          <stop offset="100%" stop-color="#1a4a9a"/>
+        </radialGradient>
+
+        <linearGradient id="trunkGrad" x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0%" stop-color="#1a2a38"/>
+          <stop offset="40%" stop-color="#3a5060"/>
+          <stop offset="100%" stop-color="#152028"/>
+        </linearGradient>
+
+        <radialGradient id="lanternGlow" cx="50%" cy="50%" r="50%">
+          <stop offset="0%" stop-color="#fff6b0" stop-opacity="0.95"/>
+          <stop offset="40%" stop-color="#ffc84a" stop-opacity="0.55"/>
+          <stop offset="100%" stop-color="#ff8a20" stop-opacity="0"/>
+        </radialGradient>
+
+        <radialGradient id="sporeGlow" cx="50%" cy="50%" r="50%">
+          <stop offset="0%" stop-color="#e8fff8" stop-opacity="0.95"/>
+          <stop offset="35%" stop-color="#7dffd0" stop-opacity="0.55"/>
+          <stop offset="100%" stop-color="#30c8a0" stop-opacity="0"/>
+        </radialGradient>
+
+        <radialGradient id="jellyBody" cx="40%" cy="35%" r="60%">
+          <stop offset="0%" stop-color="#f0ffe8" stop-opacity="0.9"/>
+          <stop offset="55%" stop-color="#80ffc0" stop-opacity="0.55"/>
+          <stop offset="100%" stop-color="#20a888" stop-opacity="0.2"/>
+        </radialGradient>
+
+        <filter id="softGlow" x="-40%" y="-40%" width="180%" height="180%">
+          <feGaussianBlur stdDeviation="2.2" result="b"/>
+          <feMerge>
+            <feMergeNode in="b"/>
+            <feMergeNode in="SourceGraphic"/>
+          </feMerge>
+        </filter>
+
+        <filter id="haze" x="-20%" y="-20%" width="140%" height="140%">
+          <feGaussianBlur stdDeviation="1.2"/>
+        </filter>
+
+        <!-- ========== PROPS (local coords, origin at ground center) ========== -->
+
+        <!-- 1. Capstalk mushroom -->
+        <g id="prop-mushroom">
+          <ellipse cx="0" cy="-4" rx="28" ry="8" fill="#0a3028" opacity="0.35"/>
+          <path d="M-6,-8 C-8,-55 -6,-95 0,-110 C6,-95 8,-55 6,-8 Z" fill="url(#stemGrad)"/>
+          <ellipse cx="0" cy="-108" rx="42" ry="22" fill="url(#capGrad)" filter="url(#softGlow)"/>
+          <ellipse cx="0" cy="-100" rx="36" ry="10" fill="#064838" opacity="0.55"/>
+          <circle cx="-12" cy="-114" r="4" fill="#e8ffb0" opacity="0.7"/>
+          <circle cx="10" cy="-118" r="3" fill="#e8ffb0" opacity="0.55"/>
+          <circle cx="0" cy="-70" r="3.5" fill="#9dffd0" opacity="0.85"/>
+          <circle cx="-4" cy="-48" r="2.5" fill="#9dffd0" opacity="0.65"/>
+        </g>
+
+        <g id="prop-mushroom-pink">
+          <ellipse cx="0" cy="-4" rx="24" ry="7" fill="#2a1830" opacity="0.35"/>
+          <path d="M-5,-6 C-7,-48 -5,-82 0,-96 C5,-82 7,-48 5,-6 Z" fill="url(#stemGrad)"/>
+          <ellipse cx="0" cy="-94" rx="36" ry="18" fill="url(#capGradPink)" filter="url(#softGlow)"/>
+          <ellipse cx="0" cy="-88" rx="30" ry="8" fill="#4a1850" opacity="0.5"/>
+          <circle cx="-8" cy="-100" r="3" fill="#ffe0f4" opacity="0.75"/>
+        </g>
+
+        <g id="prop-mushroom-blue">
+          <ellipse cx="0" cy="-3" rx="20" ry="6" fill="#0a2030" opacity="0.35"/>
+          <path d="M-4,-5 C-6,-40 -4,-70 0,-82 C4,-70 6,-40 4,-5 Z" fill="url(#stemGrad)"/>
+          <ellipse cx="0" cy="-80" rx="30" ry="15" fill="url(#capGradBlue)" filter="url(#softGlow)"/>
+          <ellipse cx="0" cy="-74" rx="25" ry="7" fill="#123060" opacity="0.5"/>
+        </g>
+
+        <!-- 2. Lantern tree -->
+        <g id="prop-tree">
+          <ellipse cx="0" cy="-3" rx="36" ry="10" fill="#061810" opacity="0.4"/>
+          <path d="M-14,0 C-16,-40 -12,-90 -8,-140 C-4,-170 4,-170 8,-140 C12,-90 16,-40 14,0 Z" fill="url(#trunkGrad)"/>
+          <!-- canopy blades -->
+          <path d="M-8,-130 C-50,-150 -70,-110 -40,-90 C-20,-100 -10,-110 -8,-130 Z" fill="#1a5a48" opacity="0.9"/>
+          <path d="M8,-135 C50,-160 75,-115 45,-88 C25,-100 12,-118 8,-135 Z" fill="#248060" opacity="0.88"/>
+          <path d="M0,-150 C-30,-190 30,-195 0,-150 C20,-175 -20,-175 0,-150 Z" fill="#2a9a70" opacity="0.85"/>
+          <path d="M-6,-145 C-55,-170 -60,-120 -25,-105 C-15,-120 -8,-130 -6,-145 Z" fill="#146050" opacity="0.75"/>
+          <!-- hanging lanterns -->
+          <line x1="-28" y1="-115" x2="-34" y2="-78" stroke="#3a6050" stroke-width="1.5"/>
+          <line x1="30" y1="-120" x2="38" y2="-82" stroke="#3a6050" stroke-width="1.5"/>
+          <line x1="4" y1="-148" x2="2" y2="-100" stroke="#3a6050" stroke-width="1.5"/>
+          <circle cx="-34" cy="-72" r="14" fill="url(#lanternGlow)" filter="url(#softGlow)"/>
+          <circle cx="-34" cy="-72" r="6" fill="#ffe89a"/>
+          <circle cx="38" cy="-76" r="12" fill="url(#lanternGlow)" filter="url(#softGlow)"/>
+          <circle cx="38" cy="-76" r="5" fill="#ffd878"/>
+          <circle cx="2" cy="-94" r="16" fill="url(#lanternGlow)" filter="url(#softGlow)"/>
+          <circle cx="2" cy="-94" r="7" fill="#fff0b0"/>
+          <!-- bark marks -->
+          <path d="M-4,-30 Q0,-50 2,-70" fill="none" stroke="#1a2830" stroke-width="2" opacity="0.5"/>
+          <path d="M4,-20 Q6,-45 3,-65" fill="none" stroke="#1a2830" stroke-width="1.5" opacity="0.4"/>
+        </g>
+
+        <!-- 3. Floating spore jelly (hovering creature) -->
+        <g id="prop-spore">
+          <ellipse cx="0" cy="18" rx="16" ry="5" fill="#0a3028" opacity="0.25"/>
+          <ellipse cx="0" cy="-8" rx="26" ry="22" fill="url(#jellyBody)" filter="url(#softGlow)"/>
+          <ellipse cx="0" cy="-12" rx="14" ry="10" fill="#e8fff4" opacity="0.35"/>
+          <circle cx="-6" cy="-10" r="4" fill="#102828" opacity="0.55"/>
+          <circle cx="7" cy="-12" r="3.5" fill="#102828" opacity="0.55"/>
+          <circle cx="-5" cy="-11" r="1.4" fill="#c8ffe8"/>
+          <circle cx="8" cy="-13" r="1.2" fill="#c8ffe8"/>
+          <!-- tendrils -->
+          <path d="M-10,8 Q-14,22 -8,30" fill="none" stroke="#60e0b0" stroke-width="2" opacity="0.7"/>
+          <path d="M0,10 Q2,26 0,34" fill="none" stroke="#80ffd0" stroke-width="2" opacity="0.75"/>
+          <path d="M10,8 Q14,22 8,30" fill="none" stroke="#60e0b0" stroke-width="2" opacity="0.7"/>
+          <circle cx="0" cy="-22" r="18" fill="url(#sporeGlow)" opacity="0.45"/>
+        </g>
+
+        <!-- Small ground fern cluster -->
+        <g id="prop-fern">
+          <ellipse cx="0" cy="-2" rx="18" ry="5" fill="#061810" opacity="0.3"/>
+          <path d="M0,0 C-8,-20 -22,-28 -30,-22 C-18,-20 -8,-12 0,0 Z" fill="#1a6a48"/>
+          <path d="M0,0 C8,-22 24,-30 32,-20 C18,-20 8,-12 0,0 Z" fill="#249060"/>
+          <path d="M0,0 C-2,-28 -4,-40 0,-48 C4,-40 2,-28 0,0 Z" fill="#2aab70"/>
+          <circle cx="-12" cy="-18" r="2.5" fill="#7dffb0" opacity="0.7"/>
+          <circle cx="14" cy="-16" r="2" fill="#7dffb0" opacity="0.6"/>
+          <circle cx="0" cy="-36" r="2" fill="#a8ffd0" opacity="0.75"/>
+        </g>
+
+        <!-- Distant ridge silhouettes -->
+        <linearGradient id="ridgeGrad" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#1a2a48" stop-opacity="0.9"/>
+          <stop offset="100%" stop-color="#0e1830" stop-opacity="0.4"/>
+        </linearGradient>
+      </defs>
+
+      <!-- Background layers -->
+      <rect id="sky" width="1000" height="600" fill="url(#skyGrad)"/>
+      <g id="stars"></g>
+      <g id="aurora">
+        <path d="M-50,80 C150,20 280,140 450,60 C620,-10 780,100 1050,40 L1050,200 C800,160 600,220 400,160 C220,110 80,180 -50,140 Z" fill="url(#auroraA)" opacity="0.85"/>
+        <path d="M-40,120 C180,60 360,160 540,90 C720,30 880,140 1060,80 L1060,220 C860,180 680,240 480,180 C280,120 100,200 -40,170 Z" fill="url(#auroraB)" opacity="0.7"/>
+      </g>
+      <g id="moons">
+        <circle cx="780" cy="90" r="48" fill="url(#moonGlow)"/>
+        <circle cx="780" cy="90" r="22" fill="#e8fff4" opacity="0.92"/>
+        <circle cx="788" cy="86" r="5" fill="#c0e8e0" opacity="0.35"/>
+        <circle cx="770" cy="98" r="3.5" fill="#c0e8e0" opacity="0.3"/>
+        <circle cx="860" cy="130" r="14" fill="#d0f0ff" opacity="0.55"/>
+        <circle cx="860" cy="130" r="28" fill="url(#moonGlow)" opacity="0.5"/>
+      </g>
+      <g id="ridges">
+        <path d="M0,310 C80,270 160,290 240,265 C320,240 400,280 500,255 C600,230 700,270 800,250 C900,230 960,260 1000,245 L1000,360 L0,360 Z" fill="url(#ridgeGrad)" opacity="0.65"/>
+        <path d="M0,330 C120,300 220,320 340,295 C460,270 560,315 680,290 C800,265 900,300 1000,285 L1000,370 L0,370 Z" fill="#0c1828" opacity="0.55"/>
+      </g>
+
+      <!-- Horizon fog -->
+      <rect x="0" y="300" width="1000" height="80" fill="url(#fogGrad)"/>
+
+      <!-- Ground plane -->
+      <g id="ground">
+        <rect y="340" width="1000" height="260" fill="url(#groundGrad)"/>
+        <path id="pathGlow" d="M350,600 L450,340 L550,340 L650,600 Z" fill="url(#pathGlow)"/>
+        <g id="groundGrid" opacity="0.45"></g>
+        <g id="mycelium" opacity="0.55"></g>
+      </g>
+
+      <!-- World objects (billboards) -->
+      <g id="props"></g>
+
+      <!-- Near fog vignette -->
+      <defs>
+        <radialGradient id="vignette" cx="50%" cy="45%" r="70%">
+          <stop offset="55%" stop-color="#000" stop-opacity="0"/>
+          <stop offset="100%" stop-color="#02060e" stop-opacity="0.55"/>
+        </radialGradient>
+      </defs>
+      <rect width="1000" height="600" fill="url(#vignette)" pointer-events="none"/>
+    </svg>
+
+    <div id="hud">
+      <div class="title-bar">
+        <h1>Lumina Sporewood</h1>
+        <p>bioluminescent night forest · pure SVG</p>
+      </div>
+      <div id="coords">x 0 · z 0</div>
+      <div class="crosshair" aria-hidden="true"></div>
+      <div id="hint">
+        <span class="desk">WASD / Arrows to walk · click-drag to look · explore forever</span>
+        <span class="mob">Left stick: walk · Right stick: turn · both at once</span>
+      </div>
+    </div>
+
+    <div class="joystick left" id="joyMove" aria-label="Movement joystick">
+      <div class="base"></div>
+      <div class="knob" id="joyMoveKnob"></div>
+      <div class="label">Move</div>
+    </div>
+    <div class="joystick right" id="joyLook" aria-label="Look joystick">
+      <div class="base"></div>
+      <div class="knob" id="joyLookKnob"></div>
+      <div class="label">Turn</div>
+    </div>
+  </div>
+
+  <script>
+(function () {
+  'use strict';
+
+  // ─── Constants ───────────────────────────────────────────────
+  const VW = 1000;
+  const VH = 600;
+  const HORIZON = 340;
+  const FOV = 420;
+  const EYE = 1.65;
+  const NEAR = 0.55;
+  const FAR = 48;
+  const CHUNK = 18;
+  const LOAD_R = 3;
+  const WALK_SPEED = 7.2;
+  const TURN_SPEED = 1.55;
+  const MOUSE_SENS = 0.0028;
+  const BOB_FREQ = 9.5;
+  const BOB_AMP = 5.5;
+  const MAX_PROPS = 160;
+
+  const PROP_TYPES = [
+    { id: 'prop-mushroom',      w: 90,  h: 130, weight: 3, float: 0 },
+    { id: 'prop-mushroom-pink', w: 78,  h: 115, weight: 2, float: 0 },
+    { id: 'prop-mushroom-blue', w: 66,  h: 100, weight: 2, float: 0 },
+    { id: 'prop-tree',          w: 150, h: 200, weight: 2, float: 0 },
+    { id: 'prop-spore',         w: 70,  h: 70,  weight: 2, float: 1 },
+    { id: 'prop-fern',          w: 70,  h: 55,  weight: 4, float: 0 },
+  ];
+
+  // ─── DOM ─────────────────────────────────────────────────────
+  const svg = document.getElementById('world');
+  const propsLayer = document.getElementById('props');
+  const starsLayer = document.getElementById('stars');
+  const groundGrid = document.getElementById('groundGrid');
+  const mycelium = document.getElementById('mycelium');
+  const coordsEl = document.getElementById('coords');
+  const hintEl = document.getElementById('hint');
+  const aurora = document.getElementById('aurora');
+  const moons = document.getElementById('moons');
+  const pathGlow = document.getElementById('pathGlow');
+
+  const joyMove = document.getElementById('joyMove');
+  const joyLook = document.getElementById('joyLook');
+  const joyMoveKnob = document.getElementById('joyMoveKnob');
+  const joyLookKnob = document.getElementById('joyLookKnob');
+
+  // ─── Camera / input state ────────────────────────────────────
+  const cam = {
+    x: 0,
+    z: 0,
+    yaw: 0,
+    bob: 0,
+    bobPhase: 0,
+  };
+
+  const keys = Object.create(null);
+  const moveAxis = { x: 0, y: 0 }; // left stick / keyboard combined
+  const lookAxis = { x: 0, y: 0 }; // right stick
+
+  let dragging = false;
+  let lastMX = 0;
+  let lastMY = 0;
+  let pointerLookActive = false;
+
+  // Multitouch joystick tracking by pointerId
+  const pointers = new Map(); // id -> { role: 'move'|'look', ox, oy, maxR }
+
+  // ─── World generation ────────────────────────────────────────
+  const chunks = new Map(); // key "cx,cz" -> props[]
+  const activeKeys = new Set();
+
+  function hash2(ix, iz) {
+    let n = (ix * 374761393 + iz * 668265263) | 0;
+    n = (n ^ (n >>> 13)) * 1274126177;
+    n = n ^ (n >>> 16);
+    return (n >>> 0) / 4294967296;
+  }
+
+  function pickType(r) {
+    let total = 0;
+    for (const t of PROP_TYPES) total += t.weight;
+    let roll = r * total;
+    for (const t of PROP_TYPES) {
+      roll -= t.weight;
+      if (roll <= 0) return t;
+    }
+    return PROP_TYPES[0];
+  }
+
+  function genChunk(cx, cz) {
+    const key = cx + ',' + cz;
+    if (chunks.has(key)) return chunks.get(key);
+
+    const list = [];
+    // Fewer props near origin so spawn is open
+    const distFromOrigin = Math.hypot(cx, cz);
+    const count = distFromOrigin < 1 ? 4 : 8 + Math.floor(hash2(cx, cz) * 7);
+
+    for (let i = 0; i < count; i++) {
+      const r1 = hash2(cx * 17 + i, cz * 31 + i * 3);
+      const r2 = hash2(cx * 41 + i * 7, cz * 13 + i);
+      const r3 = hash2(i * 99 + cx, cz * 77 + i * 5);
+      const r4 = hash2(cx + i * 3, cz - i * 11);
+
+      const lx = (r1 - 0.5) * CHUNK * 0.92;
+      const lz = (r2 - 0.5) * CHUNK * 0.92;
+      const wx = cx * CHUNK + lx;
+      const wz = cz * CHUNK + lz;
+
+      // Keep a clear path around spawn corridor
+      if (Math.hypot(wx, wz) < 4.5) continue;
+
+      const type = pickType(r3);
+      const scale = 0.65 + r4 * 0.7;
+      const phase = r1 * Math.PI * 2;
+      const hueShift = r2; // used for opacity variation
+
+      list.push({
+        x: wx,
+        z: wz,
+        type: type.id,
+        baseW: type.w,
+        baseH: type.h,
+        scale,
+        float: type.float,
+        phase,
+        hueShift,
+        el: null,
+      });
+    }
+
+    chunks.set(key, list);
+    return list;
+  }
+
+  function ensureChunks() {
+    const pcx = Math.floor(cam.x / CHUNK);
+    const pcz = Math.floor(cam.z / CHUNK);
+    activeKeys.clear();
+
+    for (let dz = -LOAD_R; dz <= LOAD_R; dz++) {
+      for (let dx = -LOAD_R; dx <= LOAD_R; dx++) {
+        if (dx * dx + dz * dz > LOAD_R * LOAD_R + 1) continue;
+        const key = (pcx + dx) + ',' + (pcz + dz);
+        activeKeys.add(key);
+        genChunk(pcx + dx, pcz + dz);
+      }
+    }
+
+    // Soft cleanup: drop far chunks to bound memory
+    if (chunks.size > 80) {
+      for (const key of chunks.keys()) {
+        if (!activeKeys.has(key)) {
+          const list = chunks.get(key);
+          for (const p of list) {
+            if (p.el) {
+              p.el.remove();
+              p.el = null;
+            }
+          }
+          chunks.delete(key);
+        }
+      }
+    }
+  }
+
+  // ─── Object pool / DOM ───────────────────────────────────────
+  const pool = [];
+
+  function acquireUse() {
+    let g = pool.pop();
+    if (!g) {
+      g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+      const use = document.createElementNS('http://www.w3.org/2000/svg', 'use');
+      g.appendChild(use);
+      propsLayer.appendChild(g);
+    } else if (!g.parentNode) {
+      propsLayer.appendChild(g);
+    }
+    g.style.display = '';
+    return g;
+  }
+
+  function releaseUse(g) {
+    if (!g) return;
+    g.style.display = 'none';
+    const use = g.firstChild;
+    if (use) use.removeAttribute('href');
+    pool.push(g);
+  }
+
+  // ─── Stars (static decorative) ───────────────────────────────
+  function buildStars() {
+    const frag = document.createDocumentFragment();
+    for (let i = 0; i < 90; i++) {
+      const c = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+      const x = (hash2(i, 1) * VW);
+      const y = hash2(i, 2) * HORIZON * 0.92;
+      const r = 0.4 + hash2(i, 3) * 1.6;
+      const o = 0.25 + hash2(i, 4) * 0.7;
+      c.setAttribute('cx', x.toFixed(1));
+      c.setAttribute('cy', y.toFixed(1));
+      c.setAttribute('r', r.toFixed(2));
+      c.setAttribute('fill', hash2(i, 5) > 0.85 ? '#a8ffe0' : '#e8f0ff');
+      c.setAttribute('opacity', o.toFixed(2));
+      frag.appendChild(c);
+    }
+    starsLayer.appendChild(frag);
+  }
+
+  // ─── Ground grid (perspective strips) ────────────────────────
+  function updateGround() {
+    // Perspective ground lines based on camera yaw & position
+    const lines = [];
+    const cos = Math.cos(cam.yaw);
+    const sin = Math.sin(cam.yaw);
+
+    // Depth rings projected
+    groundGrid.innerHTML = '';
+    mycelium.innerHTML = '';
+
+    const frag = document.createDocumentFragment();
+    const fragM = document.createDocumentFragment();
+
+    for (let i = 1; i <= 12; i++) {
+      const z = i * 3.2;
+      // Project a horizontal line at depth z in front of camera
+      const scale = FOV / z;
+      const y = HORIZON + (EYE * FOV) / z;
+      if (y > VH + 20) continue;
+
+      // lateral offset from world position (scroll effect)
+      const worldShift = (cam.x * cos + cam.z * sin);
+      const phase = ((worldShift % 3.2) + 3.2) % 3.2;
+      const y2 = HORIZON + (EYE * FOV) / (z + phase * 0.15);
+
+      const halfW = scale * 14;
+      const line = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      const yUse = Math.min(VH, y);
+      const o = Math.max(0.05, 0.35 - i * 0.025);
+      line.setAttribute('d',
+        'M' + (VW / 2 - halfW) + ',' + yUse.toFixed(1) +
+        ' L' + (VW / 2 + halfW) + ',' + yUse.toFixed(1)
+      );
+      line.setAttribute('stroke', '#3dffb0');
+      line.setAttribute('stroke-width', Math.max(0.5, 2.2 - i * 0.12));
+      line.setAttribute('opacity', o.toFixed(3));
+      frag.appendChild(line);
+    }
+
+    // Radial / vanishing lines
+    for (let s = -6; s <= 6; s++) {
+      if (s === 0) continue;
+      const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      // Offset lines by player lateral position for parallax scroll
+      const lateral = (-cam.x * sin + cam.z * cos) * 0.08;
+      const edge = s * 0.55 + (lateral % 0.55);
+      const nearZ = 2.2;
+      const farZ = 40;
+      const yN = HORIZON + (EYE * FOV) / nearZ;
+      const yF = HORIZON + (EYE * FOV) / farZ;
+      const xN = VW / 2 + (edge * FOV) / nearZ;
+      const xF = VW / 2 + (edge * FOV) / farZ;
+      path.setAttribute('d',
+        'M' + xF.toFixed(1) + ',' + yF.toFixed(1) +
+        ' L' + xN.toFixed(1) + ',' + Math.min(VH, yN).toFixed(1)
+      );
+      path.setAttribute('stroke', '#2a8a70');
+      path.setAttribute('stroke-width', '1');
+      path.setAttribute('opacity', String(0.12 + Math.abs(s) * 0.01));
+      frag.appendChild(path);
+    }
+
+    // Mycelium veins — a few organic curves anchored to ground
+    for (let v = 0; v < 5; v++) {
+      const seed = hash2(Math.floor(cam.x) + v, Math.floor(cam.z) - v);
+      const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      const baseX = VW * (0.15 + seed * 0.7);
+      const wobble = Math.sin(cam.yaw * 2 + v) * 40;
+      path.setAttribute('d',
+        'M' + (baseX + wobble).toFixed(1) + ',600 ' +
+        'Q' + (baseX + wobble * 0.5).toFixed(1) + ',480 ' +
+        (VW / 2 + (baseX - VW / 2) * 0.25).toFixed(1) + ',360'
+      );
+      path.setAttribute('fill', 'none');
+      path.setAttribute('stroke', v % 2 ? '#7dffc8' : '#c06bff');
+      path.setAttribute('stroke-width', '1.2');
+      path.setAttribute('opacity', String(0.08 + seed * 0.1));
+      fragM.appendChild(path);
+    }
+
+    groundGrid.appendChild(frag);
+    mycelium.appendChild(fragM);
+
+    // Path glow follows look direction slightly
+    const sway = Math.sin(cam.yaw) * 30;
+    pathGlow.setAttribute('d',
+      'M' + (320 + sway) + ',600 L' + (450 + sway * 0.3) + ',340 L' +
+      (550 + sway * 0.3) + ',340 L' + (680 + sway) + ',600 Z'
+    );
+  }
+
+  // ─── Projection ──────────────────────────────────────────────
+  function project(wx, wz, floatY) {
+    const dx = wx - cam.x;
+    const dz = wz - cam.z;
+    const cos = Math.cos(cam.yaw);
+    const sin = Math.sin(cam.yaw);
+    const rx = dx * cos + dz * sin;
+    const rz = -dx * sin + dz * cos;
+    if (rz < NEAR || rz > FAR) return null;
+
+    const invZ = 1 / rz;
+    const sx = VW / 2 + rx * FOV * invZ;
+    const groundY = HORIZON + EYE * FOV * invZ + cam.bob;
+    const sy = groundY - (floatY || 0) * FOV * invZ;
+    const scale = FOV * invZ;
+
+    // Cull horizontally with margin
+    if (sx < -200 || sx > VW + 200) return null;
+
+    return { sx, sy, scale, depth: rz, invZ };
+  }
+
+  // ─── Render props ────────────────────────────────────────────
+  const frameList = []; // temporary sort buffer
+
+  function renderProps(t) {
+    ensureChunks();
+    frameList.length = 0;
+
+    for (const key of activeKeys) {
+      const list = chunks.get(key);
+      if (!list) continue;
+      for (const p of list) {
+        const floatY = p.float
+          ? 1.2 + Math.sin(t * 0.002 + p.phase) * 0.45
+          : 0;
+        const pr = project(p.x, p.z, floatY);
+        if (!pr) {
+          if (p.el) {
+            releaseUse(p.el);
+            p.el = null;
+          }
+          continue;
+        }
+        // Soft distance fade
+        const fog = 1 - Math.min(1, Math.max(0, (pr.depth - FAR * 0.55) / (FAR * 0.45)));
+        if (fog < 0.04) {
+          if (p.el) {
+            releaseUse(p.el);
+            p.el = null;
+          }
+          continue;
+        }
+        frameList.push({ p, pr, fog, floatY });
+      }
+    }
+
+    // Keep nearest MAX_PROPS
+    if (frameList.length > MAX_PROPS) {
+      frameList.sort((a, b) => a.pr.depth - b.pr.depth);
+      for (let i = MAX_PROPS; i < frameList.length; i++) {
+        if (frameList[i].p.el) {
+          releaseUse(frameList[i].p.el);
+          frameList[i].p.el = null;
+        }
+      }
+      frameList.length = MAX_PROPS;
+    }
+
+    // Painter's algorithm: far → near
+    frameList.sort((a, b) => b.pr.depth - a.pr.depth);
+
+    for (let i = 0; i < frameList.length; i++) {
+      const { p, pr, fog } = frameList[i];
+      if (!p.el) {
+        p.el = acquireUse();
+        const use = p.el.firstChild;
+        const ref = '#' + p.type;
+        use.setAttribute('href', ref);
+        use.setAttributeNS('http://www.w3.org/1999/xlink', 'href', ref);
+      }
+
+      const s = pr.scale * 0.012 * p.scale;
+      const bobExtra = p.float
+        ? Math.sin(t * 0.003 + p.phase) * 3 * s
+        : 0;
+
+      // Anchor at ground (sy is ground contact); props drawn upward in local -Y
+      const tx = pr.sx;
+      const ty = pr.sy + bobExtra;
+
+      p.el.setAttribute(
+        'transform',
+        'translate(' + tx.toFixed(2) + ',' + ty.toFixed(2) + ') scale(' + s.toFixed(4) + ')'
+      );
+      p.el.setAttribute('opacity', (fog * (0.75 + p.hueShift * 0.25)).toFixed(3));
+      // z-order via DOM order (already sorted far→near)
+      propsLayer.appendChild(p.el);
+    }
+  }
+
+  // ─── Input: keyboard ─────────────────────────────────────────
+  const KEY_MAP = {
+    KeyW: 'f', ArrowUp: 'f',
+    KeyS: 'b', ArrowDown: 'b',
+    KeyA: 'l', ArrowLeft: 'l',
+    KeyD: 'r', ArrowRight: 'r',
+  };
+
+  window.addEventListener('keydown', (e) => {
+    const k = KEY_MAP[e.code];
+    if (k) {
+      keys[k] = true;
+      e.preventDefault();
+    }
+  }, { passive: false });
+
+  window.addEventListener('keyup', (e) => {
+    const k = KEY_MAP[e.code];
+    if (k) {
+      keys[k] = false;
+      e.preventDefault();
+    }
+  }, { passive: false });
+
+  // ─── Input: mouse look (click-drag) ───────────────────────────
+  const game = document.getElementById('game');
+
+  game.addEventListener('pointerdown', (e) => {
+    // Ignore if on joystick
+    if (e.target.closest('.joystick')) return;
+    if (e.pointerType === 'touch') return; // touch uses joysticks
+    pointerLookActive = true;
+    dragging = true;
+    lastMX = e.clientX;
+    lastMY = e.clientY;
+    try { game.setPointerCapture(e.pointerId); } catch (_) {}
+  });
+
+  game.addEventListener('pointermove', (e) => {
+    if (!dragging || !pointerLookActive) return;
+    const dx = e.clientX - lastMX;
+    lastMX = e.clientX;
+    lastMY = e.clientY;
+    cam.yaw += dx * MOUSE_SENS;
+  });
+
+  function endLookDrag(e) {
+    if (!pointerLookActive) return;
+    dragging = false;
+    pointerLookActive = false;
+    try { game.releasePointerCapture(e.pointerId); } catch (_) {}
+  }
+
+  game.addEventListener('pointerup', endLookDrag);
+  game.addEventListener('pointercancel', endLookDrag);
+
+  // ─── Virtual joysticks (true multitouch) ─────────────────────
+  function setupJoystick(el, knob, role) {
+    el.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const rect = el.getBoundingClientRect();
+      const maxR = rect.width * 0.38;
+      const ox = rect.left + rect.width / 2;
+      const oy = rect.top + rect.height / 2;
+      pointers.set(e.pointerId, { role, ox, oy, maxR });
+      try { el.setPointerCapture(e.pointerId); } catch (_) {}
+      updateStick(e.pointerId, e.clientX, e.clientY, knob, role);
+    }, { passive: false });
+
+    el.addEventListener('pointermove', (e) => {
+      if (!pointers.has(e.pointerId)) return;
+      e.preventDefault();
+      updateStick(e.pointerId, e.clientX, e.clientY, knob, role);
+    }, { passive: false });
+
+    const end = (e) => {
+      if (!pointers.has(e.pointerId)) return;
+      pointers.delete(e.pointerId);
+      knob.style.transform = 'translate(-50%, -50%)';
+      if (role === 'move') {
+        // Only zero if no other move pointer
+        if (![...pointers.values()].some((p) => p.role === 'move')) {
+          moveAxis.x = 0;
+          moveAxis.y = 0;
+        }
+      } else {
+        if (![...pointers.values()].some((p) => p.role === 'look')) {
+          lookAxis.x = 0;
+          lookAxis.y = 0;
+        }
+      }
+    };
+
+    el.addEventListener('pointerup', end);
+    el.addEventListener('pointercancel', end);
+    el.addEventListener('lostpointercapture', end);
+  }
+
+  function updateStick(id, cx, cy, knob, role) {
+    const p = pointers.get(id);
+    if (!p) return;
+    let dx = cx - p.ox;
+    let dy = cy - p.oy;
+    const len = Math.hypot(dx, dy) || 1;
+    const clamped = Math.min(len, p.maxR);
+    dx = (dx / len) * clamped;
+    dy = (dy / len) * clamped;
+    knob.style.transform =
+      'translate(calc(-50% + ' + dx.toFixed(1) + 'px), calc(-50% + ' + dy.toFixed(1) + 'px))';
+
+    const nx = dx / p.maxR;
+    const ny = dy / p.maxR;
+    if (role === 'move') {
+      moveAxis.x = nx;
+      moveAxis.y = ny; // +y is down on screen → backward
+    } else {
+      lookAxis.x = nx;
+      lookAxis.y = ny;
+    }
+  }
+
+  setupJoystick(joyMove, joyMoveKnob, 'move');
+  setupJoystick(joyLook, joyLookKnob, 'look');
+
+  // Detect touch devices that still report fine pointer (iPad + keyboard etc.)
+  window.addEventListener('touchstart', () => {
+    document.body.classList.add('touch-ui');
+  }, { once: true, passive: true });
+
+  // ─── Prevent mobile browser chrome behaviors ─────────────────
+  document.addEventListener('gesturestart', (e) => e.preventDefault());
+  document.addEventListener('gesturechange', (e) => e.preventDefault());
+  document.addEventListener('gestureend', (e) => e.preventDefault());
+
+  let lastTouchY = 0;
+  document.addEventListener('touchstart', (e) => {
+    if (e.touches.length === 1) lastTouchY = e.touches[0].clientY;
+  }, { passive: false });
+
+  document.addEventListener('touchmove', (e) => {
+    // Block pull-to-refresh / overscroll navigation
+    e.preventDefault();
+  }, { passive: false });
+
+  // Block pinch-zoom via multi-touch on document (joysticks still get events first)
+  document.addEventListener('wheel', (e) => {
+    if (e.ctrlKey) e.preventDefault();
+  }, { passive: false });
+
+  // ─── Movement update ─────────────────────────────────────────
+  function updateMovement(dt) {
+    let fwd = 0;
+    let strafe = 0;
+
+    if (keys.f) fwd += 1;
+    if (keys.b) fwd -= 1;
+    if (keys.l) strafe -= 1;
+    if (keys.r) strafe += 1;
+
+    // Left stick: up = forward (screen -y)
+    fwd += -moveAxis.y;
+    strafe += moveAxis.x;
+
+    // Clamp combined
+    const mag = Math.hypot(fwd, strafe);
+    if (mag > 1) {
+      fwd /= mag;
+      strafe /= mag;
+    }
+
+    // Right stick turn
+    cam.yaw += lookAxis.x * TURN_SPEED * dt;
+
+    const moving = mag > 0.02;
+    if (moving) {
+      const cos = Math.cos(cam.yaw);
+      const sin = Math.sin(cam.yaw);
+      // Forward is -sin/cos depending on convention: yaw 0 looks +Z
+      // Local forward in world: (sin(yaw), cos(yaw))
+      const fx = Math.sin(cam.yaw);
+      const fz = Math.cos(cam.yaw);
+      const rx = Math.cos(cam.yaw);
+      const rz = -Math.sin(cam.yaw);
+
+      cam.x += (fx * fwd + rx * strafe) * WALK_SPEED * dt;
+      cam.z += (fz * fwd + rz * strafe) * WALK_SPEED * dt;
+
+      cam.bobPhase += dt * BOB_FREQ * (0.7 + mag * 0.3);
+      cam.bob = Math.sin(cam.bobPhase) * BOB_AMP * mag;
+      // slight horizontal sway via aurora parallax uses bobPhase
+    } else {
+      cam.bob *= 0.85;
+      if (Math.abs(cam.bob) < 0.05) cam.bob = 0;
+    }
+  }
+
+  // ─── Sky parallax ────────────────────────────────────────────
+  function updateSky() {
+    const pan = ((cam.yaw % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
+    const shift = (pan / (Math.PI * 2)) * 120;
+    aurora.setAttribute('transform', 'translate(' + (-shift).toFixed(1) + ',0)');
+    moons.setAttribute('transform', 'translate(' + (-shift * 0.55).toFixed(1) + ',' + (cam.bob * 0.15).toFixed(1) + ')');
+    starsLayer.setAttribute('transform', 'translate(' + (-shift * 0.35).toFixed(1) + ',0)');
+  }
+
+  // ─── Main loop ───────────────────────────────────────────────
+  let lastT = performance.now();
+  let groundTick = 0;
+  let hintHidden = false;
+
+  function frame(now) {
+    const dt = Math.min(0.05, (now - lastT) / 1000);
+    lastT = now;
+
+    updateMovement(dt);
+    updateSky();
+
+    // Ground every other frame is enough
+    groundTick++;
+    if (groundTick % 2 === 0) updateGround();
+
+    renderProps(now);
+
+    coordsEl.textContent =
+      'x ' + cam.x.toFixed(1) + ' · z ' + cam.z.toFixed(1) +
+      ' · θ ' + ((cam.yaw * 180 / Math.PI) % 360).toFixed(0) + '°';
+
+    // Hide hint after walking a bit
+    if (!hintHidden && Math.hypot(cam.x, cam.z) > 6) {
+      hintEl.classList.add('fade');
+      hintHidden = true;
+    }
+
+    requestAnimationFrame(frame);
+  }
+
+  // ─── Boot ────────────────────────────────────────────────────
+  buildStars();
+  ensureChunks();
+  updateGround();
+  requestAnimationFrame(frame);
+
+  // Resize: viewBox stays fixed; SVG scales via CSS (slice)
+  // Prevent iOS double-tap zoom residual
+  let lastTap = 0;
+  game.addEventListener('touchend', (e) => {
+    const now = Date.now();
+    if (now - lastTap < 300) e.preventDefault();
+    lastTap = now;
+  }, { passive: false });
+})();
+  </script>
+</body>
+</html>
