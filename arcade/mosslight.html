@@ -1,0 +1,2866 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#071315">
+  <meta name="description" content="Mosslight is a tiny 3D evolution lab filled with procedurally generated creatures.">
+  <link rel="icon" href="data:,">
+  <title>Mosslight — A Tiny Evolution Lab</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --ink: #ecf5eb;
+      --muted: #9ab0a7;
+      --deep: #071315;
+      --panel: rgba(11, 29, 27, 0.94);
+      --line: rgba(207, 235, 215, 0.16);
+      --moss: #78d9a0;
+      --amber: #ffd166;
+      --coral: #ff7a70;
+      --lavender: #a99cff;
+      --safe-bottom: max(18px, env(safe-area-inset-bottom));
+    }
+
+    *, *::before, *::after { box-sizing: border-box; }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      overflow: hidden;
+      background: var(--deep);
+    }
+
+    body {
+      color: var(--ink);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      -webkit-font-smoothing: antialiased;
+      user-select: none;
+    }
+
+    button, input { font: inherit; }
+
+    button {
+      color: inherit;
+      cursor: pointer;
+    }
+
+    button:focus-visible, input:focus-visible {
+      outline: 3px solid var(--amber);
+      outline-offset: 3px;
+    }
+
+    button:disabled {
+      cursor: not-allowed;
+      filter: saturate(.35);
+      opacity: .45;
+    }
+
+    #world {
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      display: block;
+      touch-action: none;
+      background:
+        radial-gradient(circle at 52% 38%, #173a34 0, #0a1e1c 38%, #071315 74%);
+      cursor: grab;
+    }
+
+    #world:active { cursor: grabbing; }
+    #world.is-targeting { cursor: crosshair; }
+    #world:focus-visible { outline: 2px solid var(--amber); outline-offset: -4px; }
+
+    .grain, .vignette {
+      position: fixed;
+      inset: 0;
+      z-index: 2;
+      pointer-events: none;
+    }
+
+    .grain {
+      opacity: .13;
+      background:
+        radial-gradient(circle at 20% 35%, rgba(255, 255, 255, .08) 0 1px, transparent 1.5px),
+        radial-gradient(circle at 75% 62%, rgba(255, 255, 255, .05) 0 .7px, transparent 1.2px);
+      background-size: 9px 11px, 13px 15px;
+      mix-blend-mode: soft-light;
+    }
+
+    .vignette {
+      background: radial-gradient(circle at 50% 46%, transparent 45%, rgba(0, 8, 8, .48) 115%);
+    }
+
+    .hud {
+      position: fixed;
+      inset: 0;
+      z-index: 5;
+      pointer-events: none;
+    }
+
+    .hud button, .hud a, .hud input, .hud dialog { pointer-events: auto; }
+
+    .eyebrow {
+      margin: 0 0 6px;
+      color: var(--moss);
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: .2em;
+      text-transform: uppercase;
+    }
+
+    .brand {
+      position: absolute;
+      top: 22px;
+      left: 24px;
+      display: grid;
+      grid-template-columns: 34px 1fr;
+      gap: 12px;
+      align-items: start;
+      text-shadow: 0 2px 18px rgba(0, 0, 0, .45);
+    }
+
+    .brand-mark {
+      position: relative;
+      width: 34px;
+      height: 34px;
+      margin-top: 2px;
+      border: 1px solid rgba(120, 217, 160, .58);
+      border-radius: 50% 50% 48% 52%;
+      transform: rotate(-12deg);
+    }
+
+    .brand-mark::before, .brand-mark::after {
+      content: "";
+      position: absolute;
+      background: var(--moss);
+      border-radius: 50%;
+    }
+
+    .brand-mark::before {
+      width: 11px;
+      height: 17px;
+      top: 5px;
+      left: 7px;
+      transform: rotate(38deg);
+    }
+
+    .brand-mark::after {
+      width: 8px;
+      height: 13px;
+      right: 5px;
+      bottom: 5px;
+      opacity: .55;
+      transform: rotate(-35deg);
+    }
+
+    .brand h1 {
+      margin: -3px 0 2px;
+      font-family: "Iowan Old Style", "Palatino Linotype", Georgia, serif;
+      font-size: clamp(25px, 3vw, 38px);
+      font-weight: 500;
+      letter-spacing: -.035em;
+      line-height: 1;
+    }
+
+    .seed-button {
+      display: inline-flex;
+      gap: 7px;
+      align-items: center;
+      min-height: 26px;
+      padding: 0;
+      border: 0;
+      background: transparent;
+      color: rgba(236, 245, 235, .64);
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 10px;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+    }
+
+    .seed-button::after {
+      content: "copy";
+      padding: 3px 6px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      color: var(--muted);
+      font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+      font-size: 8px;
+      font-weight: 800;
+      letter-spacing: .08em;
+    }
+
+    .stats {
+      position: absolute;
+      top: 20px;
+      left: 50%;
+      display: flex;
+      min-height: 58px;
+      padding: 5px 8px;
+      transform: translateX(-50%);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: rgba(8, 25, 23, .88);
+      box-shadow: 0 15px 40px rgba(0, 0, 0, .16);
+    }
+
+    .stat {
+      min-width: 92px;
+      padding: 8px 14px;
+      border-right: 1px solid var(--line);
+      text-align: center;
+    }
+
+    .stat:last-child { border-right: 0; }
+
+    .stat-label {
+      display: block;
+      margin-bottom: 2px;
+      color: var(--muted);
+      font-size: 8px;
+      font-weight: 800;
+      letter-spacing: .16em;
+      text-transform: uppercase;
+    }
+
+    .stat-label small {
+      color: var(--amber);
+      font-size: .78em;
+      letter-spacing: .08em;
+    }
+
+    .stat-value {
+      display: inline-block;
+      min-width: 30px;
+      font-family: "Iowan Old Style", Georgia, serif;
+      font-size: 21px;
+      line-height: 1;
+    }
+
+    .top-actions {
+      position: absolute;
+      top: 22px;
+      right: 24px;
+      display: flex;
+      gap: 8px;
+    }
+
+    .icon-button {
+      display: grid;
+      width: 42px;
+      height: 42px;
+      place-items: center;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: rgba(8, 25, 23, .9);
+      box-shadow: 0 10px 30px rgba(0, 0, 0, .12);
+      font-size: 15px;
+      font-weight: 800;
+      transition: border-color .18s ease, background .18s ease, transform .18s ease;
+    }
+
+    .icon-button:hover {
+      border-color: rgba(120, 217, 160, .48);
+      background: rgba(16, 47, 41, .96);
+      transform: translateY(-1px);
+    }
+
+    .speed-button {
+      width: auto;
+      min-width: 48px;
+      padding: 0 11px;
+      font-size: 11px;
+    }
+
+    .inspector {
+      position: absolute;
+      top: 96px;
+      right: 24px;
+      width: min(304px, calc(100vw - 48px));
+      min-height: 238px;
+      padding: 18px;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      background: var(--panel);
+      box-shadow: 0 24px 60px rgba(0, 0, 0, .25);
+      transform-origin: top right;
+      transition: opacity .2s ease, transform .2s ease;
+    }
+
+    .inspector.is-empty {
+      min-height: 0;
+      padding: 14px 16px;
+    }
+
+    .inspector.is-empty .specimen { display: none; }
+    .inspector:not(.is-empty) .inspector-empty { display: none; }
+
+    .inspector-empty {
+      color: var(--muted);
+      font-family: "Iowan Old Style", Georgia, serif;
+      font-size: 13px;
+      line-height: 1.45;
+    }
+
+    .specimen-header {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: start;
+      margin-bottom: 14px;
+    }
+
+    .specimen-actions { display: flex; gap: 8px; align-items: center; }
+
+    .inspector-close {
+      display: grid;
+      width: 34px;
+      height: 34px;
+      place-items: center;
+      border: 1px solid var(--line);
+      border-radius: 50%;
+      background: transparent;
+      color: var(--muted);
+      font-size: 17px;
+      line-height: 1;
+    }
+
+    .specimen-name {
+      margin: 0;
+      font-family: "Iowan Old Style", Georgia, serif;
+      font-size: 24px;
+      font-weight: 500;
+      letter-spacing: -.03em;
+      line-height: 1.05;
+    }
+
+    .specimen-type {
+      display: inline-block;
+      margin-top: 5px;
+      color: var(--moss);
+      font-size: 9px;
+      font-weight: 800;
+      letter-spacing: .14em;
+      text-transform: uppercase;
+    }
+
+    .swatch {
+      width: 34px;
+      height: 34px;
+      flex: 0 0 auto;
+      border: 4px solid rgba(255, 255, 255, .08);
+      border-radius: 50%;
+      box-shadow: 0 0 0 1px var(--line);
+    }
+
+    .vitals {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 7px;
+      margin-bottom: 15px;
+    }
+
+    .mutation-note {
+      margin: -5px 0 13px;
+      padding: 9px 10px;
+      border: 1px solid rgba(255, 209, 102, .22);
+      border-radius: 9px;
+      background: rgba(255, 209, 102, .06);
+      color: var(--amber);
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 9px;
+      line-height: 1.45;
+    }
+
+    .inspector-toggle {
+      display: none;
+      width: 100%;
+      min-height: 40px;
+      margin-top: 10px;
+      border: 1px solid var(--line);
+      border-radius: 9px;
+      background: rgba(255, 255, 255, .035);
+      color: var(--muted);
+      font-size: 9px;
+      font-weight: 800;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+    }
+
+    .vital {
+      padding: 9px 8px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: rgba(255, 255, 255, .025);
+      text-align: center;
+    }
+
+    .vital strong {
+      display: block;
+      margin-bottom: 2px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    .vital span {
+      color: var(--muted);
+      font-size: 8px;
+      font-weight: 800;
+      letter-spacing: .12em;
+      text-transform: uppercase;
+    }
+
+    .traits { display: grid; gap: 8px; }
+
+    .trait {
+      display: grid;
+      grid-template-columns: 70px 1fr 34px;
+      gap: 8px;
+      align-items: center;
+      color: var(--muted);
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+    }
+
+    .trait-track {
+      height: 4px;
+      overflow: hidden;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, .08);
+    }
+
+    .trait-fill {
+      width: 50%;
+      height: 100%;
+      border-radius: inherit;
+      background: linear-gradient(90deg, var(--moss), var(--amber));
+    }
+
+    .trait output {
+      color: var(--ink);
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 9px;
+      text-align: right;
+    }
+
+    .field-log {
+      position: absolute;
+      bottom: 26px;
+      left: 24px;
+      width: 260px;
+      color: rgba(236, 245, 235, .7);
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 10px;
+      line-height: 1.55;
+      text-shadow: 0 2px 12px #000;
+    }
+
+    .field-log::before {
+      content: "FIELD NOTES";
+      display: block;
+      margin-bottom: 8px;
+      color: var(--moss);
+      font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+      font-size: 8px;
+      font-weight: 900;
+      letter-spacing: .18em;
+    }
+
+    .log-entry {
+      margin-top: 4px;
+      opacity: .52;
+      animation: log-in .35s ease both;
+    }
+
+    .log-entry:first-child { opacity: 1; }
+
+    @keyframes log-in {
+      from { opacity: 0; transform: translateY(5px); }
+    }
+
+    .dock-wrap {
+      position: absolute;
+      bottom: var(--safe-bottom);
+      left: 50%;
+      display: grid;
+      gap: 8px;
+      justify-items: center;
+      transform: translateX(-50%);
+    }
+
+    .charge {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      min-width: 210px;
+      padding: 5px 10px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: rgba(8, 25, 23, .9);
+      color: var(--muted);
+      font-size: 8px;
+      font-weight: 900;
+      letter-spacing: .12em;
+      text-transform: uppercase;
+    }
+
+    .charge-track {
+      height: 4px;
+      flex: 1;
+      overflow: hidden;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, .08);
+    }
+
+    .charge-fill {
+      width: 65%;
+      height: 100%;
+      border-radius: inherit;
+      background: linear-gradient(90deg, var(--moss), var(--amber));
+      transition: width .2s linear;
+    }
+
+    .charge-value {
+      min-width: 25px;
+      color: var(--ink);
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      text-align: right;
+    }
+
+    .dock {
+      display: flex;
+      gap: 8px;
+      padding: 7px;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      background: rgba(8, 25, 23, .94);
+      box-shadow: 0 20px 60px rgba(0, 0, 0, .34);
+    }
+
+    .action-button {
+      position: relative;
+      display: grid;
+      grid-template-columns: 34px 1fr;
+      width: 152px;
+      min-height: 55px;
+      padding: 8px 10px;
+      align-items: center;
+      border: 1px solid transparent;
+      border-radius: 12px;
+      background: transparent;
+      text-align: left;
+      transition: background .18s ease, border-color .18s ease, transform .18s ease;
+    }
+
+    .action-button:hover:not(:disabled), .action-button.is-active {
+      border-color: rgba(120, 217, 160, .28);
+      background: rgba(120, 217, 160, .08);
+    }
+
+    .action-button.is-active { box-shadow: inset 0 0 0 1px rgba(120, 217, 160, .16); }
+
+    .action-glyph {
+      font-family: "Iowan Old Style", Georgia, serif;
+      font-size: 25px;
+      color: var(--moss);
+      text-align: center;
+    }
+
+    .action-label {
+      display: block;
+      font-family: "Iowan Old Style", Georgia, serif;
+      font-size: 14px;
+      line-height: 1.05;
+    }
+
+    .action-meta {
+      display: block;
+      margin-top: 4px;
+      color: var(--muted);
+      font-size: 8px;
+      font-weight: 800;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+    }
+
+    .action-key {
+      position: absolute;
+      top: 7px;
+      right: 7px;
+      color: rgba(236, 245, 235, .28);
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 8px;
+    }
+
+    .target-hint {
+      position: absolute;
+      bottom: 112px;
+      left: 50%;
+      display: none;
+      padding: 9px 14px;
+      transform: translateX(-50%);
+      border: 1px solid rgba(255, 209, 102, .3);
+      border-radius: 999px;
+      background: rgba(8, 25, 23, .94);
+      color: var(--amber);
+      font-size: 9px;
+      font-weight: 800;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+    }
+
+    .target-hint.is-visible { display: block; }
+
+    .paused-chip {
+      position: absolute;
+      top: 90px;
+      left: 50%;
+      display: none;
+      padding: 7px 12px;
+      transform: translateX(-50%);
+      border: 1px solid rgba(255, 209, 102, .25);
+      border-radius: 999px;
+      background: rgba(8, 25, 23, .92);
+      color: var(--amber);
+      font-size: 9px;
+      font-weight: 900;
+      letter-spacing: .16em;
+      text-transform: uppercase;
+    }
+
+    .paused-chip.is-visible { display: block; }
+
+    .mobile-toast {
+      position: absolute;
+      top: 126px;
+      left: 50%;
+      display: none;
+      max-width: calc(100vw - 28px);
+      padding: 9px 12px;
+      transform: translate(-50%, -6px);
+      border: 1px solid rgba(120, 217, 160, .25);
+      border-radius: 999px;
+      background: rgba(8, 25, 23, .96);
+      color: var(--ink);
+      font-size: 9px;
+      line-height: 1.25;
+      text-align: center;
+      opacity: 0;
+      transition: opacity .2s ease, transform .2s ease;
+      pointer-events: none;
+    }
+
+    .mobile-toast.is-visible { opacity: 1; transform: translate(-50%, 0); }
+
+    .onboarding {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: min(430px, calc(100vw - 36px));
+      padding: 26px;
+      transform: translate(-50%, -50%);
+      border: 1px solid rgba(120, 217, 160, .26);
+      border-radius: 22px;
+      background: #0b211e;
+      box-shadow: 0 28px 100px rgba(0, 0, 0, .48);
+      max-height: calc(100dvh - 32px);
+      overflow-y: auto;
+      pointer-events: auto;
+      transition: opacity .22s ease, transform .22s ease;
+    }
+
+    .onboarding.is-hidden {
+      opacity: 0;
+      transform: translate(-50%, -47%) scale(.97);
+      pointer-events: none;
+    }
+
+    .onboarding h2 {
+      margin: 0 0 8px;
+      font-family: "Iowan Old Style", Georgia, serif;
+      font-size: 30px;
+      font-weight: 500;
+      letter-spacing: -.035em;
+    }
+
+    .onboarding p {
+      margin: 0 0 18px;
+      color: var(--muted);
+      font-family: "Iowan Old Style", Georgia, serif;
+      font-size: 15px;
+      line-height: 1.55;
+    }
+
+    .onboarding-steps {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      margin-bottom: 20px;
+    }
+
+    .onboarding-step {
+      padding: 10px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      color: var(--muted);
+      font-size: 9px;
+      line-height: 1.35;
+    }
+
+    .onboarding-step strong {
+      display: block;
+      margin-bottom: 4px;
+      color: var(--ink);
+      font-family: "Iowan Old Style", Georgia, serif;
+      font-size: 14px;
+      font-weight: 500;
+    }
+
+    .primary-button {
+      width: 100%;
+      min-height: 46px;
+      border: 0;
+      border-radius: 12px;
+      background: var(--moss);
+      color: #071713;
+      font-size: 11px;
+      font-weight: 900;
+      letter-spacing: .12em;
+      text-transform: uppercase;
+    }
+
+    dialog {
+      width: min(460px, calc(100vw - 32px));
+      max-height: calc(100dvh - 24px);
+      overflow-y: auto;
+      padding: 0;
+      border: 1px solid rgba(120, 217, 160, .3);
+      border-radius: 20px;
+      background: #0b211e;
+      color: var(--ink);
+      box-shadow: 0 32px 120px rgba(0, 0, 0, .72);
+    }
+
+    dialog::backdrop { background: rgba(1, 10, 9, .74); }
+
+    .dialog-body { padding: 25px; }
+
+    .dialog-body h2 {
+      margin: 0 0 9px;
+      font-family: "Iowan Old Style", Georgia, serif;
+      font-size: 28px;
+      font-weight: 500;
+    }
+
+    .dialog-body p, .dialog-body li {
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.55;
+    }
+
+    .dialog-body ul { padding-left: 20px; }
+
+    .shortcuts {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 7px;
+      margin: 18px 0;
+    }
+
+    .shortcut {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 8px 10px;
+      border: 1px solid var(--line);
+      border-radius: 9px;
+      color: var(--muted);
+      font-size: 10px;
+    }
+
+    kbd {
+      color: var(--ink);
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 9px;
+    }
+
+    .dialog-actions {
+      display: flex;
+      gap: 8px;
+      margin-top: 18px;
+    }
+
+    .dialog-actions button {
+      min-height: 44px;
+      flex: 1;
+      border: 1px solid var(--line);
+      border-radius: 11px;
+      background: rgba(255, 255, 255, .04);
+      font-size: 10px;
+      font-weight: 900;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+    }
+
+    .dialog-actions .confirm { background: var(--moss); color: #071713; }
+
+    .seed-input {
+      width: 100%;
+      height: 48px;
+      margin-top: 8px;
+      padding: 0 14px;
+      border: 1px solid var(--line);
+      border-radius: 11px;
+      background: rgba(0, 0, 0, .18);
+      color: var(--ink);
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      user-select: text;
+    }
+
+    .loading {
+      position: fixed;
+      inset: 0;
+      z-index: 20;
+      display: grid;
+      place-items: center;
+      background: var(--deep);
+      transition: opacity .5s ease;
+    }
+
+    .loading.is-hidden { opacity: 0; pointer-events: none; }
+    .loading[hidden] { display: none; }
+
+    .loading-card {
+      width: min(360px, calc(100vw - 40px));
+      text-align: center;
+    }
+
+    .loading-orbit {
+      width: 54px;
+      height: 54px;
+      margin: 0 auto 20px;
+      border: 1px solid rgba(120, 217, 160, .2);
+      border-top-color: var(--moss);
+      border-radius: 50%;
+      animation: spin 1.2s linear infinite;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .loading h2 {
+      margin: 0 0 6px;
+      font-family: "Iowan Old Style", Georgia, serif;
+      font-size: 24px;
+      font-weight: 500;
+    }
+
+    .loading p { margin: 0; color: var(--muted); font-size: 12px; }
+    .loading .error-detail { margin-top: 10px; font-size: 10px; user-select: text; }
+
+    .sr-only {
+      position: absolute !important;
+      width: 1px !important;
+      height: 1px !important;
+      padding: 0 !important;
+      margin: -1px !important;
+      overflow: hidden !important;
+      clip: rect(0, 0, 0, 0) !important;
+      white-space: nowrap !important;
+      border: 0 !important;
+    }
+
+    @media (max-width: 980px) {
+      .brand { top: 16px; left: 16px; }
+      .stats { top: 80px; }
+      .top-actions { top: 16px; right: 16px; }
+      .inspector { top: 148px; right: 16px; }
+      .field-log { left: 16px; bottom: 22px; }
+      .paused-chip { top: 144px; }
+    }
+
+    @media (max-width: 720px) {
+      .brand { grid-template-columns: 27px 1fr; gap: 9px; }
+      .brand-mark { width: 27px; height: 27px; }
+      .brand h1 { font-size: 24px; }
+      .brand .eyebrow { display: none; }
+      .seed-button { font-size: 8px; }
+      .seed-button::after { display: none; }
+      .top-actions { gap: 5px; }
+      .icon-button { width: 44px; height: 44px; border-radius: 11px; }
+      .top-actions .optional { display: none; }
+
+      .stats {
+        top: 66px;
+        width: calc(100vw - 24px);
+        min-height: 48px;
+        justify-content: center;
+        padding: 4px;
+        border-radius: 12px;
+      }
+
+      .stat { min-width: 0; flex: 1; padding: 6px 8px; }
+      .stat-value { font-size: 17px; }
+
+      .inspector {
+        top: auto;
+        right: 10px;
+        bottom: 151px;
+        left: 10px;
+        width: auto;
+        min-height: 0;
+        max-height: 255px;
+        overflow: auto;
+        padding: 14px;
+        transform-origin: bottom center;
+      }
+
+      .inspector.is-empty { display: none; }
+      .specimen-header { margin-bottom: 10px; }
+      .specimen-name { font-size: 20px; }
+      .vitals { margin-bottom: 10px; }
+      .trait { grid-template-columns: 62px 1fr 30px; }
+      .inspector-close { width: 44px; height: 44px; }
+      .inspector-toggle { display: block; min-height: 44px; }
+      .inspector:not(.is-expanded) .traits { display: none; }
+      .field-log { display: none; }
+      .mobile-toast { display: block; }
+      .target-hint { bottom: 146px; max-width: calc(100vw - 30px); white-space: nowrap; }
+      .paused-chip { top: 121px; }
+      .dock-wrap { bottom: var(--safe-bottom); width: calc(100vw - 16px); }
+      .charge { min-width: 190px; }
+      .dock { width: 100%; gap: 3px; padding: 5px; border-radius: 15px; }
+      .action-button {
+        grid-template-columns: 24px 1fr;
+        width: auto;
+        min-width: 0;
+        min-height: 52px;
+        flex: 1;
+        padding: 7px 6px;
+      }
+      .action-glyph { font-size: 19px; }
+      .action-label { font-size: 11px; }
+      .action-meta { font-size: 9px; }
+      .action-key { display: none; }
+      .onboarding { padding: 22px; }
+      .onboarding-steps { grid-template-columns: 1fr; }
+      .onboarding-step { padding: 8px 10px; }
+      .onboarding-step strong { display: inline; margin-right: 5px; }
+      .shortcuts { grid-template-columns: 1fr; }
+    }
+
+    @media (max-width: 360px) {
+      .top-actions .speed-button { display: none; }
+    }
+
+    @media (max-width: 720px) and (max-height: 620px) {
+      .inspector {
+        max-height: 165px;
+        padding: 10px;
+      }
+      .inspector.is-expanded { max-height: 255px; }
+      .specimen-header { margin-bottom: 5px; }
+      .vitals { margin-bottom: 0; }
+      .mutation-note { display: none; }
+      .inspector-toggle { min-height: 36px; margin-top: 6px; }
+    }
+
+    @media (max-height: 620px) and (min-width: 721px) {
+      .inspector { max-height: calc(100vh - 210px); overflow: auto; }
+      .field-log { display: none; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        scroll-behavior: auto !important;
+        animation-duration: .01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: .01ms !important;
+      }
+    }
+  </style>
+</head>
+<body>
+  <canvas id="world" tabindex="0" aria-keyshortcuts="N Space 1 2 3 Escape" aria-label="A 3D floating habitat populated by procedurally generated creatures. Drag to orbit, scroll or pinch to zoom, and select a creature to inspect it.">
+    Your browser needs WebGL to display the Mosslight 3D habitat.
+  </canvas>
+  <div class="grain" aria-hidden="true"></div>
+  <div class="vignette" aria-hidden="true"></div>
+
+  <main class="hud" aria-label="Mosslight evolution lab controls">
+    <header class="brand">
+      <span class="brand-mark" aria-hidden="true"></span>
+      <div>
+        <p class="eyebrow">Live field study</p>
+        <h1>Mosslight</h1>
+        <button class="seed-button" id="copy-seed" type="button" aria-label="Copy current world seed">
+          Seed <span id="seed-label">MOSS-0000</span>
+        </button>
+      </div>
+    </header>
+
+    <section class="stats" aria-label="Ecosystem statistics">
+      <div class="stat">
+        <span class="stat-label">Population</span>
+        <span class="stat-value" id="population-stat">0</span>
+      </div>
+      <div class="stat">
+        <span class="stat-label">Generation <small>goal 3</small></span>
+        <span class="stat-value" id="generation-stat">1</span>
+      </div>
+      <div class="stat">
+        <span class="stat-label">Diversity <small>goal 65</small></span>
+        <span class="stat-value"><span id="diversity-stat">0</span><small>%</small></span>
+      </div>
+    </section>
+
+    <nav class="top-actions" aria-label="Simulation controls">
+      <button class="icon-button" id="pause-button" type="button" aria-label="Pause simulation" aria-keyshortcuts="Space" title="Pause (Space)">‖</button>
+      <button class="icon-button speed-button" id="speed-button" type="button" aria-label="Change simulation speed" title="Simulation speed">1×</button>
+      <button class="icon-button optional" id="sound-button" type="button" aria-label="Turn sound on" aria-pressed="false" title="Sound off">♪</button>
+      <button class="icon-button" id="help-button" type="button" aria-label="Open field guide" title="Field guide">?</button>
+      <button class="icon-button" id="new-world-button" type="button" aria-label="Create a new world" aria-keyshortcuts="R" title="New world (R)">↻</button>
+    </nav>
+
+    <aside class="inspector is-empty" id="inspector" aria-label="Selected specimen">
+      <div class="inspector-empty">Select a creature to open its field record.</div>
+      <div class="specimen">
+        <div class="specimen-header">
+          <div>
+            <h2 class="specimen-name" id="specimen-name">—</h2>
+            <span class="specimen-type" id="specimen-type">—</span>
+          </div>
+          <span class="specimen-actions">
+            <span class="swatch" id="specimen-swatch" aria-label="Specimen coloration"></span>
+            <button class="inspector-close" id="inspector-close" type="button" aria-label="Deselect specimen">×</button>
+          </span>
+        </div>
+        <div class="vitals">
+          <div class="vital"><strong id="specimen-energy">0%</strong><span>Energy</span></div>
+          <div class="vital"><strong id="specimen-age">0s</strong><span>Age</span></div>
+          <div class="vital"><strong id="specimen-generation">G1</strong><span>Lineage</span></div>
+        </div>
+        <div class="mutation-note" id="mutation-note" hidden></div>
+        <div class="traits" id="traits"></div>
+        <button class="inspector-toggle" id="traits-toggle" type="button" aria-expanded="false">Show genome traits</button>
+      </div>
+    </aside>
+
+    <section class="field-log" id="field-log" aria-label="Recent ecosystem events"></section>
+
+    <div class="paused-chip" id="paused-chip">Study paused</div>
+    <div class="mobile-toast" id="mobile-toast" role="status" aria-live="polite"></div>
+    <div class="target-hint" id="target-hint">Choose a place in the habitat · Esc to cancel</div>
+
+    <section class="dock-wrap" aria-label="Habitat interventions">
+      <div class="charge" aria-label="Available biocharge">
+        <span>Biocharge</span>
+        <span class="charge-track"><span class="charge-fill" id="charge-fill"></span></span>
+        <span class="charge-value" id="charge-value">65</span>
+      </div>
+      <div class="dock">
+        <button class="action-button" id="spore-button" type="button" aria-keyshortcuts="1" aria-pressed="false" data-cost="18">
+          <span class="action-glyph" aria-hidden="true">✳</span>
+          <span><span class="action-label">Scatter spores</span><span class="action-meta">18 charge · place food</span></span>
+          <span class="action-key">1</span>
+        </button>
+        <button class="action-button" id="rain-button" type="button" aria-keyshortcuts="2" aria-pressed="false" data-cost="28">
+          <span class="action-glyph" aria-hidden="true">≋</span>
+          <span><span class="action-label">Call rain</span><span class="action-meta">28 charge · nourish</span></span>
+          <span class="action-key">2</span>
+        </button>
+        <button class="action-button" id="bud-button" type="button" aria-keyshortcuts="3" data-cost="42">
+          <span class="action-glyph" aria-hidden="true">⬡</span>
+          <span><span class="action-label">Bud variant</span><span class="action-meta" id="bud-meta">42 charge · mutate</span></span>
+          <span class="action-key">3</span>
+        </button>
+      </div>
+    </section>
+
+    <section class="onboarding" id="onboarding" role="dialog" aria-modal="true" aria-labelledby="welcome-title">
+      <p class="eyebrow">Field station 07</p>
+      <h2 id="welcome-title">Tend a tiny living world.</h2>
+      <p>Every body, gait, and instinct in this habitat grows from a procedural genome. Guide the ecology and see what survives.</p>
+      <div class="onboarding-steps">
+        <div class="onboarding-step"><strong>Observe</strong> Select a creature to read its traits.</div>
+        <div class="onboarding-step"><strong>Nurture</strong> Add food and rain where the habitat needs it.</div>
+        <div class="onboarding-step"><strong>Evolve</strong> Bud a variant and raise genetic diversity.</div>
+      </div>
+      <button class="primary-button" id="begin-button" type="button">Enter the habitat</button>
+    </section>
+
+    <dialog id="help-dialog">
+      <div class="dialog-body">
+        <p class="eyebrow">Field guide</p>
+        <h2>Grow a diverse grove.</h2>
+        <p>Creatures roam, forage, rest, pair up, and pass a mixed genome to their young. Food regrows slowly, while Biocharge lets you give evolution a nudge.</p>
+        <ul>
+          <li><strong>Scatter spores</strong> adds a nourishing food cluster.</li>
+          <li><strong>Call rain</strong> restores creatures and accelerates nearby growth.</li>
+          <li><strong>Bud variant</strong> creates a strongly mutated child of the selected specimen.</li>
+        </ul>
+        <div class="shortcuts" aria-label="Keyboard shortcuts">
+          <span class="shortcut">Scatter spores <kbd>1</kbd></span>
+          <span class="shortcut">Call rain <kbd>2</kbd></span>
+          <span class="shortcut">Bud variant <kbd>3</kbd></span>
+          <span class="shortcut">Pause / resume <kbd>Space</kbd></span>
+          <span class="shortcut">Next specimen <kbd>N</kbd></span>
+          <span class="shortcut">Cancel / deselect <kbd>Esc</kbd></span>
+          <span class="shortcut">New world <kbd>R</kbd></span>
+        </div>
+        <p>Keyboard interventions land beside the selected specimen, or at the habitat center when nothing is selected.</p>
+        <div class="dialog-actions">
+          <button type="button" id="dialog-sound-button">Sound: off</button>
+          <button type="button" data-close-dialog="help-dialog">Back to the grove</button>
+        </div>
+      </div>
+    </dialog>
+
+    <dialog id="world-dialog">
+      <form class="dialog-body" id="world-form">
+        <p class="eyebrow">New field study</p>
+        <h2>Grow another world.</h2>
+        <p>Enter any word or code. The same seed always grows the same founding creatures.</p>
+        <label for="seed-input" class="sr-only">World seed</label>
+        <input class="seed-input" id="seed-input" name="seed" maxlength="28" autocomplete="off" spellcheck="false">
+        <div class="dialog-actions">
+          <button type="button" data-close-dialog="world-dialog">Cancel</button>
+          <button class="confirm" type="submit">Grow world</button>
+        </div>
+      </form>
+    </dialog>
+
+    <div class="sr-only" id="announcer" aria-live="polite" aria-atomic="true"></div>
+  </main>
+
+  <div class="loading" id="loading" role="status" aria-live="polite">
+    <div class="loading-card">
+      <div class="loading-orbit" aria-hidden="true"></div>
+      <h2 id="loading-title">Growing the habitat…</h2>
+      <p id="loading-message">Assembling genomes and waking the field station.</p>
+      <p class="error-detail" id="error-detail"></p>
+    </div>
+  </div>
+
+  <noscript>This simulation needs JavaScript enabled to grow its creatures.</noscript>
+
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.184.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.184.0/examples/jsm/"
+      }
+    }
+  </script>
+
+  <script type="module">
+    const loading = document.getElementById('loading');
+    const loadingTitle = document.getElementById('loading-title');
+    const loadingMessage = document.getElementById('loading-message');
+    const errorDetail = document.getElementById('error-detail');
+
+    window.__MOSSLIGHT__ = { ready: false, error: null };
+
+    try {
+      const THREE = await import('three');
+      const { OrbitControls } = await import('three/addons/controls/OrbitControls.js');
+      startMosslight(THREE, OrbitControls);
+    } catch (error) {
+      console.error('Mosslight could not start:', error);
+      window.__MOSSLIGHT__ = { ready: false, error: String(error) };
+      loadingTitle.textContent = 'The habitat could not wake.';
+      loadingMessage.textContent = 'Mosslight needs WebGL and a connection to load its 3D engine. Reload when both are available.';
+      errorDetail.textContent = String(error?.message || error);
+      loading.querySelector('.loading-orbit').style.display = 'none';
+    }
+
+    function startMosslight(THREE, OrbitControls) {
+      'use strict';
+
+      const TAU = Math.PI * 2;
+      const WORLD_RADIUS = 11.4;
+      const FIXED_STEP = 1 / 30;
+      const MAX_POPULATION = matchMedia('(max-width: 720px)').matches ? 16 : 22;
+      const NATURAL_POPULATION_LIMIT = MAX_POPULATION - 2;
+      const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+      const canvas = document.getElementById('world');
+      const announcer = document.getElementById('announcer');
+      const inspector = document.getElementById('inspector');
+      const fieldLog = document.getElementById('field-log');
+      const targetHint = document.getElementById('target-hint');
+      const pausedChip = document.getElementById('paused-chip');
+      const onboarding = document.getElementById('onboarding');
+
+      const ui = {
+        seed: document.getElementById('seed-label'),
+        population: document.getElementById('population-stat'),
+        generation: document.getElementById('generation-stat'),
+        diversity: document.getElementById('diversity-stat'),
+        pause: document.getElementById('pause-button'),
+        speed: document.getElementById('speed-button'),
+        sound: document.getElementById('sound-button'),
+        chargeFill: document.getElementById('charge-fill'),
+        chargeValue: document.getElementById('charge-value'),
+        spore: document.getElementById('spore-button'),
+        rain: document.getElementById('rain-button'),
+        bud: document.getElementById('bud-button'),
+        budMeta: document.getElementById('bud-meta'),
+        specimenName: document.getElementById('specimen-name'),
+        specimenType: document.getElementById('specimen-type'),
+        specimenSwatch: document.getElementById('specimen-swatch'),
+        specimenEnergy: document.getElementById('specimen-energy'),
+        specimenAge: document.getElementById('specimen-age'),
+        specimenGeneration: document.getElementById('specimen-generation'),
+        mutationNote: document.getElementById('mutation-note'),
+        traits: document.getElementById('traits')
+      };
+
+      const state = {
+        seed: '',
+        tick: 0,
+        simTime: 0,
+        paused: false,
+        hiddenPause: false,
+        speed: 1,
+        biocharge: 65,
+        nextCreatureId: 0,
+        nextFoodId: 0,
+        creatures: [],
+        foods: [],
+        rainZones: [],
+        effects: [],
+        selected: null,
+        activeAction: null,
+        worldRng: null,
+        foodTimer: 0,
+        rescueTimer: 0,
+        uiTimer: 0,
+        milestone: false,
+        introOpen: true,
+        contextLost: false,
+        toastTimer: null,
+        sound: false,
+        audio: null
+      };
+
+      function xmur3(text) {
+        let h = 1779033703 ^ text.length;
+        for (let i = 0; i < text.length; i++) {
+          h = Math.imul(h ^ text.charCodeAt(i), 3432918353);
+          h = h << 13 | h >>> 19;
+        }
+        return function hash() {
+          h = Math.imul(h ^ h >>> 16, 2246822507);
+          h = Math.imul(h ^ h >>> 13, 3266489909);
+          return (h ^= h >>> 16) >>> 0;
+        };
+      }
+
+      function mulberry32(seed) {
+        return function random() {
+          let t = seed += 0x6D2B79F5;
+          t = Math.imul(t ^ t >>> 15, t | 1);
+          t ^= t + Math.imul(t ^ t >>> 7, t | 61);
+          return ((t ^ t >>> 14) >>> 0) / 4294967296;
+        };
+      }
+
+      function seeded(label) { return mulberry32(xmur3(label)()); }
+      function clamp(value, min, max) { return Math.max(min, Math.min(max, value)); }
+      function lerp(a, b, amount) { return a + (b - a) * amount; }
+      function pick(rng, values) { return values[Math.floor(rng() * values.length)]; }
+      function range(rng, min, max) { return min + rng() * (max - min); }
+      function wrapAngle(value) { return Math.atan2(Math.sin(value), Math.cos(value)); }
+      function lerpAngle(a, b, amount) { return a + wrapAngle(b - a) * amount; }
+      function round(value, places = 3) {
+        const factor = 10 ** places;
+        return Math.round(value * factor) / factor;
+      }
+
+      function randomPoint(rng, radius = WORLD_RADIUS - 1) {
+        const angle = rng() * TAU;
+        const distance = Math.sqrt(rng()) * radius;
+        return { x: Math.cos(angle) * distance, z: Math.sin(angle) * distance };
+      }
+
+      function randomSeed() {
+        const words = ['MOSS', 'FERN', 'DEW', 'LOAM', 'WISP', 'SPORE', 'REED', 'GLOW'];
+        const bytes = new Uint16Array(2);
+        crypto.getRandomValues(bytes);
+        return `${words[bytes[0] % words.length]}-${String(bytes[1] % 10000).padStart(4, '0')}`;
+      }
+
+      const archetypeNames = ['moss crawler', 'reed strider', 'dew skimmer'];
+      const ornaments = ['frill', 'horns', 'petals', 'spines'];
+      const nameStarts = ['Amber', 'Bramble', 'Cloud', 'Dapple', 'Ember', 'Fern', 'Glimmer', 'Honey', 'Lichen', 'Mallow', 'Moss', 'Nettle', 'Pebble', 'Pollen', 'Reed', 'Thistle', 'Velvet', 'Willow'];
+      const nameEnds = ['back', 'bloom', 'foot', 'glint', 'hopper', 'ling', 'mote', 'nose', 'skip', 'sprig', 'tail', 'tumble', 'whisk', 'wing', 'wisp'];
+
+      function constrainGenome(g) {
+        g.archetype = clamp(Math.round(g.archetype), 0, 2);
+        g.segments = clamp(Math.round(g.segments), g.archetype === 0 ? 3 : 2, g.archetype === 0 ? 5 : 4);
+        g.size = clamp(g.size, .72, 1.28);
+        g.bodyLength = clamp(g.bodyLength, .72, 1.35);
+        g.headScale = clamp(g.headScale, .76, 1.26);
+        g.legLength = clamp(g.legLength, .65, 1.45);
+        g.legPairs = g.archetype === 2 ? 0 : clamp(Math.round(g.legPairs), g.archetype === 0 ? 2 : 1, g.archetype === 0 ? 3 : 2);
+        g.antennae = clamp(Math.round(g.antennae), 0, 2);
+        g.eyeStyle = clamp(Math.round(g.eyeStyle), 0, 2);
+        g.ornament = clamp(Math.round(g.ornament), 0, ornaments.length - 1);
+        g.hue = ((g.hue % 1) + 1) % 1;
+        g.accent = ((g.accent % 1) + 1) % 1;
+        g.speed = clamp(g.speed, .62, 1.42);
+        g.metabolism = clamp(g.metabolism, .76, 1.28);
+        g.sociality = clamp(g.sociality, -1, 1);
+        g.curiosity = clamp(g.curiosity, 0, 1);
+        return g;
+      }
+
+      function randomGenome(rng, forcedArchetype = null) {
+        const archetype = forcedArchetype ?? Math.floor(rng() * 3);
+        return constrainGenome({
+          archetype,
+          segments: archetype === 0 ? 3 + Math.floor(rng() * 3) : 2 + Math.floor(rng() * 3),
+          size: range(rng, .78, 1.18),
+          bodyLength: range(rng, .78, 1.27),
+          headScale: range(rng, .82, 1.18),
+          legLength: archetype === 1 ? range(rng, 1.02, 1.42) : range(rng, .68, 1.05),
+          legPairs: archetype === 0 ? 2 + Math.floor(rng() * 2) : 1 + Math.floor(rng() * 2),
+          antennae: Math.floor(rng() * 3),
+          eyeStyle: Math.floor(rng() * 3),
+          ornament: Math.floor(rng() * ornaments.length),
+          hue: rng(),
+          accent: (rng() + .25 + rng() * .3) % 1,
+          speed: range(rng, .7, 1.35),
+          metabolism: range(rng, .8, 1.22),
+          sociality: range(rng, -.65, .95),
+          curiosity: range(rng, .15, 1)
+        });
+      }
+
+      const numericGenes = ['size', 'bodyLength', 'headScale', 'legLength', 'hue', 'accent', 'speed', 'metabolism', 'sociality', 'curiosity'];
+      const discreteGenes = ['archetype', 'segments', 'legPairs', 'antennae', 'eyeStyle', 'ornament'];
+
+      function mutateGenome(source, rng, strength = .12, forcedChanges = 1) {
+        const genome = { ...source };
+        const genes = [...numericGenes, ...discreteGenes];
+        const changed = new Set();
+        while (changed.size < forcedChanges) changed.add(pick(rng, genes));
+
+        numericGenes.forEach(key => {
+          if (changed.has(key) || rng() < .16) {
+            const span = key === 'hue' || key === 'accent' ? strength * .9 : strength;
+            genome[key] += range(rng, -span, span);
+          }
+        });
+
+        discreteGenes.forEach(key => {
+          if (changed.has(key) || rng() < .08) {
+            if (key === 'archetype') genome[key] = Math.floor(rng() * 3);
+            else if (key === 'ornament') genome[key] = Math.floor(rng() * ornaments.length);
+            else genome[key] += rng() < .5 ? -1 : 1;
+          }
+        });
+        return constrainGenome(genome);
+      }
+
+      function breedGenome(a, b, rng) {
+        const child = {};
+        [...numericGenes, ...discreteGenes].forEach(key => { child[key] = rng() < .5 ? a[key] : b[key]; });
+        return mutateGenome(child, rng, .09, rng() < .35 ? 2 : 1);
+      }
+
+      function genomeKey(g) {
+        return [g.archetype, g.segments, g.legPairs, g.antennae, g.eyeStyle, g.ornament,
+          ...numericGenes.map(key => Math.round(g[key] * 1000))].join('-');
+      }
+
+      function creatureName(genome, id) {
+        const hash = xmur3(`${genomeKey(genome)}:${id}`)();
+        return `${nameStarts[hash % nameStarts.length]} ${nameEnds[Math.floor(hash / nameStarts.length) % nameEnds.length]}`;
+      }
+
+      function describeMutation(parent, child) {
+        const changes = [];
+        if (parent.archetype !== child.archetype) changes.push(`body → ${archetypeNames[child.archetype]}`);
+        if (parent.ornament !== child.ornament) changes.push(`ornament → ${ornaments[child.ornament]}`);
+        if (parent.segments !== child.segments) changes.push(`${child.segments} body segments`);
+        const rawHue = wrapAngle((child.hue - parent.hue) * TAU) / TAU * 360;
+        if (Math.abs(rawHue) >= 5) changes.push(`hue ${rawHue > 0 ? '+' : ''}${Math.round(rawHue)}°`);
+        const paceDelta = child.speed - parent.speed;
+        if (Math.abs(paceDelta) >= .04) changes.push(`pace ${paceDelta > 0 ? '+' : ''}${paceDelta.toFixed(1)}`);
+        const curiosityDelta = Math.round((child.curiosity - parent.curiosity) * 100);
+        if (Math.abs(curiosityDelta) >= 5) changes.push(`curiosity ${curiosityDelta > 0 ? '+' : ''}${curiosityDelta}`);
+        return (changes.length ? changes : ['subtle structural shift']).slice(0, 3).join(' · ');
+      }
+
+      function genomeDiversity(creatures = state.creatures) {
+        if (creatures.length < 2) return 0;
+        let total = 0;
+        let pairs = 0;
+        for (let i = 0; i < creatures.length; i++) {
+          for (let j = i + 1; j < creatures.length; j++) {
+            const a = creatures[i].genome;
+            const b = creatures[j].genome;
+            const distance =
+              (a.archetype !== b.archetype ? .9 : 0) +
+              Math.abs(a.size - b.size) / .56 +
+              Math.abs(a.bodyLength - b.bodyLength) / .63 +
+              Math.abs(a.legLength - b.legLength) / .8 +
+              Math.min(Math.abs(a.hue - b.hue), 1 - Math.abs(a.hue - b.hue)) * 2 +
+              Math.abs(a.speed - b.speed) / .8 +
+              Math.abs(a.sociality - b.sociality) / 2 +
+              Math.abs(a.curiosity - b.curiosity);
+            total += distance / 7.9;
+            pairs++;
+          }
+        }
+        return clamp(Math.round(total / pairs * 138), 0, 100);
+      }
+
+      let renderer;
+      try {
+        renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false, powerPreference: 'high-performance' });
+      } catch (error) {
+        throw new Error(`WebGL renderer unavailable: ${error.message}`);
+      }
+      renderer.outputColorSpace = THREE.SRGBColorSpace;
+      renderer.toneMapping = THREE.ACESFilmicToneMapping;
+      renderer.toneMappingExposure = 1.06;
+      renderer.shadowMap.enabled = true;
+      renderer.shadowMap.type = THREE.PCFShadowMap;
+      renderer.setPixelRatio(Math.min(devicePixelRatio, innerWidth < 720 ? 1.25 : 1.5));
+
+      const scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x071315);
+      scene.fog = new THREE.FogExp2(0x071315, .026);
+
+      const camera = new THREE.PerspectiveCamera(42, innerWidth / innerHeight, .1, 90);
+      camera.position.set(16.5, 14.5, 18.5);
+
+      const controls = new OrbitControls(camera, canvas);
+      controls.enableDamping = true;
+      controls.dampingFactor = .055;
+      controls.enablePan = false;
+      controls.minDistance = 13;
+      controls.maxDistance = 31;
+      controls.minPolarAngle = .55;
+      controls.maxPolarAngle = 1.18;
+      controls.target.set(0, .4, 0);
+      controls.autoRotate = !reducedMotion;
+      controls.autoRotateSpeed = .22;
+
+      const hemi = new THREE.HemisphereLight(0xcaf5dd, 0x10231d, 1.65);
+      scene.add(hemi);
+
+      const sun = new THREE.DirectionalLight(0xffd9a2, 2.7);
+      sun.position.set(8, 16, 11);
+      sun.castShadow = true;
+      sun.shadow.mapSize.set(1024, 1024);
+      sun.shadow.camera.left = -15;
+      sun.shadow.camera.right = 15;
+      sun.shadow.camera.top = 15;
+      sun.shadow.camera.bottom = -15;
+      sun.shadow.camera.near = 2;
+      sun.shadow.camera.far = 38;
+      sun.shadow.bias = -.0006;
+      scene.add(sun);
+
+      const moonGlow = new THREE.PointLight(0x7ad8a0, 12, 24, 2);
+      moonGlow.position.set(-6, 6, -8);
+      scene.add(moonGlow);
+
+      const geos = {
+        body: new THREE.IcosahedronGeometry(1, 1),
+        eye: new THREE.SphereGeometry(1, 8, 6),
+        limb: new THREE.CylinderGeometry(.11, .15, 1, 6, 1),
+        cone: new THREE.ConeGeometry(.22, .7, 6),
+        fin: new THREE.ConeGeometry(.55, 1.1, 4),
+        foot: new THREE.SphereGeometry(.18, 8, 5),
+        ring: new THREE.RingGeometry(.75, .88, 40),
+        foodStem: new THREE.CylinderGeometry(.055, .085, .42, 5),
+        foodPod: new THREE.IcosahedronGeometry(.18, 1),
+        grass: new THREE.ConeGeometry(.08, .75, 4),
+        rock: new THREE.DodecahedronGeometry(.4, 0),
+        mushroomCap: new THREE.SphereGeometry(.25, 8, 5, 0, TAU, 0, Math.PI / 2),
+        patch: new THREE.CircleGeometry(1, 10),
+        rainDrop: new THREE.CylinderGeometry(.012, .012, .34, 4),
+        hit: new THREE.SphereGeometry(1, 8, 6),
+        ripple: new THREE.RingGeometry(.7, .78, 40)
+      };
+
+      const mats = {
+        cliff: new THREE.MeshStandardMaterial({ color: 0x17382f, roughness: .92, flatShading: true }),
+        earth: new THREE.MeshStandardMaterial({ color: 0x315545, roughness: .95, flatShading: true }),
+        moss: new THREE.MeshStandardMaterial({ color: 0x4f8f69, roughness: .88, flatShading: true }),
+        mossLight: new THREE.MeshStandardMaterial({ color: 0x72b982, roughness: .9, flatShading: true }),
+        mossDark: new THREE.MeshStandardMaterial({ color: 0x2e6a50, roughness: .94, flatShading: true }),
+        rock: new THREE.MeshStandardMaterial({ color: 0x668077, roughness: 1, flatShading: true }),
+        rockWarm: new THREE.MeshStandardMaterial({ color: 0x817b67, roughness: 1, flatShading: true }),
+        stem: new THREE.MeshStandardMaterial({ color: 0x6fa277, roughness: .85, flatShading: true }),
+        food: new THREE.MeshStandardMaterial({ color: 0xffc968, emissive: 0x805114, emissiveIntensity: .45, roughness: .56, flatShading: true }),
+        cap: new THREE.MeshStandardMaterial({ color: 0xd77b70, roughness: .7, flatShading: true }),
+        eye: new THREE.MeshStandardMaterial({ color: 0xf5fff7, roughness: .3 }),
+        pupil: new THREE.MeshStandardMaterial({ color: 0x071315, roughness: .45 }),
+        hit: new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false }),
+        selection: new THREE.MeshBasicMaterial({ color: 0xffd166, transparent: true, opacity: .78, side: THREE.DoubleSide, depthWrite: false }),
+        rain: new THREE.MeshBasicMaterial({ color: 0x9adced, transparent: true, opacity: .5, depthWrite: false })
+      };
+
+      const world = new THREE.Group();
+      scene.add(world);
+      const decorGroup = new THREE.Group();
+      const foodGroup = new THREE.Group();
+      const creatureGroup = new THREE.Group();
+      const effectGroup = new THREE.Group();
+      world.add(decorGroup, foodGroup, creatureGroup, effectGroup);
+
+      const cliff = new THREE.Mesh(new THREE.CylinderGeometry(12, 10.6, 2.3, 48, 2), mats.cliff);
+      cliff.position.y = -1.16;
+      cliff.receiveShadow = true;
+      world.add(cliff);
+
+      const soil = new THREE.Mesh(new THREE.CylinderGeometry(11.75, 11.75, .2, 48), mats.earth);
+      soil.position.y = -.12;
+      soil.receiveShadow = true;
+      world.add(soil);
+
+      const terrain = new THREE.Mesh(new THREE.CircleGeometry(11.65, 64), mats.moss);
+      terrain.rotation.x = -Math.PI / 2;
+      terrain.position.y = .005;
+      terrain.receiveShadow = true;
+      world.add(terrain);
+
+      const terrainPick = new THREE.Mesh(new THREE.CircleGeometry(11.55, 48), mats.hit);
+      terrainPick.rotation.x = -Math.PI / 2;
+      terrainPick.position.y = .09;
+      world.add(terrainPick);
+
+      const selectionRing = new THREE.Mesh(geos.ring, mats.selection);
+      selectionRing.rotation.x = -Math.PI / 2;
+      selectionRing.position.y = .11;
+      selectionRing.visible = false;
+      effectGroup.add(selectionRing);
+
+      function makeAmbientMotes() {
+        const count = reducedMotion ? 45 : 100;
+        const positions = new Float32Array(count * 3);
+        const rng = seeded('mosslight:ambient');
+        for (let i = 0; i < count; i++) {
+          const p = randomPoint(rng, 15);
+          positions[i * 3] = p.x;
+          positions[i * 3 + 1] = range(rng, .5, 7);
+          positions[i * 3 + 2] = p.z;
+        }
+        const geometry = new THREE.BufferGeometry();
+        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        const material = new THREE.ShaderMaterial({
+          transparent: true,
+          depthWrite: false,
+          uniforms: {
+            uSize: { value: 10 },
+            uPixelRatio: { value: Math.min(devicePixelRatio, 1.5) },
+            uColor: { value: new THREE.Color(0x9be7b7) }
+          },
+          vertexShader: `
+            uniform float uSize;
+            uniform float uPixelRatio;
+            void main() {
+              vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+              gl_Position = projectionMatrix * mvPosition;
+              gl_PointSize = clamp(uSize * uPixelRatio / max(1.0, -mvPosition.z), 1.0, 3.5);
+            }
+          `,
+          fragmentShader: `
+            uniform vec3 uColor;
+            void main() {
+              vec2 d = gl_PointCoord - vec2(.5);
+              float alpha = smoothstep(.25, .02, dot(d, d));
+              gl_FragColor = vec4(uColor, alpha * .42);
+            }
+          `
+        });
+        const points = new THREE.Points(geometry, material);
+        points.userData.ambient = true;
+        scene.add(points);
+        return points;
+      }
+
+      const ambientMotes = makeAmbientMotes();
+      const hitMeshes = [];
+
+      function rebuildDecorations() {
+        decorGroup.clear();
+        const rng = seeded(`${state.seed}:decor`);
+        const patchMaterials = [mats.mossLight, mats.mossDark];
+
+        for (let i = 0; i < 16; i++) {
+          const point = randomPoint(rng, 10.3);
+          const patch = new THREE.Mesh(geos.patch, pick(rng, patchMaterials));
+          patch.rotation.x = -Math.PI / 2;
+          patch.position.set(point.x, .025 + i * .0001, point.z);
+          const patchSize = range(rng, .45, 1.3);
+          patch.scale.set(patchSize, patchSize * range(rng, .55, .95), 1);
+          decorGroup.add(patch);
+        }
+
+        for (let i = 0; i < 38; i++) {
+          const point = randomPoint(rng, 10.8);
+          if (Math.hypot(point.x, point.z) < 2 && i % 2 === 0) continue;
+          const cluster = new THREE.Group();
+          cluster.position.set(point.x, .02, point.z);
+          cluster.rotation.y = rng() * TAU;
+          const blades = 2 + Math.floor(rng() * 3);
+          for (let b = 0; b < blades; b++) {
+            const blade = new THREE.Mesh(geos.grass, rng() < .35 ? mats.mossLight : mats.stem);
+            blade.position.set((b - blades / 2) * .08, .25 + rng() * .1, rng() * .08);
+            blade.rotation.z = range(rng, -.15, .15);
+            blade.scale.set(range(rng, .8, 1.25), range(rng, .7, 1.25), range(rng, .8, 1.2));
+            cluster.add(blade);
+          }
+          decorGroup.add(cluster);
+        }
+
+        for (let i = 0; i < 18; i++) {
+          const point = randomPoint(rng, 10.9);
+          const rock = new THREE.Mesh(geos.rock, rng() < .55 ? mats.rock : mats.rockWarm);
+          rock.position.set(point.x, range(rng, .12, .25), point.z);
+          rock.rotation.set(rng() * 1.2, rng() * TAU, rng() * .8);
+          rock.scale.set(range(rng, .45, 1.5), range(rng, .35, .95), range(rng, .55, 1.25));
+          rock.castShadow = true;
+          rock.receiveShadow = true;
+          decorGroup.add(rock);
+        }
+
+        for (let i = 0; i < 9; i++) {
+          const point = randomPoint(rng, 9.7);
+          const mushroom = new THREE.Group();
+          const stem = new THREE.Mesh(geos.foodStem, mats.stem);
+          stem.position.y = .21;
+          stem.scale.set(1.3, range(rng, .75, 1.25), 1.3);
+          const cap = new THREE.Mesh(geos.mushroomCap, mats.cap);
+          cap.position.y = .4;
+          cap.scale.setScalar(range(rng, .75, 1.25));
+          mushroom.add(stem, cap);
+          mushroom.position.set(point.x, 0, point.z);
+          mushroom.rotation.y = rng() * TAU;
+          decorGroup.add(mushroom);
+        }
+      }
+
+      function creatureMaterials(genome) {
+        const bodyColor = new THREE.Color().setHSL(genome.hue, .58, .51);
+        const accentColor = new THREE.Color().setHSL(genome.accent, .65, .62);
+        const shadowColor = bodyColor.clone().offsetHSL(.02, -.08, -.16);
+        return [
+          new THREE.MeshStandardMaterial({ color: bodyColor, roughness: .62, flatShading: true }),
+          new THREE.MeshStandardMaterial({ color: accentColor, roughness: .58, flatShading: true }),
+          new THREE.MeshStandardMaterial({ color: shadowColor, roughness: .75, flatShading: true })
+        ];
+      }
+
+      function buildCreatureRig(creature) {
+        const g = creature.genome;
+        const materials = creatureMaterials(g);
+        const [bodyMat, accentMat, shadowMat] = materials;
+        const root = new THREE.Group();
+        const bodyPivot = new THREE.Group();
+        root.add(bodyPivot);
+        const segments = [];
+        const legs = [];
+        const fins = [];
+        const tails = [];
+        const antennae = [];
+        const radius = .48 * g.size;
+        const spacing = radius * g.bodyLength * 1.05;
+        const bodyY = g.archetype === 0 ? .62 + g.legLength * .16 : g.archetype === 1 ? 1.05 + g.legLength * .3 : 1.25;
+
+        for (let i = 0; i < g.segments; i++) {
+          const segment = new THREE.Mesh(geos.body, i % 3 === 2 ? shadowMat : bodyMat);
+          const taper = 1 - i * .075;
+          segment.scale.set(radius * taper * 1.08, radius * taper * (g.archetype === 1 ? 1.12 : .86), radius * taper * g.bodyLength);
+          segment.position.set(0, bodyY + (g.archetype === 1 ? i * .06 : 0), -i * spacing);
+          segment.castShadow = i < 2;
+          segment.receiveShadow = true;
+          segment.userData.baseY = segment.position.y;
+          segment.userData.phase = i * .7;
+          bodyPivot.add(segment);
+          segments.push(segment);
+
+          if (i === 0 || i === Math.floor(g.segments / 2)) {
+            const marking = new THREE.Mesh(geos.body, accentMat);
+            marking.scale.set(radius * 1.095, radius * .22, radius * g.bodyLength * .62);
+            marking.position.set(0, bodyY + radius * .72, -i * spacing);
+            marking.rotation.y = i * .5;
+            bodyPivot.add(marking);
+          }
+        }
+
+        const head = new THREE.Mesh(geos.body, bodyMat);
+        const headRadius = radius * g.headScale;
+        head.scale.set(headRadius, headRadius * .94, headRadius * .92);
+        head.position.set(0, bodyY + radius * .16, spacing * .82);
+        head.castShadow = true;
+        bodyPivot.add(head);
+
+        const eyePositions = g.eyeStyle === 0 ? [[0, .18, 1]] : g.eyeStyle === 1 ? [[-.28, .12, .94], [.28, .12, .94]] : [[-.3, .05, .92], [.3, .05, .92], [0, .38, .88]];
+        eyePositions.forEach(([x, y, z]) => {
+          const eye = new THREE.Mesh(geos.eye, mats.eye);
+          eye.scale.setScalar(headRadius * .16);
+          eye.position.set(head.position.x + x * headRadius, head.position.y + y * headRadius, head.position.z + z * headRadius);
+          const pupil = new THREE.Mesh(geos.eye, mats.pupil);
+          pupil.scale.setScalar(.52);
+          pupil.position.z = .79;
+          eye.add(pupil);
+          bodyPivot.add(eye);
+        });
+
+        if (g.archetype !== 2) {
+          for (let pair = 0; pair < g.legPairs; pair++) {
+            const z = -pair * spacing * Math.max(1, (g.segments - 1) / Math.max(1, g.legPairs - 1));
+            for (const side of [-1, 1]) {
+              const hip = new THREE.Group();
+              hip.position.set(side * radius * .76, bodyY - radius * .14, z);
+              hip.rotation.z = side * -.22;
+              const legLength = g.legLength * (g.archetype === 1 ? .83 : .59);
+              const limb = new THREE.Mesh(geos.limb, shadowMat);
+              limb.scale.set(g.size * .82, legLength, g.size * .82);
+              limb.position.y = -legLength * .5;
+              limb.castShadow = pair === 0;
+              const foot = new THREE.Mesh(geos.foot, accentMat);
+              foot.position.set(0, -legLength, .08 * g.size);
+              foot.scale.set(1.25, .55, 1.65);
+              hip.add(limb, foot);
+              bodyPivot.add(hip);
+              legs.push({ pivot: hip, phase: pair * Math.PI + (side > 0 ? Math.PI : 0), baseZ: hip.rotation.z });
+            }
+          }
+        } else {
+          for (const side of [-1, 1]) {
+            for (let i = 0; i < 2; i++) {
+              const finPivot = new THREE.Group();
+              finPivot.position.set(side * radius * .7, bodyY, -i * spacing * 1.35);
+              finPivot.rotation.z = side * -.72;
+              const fin = new THREE.Mesh(geos.fin, i === 0 ? accentMat : shadowMat);
+              fin.scale.set(radius * 1.25, radius * 1.45, radius * .18);
+              fin.rotation.z = side * Math.PI / 2;
+              finPivot.add(fin);
+              bodyPivot.add(finPivot);
+              fins.push({ pivot: finPivot, side, phase: i * 1.1, base: finPivot.rotation.z });
+            }
+          }
+        }
+
+        let tailParent = bodyPivot;
+        for (let i = 0; i < 3; i++) {
+          const pivot = new THREE.Group();
+          pivot.position.set(0, i === 0 ? bodyY : 0, i === 0 ? -(g.segments - .2) * spacing : -radius * .55);
+          const tail = new THREE.Mesh(geos.cone, i % 2 ? shadowMat : accentMat);
+          tail.scale.set(radius * (1 - i * .2), radius * .9, radius * (1 - i * .2));
+          tail.rotation.x = -Math.PI / 2;
+          tail.position.z = -radius * .32;
+          pivot.add(tail);
+          tailParent.add(pivot);
+          tailParent = pivot;
+          tails.push(pivot);
+        }
+
+        for (let i = 0; i < g.antennae; i++) {
+          const side = g.antennae === 1 ? 0 : i === 0 ? -1 : 1;
+          const pivot = new THREE.Group();
+          pivot.position.set(side * headRadius * .42, head.position.y + headRadius * .55, head.position.z + headRadius * .18);
+          pivot.rotation.z = side * -.3;
+          const stalk = new THREE.Mesh(geos.limb, shadowMat);
+          stalk.scale.set(.35, headRadius * .8, .35);
+          stalk.position.y = headRadius * .38;
+          const tip = new THREE.Mesh(geos.eye, accentMat);
+          tip.position.y = headRadius * .78;
+          tip.scale.setScalar(headRadius * .13);
+          pivot.add(stalk, tip);
+          bodyPivot.add(pivot);
+          antennae.push({ pivot, side });
+        }
+
+        if (g.ornament === 0 || g.ornament === 3) {
+          const count = g.ornament === 0 ? 3 : Math.min(5, g.segments + 1);
+          for (let i = 0; i < count; i++) {
+            const spine = new THREE.Mesh(geos.cone, accentMat);
+            spine.position.set(0, bodyY + radius * .82, spacing * .2 - i * spacing * .72);
+            spine.scale.setScalar(g.ornament === 0 ? .62 : .4);
+            bodyPivot.add(spine);
+          }
+        } else if (g.ornament === 1) {
+          for (const side of [-1, 1]) {
+            const horn = new THREE.Mesh(geos.cone, accentMat);
+            horn.position.set(side * headRadius * .38, head.position.y + headRadius * .45, head.position.z + headRadius * .38);
+            horn.rotation.x = Math.PI / 2;
+            horn.rotation.z = side * -.22;
+            horn.scale.setScalar(.68);
+            bodyPivot.add(horn);
+          }
+        } else {
+          for (const side of [-1, 1]) {
+            const petal = new THREE.Mesh(geos.fin, accentMat);
+            petal.position.set(side * headRadius * .68, head.position.y + headRadius * .3, head.position.z);
+            petal.rotation.z = side * -1.05;
+            petal.scale.set(.65, .7, .22);
+            bodyPivot.add(petal);
+          }
+        }
+
+        const hit = new THREE.Mesh(geos.hit, mats.hit);
+        hit.position.set(0, bodyY, -spacing * (g.segments - 1) * .35);
+        hit.scale.set(radius * 1.8, bodyY + radius, spacing * Math.max(2.2, g.segments * .8));
+        hit.userData.creature = creature;
+        root.add(hit);
+        hitMeshes.push(hit);
+
+        root.traverse(object => { if (object.isMesh && object !== hit) object.userData.creature = creature; });
+        creatureGroup.add(root);
+        return { root, bodyPivot, segments, legs, fins, tails, antennae, materials, hit, bodyY };
+      }
+
+      function spawnCreature(genome, options = {}) {
+        if (state.creatures.length >= MAX_POPULATION) return null;
+        const id = state.nextCreatureId++;
+        const rng = seeded(`${state.seed}:behavior:${id}`);
+        const point = options.position || randomPoint(rng, WORLD_RADIUS - 2);
+        const creature = {
+          id,
+          genome: constrainGenome({ ...genome }),
+          name: '',
+          x: point.x,
+          z: point.z,
+          heading: rng() * TAU,
+          desiredHeading: rng() * TAU,
+          wanderHeading: rng() * TAU,
+          energy: options.energy ?? range(rng, 64, 92),
+          age: options.age ?? range(rng, 3, 28),
+          maxAge: range(rng, 128, 178) / genome.metabolism,
+          generation: options.generation ?? 1,
+          mutationNote: options.mutationNote || '',
+          cooldown: options.cooldown ?? range(rng, 3, 14),
+          decisionTimer: rng() * .4,
+          state: 'exploring',
+          target: null,
+          rng,
+          spawnTime: options.animateSpawn === false ? state.simTime - 1 : state.simTime,
+          rig: null,
+          alive: true
+        };
+        creature.name = creatureName(creature.genome, id);
+        creature.rig = buildCreatureRig(creature);
+        creature.rig.root.position.set(creature.x, 0, creature.z);
+        creature.rig.root.rotation.y = creature.heading;
+        state.creatures.push(creature);
+        return creature;
+      }
+
+      function removeCreature(creature, natural = true) {
+        if (!creature.alive) return;
+        creature.alive = false;
+        if (state.selected === creature) selectCreature(null);
+        createRipple(creature.x, creature.z, natural ? 0x9e91ff : 0xffd166, 1.4);
+        creatureGroup.remove(creature.rig.root);
+        const hitIndex = hitMeshes.indexOf(creature.rig.hit);
+        if (hitIndex >= 0) hitMeshes.splice(hitIndex, 1);
+        creature.rig.materials.forEach(material => material.dispose());
+        state.creatures = state.creatures.filter(item => item !== creature);
+        addEvent(`${creature.name} returned to the moss.`, false);
+        tone('death');
+      }
+
+      function makeFood(x, z) {
+        const food = { id: state.nextFoodId++, x, z, alive: true, group: new THREE.Group() };
+        const stem = new THREE.Mesh(geos.foodStem, mats.stem);
+        stem.position.y = .2;
+        const pod = new THREE.Mesh(geos.foodPod, mats.food);
+        pod.position.y = .5;
+        pod.castShadow = true;
+        food.group.add(stem, pod);
+        food.group.position.set(x, 0, z);
+        food.group.rotation.y = state.worldRng() * TAU;
+        food.group.scale.setScalar(.85 + state.worldRng() * .35);
+        foodGroup.add(food.group);
+        state.foods.push(food);
+        return food;
+      }
+
+      function removeFood(food) {
+        if (!food?.alive) return;
+        food.alive = false;
+        foodGroup.remove(food.group);
+        state.foods = state.foods.filter(item => item !== food);
+      }
+
+      function scatterFood(x, z, amount = 7, announce = true) {
+        for (let i = 0; i < amount; i++) {
+          const angle = state.worldRng() * TAU;
+          const distance = .2 + Math.sqrt(state.worldRng()) * 1.45;
+          const px = x + Math.cos(angle) * distance;
+          const pz = z + Math.sin(angle) * distance;
+          if (Math.hypot(px, pz) < WORLD_RADIUS - .35) makeFood(px, pz);
+        }
+        createRipple(x, z, 0xffd166, 1.15);
+        if (announce) addEvent('A fresh spore patch took root.', true);
+        tone('food');
+      }
+
+      function callRain(x, z) {
+        const material = new THREE.MeshBasicMaterial({ color: 0x8bdaf0, transparent: true, opacity: .62, side: THREE.DoubleSide, depthWrite: false });
+        const ring = new THREE.Mesh(new THREE.RingGeometry(2.45, 2.58, 48), material);
+        ring.rotation.x = -Math.PI / 2;
+        ring.position.set(x, .11, z);
+        const group = new THREE.Group();
+        group.add(ring);
+        const rng = state.worldRng;
+        const drops = [];
+        for (let i = 0; i < (reducedMotion ? 8 : 18); i++) {
+          const drop = new THREE.Mesh(geos.rainDrop, mats.rain);
+          const angle = rng() * TAU;
+          const distance = Math.sqrt(rng()) * 2.4;
+          drop.position.set(x + Math.cos(angle) * distance, range(rng, .8, 4.2), z + Math.sin(angle) * distance);
+          drop.userData.offset = rng() * 4;
+          group.add(drop);
+          drops.push(drop);
+        }
+        effectGroup.add(group);
+        state.rainZones.push({ x, z, life: 16, maxLife: 16, group, ring, material, drops });
+        createRipple(x, z, 0x8bdaf0, 1.4);
+        addEvent('A silver rain began to fall.', true);
+        tone('rain');
+      }
+
+      function createRipple(x, z, color, scale = 1) {
+        const material = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: .8, side: THREE.DoubleSide, depthWrite: false });
+        const mesh = new THREE.Mesh(geos.ripple, material);
+        mesh.rotation.x = -Math.PI / 2;
+        mesh.position.set(x, .13, z);
+        mesh.scale.setScalar(.25);
+        effectGroup.add(mesh);
+        state.effects.push({ mesh, material, age: 0, life: 1.25, scale });
+      }
+
+      function budVariant(parent) {
+        cancelAction();
+        if (!parent || !parent.alive) {
+          announce('Select a living creature before budding a variant.');
+          return false;
+        }
+        if (state.creatures.length >= MAX_POPULATION) {
+          announce('The habitat is at its population limit.');
+          return false;
+        }
+        const rng = seeded(`${state.seed}:bud:${state.nextCreatureId}:${state.tick}`);
+        const genome = mutateGenome(parent.genome, rng, .28, 4);
+        const mutationNote = describeMutation(parent.genome, genome);
+        const angle = rng() * TAU;
+        const child = spawnCreature(genome, {
+          position: { x: parent.x + Math.cos(angle) * .8, z: parent.z + Math.sin(angle) * .8 },
+          generation: parent.generation + 1,
+          energy: 72,
+          age: 0,
+          cooldown: 14,
+          mutationNote
+        });
+        if (!child) return false;
+        parent.energy = Math.max(18, parent.energy - 8);
+        createRipple(child.x, child.z, 0xffd166, 1.6);
+        addEvent(`${child.name} budded from ${parent.name}: ${mutationNote}.`, true);
+        selectCreature(child);
+        tone('birth');
+        return true;
+      }
+
+      function addRainGrowth(zone) {
+        if (state.foods.length > 34) return;
+        const angle = state.worldRng() * TAU;
+        const distance = Math.sqrt(state.worldRng()) * 2.2;
+        const x = zone.x + Math.cos(angle) * distance;
+        const z = zone.z + Math.sin(angle) * distance;
+        if (Math.hypot(x, z) < WORLD_RADIUS - .3) makeFood(x, z);
+      }
+
+      function nearestFood(creature) {
+        let best = null;
+        let bestDistance = Infinity;
+        for (const food of state.foods) {
+          if (!food.alive) continue;
+          const dx = food.x - creature.x;
+          const dz = food.z - creature.z;
+          const distance = dx * dx + dz * dz;
+          if (distance < bestDistance) { bestDistance = distance; best = food; }
+        }
+        return best;
+      }
+
+      function nearestMate(creature) {
+        let best = null;
+        let bestDistance = Infinity;
+        for (const other of state.creatures) {
+          if (other === creature || !other.alive || other.age < 10 || other.energy < 78 || other.cooldown > 0) continue;
+          const dx = other.x - creature.x;
+          const dz = other.z - creature.z;
+          const distance = dx * dx + dz * dz;
+          if (distance < bestDistance) { bestDistance = distance; best = other; }
+        }
+        return best;
+      }
+
+      function nearestRain(creature) {
+        let best = null;
+        let bestDistance = Infinity;
+        for (const zone of state.rainZones) {
+          const dx = zone.x - creature.x;
+          const dz = zone.z - creature.z;
+          const distance = dx * dx + dz * dz;
+          if (distance < bestDistance) { bestDistance = distance; best = zone; }
+        }
+        return best;
+      }
+
+      function chooseBehavior(creature) {
+        const distanceFromCenter = Math.hypot(creature.x, creature.z);
+        if (distanceFromCenter > WORLD_RADIUS - 1.25) {
+          creature.state = 'turning home';
+          creature.target = null;
+          creature.wanderHeading = Math.atan2(-creature.x, -creature.z) + range(creature.rng, -.25, .25);
+          return;
+        }
+
+        if (creature.energy < 75) {
+          const food = nearestFood(creature);
+          if (food) {
+            creature.state = 'foraging';
+            creature.target = food;
+            return;
+          }
+        }
+
+        if (creature.age > 10 && creature.energy > 80 && creature.cooldown <= 0 && state.creatures.length < NATURAL_POPULATION_LIMIT) {
+          const mate = nearestMate(creature);
+          if (mate) {
+            creature.state = 'courting';
+            creature.target = mate;
+            return;
+          }
+        }
+
+        const rain = nearestRain(creature);
+        if (rain && creature.genome.curiosity > .42 && creature.energy < 94) {
+          creature.state = 'following rain';
+          creature.target = rain;
+          return;
+        }
+
+        if (creature.energy < 22 && creature.rng() < .5) {
+          creature.state = 'resting';
+          creature.target = null;
+          return;
+        }
+
+        creature.state = creature.genome.sociality > .25 ? 'wandering together' : 'exploring';
+        creature.target = null;
+        creature.wanderHeading += range(creature.rng, -.95, .95);
+      }
+
+      function reproduce(a, b) {
+        if (!a.alive || !b.alive || a.cooldown > 0 || b.cooldown > 0 || a.energy < 78 || b.energy < 78 || state.creatures.length >= NATURAL_POPULATION_LIMIT) return;
+        const rng = seeded(`${state.seed}:child:${state.nextCreatureId}`);
+        const genome = breedGenome(a.genome, b.genome, rng);
+        const midpointX = (a.x + b.x) / 2;
+        const midpointZ = (a.z + b.z) / 2;
+        const birthAngle = rng() * TAU;
+        const birthOffset = .65 + rng() * .5;
+        let birthX = midpointX + Math.cos(birthAngle) * birthOffset;
+        let birthZ = midpointZ + Math.sin(birthAngle) * birthOffset;
+        const birthDistance = Math.hypot(birthX, birthZ);
+        if (birthDistance > WORLD_RADIUS - .7) {
+          birthX *= (WORLD_RADIUS - .7) / birthDistance;
+          birthZ *= (WORLD_RADIUS - .7) / birthDistance;
+        }
+        const child = spawnCreature(genome, {
+          position: { x: birthX, z: birthZ },
+          generation: Math.max(a.generation, b.generation) + 1,
+          energy: 68,
+          age: 0,
+          cooldown: 13
+        });
+        if (!child) return;
+        a.energy -= 24;
+        b.energy -= 24;
+        a.cooldown = 20;
+        b.cooldown = 20;
+        a.target = null;
+        b.target = null;
+        createRipple(child.x, child.z, 0x9e91ff, 1.5);
+        addEvent(`${child.name} hatched — generation ${child.generation}.`, true);
+        tone('birth');
+      }
+
+      function simulateCreature(creature, dt, pendingPairs) {
+        const g = creature.genome;
+        creature.age += dt;
+        creature.cooldown = Math.max(0, creature.cooldown - dt);
+        creature.decisionTimer -= dt;
+        const resting = creature.state === 'resting';
+        creature.energy -= (resting ? .18 : .46 + g.speed * .16) * g.metabolism * dt;
+
+        for (const zone of state.rainZones) {
+          const dx = zone.x - creature.x;
+          const dz = zone.z - creature.z;
+          if (dx * dx + dz * dz < 6.5) creature.energy = Math.min(100, creature.energy + .52 * dt);
+        }
+
+        if (creature.decisionTimer <= 0 || (creature.target && creature.target.alive === false)) {
+          chooseBehavior(creature);
+          creature.decisionTimer = .35 + creature.rng() * .45;
+        }
+
+        let targetX = null;
+        let targetZ = null;
+        if (creature.target?.alive !== false && creature.target && Number.isFinite(creature.target.x)) {
+          targetX = creature.target.x;
+          targetZ = creature.target.z;
+        }
+
+        let desired = creature.wanderHeading;
+        if (targetX !== null) desired = Math.atan2(targetX - creature.x, targetZ - creature.z);
+
+        let separateX = 0;
+        let separateZ = 0;
+        for (const other of state.creatures) {
+          if (other === creature || !other.alive) continue;
+          const dx = creature.x - other.x;
+          const dz = creature.z - other.z;
+          const distanceSq = dx * dx + dz * dz;
+          const minimumDistance = .7 + (g.size + other.genome.size) * .42;
+          if (distanceSq > .001 && distanceSq < minimumDistance * minimumDistance) {
+            const distance = Math.sqrt(distanceSq);
+            const strength = (minimumDistance - distance) / minimumDistance;
+            separateX += dx / distance * strength;
+            separateZ += dz / distance * strength;
+          }
+        }
+        if (Math.abs(separateX) + Math.abs(separateZ) > .02) {
+          const separateHeading = Math.atan2(separateX, separateZ);
+          desired = lerpAngle(desired, separateHeading, .38);
+        }
+
+        creature.heading = lerpAngle(creature.heading, desired, clamp(dt * (1.5 + g.curiosity * 1.4), 0, 1));
+        let moveSpeed = g.speed * (creature.state === 'resting' ? .07 : creature.state === 'courting' ? 1.12 : .82);
+        if (creature.energy < 10) moveSpeed *= .55;
+        creature.x += Math.sin(creature.heading) * moveSpeed * dt;
+        creature.z += Math.cos(creature.heading) * moveSpeed * dt;
+
+        const distance = Math.hypot(creature.x, creature.z);
+        if (distance > WORLD_RADIUS - .32) {
+          const scale = (WORLD_RADIUS - .32) / distance;
+          creature.x *= scale;
+          creature.z *= scale;
+          creature.wanderHeading = Math.atan2(-creature.x, -creature.z);
+        }
+
+        if (creature.state === 'foraging' && creature.target?.alive) {
+          const dx = creature.target.x - creature.x;
+          const dz = creature.target.z - creature.z;
+          if (dx * dx + dz * dz < .52) {
+            const food = creature.target;
+            removeFood(food);
+            creature.energy = Math.min(100, creature.energy + 27);
+            creature.target = null;
+            creature.state = 'feeding';
+            creature.decisionTimer = .6;
+          }
+        }
+
+        if (creature.state === 'courting' && creature.target?.alive) {
+          const mate = creature.target;
+          const dx = mate.x - creature.x;
+          const dz = mate.z - creature.z;
+          if (dx * dx + dz * dz < .85 && creature.id < mate.id) pendingPairs.push([creature, mate]);
+        }
+
+        creature.energy = clamp(creature.energy, 0, 100);
+      }
+
+      function simulate(dt) {
+        state.tick++;
+        state.simTime += dt;
+        state.biocharge = Math.min(100, state.biocharge + dt * 1.15);
+        const pendingPairs = [];
+
+        for (const creature of [...state.creatures]) simulateCreature(creature, dt, pendingPairs);
+        const paired = new Set();
+        for (const [a, b] of pendingPairs) {
+          if (paired.has(a.id) || paired.has(b.id)) continue;
+          paired.add(a.id);
+          paired.add(b.id);
+          reproduce(a, b);
+        }
+
+        for (const creature of [...state.creatures]) {
+          if (creature.age >= creature.maxAge || creature.energy <= 0) removeCreature(creature);
+        }
+
+        state.foodTimer -= dt;
+        if (state.foodTimer <= 0) {
+          if (state.foods.length < 16) {
+            const point = randomPoint(state.worldRng, WORLD_RADIUS - 1.1);
+            scatterFood(point.x, point.z, state.foods.length < 8 ? 3 : 1, false);
+          }
+          state.foodTimer = 2.8 + state.worldRng() * 2.4;
+        }
+
+        for (const zone of [...state.rainZones]) {
+          zone.life -= dt;
+          if (Math.floor(zone.life * 2) !== Math.floor((zone.life + dt) * 2) && state.worldRng() < .33) addRainGrowth(zone);
+          if (zone.life <= 0) {
+            effectGroup.remove(zone.group);
+            zone.material.dispose();
+            zone.ring.geometry.dispose();
+            state.rainZones = state.rainZones.filter(item => item !== zone);
+          }
+        }
+
+        state.rescueTimer -= dt;
+        if (state.creatures.length < 6 && state.rescueTimer <= 0) {
+          const rng = seeded(`${state.seed}:rescue:${state.nextCreatureId}`);
+          const creature = spawnCreature(mutateGenome(randomGenome(rng), rng, .1, 1), { age: 0, energy: 76 });
+          if (creature) addEvent(`${creature.name} emerged from a dormant spore.`, true);
+          state.rescueTimer = 12;
+        }
+
+        for (const effect of [...state.effects]) {
+          effect.age += dt;
+          const progress = effect.age / effect.life;
+          effect.mesh.scale.setScalar(lerp(.25, 2.8 * effect.scale, progress));
+          effect.material.opacity = (1 - progress) * .78;
+          if (progress >= 1) {
+            effectGroup.remove(effect.mesh);
+            effect.material.dispose();
+            state.effects = state.effects.filter(item => item !== effect);
+          }
+        }
+
+        state.uiTimer -= dt;
+        if (state.uiTimer <= 0) {
+          updateUI();
+          state.uiTimer = .2;
+        }
+      }
+
+      function syncRigs() {
+        const time = state.simTime;
+        for (const creature of state.creatures) {
+          const g = creature.genome;
+          const rig = creature.rig;
+          const gait = time * (3.1 + g.speed * 2.3) + creature.id * .77;
+          const moving = creature.state === 'resting' ? .12 : 1;
+          const spawnProgress = clamp((time - creature.spawnTime) / .9, 0, 1);
+          const spawnEase = 1 - (1 - spawnProgress) ** 3;
+          rig.root.position.set(creature.x, Math.sin(gait * .5) * .035 * moving, creature.z);
+          rig.root.rotation.y = creature.heading;
+          rig.root.scale.setScalar(spawnEase * g.size);
+          rig.bodyPivot.rotation.z = Math.sin(gait * .5) * .035 * moving;
+          rig.bodyPivot.rotation.x = Math.cos(gait * .5) * .018 * moving;
+          rig.segments.forEach((segment, i) => {
+            segment.position.y = segment.userData.baseY + Math.sin(gait * .5 + segment.userData.phase) * .025 * moving;
+            segment.rotation.y = Math.sin(gait * .4 - i * .62) * .045 * moving;
+          });
+          rig.legs.forEach(leg => {
+            leg.pivot.rotation.x = Math.sin(gait + leg.phase) * .48 * moving;
+            leg.pivot.rotation.z = leg.baseZ + Math.cos(gait * 2 + leg.phase) * .035 * moving;
+          });
+          rig.fins.forEach(fin => {
+            fin.pivot.rotation.z = fin.base + fin.side * Math.sin(gait * 1.45 + fin.phase) * .35 * moving;
+          });
+          rig.tails.forEach((tail, i) => {
+            tail.rotation.y = Math.sin(gait * .65 - i * .72) * .28 * moving;
+            tail.rotation.x = Math.cos(gait * .45 - i) * .05;
+          });
+          rig.antennae.forEach((antenna, i) => {
+            antenna.pivot.rotation.x = Math.sin(gait * .55 + i) * .12 * moving;
+          });
+        }
+
+        for (const zone of state.rainZones) {
+          const progress = 1 - zone.life / zone.maxLife;
+          zone.material.opacity = Math.sin(Math.min(1, zone.life) * Math.PI / 2) * .58;
+          zone.ring.rotation.z = time * .24;
+          zone.drops.forEach((drop, i) => {
+            drop.position.y = .18 + ((drop.userData.offset + time * (1.65 + (i % 3) * .12)) % 4.05);
+          });
+        }
+
+        if (state.selected?.alive) {
+          selectionRing.visible = true;
+          selectionRing.position.x = state.selected.x;
+          selectionRing.position.z = state.selected.z;
+          selectionRing.rotation.z = time * .34;
+          selectionRing.scale.setScalar(state.selected.genome.size * (1 + Math.sin(time * 2.2) * .04));
+        } else {
+          selectionRing.visible = false;
+        }
+
+        if (!reducedMotion) {
+          ambientMotes.rotation.y = time * .008;
+          ambientMotes.position.y = Math.sin(time * .08) * .18;
+        }
+      }
+
+      function announce(message) {
+        announcer.textContent = '';
+        requestAnimationFrame(() => { announcer.textContent = message; });
+      }
+
+      function addEvent(message, speak = false) {
+        const entry = document.createElement('div');
+        entry.className = 'log-entry';
+        entry.textContent = `T+${String(Math.floor(state.simTime)).padStart(3, '0')}  ${message}`;
+        fieldLog.prepend(entry);
+        while (fieldLog.children.length > 4) fieldLog.lastElementChild.remove();
+        const toast = document.getElementById('mobile-toast');
+        toast.textContent = message;
+        toast.classList.add('is-visible');
+        clearTimeout(state.toastTimer);
+        state.toastTimer = setTimeout(() => toast.classList.remove('is-visible'), 3200);
+        if (speak) announce(message);
+      }
+
+      function traitMarkup(label, value, display) {
+        const percent = Math.round(clamp(value, 0, 1) * 100);
+        return `<div class="trait"><span>${label}</span><span class="trait-track"><span class="trait-fill" style="width:${percent}%"></span></span><output>${display}</output></div>`;
+      }
+
+      function updateInspector() {
+        const creature = state.selected;
+        if (!creature?.alive) {
+          inspector.classList.add('is-empty');
+          return;
+        }
+        const g = creature.genome;
+        inspector.classList.remove('is-empty');
+        ui.specimenName.textContent = creature.name;
+        ui.specimenType.textContent = `${archetypeNames[g.archetype]} · ${creature.state}`;
+        ui.specimenSwatch.style.background = `hsl(${Math.round(g.hue * 360)} 58% 52%)`;
+        ui.specimenEnergy.textContent = `${Math.round(creature.energy)}%`;
+        ui.specimenAge.textContent = `${Math.floor(creature.age)}s`;
+        ui.specimenGeneration.textContent = `G${creature.generation}`;
+        ui.mutationNote.hidden = !creature.mutationNote;
+        ui.mutationNote.textContent = creature.mutationNote ? `VARIANT SHIFT · ${creature.mutationNote}` : '';
+        ui.traits.innerHTML = [
+          traitMarkup('Pace', (g.speed - .62) / .8, g.speed.toFixed(1)),
+          traitMarkup('Curiosity', g.curiosity, `${Math.round(g.curiosity * 100)}`),
+          traitMarkup('Social', (g.sociality + 1) / 2, g.sociality > .3 ? 'flock' : g.sociality < -.25 ? 'solo' : 'calm'),
+          traitMarkup('Metabolism', (g.metabolism - .76) / .52, g.metabolism.toFixed(1)),
+          traitMarkup('Frame', (g.size - .72) / .56, `${g.segments} seg`)
+        ].join('');
+      }
+
+      function updateUI() {
+        const maxGeneration = Math.max(1, ...state.creatures.map(creature => creature.generation));
+        const diversity = genomeDiversity();
+        ui.seed.textContent = state.seed;
+        ui.population.textContent = `${state.creatures.length}/${MAX_POPULATION}`;
+        ui.generation.textContent = maxGeneration;
+        ui.diversity.textContent = diversity;
+        ui.chargeValue.textContent = Math.floor(state.biocharge);
+        ui.chargeFill.style.width = `${state.biocharge}%`;
+        ui.spore.disabled = state.biocharge < 18;
+        ui.rain.disabled = state.biocharge < 28;
+        ui.bud.disabled = state.biocharge < 42 || !state.selected?.alive || state.creatures.length >= MAX_POPULATION;
+        const budReason = !state.selected?.alive
+          ? 'Select a specimen'
+          : state.creatures.length >= MAX_POPULATION
+            ? 'Habitat full'
+            : state.biocharge < 42
+              ? `Need ${42 - Math.floor(state.biocharge)} charge`
+              : '42 charge · mutate';
+        ui.budMeta.textContent = budReason;
+        ui.bud.title = budReason;
+        updateInspector();
+        if (!state.milestone && diversity >= 65 && maxGeneration >= 3) {
+          state.milestone = true;
+          addEvent('Milestone: the grove is richly diverse.', true);
+          tone('milestone');
+        }
+      }
+
+      function selectCreature(creature) {
+        state.selected = creature?.alive ? creature : null;
+        inspector.classList.remove('is-expanded');
+        document.getElementById('traits-toggle').setAttribute('aria-expanded', 'false');
+        document.getElementById('traits-toggle').textContent = 'Show genome traits';
+        if (state.selected) {
+          controls.autoRotate = false;
+          announce(`${state.selected.name}, ${archetypeNames[state.selected.genome.archetype]}, selected.`);
+        }
+        updateInspector();
+        updateUI();
+      }
+
+      function setAction(action) {
+        if (action === 'bud') {
+          if (state.biocharge < 42) return announce('Not enough Biocharge to bud a variant.');
+          if (budVariant(state.selected)) state.biocharge -= 42;
+          updateUI();
+          return;
+        }
+        const cost = action === 'spore' ? 18 : 28;
+        if (state.biocharge < cost) return announce(`Not enough Biocharge for ${action === 'spore' ? 'spores' : 'rain'}.`);
+        state.activeAction = state.activeAction === action ? null : action;
+        ui.spore.classList.toggle('is-active', state.activeAction === 'spore');
+        ui.rain.classList.toggle('is-active', state.activeAction === 'rain');
+        ui.spore.setAttribute('aria-pressed', String(state.activeAction === 'spore'));
+        ui.rain.setAttribute('aria-pressed', String(state.activeAction === 'rain'));
+        canvas.classList.toggle('is-targeting', Boolean(state.activeAction));
+        targetHint.classList.toggle('is-visible', Boolean(state.activeAction));
+        if (state.activeAction) announce(`Choose where to ${action === 'spore' ? 'scatter spores' : 'call rain'}.`);
+      }
+
+      function placeKeyboardAction(action) {
+        const x = state.selected?.alive ? state.selected.x : 0;
+        const z = state.selected?.alive ? state.selected.z : 0;
+        if (action === 'spore') {
+          if (state.biocharge < 18) return announce('Not enough Biocharge to scatter spores.');
+          state.biocharge -= 18;
+          scatterFood(x, z, 7, true);
+        } else if (action === 'rain') {
+          if (state.biocharge < 28) return announce('Not enough Biocharge to call rain.');
+          state.biocharge -= 28;
+          callRain(x, z);
+        }
+        cancelAction();
+        updateUI();
+      }
+
+      function selectNextCreature() {
+        if (!state.creatures.length) return selectCreature(null);
+        const currentIndex = state.selected ? state.creatures.indexOf(state.selected) : -1;
+        selectCreature(state.creatures[(currentIndex + 1) % state.creatures.length]);
+      }
+
+      function cancelAction() {
+        state.activeAction = null;
+        ui.spore.classList.remove('is-active');
+        ui.rain.classList.remove('is-active');
+        ui.spore.setAttribute('aria-pressed', 'false');
+        ui.rain.setAttribute('aria-pressed', 'false');
+        canvas.classList.remove('is-targeting');
+        targetHint.classList.remove('is-visible');
+      }
+
+      function spendAction(x, z) {
+        if (!state.activeAction || Math.hypot(x, z) > WORLD_RADIUS - .35) return false;
+        let spent = false;
+        if (state.activeAction === 'spore' && state.biocharge >= 18) {
+          state.biocharge -= 18;
+          scatterFood(x, z, 7, true);
+          spent = true;
+        } else if (state.activeAction === 'rain' && state.biocharge >= 28) {
+          state.biocharge -= 28;
+          callRain(x, z);
+          spent = true;
+        }
+        if (!spent) announce('That intervention needs more Biocharge.');
+        cancelAction();
+        updateUI();
+        return spent;
+      }
+
+      function setPaused(paused, hidden = false) {
+        state.paused = paused;
+        state.hiddenPause = hidden;
+        ui.pause.textContent = paused ? '▶' : '‖';
+        ui.pause.setAttribute('aria-label', paused ? 'Resume simulation' : 'Pause simulation');
+        pausedChip.classList.toggle('is-visible', paused && !hidden);
+        if (!hidden) announce(paused ? 'Simulation paused.' : 'Simulation resumed.');
+      }
+
+      function cycleSpeed(direction = 1) {
+        const speeds = [.5, 1, 2];
+        let index = speeds.indexOf(state.speed);
+        index = (index + direction + speeds.length) % speeds.length;
+        state.speed = speeds[index];
+        ui.speed.textContent = `${state.speed}×`;
+        announce(`Simulation speed ${state.speed} times.`);
+      }
+
+      function tone(kind) {
+        if (!state.sound) return;
+        try {
+          if (!state.audio) state.audio = new (window.AudioContext || window.webkitAudioContext)();
+          const now = state.audio.currentTime;
+          const osc = state.audio.createOscillator();
+          const gain = state.audio.createGain();
+          const frequencies = { food: 420, rain: 310, birth: 620, death: 180, milestone: 760 };
+          osc.type = kind === 'rain' ? 'sine' : 'triangle';
+          osc.frequency.setValueAtTime(frequencies[kind] || 440, now);
+          if (kind === 'birth' || kind === 'milestone') osc.frequency.exponentialRampToValueAtTime((frequencies[kind] || 440) * 1.35, now + .16);
+          gain.gain.setValueAtTime(.0001, now);
+          gain.gain.exponentialRampToValueAtTime(.045, now + .02);
+          gain.gain.exponentialRampToValueAtTime(.0001, now + .28);
+          osc.connect(gain).connect(state.audio.destination);
+          osc.start(now);
+          osc.stop(now + .3);
+        } catch { /* Sound is optional. */ }
+      }
+
+      async function toggleSound() {
+        state.sound = !state.sound;
+        ui.sound.classList.toggle('is-active', state.sound);
+        ui.sound.setAttribute('aria-label', state.sound ? 'Turn sound off' : 'Turn sound on');
+        ui.sound.setAttribute('aria-pressed', String(state.sound));
+        ui.sound.title = state.sound ? 'Sound on' : 'Sound off';
+        document.getElementById('dialog-sound-button').textContent = `Sound: ${state.sound ? 'on' : 'off'}`;
+        try {
+          if (state.sound) {
+            if (state.audio?.state === 'suspended') await state.audio.resume();
+            tone('food');
+          } else if (state.audio?.state === 'running') {
+            await state.audio.suspend();
+          }
+        } catch { /* Sound remains optional. */ }
+      }
+
+      function clearWorld() {
+        selectCreature(null);
+        for (const creature of [...state.creatures]) {
+          creature.alive = false;
+          creatureGroup.remove(creature.rig.root);
+          const hitIndex = hitMeshes.indexOf(creature.rig.hit);
+          if (hitIndex >= 0) hitMeshes.splice(hitIndex, 1);
+          creature.rig.materials.forEach(material => material.dispose());
+        }
+        state.creatures = [];
+        for (const food of state.foods) foodGroup.remove(food.group);
+        state.foods = [];
+        for (const zone of state.rainZones) {
+          effectGroup.remove(zone.group);
+          zone.material.dispose();
+          zone.ring.geometry.dispose();
+        }
+        state.rainZones = [];
+        for (const effect of state.effects) {
+          effectGroup.remove(effect.mesh);
+          effect.material.dispose();
+        }
+        state.effects = [];
+        fieldLog.replaceChildren();
+        cancelAction();
+      }
+
+      function resetWorld(seed) {
+        clearWorld();
+        state.seed = String(seed || randomSeed()).trim().toUpperCase().slice(0, 28) || randomSeed();
+        state.tick = 0;
+        state.simTime = 0;
+        state.biocharge = 65;
+        state.nextCreatureId = 0;
+        state.nextFoodId = 0;
+        state.worldRng = seeded(`${state.seed}:world`);
+        state.foodTimer = 2;
+        state.rescueTimer = 10;
+        state.milestone = false;
+        rebuildDecorations();
+
+        for (let i = 0; i < 10; i++) {
+          const rng = seeded(`${state.seed}:genome:${i}`);
+          const genome = randomGenome(rng, i < 3 ? i : null);
+          const options = i < 2
+            ? { position: { x: -.55 + i * 1.1, z: .25 }, energy: 92, age: 18, cooldown: 0, animateSpawn: false }
+            : { animateSpawn: false };
+          spawnCreature(genome, options);
+        }
+
+        for (let i = 0; i < 24; i++) {
+          const point = randomPoint(state.worldRng, WORLD_RADIUS - .8);
+          makeFood(point.x, point.z);
+        }
+
+        controls.target.set(0, .45, 0);
+        controls.autoRotate = !reducedMotion;
+        camera.position.set(16.5, 14.5, 18.5);
+        controls.update();
+        addEvent(`Study ${state.seed} began with 10 founders.`);
+        updateUI();
+      }
+
+      const raycaster = new THREE.Raycaster();
+      const pointer = new THREE.Vector2();
+      let pointerDown = null;
+      const activePointers = new Set();
+      let multiPointerGesture = false;
+
+      function setPointerFromEvent(event) {
+        const rect = canvas.getBoundingClientRect();
+        pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+        pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+        raycaster.setFromCamera(pointer, camera);
+      }
+
+      canvas.addEventListener('pointerdown', event => {
+        activePointers.add(event.pointerId);
+        if (activePointers.size > 1) multiPointerGesture = true;
+        if (event.isPrimary) pointerDown = { x: event.clientX, y: event.clientY, moved: false };
+        controls.autoRotate = false;
+        canvas.focus({ preventScroll: true });
+      });
+
+      canvas.addEventListener('pointermove', event => {
+        if (event.isPrimary && pointerDown && Math.hypot(event.clientX - pointerDown.x, event.clientY - pointerDown.y) > 7) pointerDown.moved = true;
+      });
+
+      canvas.addEventListener('pointerup', event => {
+        const wasMultiPointer = multiPointerGesture;
+        activePointers.delete(event.pointerId);
+        if (!activePointers.size) multiPointerGesture = false;
+        const start = event.isPrimary ? pointerDown : null;
+        if (event.isPrimary) pointerDown = null;
+        if (wasMultiPointer || !start || start.moved || Math.hypot(event.clientX - start.x, event.clientY - start.y) > 7) return;
+        setPointerFromEvent(event);
+        if (state.activeAction) {
+          const groundHit = raycaster.intersectObject(terrainPick, false)[0];
+          if (groundHit) spendAction(groundHit.point.x, groundHit.point.z);
+          return;
+        }
+        const hit = raycaster.intersectObjects(hitMeshes, false)[0];
+        selectCreature(hit?.object?.userData?.creature || null);
+      });
+
+      canvas.addEventListener('pointercancel', event => {
+        activePointers.delete(event.pointerId);
+        if (event.isPrimary) pointerDown = null;
+        if (!activePointers.size) multiPointerGesture = false;
+      });
+
+      canvas.addEventListener('webglcontextlost', event => {
+        event.preventDefault();
+        state.contextLost = true;
+        setPaused(true, true);
+        loading.hidden = false;
+        loading.classList.remove('is-hidden');
+        loadingTitle.textContent = 'The 3D habitat paused.';
+        loadingMessage.textContent = 'The graphics context was lost. Reload the page to regrow this world.';
+        loading.querySelector('.loading-orbit').style.display = 'none';
+      });
+
+      canvas.addEventListener('webglcontextrestored', () => {
+        state.contextLost = false;
+        loading.classList.add('is-hidden');
+        loading.hidden = true;
+        loading.querySelector('.loading-orbit').style.display = '';
+        if (state.hiddenPause) setPaused(false, true);
+      });
+
+      ui.spore.addEventListener('click', () => setAction('spore'));
+      ui.rain.addEventListener('click', () => setAction('rain'));
+      ui.bud.addEventListener('click', () => setAction('bud'));
+      ui.pause.addEventListener('click', () => setPaused(!state.paused));
+      ui.speed.addEventListener('click', () => cycleSpeed(1));
+
+      ui.sound.addEventListener('click', toggleSound);
+      document.getElementById('dialog-sound-button').addEventListener('click', toggleSound);
+
+      document.getElementById('inspector-close').addEventListener('click', () => selectCreature(null));
+      document.getElementById('traits-toggle').addEventListener('click', event => {
+        const expanded = inspector.classList.toggle('is-expanded');
+        event.currentTarget.setAttribute('aria-expanded', String(expanded));
+        event.currentTarget.textContent = expanded ? 'Hide genome traits' : 'Show genome traits';
+      });
+
+      const beginButton = document.getElementById('begin-button');
+      const introInertTargets = [...document.querySelector('.hud').children].filter(element => element !== onboarding && element !== announcer);
+      function setIntroLock(locked) {
+        canvas.inert = locked;
+        introInertTargets.forEach(element => { element.inert = locked; });
+      }
+
+      beginButton.addEventListener('click', () => {
+        onboarding.hidden = true;
+        state.introOpen = false;
+        setIntroLock(false);
+        canvas.focus({ preventScroll: true });
+        announce('Habitat controls ready. Select a creature or choose an intervention.');
+      });
+
+      document.getElementById('copy-seed').addEventListener('click', async () => {
+        try {
+          await navigator.clipboard.writeText(state.seed);
+          announce(`Seed ${state.seed} copied.`);
+        } catch {
+          announce(`Current seed is ${state.seed}.`);
+        }
+      });
+
+      const helpDialog = document.getElementById('help-dialog');
+      const worldDialog = document.getElementById('world-dialog');
+      document.getElementById('help-button').addEventListener('click', () => helpDialog.showModal());
+      document.getElementById('new-world-button').addEventListener('click', openWorldDialog);
+
+      function openWorldDialog() {
+        const input = document.getElementById('seed-input');
+        input.value = randomSeed();
+        worldDialog.showModal();
+        requestAnimationFrame(() => input.select());
+      }
+
+      document.querySelectorAll('[data-close-dialog]').forEach(button => {
+        button.addEventListener('click', () => document.getElementById(button.dataset.closeDialog).close());
+      });
+
+      document.getElementById('world-form').addEventListener('submit', event => {
+        event.preventDefault();
+        const seed = document.getElementById('seed-input').value;
+        worldDialog.close();
+        resetWorld(seed);
+        announce(`New world ${state.seed} grown.`);
+      });
+
+      document.addEventListener('keydown', event => {
+        if (event.target instanceof HTMLElement && event.target.closest('button, input, textarea, select, [contenteditable="true"]')) return;
+        if (helpDialog.open || worldDialog.open) return;
+        if (event.code === 'Space') {
+          event.preventDefault();
+          setPaused(!state.paused);
+        } else if (event.key === '1') placeKeyboardAction('spore');
+        else if (event.key === '2') placeKeyboardAction('rain');
+        else if (event.key === '3') setAction('bud');
+        else if (event.key.toLowerCase() === 'n') selectNextCreature();
+        else if (event.key === '+' || event.key === '=') cycleSpeed(1);
+        else if (event.key === '-') cycleSpeed(-1);
+        else if (event.key.toLowerCase() === 'r') openWorldDialog();
+        else if (event.key === 'Escape') {
+          if (state.activeAction) cancelAction();
+          else selectCreature(null);
+        }
+      });
+
+      document.addEventListener('visibilitychange', () => {
+        if (document.hidden) {
+          if (!state.paused) setPaused(true, true);
+        } else if (state.hiddenPause) {
+          setPaused(false, true);
+          state.hiddenPause = false;
+        }
+      });
+
+      function resize() {
+        const width = innerWidth;
+        const height = innerHeight;
+        camera.aspect = width / height;
+        camera.updateProjectionMatrix();
+        renderer.setSize(width, height, false);
+        renderer.setPixelRatio(Math.min(devicePixelRatio, width < 720 ? 1.25 : 1.5));
+        ambientMotes.material.uniforms.uPixelRatio.value = Math.min(devicePixelRatio, 1.5);
+      }
+      addEventListener('resize', resize, { passive: true });
+      resize();
+
+      resetWorld(new URLSearchParams(location.search).get('seed') || 'MOSS-4821');
+      setIntroLock(true);
+      requestAnimationFrame(() => beginButton.focus({ preventScroll: true }));
+
+      let lastTime = performance.now();
+      let accumulator = 0;
+      function frame(now) {
+        requestAnimationFrame(frame);
+        const wallDelta = Math.min(.075, Math.max(0, (now - lastTime) / 1000));
+        lastTime = now;
+        if (!state.paused && !state.introOpen) {
+          accumulator += wallDelta * state.speed;
+          let steps = 0;
+          while (accumulator >= FIXED_STEP && steps < 5) {
+            simulate(FIXED_STEP);
+            accumulator -= FIXED_STEP;
+            steps++;
+          }
+        } else {
+          accumulator = 0;
+        }
+        if (!state.contextLost) {
+          syncRigs();
+          controls.update();
+          renderer.render(scene, camera);
+        }
+      }
+
+      function snapshot() {
+        return {
+          seed: state.seed,
+          tick: state.tick,
+          food: state.foods.length,
+          charge: round(state.biocharge),
+          creatures: state.creatures.map(creature => ({
+            id: creature.id,
+            generation: creature.generation,
+            genome: genomeKey(creature.genome),
+            x: round(creature.x),
+            z: round(creature.z),
+            energy: round(creature.energy),
+            age: round(creature.age),
+            state: creature.state
+          })).sort((a, b) => a.id - b.id)
+        };
+      }
+
+      window.__MOSSLIGHT__ = {
+        ready: true,
+        get seed() { return state.seed; },
+        get tick() { return state.tick; },
+        get population() { return state.creatures.length; },
+        get paused() { return state.paused; },
+        pause(value = true) { setPaused(Boolean(value), false); },
+        step(count = 1) {
+          const steps = clamp(Math.floor(count), 0, 50000);
+          for (let i = 0; i < steps; i++) simulate(FIXED_STEP);
+          syncRigs();
+          updateUI();
+          return snapshot();
+        },
+        regenerate(seed) { resetWorld(seed); return snapshot(); },
+        snapshot,
+        genomeSignature() { return state.creatures.map(creature => genomeKey(creature.genome)).join('|'); },
+        rendererInfo() {
+          return {
+            geometries: renderer.info.memory.geometries,
+            textures: renderer.info.memory.textures,
+            programs: renderer.info.programs?.length ?? 0,
+            calls: renderer.info.render.calls
+          };
+        },
+        selectFirst() { selectCreature(state.creatures[0] || null); return state.selected?.name || null; },
+        scatterAt(x = 0, z = 0) { scatterFood(x, z, 7, false); return state.foods.length; },
+        rainAt(x = 0, z = 0) { callRain(x, z); return state.rainZones.length; },
+        budSelected() { return budVariant(state.selected); }
+      };
+
+      loading.classList.add('is-hidden');
+      loading.hidden = true;
+      requestAnimationFrame(frame);
+
+      addEventListener('beforeunload', () => {
+        clearWorld();
+        controls.dispose();
+        renderer.dispose();
+        Object.values(geos).forEach(geometry => geometry.dispose());
+        Object.values(mats).forEach(material => material.dispose());
+        ambientMotes.geometry.dispose();
+        ambientMotes.material.dispose();
+        cliff.geometry.dispose();
+        soil.geometry.dispose();
+        terrain.geometry.dispose();
+        terrainPick.geometry.dispose();
+        clearTimeout(state.toastTimer);
+        if (state.audio && state.audio.state !== 'closed') state.audio.close();
+      }, { once: true });
+    }
+  </script>
+</body>
+</html>
