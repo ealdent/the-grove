@@ -1,3 +1,32 @@
+# Todo: Auralis Drift SVG Exploration
+
+## Product Spec
+
+- Build `svg-forest/gpt56-terra-ultra-svg-forest.html` as a fully self-contained first-person exploration game whose renderer and every in-world graphic are pure SVG.
+- Create a distinctive "Auralis Drift" alien wind-garden: a layered dusk sky and glass-sand ground populated with projected sail trees, whistle blooms, prism cairns, and drifting ray-creatures.
+- Stream a deterministic endless world through a bounded chunk cache and reuse a fixed pool of SVG prop nodes so exploration stays smooth.
+- Support frame-rate-independent keyboard, arrow-key, mouse-drag, and true multitouch dual-joystick movement, including moving-and-turning together, head bob, responsive sizing, and browser gesture suppression.
+- Do not inspect another `svg-forest` game file before this new game is authored; only then add one alphabetically placed OpenAI / GPT-5.6 Terra / ultra gallery tile.
+
+## Plan
+
+- [x] Author the new single-file SVG game from first principles, including visual language, SVG definitions, deterministic world streaming, and pooled perspective projection.
+- [x] Add desktop input, mouse-drag look, independent two-pointer virtual joysticks, accessibility guidance, responsive layout, and mobile gesture guards.
+- [x] Inspect and update only `svg-forest/index.html` after the game is complete, placing the matching tile in case-insensitive model order.
+- [x] Verify static constraints, syntax, runtime behavior, desktop/mobile input, resource bounds, console/network health, and final diff; complete a skeptical review.
+- [x] Commit the scoped files to `main` and push them to its configured upstream.
+
+## Review
+
+- Created `svg-forest/gpt56-terra-ultra-svg-forest.html`, a 41 KB dependency-free first-person SVG game. Auralis Drift streams a deterministic 9×9 chunk window while reusing a fixed 192-slot SVG prop pool; the world uses a glass-sand ground, layered dusk sky, sail trees, whistle blooms, prism cairns, wind harps, and raylings.
+- Added frame-rate-independent forward/back movement and turning, keyboard and mouse-drag look, moving-only head bob, gesture guards, responsive HUD/onboarding, and independently captured pointer IDs for the two touch joysticks. Reduced-motion preference disables head bob, ray drift/sway, and sparkle motion.
+- Added exactly one OpenAI / GPT-5.6 Terra / ultra tile to `svg-forest/index.html` between GPT-5.6 Sol Pro and Grok 4.5. Static model-order verification found 20 gallery cards in case-insensitive order; the browser tile opened the correct game URL and reported no console warnings/errors.
+- Static proof passed: inline JavaScript parses; there is one SVG scene with 41 paths, 13 gradients, SVG-only dynamic element creation, no canvas/WebGL/Three.js, no external asset/dependency, no network API, 40 unique IDs, and a whitespace-clean diff.
+- Browser proof passed in the in-app browser: the intro dismissed, mouse drag changed the compass to Eastward bloom, W input moved the player, the renderer held 192 pooled slots with 36–45 visible depth-projected props, and console warnings/errors were empty. Desktop and 390×844 portrait captures were visually reviewed; portrait had a full-viewport scene, no page overflow, and both 97.5 px joysticks in bounds. Compact 568×320 layout testing caught and fixed an onboarding overflow; it then fit within the viewport with no page overflow. A final scoped CSS review fixed the overlapping mobile-landscape hint transform as well.
+- Skeptical review found no core rendering/input or index blocker. Physical iOS/Android multitouch hardware was unavailable, so true concurrent touch was verified by independent pointer-capture implementation and static review rather than a device run.
+
+---
+
 # Todo: Moonberry Meadow Tower Defense
 
 ## Plan

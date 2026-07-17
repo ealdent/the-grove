@@ -1,0 +1,949 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#080d21">
+  <title>Auralis Drift — SVG Exploration</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --ink: #eafcff;
+      --quiet: #accad7;
+      --panel: rgba(6, 16, 38, 0.78);
+      --edge: rgba(143, 246, 230, 0.45);
+      --mint: #8dfae2;
+      --rose: #ff9ccf;
+      --sun: #ffd77a;
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      overflow: hidden;
+      overscroll-behavior: none;
+      touch-action: none;
+      -webkit-text-size-adjust: 100%;
+      -webkit-user-select: none;
+      user-select: none;
+      background: #080d21;
+      font-family: ui-rounded, "Avenir Next", "Segoe UI", system-ui, sans-serif;
+    }
+
+    button { font: inherit; }
+
+    #game {
+      position: fixed;
+      inset: 0;
+      overflow: hidden;
+      isolation: isolate;
+      background: #080d21;
+    }
+
+    #scene {
+      display: block;
+      width: 100%;
+      height: 100%;
+      cursor: grab;
+      touch-action: none;
+    }
+
+    #scene.dragging { cursor: grabbing; }
+
+    .hud {
+      position: absolute;
+      z-index: 3;
+      pointer-events: none;
+      color: var(--ink);
+      inset: 0;
+      padding: max(16px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(16px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+    }
+
+    .masthead {
+      width: min(360px, calc(100vw - 32px));
+      padding: 12px 14px 11px;
+      border: 1px solid var(--edge);
+      border-radius: 16px;
+      background: var(--panel);
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.24), inset 0 1px rgba(255, 255, 255, 0.08);
+    }
+
+    .eyebrow {
+      margin: 0 0 3px;
+      color: var(--mint);
+      font-size: 0.63rem;
+      font-weight: 800;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+    }
+
+    h1 {
+      margin: 0;
+      font-family: Georgia, "Times New Roman", serif;
+      font-size: clamp(1.38rem, 3vw, 1.76rem);
+      font-weight: 700;
+      letter-spacing: 0.045em;
+      line-height: 1;
+      text-shadow: 0 2px 14px rgba(131, 252, 226, 0.45);
+    }
+
+    .readout {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 8px;
+      color: var(--quiet);
+      font-size: 0.73rem;
+      line-height: 1.3;
+    }
+
+    .readout b { color: var(--sun); font-weight: 800; }
+    .dot { color: var(--rose); }
+
+    .hint {
+      position: absolute;
+      top: max(18px, env(safe-area-inset-top));
+      right: max(18px, env(safe-area-inset-right));
+      max-width: min(340px, calc(100vw - 32px));
+      padding: 9px 12px;
+      border: 1px solid rgba(255, 224, 143, 0.32);
+      border-radius: 999px;
+      color: #f8e7bb;
+      background: rgba(30, 20, 55, 0.62);
+      font-size: 0.7rem;
+      line-height: 1.25;
+      text-align: right;
+      transition: opacity 0.45s ease, transform 0.45s ease;
+    }
+
+    .hint.is-dim { opacity: 0.18; transform: translateY(-4px); }
+
+    .world-note {
+      position: absolute;
+      left: 50%;
+      top: max(17px, env(safe-area-inset-top));
+      transform: translateX(-50%);
+      width: max-content;
+      max-width: calc(100vw - 420px);
+      color: rgba(224, 253, 250, 0.72);
+      font-size: 0.65rem;
+      font-weight: 700;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      text-align: center;
+    }
+
+    .intro {
+      position: absolute;
+      z-index: 8;
+      left: 50%;
+      top: 50%;
+      width: min(470px, calc(100vw - 32px));
+      padding: clamp(20px, 4vw, 30px);
+      border: 1px solid rgba(160, 248, 230, 0.6);
+      border-radius: 24px;
+      background: rgba(7, 15, 37, 0.9);
+      box-shadow: 0 22px 54px rgba(0, 0, 0, 0.42), inset 0 1px rgba(255, 255, 255, 0.09);
+      color: var(--ink);
+      text-align: center;
+      transform: translate(-50%, -50%);
+      transition: opacity 0.35s ease, transform 0.35s ease, visibility 0.35s ease;
+    }
+
+    .intro.is-hidden {
+      visibility: hidden;
+      opacity: 0;
+      transform: translate(-50%, calc(-50% + 12px));
+      pointer-events: none;
+    }
+
+    .intro-mark {
+      color: var(--sun);
+      font-size: 1.3rem;
+      letter-spacing: 0.28em;
+      text-indent: 0.28em;
+      text-shadow: 0 0 20px rgba(255, 210, 114, 0.7);
+    }
+
+    .intro h2 {
+      margin: 9px 0 8px;
+      font-family: Georgia, "Times New Roman", serif;
+      font-size: clamp(1.8rem, 6vw, 2.55rem);
+      line-height: 0.94;
+    }
+
+    .intro p {
+      margin: 0 auto 16px;
+      max-width: 38ch;
+      color: #cae0e8;
+      font-size: 0.92rem;
+      line-height: 1.55;
+    }
+
+    .control-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin: 15px 0 18px;
+      color: #b6d0da;
+      font-size: 0.71rem;
+      text-align: left;
+    }
+
+    .control-grid span {
+      display: block;
+      padding: 8px 9px;
+      border: 1px solid rgba(158, 243, 228, 0.18);
+      border-radius: 10px;
+      background: rgba(82, 110, 155, 0.14);
+    }
+
+    .control-grid b { color: var(--mint); }
+
+    #begin {
+      min-width: 190px;
+      padding: 12px 20px;
+      border: 1px solid #c9fff0;
+      border-radius: 999px;
+      color: #072033;
+      background: #9cf8dc;
+      box-shadow: 0 8px 18px rgba(62, 237, 201, 0.28);
+      cursor: pointer;
+      font-weight: 900;
+      letter-spacing: 0.075em;
+      text-transform: uppercase;
+      transition: transform 0.15s ease, background 0.15s ease;
+    }
+
+    #begin:hover, #begin:focus-visible { background: #e1fff5; transform: translateY(-2px); }
+    #begin:focus-visible, .joy:focus-visible { outline: 3px solid var(--sun); outline-offset: 3px; }
+
+    .joystick-wrap {
+      position: absolute;
+      z-index: 5;
+      bottom: max(20px, calc(env(safe-area-inset-bottom) + 12px));
+      width: clamp(100px, 22vw, 142px);
+      height: clamp(100px, 22vw, 142px);
+      pointer-events: none;
+    }
+
+    .joystick-wrap--left { left: max(18px, calc(env(safe-area-inset-left) + 12px)); }
+    .joystick-wrap--right { right: max(18px, calc(env(safe-area-inset-right) + 12px)); }
+
+    .joy {
+      position: absolute;
+      inset: 0;
+      display: grid;
+      place-items: center;
+      border: 1px solid rgba(176, 250, 238, 0.4);
+      border-radius: 50%;
+      background: rgba(5, 17, 42, 0.48);
+      box-shadow: inset 0 0 0 9px rgba(142, 246, 226, 0.05), 0 10px 24px rgba(0, 0, 0, 0.23);
+      cursor: crosshair;
+      pointer-events: auto;
+      touch-action: none;
+    }
+
+    .joy::before,
+    .joy::after {
+      position: absolute;
+      color: rgba(231, 253, 250, 0.66);
+      font-size: 0.54rem;
+      font-weight: 800;
+      letter-spacing: 0.1em;
+      pointer-events: none;
+    }
+
+    .joy::before { top: 12%; content: "FORWARD"; }
+    .joy::after { bottom: 12%; content: "REVERSE"; }
+    .joy--turn::before { content: "LEFT"; left: 10%; top: 48%; transform: translateY(-50%); }
+    .joy--turn::after { content: "RIGHT"; right: 9%; bottom: auto; top: 48%; transform: translateY(-50%); }
+
+    .joy-knob {
+      width: 42%;
+      height: 42%;
+      border: 1px solid rgba(255, 255, 255, 0.75);
+      border-radius: 50%;
+      background: rgba(138, 255, 230, 0.42);
+      box-shadow: 0 0 18px rgba(106, 253, 223, 0.38), inset 0 1px rgba(255, 255, 255, 0.38);
+      pointer-events: none;
+      transform: translate(0, 0);
+      transition: transform 0.08s ease-out, background 0.14s ease;
+    }
+
+    .joy.is-active .joy-knob { background: rgba(255, 175, 214, 0.63); transition: none; }
+    .joy.is-active { border-color: rgba(255, 200, 225, 0.85); }
+
+    .sr-only {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border: 0;
+    }
+
+    @media (max-width: 720px) {
+      .masthead { width: min(280px, calc(100vw - 32px)); padding: 10px 11px; }
+      .readout { font-size: 0.65rem; }
+      .world-note { display: none; }
+      .hint { top: auto; right: 50%; bottom: calc(max(20px, env(safe-area-inset-bottom)) + clamp(108px, 23vw, 150px)); transform: translateX(50%); font-size: 0.62rem; text-align: center; }
+      .hint.is-dim { transform: translate(50%, 4px); }
+    }
+
+    @media (max-width: 480px) {
+      .masthead { border-radius: 13px; }
+      .eyebrow { font-size: 0.53rem; }
+      h1 { font-size: 1.22rem; }
+      .readout { margin-top: 5px; }
+      .joystick-wrap { width: clamp(92px, 25vw, 116px); height: clamp(92px, 25vw, 116px); }
+      .intro { padding: 20px 17px; }
+      .intro p { font-size: 0.83rem; }
+      .control-grid { font-size: 0.65rem; }
+    }
+
+    @media (max-height: 560px) and (orientation: landscape) {
+      .masthead { transform: scale(0.84); transform-origin: top left; }
+      .hint { transform: scale(0.84); transform-origin: top right; }
+      .joystick-wrap { width: 94px; height: 94px; bottom: max(12px, env(safe-area-inset-bottom)); }
+      .intro { max-width: 420px; padding: 10px 16px; }
+      .intro-mark { display: none; }
+      .intro h2 { margin: 2px 0 4px; font-size: 1.45rem; }
+      .intro p { margin-bottom: 5px; font-size: 0.7rem; line-height: 1.35; }
+      .control-grid { grid-template-columns: repeat(4, 1fr); gap: 5px; margin: 5px 0 7px; font-size: 0.56rem; }
+      .control-grid span { padding: 4px 5px; }
+      #begin { min-width: 155px; padding: 8px 14px; font-size: 0.7rem; }
+    }
+
+    @media (max-width: 720px) and (max-height: 560px) and (orientation: landscape) {
+      .hint { transform: translateX(50%) scale(0.84); transform-origin: top center; }
+      .hint.is-dim { transform: translate(50%, 4px) scale(0.84); }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { scroll-behavior: auto !important; transition-duration: 0.01ms !important; }
+    }
+  </style>
+</head>
+<body>
+  <main id="game" aria-label="Auralis Drift first-person exploration game">
+    <svg id="scene" viewBox="0 0 1000 650" preserveAspectRatio="xMidYMid slice" role="img" aria-label="A drifting alien wind garden viewed in first person">
+      <defs>
+        <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stop-color="#070b24" />
+          <stop offset="0.38" stop-color="#23336b" />
+          <stop offset="0.7" stop-color="#b25d88" />
+          <stop offset="1" stop-color="#ffc780" />
+        </linearGradient>
+        <radialGradient id="horizon-flare" cx="50%" cy="50%" r="60%">
+          <stop offset="0" stop-color="#fff0ad" stop-opacity="0.86" />
+          <stop offset="0.38" stop-color="#ffa77c" stop-opacity="0.48" />
+          <stop offset="1" stop-color="#e47fbe" stop-opacity="0" />
+        </radialGradient>
+        <radialGradient id="planet" cx="30%" cy="24%" r="75%">
+          <stop offset="0" stop-color="#fff6ca" />
+          <stop offset="0.35" stop-color="#ffcc94" />
+          <stop offset="0.71" stop-color="#ec7aa0" />
+          <stop offset="1" stop-color="#8e397d" />
+        </radialGradient>
+        <linearGradient id="glass-ground" x1="0" y1="0" x2="0.1" y2="1">
+          <stop offset="0" stop-color="#6d426b" />
+          <stop offset="0.18" stop-color="#3a3568" />
+          <stop offset="0.7" stop-color="#14274b" />
+          <stop offset="1" stop-color="#09152f" />
+        </linearGradient>
+        <linearGradient id="dune" x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0" stop-color="#47c8c3" stop-opacity="0" />
+          <stop offset="0.35" stop-color="#8df6d7" stop-opacity="0.5" />
+          <stop offset="0.7" stop-color="#fda8cf" stop-opacity="0.45" />
+          <stop offset="1" stop-color="#ffc783" stop-opacity="0" />
+        </linearGradient>
+        <linearGradient id="sail-teal" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stop-color="#d1fff0" />
+          <stop offset="0.38" stop-color="#53e6d0" />
+          <stop offset="1" stop-color="#1c6eb4" />
+        </linearGradient>
+        <linearGradient id="sail-rose" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stop-color="#ffdbef" />
+          <stop offset="0.42" stop-color="#ff87c2" />
+          <stop offset="1" stop-color="#a941a4" />
+        </linearGradient>
+        <linearGradient id="stem" x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0" stop-color="#173f69" />
+          <stop offset="0.47" stop-color="#74f4d0" />
+          <stop offset="1" stop-color="#e8fff2" />
+        </linearGradient>
+        <radialGradient id="bloom" cx="35%" cy="28%" r="72%">
+          <stop offset="0" stop-color="#fff5bc" />
+          <stop offset="0.26" stop-color="#ffc576" />
+          <stop offset="0.68" stop-color="#ff77ba" />
+          <stop offset="1" stop-color="#6b3eaf" />
+        </radialGradient>
+        <linearGradient id="prism" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stop-color="#efffe9" />
+          <stop offset="0.28" stop-color="#85f8de" />
+          <stop offset="0.63" stop-color="#4f7fe8" />
+          <stop offset="1" stop-color="#5c3aaf" />
+        </linearGradient>
+        <linearGradient id="prism-rose" x1="0" y1="0" x2="0.75" y2="1">
+          <stop offset="0" stop-color="#fff4da" />
+          <stop offset="0.35" stop-color="#ffb1dc" />
+          <stop offset="1" stop-color="#953e9f" />
+        </linearGradient>
+        <radialGradient id="ray" cx="48%" cy="20%" r="72%">
+          <stop offset="0" stop-color="#e4fff1" />
+          <stop offset="0.28" stop-color="#77f3d2" />
+          <stop offset="0.65" stop-color="#5d68d7" />
+          <stop offset="1" stop-color="#34357e" />
+        </radialGradient>
+        <linearGradient id="harp" x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0" stop-color="#ff9aca" />
+          <stop offset="0.5" stop-color="#fff0b7" />
+          <stop offset="1" stop-color="#69f5db" />
+        </linearGradient>
+
+        <g id="prop-sailtree">
+          <path d="M0 3 C-9 -32 10 -55 -3 -91 C-13 -123 4 -149 3 -180" fill="none" stroke="url(#stem)" stroke-width="9" stroke-linecap="round" />
+          <path d="M-3 -105 C-44 -132 -79 -128 -97 -103 C-62 -93 -31 -83 -1 -88 Z" fill="url(#sail-teal)" stroke="#d5fff2" stroke-opacity="0.72" stroke-width="2" />
+          <path d="M3 -150 C46 -181 82 -176 102 -151 C69 -139 37 -128 4 -134 Z" fill="url(#sail-rose)" stroke="#ffe6f6" stroke-opacity="0.76" stroke-width="2" />
+          <path d="M-1 -78 C31 -99 57 -93 74 -72 C43 -65 19 -58 -2 -60 Z" fill="url(#sail-teal)" opacity="0.92" />
+          <path d="M3 -178 C-15 -198 -13 -217 4 -233 C22 -214 22 -194 3 -178Z" fill="url(#bloom)" stroke="#fff6c8" stroke-width="2" />
+          <circle cx="4" cy="-205" r="5" fill="#fff6bb" />
+          <path d="M-7 -3 C-33 -14 -47 -5 -58 10 M6 -4 C29 -15 44 -7 56 9" fill="none" stroke="#66e6ce" stroke-width="4" stroke-linecap="round" opacity="0.72" />
+        </g>
+
+        <g id="prop-whistlebloom">
+          <path d="M0 2 C3 -35 -14 -75 5 -117 C15 -139 1 -168 11 -190" fill="none" stroke="url(#stem)" stroke-width="7" stroke-linecap="round" />
+          <path d="M10 -186 C-31 -197 -51 -221 -39 -246 C-8 -229 9 -217 21 -193Z" fill="url(#sail-rose)" stroke="#ffd7ed" stroke-width="2" />
+          <path d="M10 -186 C44 -212 74 -204 83 -178 C50 -173 28 -172 10 -186Z" fill="url(#sail-teal)" stroke="#d9fff1" stroke-width="2" />
+          <path d="M8 -192 C-1 -233 15 -256 43 -266 C47 -233 35 -207 8 -192Z" fill="url(#bloom)" stroke="#fff6c3" stroke-width="2" />
+          <ellipse cx="11" cy="-199" rx="12" ry="8" fill="#fff5b2" />
+          <circle cx="11" cy="-199" r="4" fill="#633c9d" />
+          <path d="M-1 -84 C-39 -101 -58 -91 -73 -65 C-40 -65 -15 -63 3 -72Z" fill="url(#sail-teal)" opacity="0.9" />
+          <path d="M2 -122 C31 -139 51 -126 64 -106 C37 -104 16 -102 -1 -108Z" fill="url(#sail-rose)" opacity="0.9" />
+          <circle cx="-45" cy="-67" r="5" fill="#a1ffe3" />
+          <circle cx="59" cy="-107" r="4" fill="#ffc3e1" />
+        </g>
+
+        <g id="prop-prismcairn">
+          <path d="M-65 0 L-47 -91 L-16 0Z" fill="url(#prism)" stroke="#d0ffef" stroke-width="2" />
+          <path d="M-47 -91 L-15 -53 L-16 0Z" fill="#4479d4" opacity="0.82" />
+          <path d="M-19 0 L7 -147 L42 0Z" fill="url(#prism-rose)" stroke="#ffe2f2" stroke-width="2" />
+          <path d="M7 -147 L42 0 L14 -47Z" fill="#713eaa" opacity="0.8" />
+          <path d="M25 0 L62 -93 L89 0Z" fill="url(#prism)" stroke="#ccfff1" stroke-width="2" />
+          <path d="M62 -93 L89 0 L60 -29Z" fill="#3564bc" opacity="0.8" />
+          <path d="M-82 3 C-54 -7 -33 -4 -12 5 C14 -9 50 -8 101 3" fill="none" stroke="#84f5d9" stroke-opacity="0.6" stroke-width="5" stroke-linecap="round" />
+          <circle cx="7" cy="-147" r="5" fill="#fff8c2" />
+        </g>
+
+        <g id="prop-rayling">
+          <path d="M-79 -64 C-46 -103 -21 -106 0 -85 C22 -106 48 -103 80 -63 C56 -47 33 -47 14 -61 C8 -44 -5 -44 -14 -61 C-33 -47 -56 -47 -79 -64Z" fill="url(#ray)" stroke="#c8fff0" stroke-width="2.5" />
+          <path d="M-13 -64 C-6 -92 7 -92 14 -64 C13 -38 6 -24 0 -18 C-7 -24 -13 -38 -13 -64Z" fill="#7c64d7" stroke="#ddfff3" stroke-width="2" />
+          <path d="M-66 -65 C-33 -83 -18 -77 0 -59 C19 -78 36 -83 67 -65" fill="none" stroke="#fff0b7" stroke-opacity="0.7" stroke-width="3" />
+          <circle cx="-5" cy="-70" r="3.5" fill="#fffbc7" />
+          <circle cx="7" cy="-70" r="3.5" fill="#fffbc7" />
+          <path d="M0 -18 C-2 -2 3 7 0 17" fill="none" stroke="#ffb4d5" stroke-width="3" stroke-linecap="round" />
+          <circle cx="-60" cy="-65" r="4" fill="#9dffe4" opacity="0.82" />
+          <circle cx="61" cy="-64" r="4" fill="#ffb5da" opacity="0.82" />
+        </g>
+
+        <g id="prop-windharp">
+          <path d="M-57 1 C-69 -78 -42 -139 0 -159 C42 -139 69 -78 57 1" fill="none" stroke="url(#harp)" stroke-width="11" stroke-linecap="round" />
+          <path d="M-42 -2 C-51 -66 -31 -113 0 -128 C31 -113 51 -66 42 -2" fill="none" stroke="#4de5d0" stroke-width="5" opacity="0.9" />
+          <path d="M-28 -20 L-20 -102 M0 -13 L0 -128 M28 -20 L20 -102" stroke="#fff5be" stroke-opacity="0.82" stroke-width="2" />
+          <path d="M-62 3 H62" stroke="#8bffdc" stroke-width="6" stroke-linecap="round" />
+          <circle cx="-27" cy="-43" r="8" fill="url(#bloom)" stroke="#fff3c5" stroke-width="2" />
+          <circle cx="0" cy="-64" r="9" fill="url(#prism)" stroke="#fff3c5" stroke-width="2" />
+          <circle cx="27" cy="-43" r="8" fill="url(#bloom)" stroke="#fff3c5" stroke-width="2" />
+          <path d="M-49 0 C-78 -20 -88 -6 -100 12 M49 0 C78 -20 88 -6 100 12" fill="none" stroke="#ffa0cf" stroke-width="4" stroke-linecap="round" />
+        </g>
+      </defs>
+
+      <rect width="1000" height="650" fill="url(#sky)" />
+      <g id="sky-parallax">
+        <ellipse cx="500" cy="268" rx="390" ry="105" fill="url(#horizon-flare)" opacity="0.84" />
+        <path d="M-40 209 C120 167 211 229 353 190 C510 146 596 213 735 177 C873 141 951 193 1040 166 L1040 257 L-40 257Z" fill="#87a6c6" opacity="0.11" />
+        <path d="M-30 231 C127 194 242 237 390 211 C521 188 643 230 770 205 C889 181 948 204 1030 191 L1030 264 L-30 264Z" fill="#f9c2cf" opacity="0.16" />
+        <g id="stars" opacity="0.9"></g>
+        <g transform="translate(790 126)">
+          <circle r="93" fill="url(#planet)" />
+          <path d="M-82 -19 C-31 -37 15 -34 78 -11" fill="none" stroke="#fff1bc" stroke-opacity="0.32" stroke-width="12" />
+          <path d="M-66 27 C-15 9 35 13 83 36" fill="none" stroke="#8f3d96" stroke-opacity="0.33" stroke-width="16" />
+          <path d="M-43 70 C-3 53 37 56 63 69" fill="none" stroke="#f6a6c4" stroke-opacity="0.38" stroke-width="9" />
+          <circle cx="-35" cy="-45" r="13" fill="#fff8ce" fill-opacity="0.17" />
+        </g>
+        <path d="M-10 151 C168 114 302 151 440 118 C617 76 752 132 1010 76" fill="none" stroke="#8eeed9" stroke-opacity="0.18" stroke-width="2" />
+      </g>
+
+      <g id="landscape">
+        <path d="M0 260 C125 236 198 280 333 252 C480 220 609 275 747 244 C850 220 930 243 1000 229 L1000 650 L0 650Z" fill="url(#glass-ground)" />
+        <path d="M-50 299 C122 270 218 313 367 285 C514 258 639 306 773 278 C885 254 956 276 1050 255" fill="none" stroke="url(#dune)" stroke-width="17" opacity="0.9" />
+        <path d="M-40 342 C115 312 227 356 383 326 C526 299 655 342 785 319 C899 299 961 330 1040 302" fill="none" stroke="#76d8d5" stroke-opacity="0.18" stroke-width="4" />
+        <path d="M-30 416 C108 383 230 423 364 397 C510 368 634 419 781 388 C893 365 943 397 1033 376" fill="none" stroke="#ffaed4" stroke-opacity="0.13" stroke-width="3" />
+        <g id="ground-lines" fill="none" stroke="#a9f7dd" stroke-opacity="0.19" stroke-width="1.25"></g>
+        <g id="horizon-reeds" opacity="0.5">
+          <path d="M63 269 C59 249 67 230 72 212 M74 269 C82 248 78 236 89 220 M159 268 C162 242 174 221 176 203 M181 268 C172 247 179 232 188 218 M920 263 C917 239 926 221 926 199 M940 262 C947 246 941 230 953 214" stroke="#8effdb" stroke-width="3" stroke-linecap="round" />
+          <path d="M286 258 C279 241 284 222 292 204 M305 258 C314 238 305 220 315 200 M640 258 C650 236 648 220 657 200 M664 257 C656 239 667 221 674 207" stroke="#ffb0d7" stroke-width="3" stroke-linecap="round" />
+        </g>
+      </g>
+
+      <g id="world-layer"></g>
+      <g id="air-sparkles" pointer-events="none"></g>
+      <g id="reticle" pointer-events="none" opacity="0.78">
+        <circle cx="500" cy="330" r="6" fill="none" stroke="#effff7" stroke-width="1.2" />
+        <path d="M500 316 V323 M500 337 V344 M486 330 H493 M507 330 H514" stroke="#effff7" stroke-width="1.2" stroke-linecap="round" />
+      </g>
+    </svg>
+
+    <section class="hud" aria-label="Explorer readout">
+      <div class="masthead">
+        <p class="eyebrow">Wind garden expedition</p>
+        <h1>Auralis Drift</h1>
+        <div class="readout"><b id="compass">North by glass</b><span class="dot">✦</span><span id="distance">0.0 spans traveled</span></div>
+      </div>
+      <div class="world-note" id="world-note">Listen for the distant wind harps</div>
+      <div class="hint" id="hint">WASD / arrows to drift · drag the view to look around</div>
+    </section>
+
+    <div class="joystick-wrap joystick-wrap--left" aria-hidden="true">
+      <div class="joy" id="move-joy"><div class="joy-knob" id="move-knob"></div></div>
+    </div>
+    <div class="joystick-wrap joystick-wrap--right" aria-hidden="true">
+      <div class="joy joy--turn" id="turn-joy"><div class="joy-knob" id="turn-knob"></div></div>
+    </div>
+
+    <section class="intro" id="intro" aria-labelledby="intro-title">
+      <div class="intro-mark" aria-hidden="true">✦ ◌ ✦</div>
+      <h2 id="intro-title">Follow the singing wind.</h2>
+      <p>Walk through an endless garden grown from glass sand. Each horizon is seeded with living sails, flowering whistles, and gentle raylings.</p>
+      <div class="control-grid" aria-label="Controls">
+        <span><b>Desktop</b><br>W/S or ↑/↓ to move</span>
+        <span><b>Desktop</b><br>A/D or ←/→ to turn</span>
+        <span><b>Mouse</b><br>Click-drag to look</span>
+        <span><b>Touch</b><br>Use both joysticks together</span>
+      </div>
+      <button id="begin" type="button">Enter the drift</button>
+    </section>
+    <p class="sr-only" id="screen-status" aria-live="polite">Auralis Drift is ready.</p>
+  </main>
+
+  <script>
+    (() => {
+      "use strict";
+
+      const NS = "http://www.w3.org/2000/svg";
+      const scene = document.getElementById("scene");
+      const worldLayer = document.getElementById("world-layer");
+      const skyParallax = document.getElementById("sky-parallax");
+      const landscape = document.getElementById("landscape");
+      const groundLines = document.getElementById("ground-lines");
+      const sparkles = document.getElementById("air-sparkles");
+      const stars = document.getElementById("stars");
+      const compass = document.getElementById("compass");
+      const distanceEl = document.getElementById("distance");
+      const hint = document.getElementById("hint");
+      const intro = document.getElementById("intro");
+      const begin = document.getElementById("begin");
+      const status = document.getElementById("screen-status");
+      const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+      const VIEW_W = 1000;
+      const HORIZON = 257;
+      const CHUNK_SIZE = 34;
+      const CHUNK_RADIUS = 4;
+      const FAR_DISTANCE = 92;
+      const MAX_PROP_SLOTS = 192;
+      const WORLD_SEED = 0x5d8a11f7;
+      const PROP_KINDS = ["sailtree", "whistlebloom", "prismcairn", "rayling", "windharp"];
+      const player = { x: 0, z: 0, yaw: 0, traveled: 0 };
+      const chunks = new Map();
+      const pool = [];
+      const keys = new Set();
+      const input = { move: 0, turn: 0, dragging: false, dragPointer: null, dragX: 0 };
+      const joystick = {
+        move: { base: document.getElementById("move-joy"), knob: document.getElementById("move-knob"), pointerId: null, x: 0, y: 0 },
+        turn: { base: document.getElementById("turn-joy"), knob: document.getElementById("turn-knob"), pointerId: null, x: 0, y: 0 }
+      };
+      let lastTime = performance.now();
+      let elapsed = 0;
+      let headBob = 0;
+      let bobPhase = 0;
+      let lastVisible = 0;
+      let lastHintTime = 0;
+      let began = false;
+
+      function svgEl(name, attributes = {}) {
+        const element = document.createElementNS(NS, name);
+        for (const [key, value] of Object.entries(attributes)) element.setAttribute(key, value);
+        return element;
+      }
+
+      function hash32(value) {
+        value = Math.imul(value ^ (value >>> 16), 0x21f0aaad);
+        value = Math.imul(value ^ (value >>> 15), 0x735a2d97);
+        return (value ^ (value >>> 15)) >>> 0;
+      }
+
+      function chunkSeed(cx, cz) {
+        return hash32(WORLD_SEED ^ Math.imul(cx, 374761393) ^ Math.imul(cz, 668265263));
+      }
+
+      function mulberry(seed) {
+        let value = seed >>> 0;
+        return () => {
+          value = (value + 0x6d2b79f5) | 0;
+          let t = Math.imul(value ^ (value >>> 15), 1 | value);
+          t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+          return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+        };
+      }
+
+      function createStars() {
+        const random = mulberry(0x11edc7a9);
+        for (let i = 0; i < 56; i += 1) {
+          const x = Math.round(random() * 1000);
+          const y = Math.round(12 + random() * 220);
+          const r = (random() * 1.6 + 0.35).toFixed(2);
+          const circle = svgEl("circle", { cx: x, cy: y, r, fill: i % 6 === 0 ? "#ffe9af" : "#d6fdf7", opacity: (0.38 + random() * 0.58).toFixed(2) });
+          stars.appendChild(circle);
+        }
+      }
+
+      function createGroundLines() {
+        for (let i = 0; i < 15; i += 1) {
+          const t = i / 14;
+          const path = svgEl("path", { d: `M500 ${HORIZON + 2} L${(t * 1180 - 90).toFixed(1)} 650` });
+          groundLines.appendChild(path);
+        }
+        for (let i = 0; i < 8; i += 1) {
+          const y = HORIZON + 20 + i * i * 5.5;
+          const path = svgEl("path", { d: `M0 ${y.toFixed(1)} Q500 ${(y + 18).toFixed(1)} 1000 ${y.toFixed(1)}`, opacity: (0.21 - i * 0.017).toFixed(2) });
+          groundLines.appendChild(path);
+        }
+      }
+
+      function createSparkles() {
+        const random = mulberry(0x90a8e731);
+        for (let i = 0; i < 19; i += 1) {
+          const circle = svgEl("circle", { cx: Math.round(random() * 1000), cy: Math.round(250 + random() * 260), r: (random() * 1.9 + 0.7).toFixed(2), fill: i % 2 ? "#a8ffe5" : "#ffc1e1", opacity: (0.18 + random() * 0.4).toFixed(2) });
+          circle.dataset.phase = (random() * Math.PI * 2).toFixed(3);
+          circle.dataset.speed = (0.28 + random() * 0.65).toFixed(3);
+          sparkles.appendChild(circle);
+        }
+      }
+
+      function createSlot() {
+        const root = svgEl("g", { class: "prop-slot", display: "none" });
+        const shadow = svgEl("ellipse", { cx: "0", cy: "3", rx: "42", ry: "8", fill: "#070c22", opacity: "0.32" });
+        const art = svgEl("use", { href: "#prop-sailtree" });
+        root.append(shadow, art);
+        worldLayer.appendChild(root);
+        return { root, shadow, art, kind: "sailtree" };
+      }
+
+      function makeChunk(cx, cz) {
+        const random = mulberry(chunkSeed(cx, cz));
+        const count = 3 + Math.floor(random() * 4);
+        const props = [];
+        for (let i = 0; i < count; i += 1) {
+          const kindRoll = random();
+          let kind = "sailtree";
+          if (kindRoll > 0.77) kind = "rayling";
+          else if (kindRoll > 0.59) kind = "windharp";
+          else if (kindRoll > 0.32) kind = "whistlebloom";
+          else if (kindRoll > 0.12) kind = "prismcairn";
+          props.push({
+            kind,
+            x: (cx + 0.09 + random() * 0.82) * CHUNK_SIZE,
+            z: (cz + 0.09 + random() * 0.82) * CHUNK_SIZE,
+            size: 0.64 + random() * 0.78,
+            sway: random() * Math.PI * 2,
+            drift: 0.2 + random() * 0.8,
+            shadow: 0.58 + random() * 0.36
+          });
+        }
+        return props;
+      }
+
+      function updateChunks() {
+        const centerX = Math.floor(player.x / CHUNK_SIZE);
+        const centerZ = Math.floor(player.z / CHUNK_SIZE);
+        for (let cx = centerX - CHUNK_RADIUS; cx <= centerX + CHUNK_RADIUS; cx += 1) {
+          for (let cz = centerZ - CHUNK_RADIUS; cz <= centerZ + CHUNK_RADIUS; cz += 1) {
+            const key = `${cx},${cz}`;
+            if (!chunks.has(key)) chunks.set(key, makeChunk(cx, cz));
+          }
+        }
+        for (const key of chunks.keys()) {
+          const [cx, cz] = key.split(",").map(Number);
+          if (Math.abs(cx - centerX) > CHUNK_RADIUS || Math.abs(cz - centerZ) > CHUNK_RADIUS) chunks.delete(key);
+        }
+      }
+
+      function clamp(value, low, high) {
+        return Math.max(low, Math.min(high, value));
+      }
+
+      function projectProps() {
+        const sin = Math.sin(player.yaw);
+        const cos = Math.cos(player.yaw);
+        const visible = [];
+        for (const props of chunks.values()) {
+          for (const prop of props) {
+            const dx = prop.x - player.x;
+            const dz = prop.z - player.z;
+            const depth = dx * sin + dz * cos;
+            if (depth < 3.6 || depth > FAR_DISTANCE) continue;
+            const right = dx * cos - dz * sin;
+            const scale = (10.4 * prop.size) / depth;
+            const x = 500 + (right / depth) * 465;
+            const y = HORIZON + 2380 / depth;
+            const width = prop.kind === "rayling" ? 105 : 130;
+            if (x < -width * scale || x > VIEW_W + width * scale || y < HORIZON - 70 || y > 790) continue;
+            const visibility = clamp((FAR_DISTANCE - depth) / 16, 0, 1);
+            visible.push({ prop, depth, x, y, scale, opacity: 0.18 + visibility * 0.82 });
+          }
+        }
+        visible.sort((a, b) => b.depth - a.depth);
+        lastVisible = Math.min(visible.length, pool.length);
+        for (let i = 0; i < pool.length; i += 1) {
+          const slot = pool[i];
+          const projected = visible[i];
+          if (!projected) {
+            slot.root.setAttribute("display", "none");
+            continue;
+          }
+          const { prop, depth, x, y, scale, opacity } = projected;
+          if (slot.kind !== prop.kind) {
+            slot.art.setAttribute("href", `#prop-${prop.kind}`);
+            slot.kind = prop.kind;
+          }
+          const drift = !reduceMotion && prop.kind === "rayling" ? Math.sin(elapsed * (1.1 + prop.drift) + prop.sway) * 9 : 0;
+          const sway = reduceMotion || prop.kind === "prismcairn" ? 0 : Math.sin(elapsed * prop.drift + prop.sway) * (prop.kind === "rayling" ? 5 : 1.9);
+          const shade = clamp(0.15 + (1 - depth / FAR_DISTANCE) * 0.38, 0.15, 0.52);
+          slot.root.setAttribute("display", "inline");
+          slot.root.setAttribute("transform", `translate(${x.toFixed(2)} ${(y + drift).toFixed(2)}) scale(${scale.toFixed(4)})`);
+          slot.root.setAttribute("opacity", opacity.toFixed(3));
+          slot.root.dataset.depth = depth.toFixed(2);
+          slot.art.setAttribute("transform", `rotate(${sway.toFixed(2)} 0 0)`);
+          slot.shadow.setAttribute("rx", (prop.kind === "rayling" ? 35 : 42).toString());
+          slot.shadow.setAttribute("opacity", (shade * prop.shadow).toFixed(3));
+          worldLayer.appendChild(slot.root);
+        }
+      }
+
+      function updateAtmosphere() {
+        const parallaxX = (Math.sin(player.yaw) * 16).toFixed(2);
+        skyParallax.setAttribute("transform", `translate(${parallaxX} 0)`);
+        landscape.setAttribute("transform", `translate(0 ${(headBob * 0.18).toFixed(2)})`);
+        worldLayer.setAttribute("transform", `translate(0 ${headBob.toFixed(2)})`);
+        for (const sparkle of sparkles.children) {
+          const phase = Number(sparkle.dataset.phase);
+          const speed = Number(sparkle.dataset.speed);
+          const bob = reduceMotion ? 0 : Math.sin(elapsed * speed + phase) * 7;
+          const drift = reduceMotion ? 0 : Math.sin(elapsed * speed * 0.4 + phase) * 12;
+          sparkle.setAttribute("transform", `translate(${drift.toFixed(2)} ${bob.toFixed(2)})`);
+          sparkle.setAttribute("opacity", reduceMotion ? "0.28" : (0.16 + (Math.sin(elapsed * speed + phase) + 1) * 0.18).toFixed(2));
+        }
+      }
+
+      function headingName() {
+        const directions = ["North by glass", "Northeast wake", "Eastward bloom", "Southeast wake", "South by glass", "Southwest wake", "Westward bloom", "Northwest wake"];
+        const normalized = (player.yaw % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2);
+        return directions[Math.round(normalized / (Math.PI / 4)) % 8];
+      }
+
+      function updateReadout(now) {
+        compass.textContent = headingName();
+        distanceEl.textContent = `${player.traveled.toFixed(1)} spans traveled`;
+        if (now - lastHintTime > 4200 && (Math.abs(input.move) > 0.05 || Math.abs(input.turn) > 0.05)) hint.classList.add("is-dim");
+      }
+
+      function keyboardAxis() {
+        const forward = (keys.has("KeyW") || keys.has("ArrowUp") ? 1 : 0) - (keys.has("KeyS") || keys.has("ArrowDown") ? 1 : 0);
+        const turn = (keys.has("KeyD") || keys.has("ArrowRight") ? 1 : 0) - (keys.has("KeyA") || keys.has("ArrowLeft") ? 1 : 0);
+        return { forward, turn };
+      }
+
+      function updatePlayer(dt) {
+        const keyboard = keyboardAxis();
+        input.move = clamp(keyboard.forward + -joystick.move.y, -1, 1);
+        input.turn = clamp(keyboard.turn + joystick.turn.x, -1, 1);
+        player.yaw += input.turn * 1.78 * dt;
+        const amount = input.move * 7.2 * dt;
+        player.x += Math.sin(player.yaw) * amount;
+        player.z += Math.cos(player.yaw) * amount;
+        player.traveled += Math.abs(amount);
+        const moving = Math.abs(amount) > 0.0001;
+        if (moving) bobPhase += Math.abs(amount) * 5.4;
+        const targetBob = moving && !reduceMotion ? Math.sin(bobPhase) * 3.2 : 0;
+        headBob += (targetBob - headBob) * Math.min(1, dt * 11);
+      }
+
+      function frame(now) {
+        const dt = Math.min(0.05, Math.max(0.001, (now - lastTime) / 1000));
+        lastTime = now;
+        elapsed += dt;
+        updatePlayer(dt);
+        updateChunks();
+        updateAtmosphere();
+        projectProps();
+        updateReadout(now);
+        requestAnimationFrame(frame);
+      }
+
+      function start() {
+        if (!began) {
+          began = true;
+          intro.classList.add("is-hidden");
+          status.textContent = "You have entered Auralis Drift. Walk with the controls or drag to look.";
+        }
+        lastHintTime = performance.now();
+        hint.classList.remove("is-dim");
+      }
+
+      function endMouseDrag(pointerId) {
+        if (input.dragPointer !== pointerId) return;
+        input.dragging = false;
+        input.dragPointer = null;
+        scene.classList.remove("dragging");
+      }
+
+      function bindJoystick(state, isMove) {
+        const maxRadius = () => state.base.getBoundingClientRect().width * 0.3;
+        const reset = pointerId => {
+          if (state.pointerId !== pointerId) return;
+          state.pointerId = null;
+          state.x = 0;
+          state.y = 0;
+          state.base.classList.remove("is-active");
+          state.knob.style.transform = "translate(0px, 0px)";
+        };
+        const update = event => {
+          if (state.pointerId !== event.pointerId) return;
+          const rect = state.base.getBoundingClientRect();
+          const centerX = rect.left + rect.width / 2;
+          const centerY = rect.top + rect.height / 2;
+          let dx = event.clientX - centerX;
+          let dy = event.clientY - centerY;
+          const radius = maxRadius();
+          const distance = Math.hypot(dx, dy);
+          if (distance > radius) {
+            dx = dx / distance * radius;
+            dy = dy / distance * radius;
+          }
+          state.x = clamp(dx / radius, -1, 1);
+          state.y = clamp(dy / radius, -1, 1);
+          if (isMove) state.x = 0;
+          else state.y = 0;
+          state.knob.style.transform = `translate(${dx.toFixed(1)}px, ${dy.toFixed(1)}px)`;
+        };
+        state.base.addEventListener("pointerdown", event => {
+          if (state.pointerId !== null) return;
+          event.preventDefault();
+          event.stopPropagation();
+          start();
+          state.pointerId = event.pointerId;
+          state.base.classList.add("is-active");
+          state.base.setPointerCapture?.(event.pointerId);
+          update(event);
+        });
+        state.base.addEventListener("pointermove", event => {
+          if (state.pointerId === event.pointerId) {
+            event.preventDefault();
+            update(event);
+          }
+        });
+        state.base.addEventListener("pointerup", event => reset(event.pointerId));
+        state.base.addEventListener("pointercancel", event => reset(event.pointerId));
+        state.base.addEventListener("lostpointercapture", event => reset(event.pointerId));
+        return reset;
+      }
+
+      const resetMoveJoy = bindJoystick(joystick.move, true);
+      const resetTurnJoy = bindJoystick(joystick.turn, false);
+
+      begin.addEventListener("click", start);
+      begin.addEventListener("pointerdown", event => event.stopPropagation());
+
+      scene.addEventListener("pointerdown", event => {
+        if (event.pointerType !== "mouse" || event.button !== 0) return;
+        event.preventDefault();
+        start();
+        input.dragging = true;
+        input.dragPointer = event.pointerId;
+        input.dragX = event.clientX;
+        scene.classList.add("dragging");
+        scene.setPointerCapture?.(event.pointerId);
+      });
+      scene.addEventListener("pointermove", event => {
+        if (!input.dragging || input.dragPointer !== event.pointerId) return;
+        const dx = event.clientX - input.dragX;
+        input.dragX = event.clientX;
+        player.yaw += dx * 0.0082;
+      });
+      scene.addEventListener("pointerup", event => endMouseDrag(event.pointerId));
+      scene.addEventListener("pointercancel", event => endMouseDrag(event.pointerId));
+      scene.addEventListener("lostpointercapture", event => endMouseDrag(event.pointerId));
+
+      window.addEventListener("pointerup", event => {
+        endMouseDrag(event.pointerId);
+        resetMoveJoy(event.pointerId);
+        resetTurnJoy(event.pointerId);
+      });
+      window.addEventListener("pointercancel", event => {
+        endMouseDrag(event.pointerId);
+        resetMoveJoy(event.pointerId);
+        resetTurnJoy(event.pointerId);
+      });
+
+      window.addEventListener("keydown", event => {
+        const used = ["KeyW", "KeyA", "KeyS", "KeyD", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(event.code);
+        if (!used) return;
+        event.preventDefault();
+        start();
+        keys.add(event.code);
+      });
+      window.addEventListener("keyup", event => keys.delete(event.code));
+      window.addEventListener("blur", () => {
+        keys.clear();
+        endMouseDrag(input.dragPointer);
+        resetMoveJoy(joystick.move.pointerId);
+        resetTurnJoy(joystick.turn.pointerId);
+      });
+
+      document.addEventListener("touchmove", event => event.preventDefault(), { passive: false });
+      document.addEventListener("gesturestart", event => event.preventDefault());
+      document.addEventListener("dblclick", event => event.preventDefault());
+      document.addEventListener("contextmenu", event => event.preventDefault());
+
+      createStars();
+      createGroundLines();
+      createSparkles();
+      for (let i = 0; i < MAX_PROP_SLOTS; i += 1) pool.push(createSlot());
+      updateChunks();
+      window.__auralis = {
+        getState: () => ({
+          x: Number(player.x.toFixed(3)),
+          z: Number(player.z.toFixed(3)),
+          yaw: Number(player.yaw.toFixed(3)),
+          traveled: Number(player.traveled.toFixed(3)),
+          headBob: Number(headBob.toFixed(3)),
+          chunks: chunks.size,
+          pool: pool.length,
+          visible: lastVisible,
+          input: { move: Number(input.move.toFixed(3)), turn: Number(input.turn.toFixed(3)) },
+          joystickPointers: { move: joystick.move.pointerId, turn: joystick.turn.pointerId }
+        }),
+        stream: updateChunks
+      };
+      requestAnimationFrame(frame);
+    })();
+  </script>
+</body>
+</html>
