@@ -49,3 +49,20 @@
 - Added a responsive Arcade card and compact layouts with 44 px controls, an inert/focus-managed introduction, collapsible mobile inspector, mobile event toast, and Help-dialog sound access. All authored CSS and game logic are inline; the pinned Three.js 0.184.0 runtime is the sole network dependency.
 - Verified module syntax, 45 unique DOM IDs and resolved references, whitespace-clean diff, zero browser warnings/errors, deterministic same-seed signatures and snapshots after 600 ticks, different-seed divergence, 10,000-tick finite/in-bounds stability, natural population reservation at 20/22, manual Bud behavior at 21→22→reject, and flat renderer memory across 15 seeded regenerations.
 - Verified real-browser onboarding isolation, specimen selection, keyboard mutation, spore and rain placement, the Rain → Bud affordability regression, seeded replay, pause behavior, Help/sound access, and responsive layouts at 1280×720, 390×844, 320×568, and 568×320.
+
+---
+
+# Todo: Lumenwood SVG Forest
+
+## Plan
+
+- [x] Create a pure-SVG first-person forest with projected pooled props, depth sorting, and head bob.
+- [x] Add desktop keyboard/mouse controls and independent multitouch mobile joysticks.
+- [x] Add the Lumenwood tile to `svg-forest/index.html`.
+- [x] Verify syntax, responsive layout, control input, and console/network health in a real browser.
+
+## Review
+
+- New file: `svg-forest/gpt56-luna-med-svg-forest.html`.
+- Theme: moonlit bioluminescent forest with singing spires, glass lanterns, glowcap mushrooms, ferns, and luminous stones.
+- Verification: JavaScript syntax, pure-SVG dependency scan, desktop render screenshot, and mobile viewport screenshot completed; Chrome headless emitted only unrelated updater/crashpad messages.

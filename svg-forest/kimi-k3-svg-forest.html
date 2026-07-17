@@ -1,0 +1,808 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="description" content="Kintsugi Dunes — a first-person pure-SVG exploration of an endless porcelain desert gilded with gold.">
+<title>Kintsugi Dunes — Pure SVG First-Person</title>
+<!-- Built by Kimi K3. Rendering engine: 100% SVG. No canvas, no WebGL, no external assets. -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;800&family=Quicksand:wght@500;600&display=swap" rel="stylesheet">
+<style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        position: fixed;
+        inset: 0;
+        background: #17112b;
+        touch-action: none;
+        overscroll-behavior: none;
+        -webkit-user-select: none;
+        user-select: none;
+        -webkit-tap-highlight-color: transparent;
+        font-family: "Quicksand", "Trebuchet MS", sans-serif;
+    }
+
+    #scene {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        display: block;
+        cursor: grab;
+    }
+    #scene.dragging { cursor: grabbing; }
+
+    /* ---------- HUD ---------- */
+    .hud {
+        position: fixed;
+        top: max(14px, env(safe-area-inset-top));
+        left: max(16px, env(safe-area-inset-left));
+        z-index: 10;
+        pointer-events: none;
+        color: #ffedc5;
+        text-shadow: 0 2px 10px rgba(20, 8, 30, 0.8);
+    }
+    .hud .back {
+        pointer-events: auto;
+        display: inline-block;
+        color: #ffd57e;
+        text-decoration: none;
+        font-family: "Cinzel", serif;
+        font-size: 0.78rem;
+        letter-spacing: 0.08em;
+        opacity: 0.75;
+        margin-bottom: 6px;
+        transition: opacity 0.2s ease;
+    }
+    .hud .back:hover { opacity: 1; }
+    .hud h1 {
+        font-family: "Cinzel", serif;
+        font-weight: 800;
+        font-size: clamp(1.05rem, 3.4vw, 1.6rem);
+        letter-spacing: 0.14em;
+        color: #ffe9bd;
+    }
+    .hud p {
+        font-size: clamp(0.7rem, 2.2vw, 0.85rem);
+        letter-spacing: 0.06em;
+        color: rgba(255, 237, 197, 0.8);
+        margin-top: 2px;
+    }
+
+    #hint {
+        position: fixed;
+        bottom: max(14px, env(safe-area-inset-bottom));
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 10;
+        pointer-events: none;
+        font-size: 0.75rem;
+        letter-spacing: 0.1em;
+        color: rgba(255, 237, 197, 0.75);
+        text-shadow: 0 1px 6px rgba(20, 8, 30, 0.9);
+        white-space: nowrap;
+        transition: opacity 1s ease;
+    }
+    body.touch #hint { display: none; }
+
+    /* ---------- Virtual joysticks ---------- */
+    .stick {
+        position: fixed;
+        bottom: max(22px, env(safe-area-inset-bottom));
+        z-index: 20;
+        width: 118px;
+        height: 118px;
+        border-radius: 50%;
+        border: 2px solid rgba(255, 213, 126, 0.45);
+        background: radial-gradient(circle at 50% 40%, rgba(60, 42, 90, 0.35), rgba(20, 14, 34, 0.5));
+        box-shadow: 0 8px 22px rgba(10, 5, 20, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.12);
+        backdrop-filter: blur(3px);
+        -webkit-backdrop-filter: blur(3px);
+        touch-action: none;
+        display: none;
+    }
+    body.touch .stick { display: block; }
+    #stickL { left: max(22px, env(safe-area-inset-left)); }
+    #stickR { right: max(22px, env(safe-area-inset-right)); }
+
+    .stick .knob {
+        position: absolute;
+        left: calc(50% - 26px);
+        top: calc(50% - 26px);
+        width: 52px;
+        height: 52px;
+        border-radius: 50%;
+        background: radial-gradient(circle at 38% 32%, #ffe9bd, #d9a94e 70%, #a5761f);
+        box-shadow: 0 4px 12px rgba(10, 5, 20, 0.55), inset 0 1px 2px rgba(255, 255, 255, 0.65);
+        pointer-events: none;
+        will-change: transform;
+    }
+    .stick .stick-label {
+        position: absolute;
+        left: 50%;
+        bottom: -20px;
+        transform: translateX(-50%);
+        font-family: "Cinzel", serif;
+        font-size: 0.6rem;
+        letter-spacing: 0.18em;
+        color: rgba(255, 213, 126, 0.8);
+        text-shadow: 0 1px 4px rgba(20, 8, 30, 0.9);
+        pointer-events: none;
+    }
+
+    /* ---------- In-world SVG animations ---------- */
+    .wingL, .wingR { transform-box: fill-box; }
+    .wingL {
+        transform-origin: 100% 55%;
+        animation: flapL 1.5s ease-in-out infinite;
+    }
+    .wingR {
+        transform-origin: 0% 55%;
+        animation: flapR 1.5s ease-in-out infinite;
+    }
+    @keyframes flapL {
+        0%, 100% { transform: rotate(16deg); }
+        50%      { transform: rotate(-24deg); }
+    }
+    @keyframes flapR {
+        0%, 100% { transform: rotate(-16deg); }
+        50%      { transform: rotate(24deg); }
+    }
+    .lanternGlow { animation: pulse 3.2s ease-in-out infinite; }
+    @keyframes pulse {
+        0%, 100% { opacity: 1; }
+        50%      { opacity: 0.45; }
+    }
+</style>
+</head>
+<body>
+
+<svg id="scene" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid slice" aria-label="Kintsugi Dunes game view">
+    <defs>
+        <!-- Sky & ground -->
+        <linearGradient id="skyGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stop-color="#141030"/>
+            <stop offset="0.38" stop-color="#3a2358"/>
+            <stop offset="0.68" stop-color="#8a4258"/>
+            <stop offset="0.88" stop-color="#d97a54"/>
+            <stop offset="1" stop-color="#ffc98a"/>
+        </linearGradient>
+        <linearGradient id="groundGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stop-color="#f2ddc0"/>
+            <stop offset="0.3" stop-color="#d9bfa2"/>
+            <stop offset="0.65" stop-color="#ab9387"/>
+            <stop offset="1" stop-color="#7d6c74"/>
+        </linearGradient>
+        <linearGradient id="fogGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stop-color="#f6dcb0" stop-opacity="0"/>
+            <stop offset="0.45" stop-color="#f6dcb0" stop-opacity="0.8"/>
+            <stop offset="0.6" stop-color="#f0d2a6" stop-opacity="0.75"/>
+            <stop offset="1" stop-color="#f0d2a6" stop-opacity="0"/>
+        </linearGradient>
+        <radialGradient id="vignetteGrad" cx="0.5" cy="0.46" r="0.75">
+            <stop offset="0.55" stop-color="#140a20" stop-opacity="0"/>
+            <stop offset="1" stop-color="#140a20" stop-opacity="0.42"/>
+        </radialGradient>
+
+        <!-- Celestial -->
+        <radialGradient id="sunGrad" cx="0.5" cy="0.5" r="0.5">
+            <stop offset="0" stop-color="#fff7d6"/>
+            <stop offset="0.35" stop-color="#ffd98a"/>
+            <stop offset="0.7" stop-color="#ff9a52" stop-opacity="0.55"/>
+            <stop offset="1" stop-color="#ff7a3c" stop-opacity="0"/>
+        </radialGradient>
+        <radialGradient id="moonGrad" cx="0.42" cy="0.4" r="0.65">
+            <stop offset="0" stop-color="#fdfdf5"/>
+            <stop offset="0.8" stop-color="#cdd3e8"/>
+            <stop offset="1" stop-color="#aab2d4"/>
+        </radialGradient>
+
+        <!-- Prop gradients -->
+        <linearGradient id="porcelainGrad" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0" stop-color="#ffffff"/>
+            <stop offset="0.55" stop-color="#ece3d5"/>
+            <stop offset="1" stop-color="#c9bcae"/>
+        </linearGradient>
+        <linearGradient id="goldGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stop-color="#fff3b0"/>
+            <stop offset="0.5" stop-color="#f5c542"/>
+            <stop offset="1" stop-color="#b97f1e"/>
+        </linearGradient>
+        <radialGradient id="jadeGlow" cx="0.5" cy="0.5" r="0.5">
+            <stop offset="0" stop-color="#d8ffe9" stop-opacity="0.95"/>
+            <stop offset="0.45" stop-color="#58d6a0" stop-opacity="0.55"/>
+            <stop offset="1" stop-color="#58d6a0" stop-opacity="0"/>
+        </radialGradient>
+        <linearGradient id="craneGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stop-color="#fffdf4"/>
+            <stop offset="1" stop-color="#e6d9be"/>
+        </linearGradient>
+        <radialGradient id="moteGlow" cx="0.5" cy="0.5" r="0.5">
+            <stop offset="0" stop-color="#ffd98a" stop-opacity="0.85"/>
+            <stop offset="1" stop-color="#ffb347" stop-opacity="0"/>
+        </radialGradient>
+
+        <!-- ===== PROP: porcelain shard spire (kintsugi-veined) ===== -->
+        <g id="p-shard">
+            <ellipse cx="0" cy="2" rx="42" ry="8" fill="rgba(35,22,48,0.35)"/>
+            <path d="M-4 2 L-36 -6 L-30 -52 L-16 -108 L2 -146 L14 -122 L26 -84 L30 -36 L24 -4 Z"
+                  fill="url(#porcelainGrad)" stroke="#b7a998" stroke-width="2" stroke-linejoin="round"/>
+            <path d="M-4 2 L-16 -108 L2 -146" fill="none" stroke="rgba(120,100,90,0.3)" stroke-width="1.5"/>
+            <path d="M-22 -16 L-8 -48 L-16 -80 L-2 -112" fill="none" stroke="url(#goldGrad)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M12 -22 L6 -56 L16 -84 L10 -104" fill="none" stroke="url(#goldGrad)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            <circle cx="-2" cy="-112" r="2.4" fill="#f5c542"/>
+        </g>
+
+        <!-- ===== PROP: jade lantern tree ===== -->
+        <g id="p-tree">
+            <ellipse cx="0" cy="2" rx="30" ry="6" fill="rgba(35,22,48,0.3)"/>
+            <path d="M2 0 C-6 -34 8 -66 -2 -100 C-8 -122 -20 -136 -38 -144" fill="none" stroke="#4a3a30" stroke-width="8" stroke-linecap="round"/>
+            <path d="M-2 -100 C8 -118 22 -128 40 -132" fill="none" stroke="#4a3a30" stroke-width="5" stroke-linecap="round"/>
+            <path d="M-4 -64 C6 -76 18 -82 30 -84" fill="none" stroke="#4a3a30" stroke-width="4" stroke-linecap="round"/>
+            <g>
+                <line x1="-38" y1="-144" x2="-38" y2="-132" stroke="#4a3a30" stroke-width="2"/>
+                <circle class="lanternGlow" cx="-38" cy="-118" r="22" fill="url(#jadeGlow)"/>
+                <rect x="-42" y="-134" width="8" height="5" rx="2" fill="#2f4a3c"/>
+                <circle cx="-38" cy="-118" r="6.5" fill="#eafff4"/>
+            </g>
+            <g>
+                <line x1="40" y1="-132" x2="40" y2="-120" stroke="#4a3a30" stroke-width="2"/>
+                <circle class="lanternGlow" cx="40" cy="-106" r="19" fill="url(#jadeGlow)"/>
+                <rect x="36" y="-122" width="8" height="5" rx="2" fill="#2f4a3c"/>
+                <circle cx="40" cy="-106" r="5.5" fill="#eafff4"/>
+            </g>
+            <g>
+                <line x1="30" y1="-84" x2="30" y2="-74" stroke="#4a3a30" stroke-width="2"/>
+                <circle class="lanternGlow" cx="30" cy="-62" r="15" fill="url(#jadeGlow)"/>
+                <rect x="26" y="-76" width="8" height="5" rx="2" fill="#2f4a3c"/>
+                <circle cx="30" cy="-62" r="4.5" fill="#eafff4"/>
+            </g>
+        </g>
+
+        <!-- ===== PROP: broken kintsugi ring gate ===== -->
+        <g id="p-ring">
+            <ellipse cx="0" cy="3" rx="66" ry="9" fill="rgba(35,22,48,0.32)"/>
+            <path d="M32 -119.4 A64 64 0 0 1 -21.9 -3.8" fill="none" stroke="url(#porcelainGrad)" stroke-width="15" stroke-linecap="round"/>
+            <path d="M-36.7 -11.6 A64 64 0 0 1 -41.1 -113" fill="none" stroke="url(#porcelainGrad)" stroke-width="15" stroke-linecap="round"/>
+            <path d="M-41.1 -113 A64 64 0 0 1 -32 -119.4" fill="none" stroke="url(#goldGrad)" stroke-width="15" stroke-linecap="round"/>
+            <path d="M21.9 -124.2 A64 64 0 0 1 32 -119.4" fill="none" stroke="url(#goldGrad)" stroke-width="15" stroke-linecap="round"/>
+            <path d="M-21.9 -3.8 A64 64 0 0 1 -36.7 -11.6" fill="none" stroke="url(#goldGrad)" stroke-width="15" stroke-linecap="round"/>
+            <path d="M52 -40 L40 -56 L50 -74" fill="none" stroke="url(#goldGrad)" stroke-width="2.5" stroke-linecap="round"/>
+            <path d="M-50 -44 L-38 -58" fill="none" stroke="url(#goldGrad)" stroke-width="2.5" stroke-linecap="round"/>
+        </g>
+
+        <!-- ===== CREATURE: paper crane ===== -->
+        <g id="p-crane">
+            <path class="wingL" d="M0 -2 L-52 -30 L-26 4 Z" fill="url(#craneGrad)" stroke="#d9b23f" stroke-width="1"/>
+            <path class="wingR" d="M0 -2 L52 -30 L26 4 Z" fill="url(#craneGrad)" stroke="#d9b23f" stroke-width="1"/>
+            <path d="M-34 8 L-8 -4 L6 -6 L12 -2 L38 -16 L46 -13 L36 -9 L14 4 L-6 6 L-24 10 Z"
+                  fill="url(#craneGrad)" stroke="#c9b696" stroke-width="1.5" stroke-linejoin="round"/>
+            <circle cx="37" cy="-13" r="1.6" fill="#3a2b1a"/>
+        </g>
+
+        <!-- ===== PARTICLE: gold mote ===== -->
+        <g id="p-mote">
+            <circle r="10" fill="url(#moteGlow)"/>
+            <circle r="2.6" fill="#ffe9b0"/>
+        </g>
+    </defs>
+
+    <!-- Everything inside #cam receives the head-bob transform -->
+    <g id="cam">
+        <rect id="skyRect" x="0" y="0" width="100%" height="100%" fill="url(#skyGrad)"/>
+        <g id="starsG"></g>
+        <g id="sunG">
+            <circle r="150" fill="url(#sunGrad)" opacity="0.85"/>
+            <circle r="58" fill="#ffe9b8"/>
+        </g>
+        <g id="moonG">
+            <circle r="44" fill="url(#moonGrad)" opacity="0.28"/>
+            <circle r="26" fill="url(#moonGrad)"/>
+        </g>
+        <g id="cloudsG" fill="#ffd9b8" opacity="0.3"></g>
+        <rect id="groundRect" x="0" y="0" width="100%" height="100%" fill="url(#groundGrad)"/>
+        <g id="dunesG"></g>
+        <rect id="fogRect" x="0" y="0" width="100%" height="200" fill="url(#fogGrad)"/>
+        <g id="veinsG"></g>
+        <g id="worldG"></g>
+    </g>
+    <rect id="vignette" x="0" y="0" width="100%" height="100%" fill="url(#vignetteGrad)" pointer-events="none"/>
+</svg>
+
+<div class="hud">
+    <a class="back" href="index.html">&larr; back to guild</a>
+    <h1>KINTSUGI DUNES</h1>
+    <p>a porcelain desert gilded in gold</p>
+</div>
+<div id="hint">W / S walk &nbsp;&middot;&nbsp; A / D turn &nbsp;&middot;&nbsp; drag to look</div>
+
+<div class="stick" id="stickL"><div class="knob"></div><span class="stick-label">WALK</span></div>
+<div class="stick" id="stickR"><div class="knob"></div><span class="stick-label">LOOK</span></div>
+
+<script>
+(function () {
+    'use strict';
+
+    var SVGNS = 'http://www.w3.org/2000/svg';
+
+    // ---------- Tunables ----------
+    var CHUNK      = 800;     // world units per chunk
+    var CHUNK_RANGE = 3;      // chunks kept loaded in each axis
+    var NEAR       = 30;      // near clip (world units)
+    var FOG_START  = 850;
+    var FOG_END    = 2300;
+    var EYE        = 60;      // camera height above ground plane
+    var WALK_SPEED = 300;     // units / second
+    var TURN_SPEED = 2.3;     // radians / second
+    var TAU = Math.PI * 2;
+
+    // ---------- DOM ----------
+    var svg      = document.getElementById('scene');
+    var cam      = document.getElementById('cam');
+    var worldG   = document.getElementById('worldG');
+    var veinsG   = document.getElementById('veinsG');
+    var starsG   = document.getElementById('starsG');
+    var cloudsG  = document.getElementById('cloudsG');
+    var dunesG   = document.getElementById('dunesG');
+    var sunG     = document.getElementById('sunG');
+    var moonG    = document.getElementById('moonG');
+    var skyRect  = document.getElementById('skyRect');
+    var groundRect = document.getElementById('groundRect');
+    var fogRect  = document.getElementById('fogRect');
+    var vignette = document.getElementById('vignette');
+
+    // ---------- Viewport ----------
+    var W = 0, H = 0, CX = 0, HOR = 0, FOCAL = 0;
+
+    function resize() {
+        W = window.innerWidth;
+        H = window.innerHeight;
+        svg.setAttribute('viewBox', '0 0 ' + W + ' ' + H);
+        CX = W / 2;
+        HOR = H * 0.52;
+        FOCAL = H * 1.15;
+        skyRect.setAttribute('width', W);
+        skyRect.setAttribute('height', H);
+        groundRect.setAttribute('y', HOR);
+        groundRect.setAttribute('width', W);
+        groundRect.setAttribute('height', H - HOR);
+        fogRect.setAttribute('y', HOR - 70);
+        fogRect.setAttribute('width', W);
+        vignette.setAttribute('width', W);
+        vignette.setAttribute('height', H);
+    }
+    window.addEventListener('resize', resize);
+    if (window.visualViewport) window.visualViewport.addEventListener('resize', resize);
+    resize();
+
+    // ---------- Seeded RNG ----------
+    function mulberry32(seed) {
+        var a = seed >>> 0;
+        return function () {
+            a |= 0; a = (a + 0x6D2B79F5) | 0;
+            var t = Math.imul(a ^ (a >>> 15), 1 | a);
+            t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+            return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+        };
+    }
+    function chunkSeed(cx, cz) {
+        var h = (Math.imul(cx, 374761393) + Math.imul(cz, 668265263)) ^ 0x5bf03635;
+        h = Math.imul(h ^ (h >>> 13), 1274126177);
+        return (h ^ (h >>> 16)) >>> 0;
+    }
+    function wrapAngle(a) {
+        a = a % TAU;
+        if (a > Math.PI) a -= TAU;
+        if (a < -Math.PI) a += TAU;
+        return a;
+    }
+    function clamp(v, lo, hi) { return v < lo ? lo : (v > hi ? hi : v); }
+
+    function el(tag, attrs) {
+        var e = document.createElementNS(SVGNS, tag);
+        if (attrs) for (var k in attrs) e.setAttribute(k, attrs[k]);
+        return e;
+    }
+
+    // ---------- Player ----------
+    var player = { x: 0, z: 0, a: 0.6 };
+    var bobPhase = 0, bobAmp = 0;
+
+    // ---------- Static sky decor (bearing-anchored) ----------
+    var stars = [];
+    (function () {
+        var rng = mulberry32(1234567);
+        for (var i = 0; i < 34; i++) {
+            var c = el('circle', {
+                r: (0.8 + rng() * 1.6).toFixed(2),
+                fill: '#fff6e0'
+            });
+            starsG.appendChild(c);
+            stars.push({ el: c, bearing: rng() * TAU - Math.PI, elev: 0.12 + rng() * 0.85, op: 0.35 + rng() * 0.6 });
+        }
+    })();
+
+    var clouds = [];
+    (function () {
+        var rng = mulberry32(777);
+        for (var i = 0; i < 5; i++) {
+            var g = el('g');
+            g.appendChild(el('ellipse', { cx: 0, cy: 0, rx: 130, ry: 16 }));
+            g.appendChild(el('ellipse', { cx: 70, cy: -8, rx: 90, ry: 13 }));
+            g.appendChild(el('ellipse', { cx: -80, cy: -5, rx: 80, ry: 11 }));
+            cloudsG.appendChild(g);
+            clouds.push({ el: g, bearing: rng() * TAU - Math.PI, elev: 0.18 + rng() * 0.35, s: 0.7 + rng() * 1.1 });
+        }
+    })();
+
+    var dunes = [];
+    (function () {
+        var rng = mulberry32(4242);
+        var shades = ['#e9cdae', '#dbb898', '#cba488', '#e0c3a2', '#d2ae90', '#c6a283'];
+        for (var i = 0; i < 6; i++) {
+            var e = el('ellipse', {
+                cx: 0, cy: 0,
+                rx: 240 + rng() * 320,
+                ry: 22 + rng() * 40,
+                fill: shades[i],
+                opacity: 0.55 + rng() * 0.3
+            });
+            dunesG.appendChild(e);
+            dunes.push({ el: e, bearing: (i / 6) * TAU - Math.PI + (rng() - 0.5) * 0.6 });
+        }
+    })();
+
+    function placeBearing(node, bearing, elev) {
+        var d = wrapAngle(bearing - player.a);
+        if (Math.abs(d) > 1.45) { node.style.display = 'none'; return; }
+        node.style.display = '';
+        node.setAttribute('transform',
+            'translate(' + (CX + Math.tan(d) * FOCAL).toFixed(1) + ' ' + (HOR - Math.tan(elev) * FOCAL).toFixed(1) + ')');
+    }
+
+    function updateSky() {
+        placeBearing(sunG, 0.7, 0.055);
+        placeBearing(moonG, -2.4, 0.3);
+        var i, d;
+        for (i = 0; i < stars.length; i++) {
+            var s = stars[i];
+            d = wrapAngle(s.bearing - player.a);
+            if (Math.abs(d) > 1.45) { s.el.style.display = 'none'; continue; }
+            var y = HOR - Math.tan(s.elev) * FOCAL;
+            s.el.style.display = '';
+            s.el.setAttribute('cx', (CX + Math.tan(d) * FOCAL).toFixed(1));
+            s.el.setAttribute('cy', y.toFixed(1));
+            s.el.setAttribute('opacity', (s.op * clamp((HOR - y) / 160, 0.15, 1)).toFixed(2));
+        }
+        for (i = 0; i < clouds.length; i++) {
+            var c = clouds[i];
+            d = wrapAngle(c.bearing - player.a);
+            if (Math.abs(d) > 1.5) { c.el.style.display = 'none'; continue; }
+            c.el.style.display = '';
+            c.el.setAttribute('transform',
+                'translate(' + (CX + Math.tan(d) * FOCAL).toFixed(1) + ' ' +
+                (HOR - Math.tan(c.elev) * FOCAL).toFixed(1) + ') scale(' + c.s.toFixed(2) + ')');
+        }
+        for (i = 0; i < dunes.length; i++) {
+            var du = dunes[i];
+            d = wrapAngle(du.bearing - player.a);
+            if (Math.abs(d) > 1.5) { du.el.style.display = 'none'; continue; }
+            du.el.style.display = '';
+            du.el.setAttribute('transform',
+                'translate(' + (CX + Math.tan(d) * FOCAL).toFixed(1) + ' ' + (HOR + 6) + ')');
+        }
+    }
+
+    // ---------- Procedural chunks ----------
+    // chunk = { props: [{el, wx, wz, s, mirror, tilt, alt, amp, phase, spd}],
+    //           veins: [{under, core, pts: [[x,z]...]}],
+    //           els: [all elements] }
+    var chunks = new Map();
+
+    function buildChunk(cx, cz) {
+        var rng = mulberry32(chunkSeed(cx, cz));
+        var baseX = cx * CHUNK, baseZ = cz * CHUNK;
+        var chunk = { props: [], veins: [], els: [] };
+        var i, e;
+
+        for (i = 0; i < 5; i++) {
+            var wx = baseX + rng() * CHUNK;
+            var wz = baseZ + rng() * CHUNK;
+            var roll = rng(), type, def;
+            if (roll < 0.34)      { type = 'shard'; def = '#p-shard'; }
+            else if (roll < 0.58) { type = 'tree';  def = '#p-tree'; }
+            else if (roll < 0.78) { type = 'ring';  def = '#p-ring'; }
+            else                  { type = 'crane'; def = '#p-crane'; }
+
+            var prop = {
+                el: el('use', { href: def }),
+                wx: wx, wz: wz,
+                s: type === 'ring' ? 1.1 + rng() * 0.7 :
+                   type === 'crane' ? 0.5 + rng() * 0.5 : 0.6 + rng() * 0.9,
+                mirror: rng() < 0.5,
+                tilt: (type === 'shard' || type === 'tree') ? (rng() - 0.5) * 10 : 0,
+                alt: type === 'crane' ? 130 + rng() * 150 : 0,
+                amp: type === 'crane' ? 14 + rng() * 18 : 0,
+                phase: rng() * TAU,
+                spd: 0.4 + rng() * 0.5
+            };
+            chunk.props.push(prop);
+            chunk.els.push(prop.el);
+        }
+
+        // drifting gold motes
+        for (i = 0; i < 3; i++) {
+            var m = {
+                el: el('use', { href: '#p-mote' }),
+                wx: baseX + rng() * CHUNK,
+                wz: baseZ + rng() * CHUNK,
+                s: 0.5 + rng() * 0.8,
+                mirror: false, tilt: 0,
+                alt: 25 + rng() * 70,
+                amp: 12 + rng() * 16,
+                phase: rng() * TAU,
+                spd: 0.6 + rng() * 0.8
+            };
+            chunk.props.push(m);
+            chunk.els.push(m.el);
+        }
+
+        // kintsugi ground veins (polylines on the ground plane)
+        for (i = 0; i < 2; i++) {
+            var pts = [];
+            var px = baseX + rng() * CHUNK, pz = baseZ + rng() * CHUNK;
+            var dir = rng() * TAU;
+            pts.push([px, pz]);
+            for (var seg = 0; seg < 3; seg++) {
+                var len = 140 + rng() * 200;
+                dir += (rng() - 0.5) * 1.4;
+                px += Math.cos(dir) * len;
+                pz += Math.sin(dir) * len;
+                pts.push([px, pz]);
+            }
+            var vein = {
+                under: el('path', { fill: 'none', stroke: '#ffb347', 'stroke-linecap': 'round', 'stroke-linejoin': 'round', opacity: 0.28 }),
+                core:  el('path', { fill: 'none', stroke: '#ffdf8a', 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }),
+                pts: pts
+            };
+            chunk.veins.push(vein);
+            chunk.els.push(vein.under, vein.core);
+        }
+
+        chunks.set(cx + ',' + cz, chunk);
+    }
+
+    function destroyChunk(chunk) {
+        for (var i = 0; i < chunk.els.length; i++) {
+            var e = chunk.els[i];
+            if (e.parentNode) e.parentNode.removeChild(e);
+        }
+    }
+
+    function ensureChunks() {
+        var pcx = Math.floor(player.x / CHUNK);
+        var pcz = Math.floor(player.z / CHUNK);
+        var dx, dz, key;
+        for (dx = -CHUNK_RANGE; dx <= CHUNK_RANGE; dx++) {
+            for (dz = -CHUNK_RANGE; dz <= CHUNK_RANGE; dz++) {
+                key = (pcx + dx) + ',' + (pcz + dz);
+                if (!chunks.has(key)) buildChunk(pcx + dx, pcz + dz);
+            }
+        }
+        chunks.forEach(function (chunk, key) {
+            var parts = key.split(',');
+            if (Math.abs(+parts[0] - pcx) > CHUNK_RANGE || Math.abs(+parts[1] - pcz) > CHUNK_RANGE) {
+                destroyChunk(chunk);
+                chunks.delete(key);
+            }
+        });
+    }
+
+    // ---------- Input ----------
+    var keys = Object.create(null);
+    var HANDLED = { KeyW: 1, KeyA: 1, KeyS: 1, KeyD: 1, ArrowUp: 1, ArrowDown: 1, ArrowLeft: 1, ArrowRight: 1, Space: 1 };
+    window.addEventListener('keydown', function (e) {
+        if (HANDLED[e.code]) e.preventDefault();
+        keys[e.code] = true;
+    });
+    window.addEventListener('keyup', function (e) { keys[e.code] = false; });
+    window.addEventListener('blur', function () { keys = Object.create(null); });
+
+    // Mouse / touch drag to look (on the SVG itself, not the sticks)
+    var dragId = null, lastDragX = 0;
+    svg.addEventListener('pointerdown', function (e) {
+        if (dragId !== null) return;
+        dragId = e.pointerId;
+        lastDragX = e.clientX;
+        svg.setPointerCapture(dragId);
+        svg.classList.add('dragging');
+        e.preventDefault();
+    });
+    svg.addEventListener('pointermove', function (e) {
+        if (e.pointerId !== dragId) return;
+        player.a += (e.clientX - lastDragX) * 0.0042;
+        lastDragX = e.clientX;
+    });
+    function endDrag(e) {
+        if (e.pointerId !== dragId) return;
+        dragId = null;
+        svg.classList.remove('dragging');
+    }
+    svg.addEventListener('pointerup', endDrag);
+    svg.addEventListener('pointercancel', endDrag);
+    svg.addEventListener('contextmenu', function (e) { e.preventDefault(); });
+
+    // ---------- Virtual joysticks (true multitouch via pointer capture) ----------
+    var stickMove = 0, stickTurn = 0;
+
+    function makeStick(base, onChange) {
+        var knob = base.querySelector('.knob');
+        var pid = null, cx = 0, cy = 0, R = 44;
+
+        base.addEventListener('pointerdown', function (e) {
+            if (pid !== null) return;               // one pointer per stick
+            pid = e.pointerId;
+            base.setPointerCapture(pid);
+            var r = base.getBoundingClientRect();
+            cx = r.left + r.width / 2;
+            cy = r.top + r.height / 2;
+            move(e);
+            e.preventDefault();
+        });
+        function move(e) {
+            if (e.pointerId !== pid) return;
+            var dx = e.clientX - cx, dy = e.clientY - cy;
+            var d = Math.hypot(dx, dy);
+            if (d > R) { dx *= R / d; dy *= R / d; }
+            knob.style.transform = 'translate(' + dx + 'px,' + dy + 'px)';
+            onChange(dx / R, dy / R);
+        }
+        base.addEventListener('pointermove', move);
+        function end(e) {
+            if (e.pointerId !== pid) return;
+            pid = null;
+            knob.style.transform = 'translate(0,0)';
+            onChange(0, 0);
+        }
+        base.addEventListener('pointerup', end);
+        base.addEventListener('pointercancel', end);
+    }
+
+    makeStick(document.getElementById('stickL'), function (nx, ny) { stickMove = -ny; });
+    makeStick(document.getElementById('stickR'), function (nx) { stickTurn = nx; });
+
+    // Show sticks on touch-capable devices
+    if (window.matchMedia('(pointer: coarse)').matches || 'ontouchstart' in window) {
+        document.body.classList.add('touch');
+    }
+
+    // Kill mobile browser gestures: pull-to-refresh, pinch zoom, double-tap zoom
+    document.addEventListener('touchmove', function (e) { e.preventDefault(); }, { passive: false });
+    document.addEventListener('gesturestart', function (e) { e.preventDefault(); });
+    document.addEventListener('dblclick', function (e) { e.preventDefault(); });
+
+    // Fade the desktop hint after a while
+    setTimeout(function () {
+        var hint = document.getElementById('hint');
+        if (hint) hint.style.opacity = '0';
+    }, 9000);
+
+    // ---------- Render loop ----------
+    var lastT = 0;
+    var visible = [];   // reused each frame: {el, camZ}
+
+    function frame(t) {
+        var dt = clamp((t - lastT) / 1000, 0, 0.05);
+        lastT = t;
+        var time = t / 1000;
+
+        // --- input -> movement ---
+        var fwd = (keys.KeyW || keys.ArrowUp ? 1 : 0) - (keys.KeyS || keys.ArrowDown ? 1 : 0);
+        var turn = (keys.KeyD || keys.ArrowRight ? 1 : 0) - (keys.KeyA || keys.ArrowLeft ? 1 : 0);
+        fwd = clamp(fwd + stickMove, -1, 1);
+        turn = clamp(turn + stickTurn, -1, 1);
+
+        player.a = wrapAngle(player.a + turn * TURN_SPEED * dt);
+        var spd = fwd >= 0 ? WALK_SPEED : WALK_SPEED * 0.6;
+        player.x += Math.sin(player.a) * fwd * spd * dt;
+        player.z += Math.cos(player.a) * fwd * spd * dt;
+
+        // --- head bob ---
+        var moving = Math.abs(fwd) > 0.03;
+        bobPhase += dt * 8.5 * Math.abs(fwd);
+        bobAmp += ((moving ? 1 : 0) - bobAmp) * clamp(dt * 8, 0, 1);
+        var bobY = Math.sin(bobPhase) * H * 0.008 * bobAmp;
+        var roll = Math.sin(bobPhase * 0.5) * 0.35 * bobAmp;
+        cam.setAttribute('transform', 'translate(0 ' + bobY.toFixed(2) + ') rotate(' + roll.toFixed(2) + ' ' + CX + ' ' + HOR + ')');
+
+        ensureChunks();
+        updateSky();
+
+        var sinA = Math.sin(player.a), cosA = Math.cos(player.a);
+        visible.length = 0;
+
+        chunks.forEach(function (chunk) {
+            var i, prop;
+
+            // --- props ---
+            for (i = 0; i < chunk.props.length; i++) {
+                prop = chunk.props[i];
+                var dx = prop.wx - player.x, dz = prop.wz - player.z;
+                var camX = dx * cosA - dz * sinA;
+                var camZ = dx * sinA + dz * cosA;
+                if (camZ < NEAR || camZ > FOG_END) { prop.el.style.display = 'none'; continue; }
+
+                var s = FOCAL / camZ;
+                var sx = CX + camX * s;
+                if (sx < -W * 0.3 || sx > W * 1.3) { prop.el.style.display = 'none'; continue; }
+
+                var groundY = HOR + EYE * s;
+                var alt = prop.alt + (prop.amp ? Math.sin(time * prop.spd + prop.phase) * prop.amp : 0);
+                var sy = groundY - alt * s;
+                var ps = s * prop.s;
+
+                var fog = 1 - clamp((camZ - FOG_START) / (FOG_END - FOG_START), 0, 1);
+                var nearFade = clamp((camZ - NEAR) / 90, 0, 1);
+                prop.el.style.display = '';
+                prop.el.setAttribute('opacity', (fog * nearFade).toFixed(3));
+                prop.el.setAttribute('transform',
+                    'translate(' + sx.toFixed(1) + ' ' + sy.toFixed(1) + ')' +
+                    (prop.tilt ? ' rotate(' + prop.tilt.toFixed(1) + ')' : '') +
+                    ' scale(' + (prop.mirror ? -ps : ps).toFixed(4) + ' ' + ps.toFixed(4) + ')');
+                visible.push(prop);
+                prop.camZ = camZ;
+            }
+
+            // --- ground veins ---
+            for (i = 0; i < chunk.veins.length; i++) {
+                var vein = chunk.veins[i];
+                var d = '', count = 0, sumZ = 0, sumS = 0;
+                for (var j = 0; j < vein.pts.length; j++) {
+                    var vdx = vein.pts[j][0] - player.x, vdz = vein.pts[j][1] - player.z;
+                    var vcx = vdx * cosA - vdz * sinA;
+                    var vcz = vdx * sinA + vdz * cosA;
+                    if (vcz < NEAR || vcz > FOG_END) continue;
+                    var vs = FOCAL / vcz;
+                    var vx = CX + vcx * vs;
+                    var vy = HOR + EYE * vs;
+                    d += (count === 0 ? 'M' : ' L') + vx.toFixed(1) + ' ' + vy.toFixed(1);
+                    count++; sumZ += vcz; sumS += vs;
+                }
+                if (count < 2) {
+                    vein.under.style.display = 'none';
+                    vein.core.style.display = 'none';
+                    continue;
+                }
+                var avgZ = sumZ / count, avgS = sumS / count;
+                var vfog = 1 - clamp((avgZ - FOG_START) / (FOG_END - FOG_START), 0, 1);
+                var wCore = clamp(4.5 * avgS, 0.5, 12);
+                vein.under.style.display = '';
+                vein.core.style.display = '';
+                vein.under.setAttribute('d', d);
+                vein.core.setAttribute('d', d);
+                vein.under.setAttribute('stroke-width', (wCore * 3).toFixed(2));
+                vein.core.setAttribute('stroke-width', wCore.toFixed(2));
+                vein.core.setAttribute('opacity', (0.9 * vfog).toFixed(3));
+                if (!vein.under.parentNode) { veinsG.appendChild(vein.under); veinsG.appendChild(vein.core); }
+            }
+        });
+
+        // --- painter's sort: far to near ---
+        visible.sort(function (a, b) { return b.camZ - a.camZ; });
+        for (var i = 0; i < visible.length; i++) {
+            worldG.appendChild(visible[i].el);   // re-append moves node to end (top)
+        }
+
+        requestAnimationFrame(frame);
+    }
+
+    requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
