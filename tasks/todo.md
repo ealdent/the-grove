@@ -104,3 +104,21 @@
 - Screenshots: `/tmp/vesperglass-intro.png`, `/tmp/vesperglass-desktop.png`, `/tmp/vesperglass-explored.png`, `/tmp/vesperglass-mobile.png`, and `/tmp/vesperglass-mobile-landscape.png`.
 - Result: pass.
 - Remaining uncertainty: physical-device iOS Safari and Android Chrome multitouch/performance were not available; OS-reserved edge gestures cannot be fully controlled by page code.
+
+---
+
+# Todo: SVG Forest Model Sort
+
+## Plan
+
+- [x] Derive a stable case-insensitive alphabetical order from every tile's `data-model` value, preserving duplicate-model order.
+- [x] Reorder only the existing tile blocks in `svg-forest/index.html` without changing tile content or filter behavior.
+- [x] Verify source and rendered DOM order, provider/model filtering, console/network state, and final diff cleanliness.
+
+## Review
+
+- Reordered all 19 gallery tiles into stable case-insensitive alphabetical order by their literal `data-model` values, from Fable 5 through Sonnet 5. The three Gemini 3.1 Pro and two Opus 4.6 duplicates retain their original relative order.
+- Static comparison against `HEAD` confirmed the href inventory and every complete card block are unchanged; only block positions moved. The `.no-results` element remains after all cards, and `git diff --check` passed.
+- Chrome 150 browser proof confirmed 19 rendered cards, 16 alphabetized model-menu entries, correct duplicate counts, the expected provider menu/counts, working Gemini/OpenAI/GPT-5.6 Sol filters, and restoration to all 19 cards.
+- No JavaScript exceptions, failed requests, or application-resource failures occurred. Chrome made one benign request for the absent `/favicon.ico`, which returned 404.
+- Independent review found no correctness, scope, or regression issues. Screenshot: `/tmp/svg-forest-index-alphabetical.png`. Result: pass.
