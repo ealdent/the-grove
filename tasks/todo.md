@@ -151,3 +151,35 @@
 - Chrome 150 browser proof confirmed 19 rendered cards, 16 alphabetized model-menu entries, correct duplicate counts, the expected provider menu/counts, working Gemini/OpenAI/GPT-5.6 Sol filters, and restoration to all 19 cards.
 - No JavaScript exceptions, failed requests, or application-resource failures occurred. Chrome made one benign request for the absent `/favicon.ico`, which returned 404.
 - Independent review found no correctness, scope, or regression issues. Screenshot: `/tmp/svg-forest-index-alphabetical.png`. Result: pass.
+
+---
+
+# Todo: Jam Jar Jamboree Tower Defense
+
+## Task Packet
+
+- Goal: Create an original, cute cartoony, dependency-free tower-defense game that opens directly in a browser.
+- Project: The Grove / Tower Defense gallery.
+- Repo/path: `tower-def/gpt-5.6-terra-ultra-tower-def.html` and the gallery's `tower-def/index.html`.
+- Constraints: One standalone HTML file; randomized path; five tower families with four upgrades each; varied enemies and at least 20 waves; building/upgrading only between waves; do not inspect any other tower-defense game.
+- Non-goals: External packages, remote assets, reuse of existing game code or game designs.
+- Proof required: static checks, direct browser playthrough checks, responsive UI proof, clean scoped diff, and an independent skeptical review.
+- Risks: generated path must always be playable and buildable; effects must remain bounded during long sessions; the index entry must follow the existing alphabetical listing convention.
+
+## Plan
+
+- [x] Author the new standalone HTML game from first principles, with a procedural meadow path, original game art, and all CSS/JavaScript inline.
+- [x] Implement five differentiated towers and four meaningful upgrades per tower, with readable selection, range, and upgrade UI.
+- [x] Implement diverse enemy behavior and an authored 24-wave progression, including a clear between-wave planning phase.
+- [x] Only after the game is complete, inspect `tower-def/index.html` and add the new entry in its correct alphabetical position.
+- [x] Verify syntax, standalone constraints, game-flow invariants, real-browser desktop/mobile behavior, console/network health, and final diff cleanliness.
+- [x] Perform a skeptical second-pass review and record results below.
+
+## Review
+
+- Created a 96 KB dependency-free Jam Jar Jamboree game with a regenerated non-self-crossing blanket route, five tower families, four sequential and mechanically distinct upgrades per family, nine enemy variants, and 24 authored waves.
+- Building, selling, and upgrades are locked to planning phases. The in-game tray, inspector, range previews, pause/speed controls, and restart flow make that state explicit. A final safeguard asks for confirmation before a fresh picnic clears an active or built-up game.
+- Added the GPT-5.6 Terra / Ultra Jam Jar Jamboree card after GPT-5.6 Sol xHigh and before Grok 4.2, preserving the gallery model order.
+- Static proof passed: inline JavaScript parses; exactly five tower definitions each expose four upgrades; 24 waves are defined; the new HTML has no external scripts, stylesheets, URLs, media, or image dependencies; and whitespace checks are clean.
+- Browser proof passed locally over HTTP: desktop placement and an upgrade changed crumbs/rate as expected; wave 1 launched with animated enemies; upgrades and selling became disabled during combat; New picnic generated a visibly different route and seed; Chrome at 390 by 844 had a 390 px page width with no horizontal overflow and a reviewed mobile layout. Console warnings/errors were empty.
+- Skeptical review found no blockers. Its mocked-canvas all-24-wave simulation completed without a runtime exception; the only P2 reset-risk note was addressed with the confirmation guard. Direct file navigation could not be run in the browser harness because that harness blocks file URLs, but the static dependency scan establishes that the file has no network or install requirement.
