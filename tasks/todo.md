@@ -66,3 +66,41 @@
 - New file: `svg-forest/gpt56-luna-med-svg-forest.html`.
 - Theme: moonlit bioluminescent forest with singing spires, glass lanterns, glowcap mushrooms, ferns, and luminous stones.
 - Verification: JavaScript syntax, pure-SVG dependency scan, desktop render screenshot, and mobile viewport screenshot completed; Chrome headless emitted only unrelated updater/crashpad messages.
+
+---
+
+# Todo: Vesperglass SVG Exploration
+
+## Plan
+
+- [x] Create `svg-forest/gpt56-sol-ultra-svg-forest.html` from first principles without opening any existing game files.
+- [x] Build a responsive pure-SVG first-person renderer with deterministic endless world streaming, perspective scaling, depth ordering, and bounded element pools.
+- [x] Design a cohesive alien twilight environment with an SVG sky, terrain, atmospheric layers, and at least three distinct projected prop families.
+- [x] Implement frame-rate-independent movement, keyboard turning, mouse-drag look, head bob, and independent true-multitouch virtual joysticks.
+- [x] Finish the new game before inspecting `svg-forest/index.html`, then add one matching gallery tile without opening any other game.
+- [x] Verify structural constraints, JavaScript syntax, deterministic streaming/pool bounds, desktop and mobile rendering, simultaneous input, console/network health, and final diff cleanliness.
+- [x] Perform a skeptical second-pass review and document the completed proof here.
+
+## Review
+
+- Created Vesperglass, a 55,874-byte dependency-free HTML game whose sky, terrain, atmosphere, five prop families, perspective renderer, and animated world are pure SVG. The deterministic 9×9 chunk window remains bounded at 81 chunks while a fixed 180-slot prop pool avoids per-frame SVG creation/removal.
+- Added frame-rate-independent forward/back movement and turning, mouse-drag look, moving-only head bob, responsive HUD/onboarding, safe-area-aware mobile controls, independent pointer ownership, capture fallback cleanup, resize reprojection, and screen-reader instructions.
+- Added exactly one Vesperglass tile to `svg-forest/index.html`; opening it through the tile and navigating Back both succeeded.
+- Static proof passed: the inline JavaScript parses; all 51 IDs are unique; all DOM and SVG fragment references resolve; there is no canvas, image/media element, WebGL, Three.js, network API, external script/style, or external CSS URL; and no trailing whitespace or invalid generated attribute was found.
+- Browser proof passed in Chrome 150: W moved 10.75 units, S produced a -2.91 forward-axis delta, ArrowUp produced a +4.32 forward-axis delta, D turned 1.12 radians, W+D changed position and heading together, mouse drag turned 1.08 radians, head bob reversed nine times and settled to 0.005 logical units, and perspective depth/scale correlation was -0.77.
+- A 61-unit streaming run held SVG nodes at 622, loaded chunks at 81, and pool capacity at 180 with finite camera state, no invalid attributes, and a 10.3 ms observed p95 frame interval. Targeted boundary proof faded the farthest sampled prop to 0.001 opacity at depth 77.68, crossed the yaw wrap with a maximum 11.2-unit circular star step, and produced no empty prop kinds or out-of-range generated values.
+- Fresh-profile CDP multitouch proof delivered two distinct touch pointer IDs with forward and turn axes both at 0.99; releasing one left the other active, and final release reset both axes and recentered both knobs. Seven viewports from 320×568 through 1440×900 had no page scrolling, full-viewport SVG, and in-bounds 82–142 px joysticks.
+
+### UI Proof
+
+- URL: `http://127.0.0.1:8765/svg-forest/gpt56-sol-ultra-svg-forest.html`
+- Environment: local repository served by Python HTTP server.
+- User/role: anonymous local player.
+- Browser/session: Chrome 150 headless with fresh temporary desktop and mobile-emulated profiles, driven through CDP.
+- Steps: opened directly and through the gallery tile; dismissed onboarding; walked, reversed, turned, combined movement/turning, dragged to look, crossed streamed chunks, resized through seven viewports, and drove both touch controls simultaneously.
+- Expected result: responsive pure-SVG exploration with stable depth, bounded world resources, working desktop/mobile input, and no runtime/network failures.
+- Actual result: matched expected behavior; desktop, portrait, and landscape captures were visually reviewed.
+- Console errors: none. Failed network requests/responses: none in the instrumented game run. A separate browser launch requested a benign missing `/favicon.ico`; the game itself loaded no subresources.
+- Screenshots: `/tmp/vesperglass-intro.png`, `/tmp/vesperglass-desktop.png`, `/tmp/vesperglass-explored.png`, `/tmp/vesperglass-mobile.png`, and `/tmp/vesperglass-mobile-landscape.png`.
+- Result: pass.
+- Remaining uncertainty: physical-device iOS Safari and Android Chrome multitouch/performance were not available; OS-reserved edge gestures cannot be fully controlled by page code.
