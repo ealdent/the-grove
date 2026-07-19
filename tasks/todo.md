@@ -183,3 +183,25 @@
 - Static proof passed: inline JavaScript parses; exactly five tower definitions each expose four upgrades; 24 waves are defined; the new HTML has no external scripts, stylesheets, URLs, media, or image dependencies; and whitespace checks are clean.
 - Browser proof passed locally over HTTP: desktop placement and an upgrade changed crumbs/rate as expected; wave 1 launched with animated enemies; upgrades and selling became disabled during combat; New picnic generated a visibly different route and seed; Chrome at 390 by 844 had a 390 px page width with no horizontal overflow and a reviewed mobile layout. Console warnings/errors were empty.
 - Skeptical review found no blockers. Its mocked-canvas all-24-wave simulation completed without a runtime exception; the only P2 reset-risk note was addressed with the confirmation guard. Direct file navigation could not be run in the browser harness because that harness blocks file URLs, but the static dependency scan establishes that the file has no network or install requirement.
+
+---
+
+# Todo: Harmony Hollow Tower Defense
+
+## Plan
+
+- [x] Inspect only `tower-def/index.html` for the listing pattern; do not open any existing game files.
+- [x] Create `tower-def/kimi-k3-max-tower-def.html`: dependency-free single-page canvas game, original theme (animal musicians vs. The Hush), procedural Web Audio notes.
+- [x] Random winding track per game, 5 tower families with 4 upgrades each, varied enemies, 20 authored waves + endless, between-wave build/upgrade/sell phase.
+- [x] Cute cartoony pastel art, professional responsive UI (desktop sidebar / stacked mobile).
+- [x] Verify: JS syntax check + headless DOM-stub simulation (build, wave run, kills, economy, game over).
+- [x] Add one tile to `tower-def/index.html`, alphabetical by model (Kimi K3, effort Max), with Moonshot provider entry.
+- [x] Commit and push to main.
+
+## Review
+
+- Created `tower-def/kimi-k3-max-tower-def.html` (62 KB, zero external dependencies). Theme: Harmony Hollow — animal musicians (Pizzicat, Tuba Toad, Brass Bunny, Snare Snail, Xylo Jay) defend the Songbird's nest from The Hush, grey silence-critters. Wow-factor: every shot plays a real procedurally-synthesized note via the Web Audio API (pentatonic plucks/bass/brass/drums/chimes) — no audio assets.
+- Random winding track regenerated per game (validated waypoint polyline + pebble decor + reroll button pre-wave-1). 5 tower families with 4 upgrades each (distinct level-5 specials: dual-shot, slow-splash, wide pierce, bigger slow aura, 5-chain). 7 enemy types with varied speed/HP/behaviors (splitter egg, slow-immune ghost, tower-muting boss). 20 authored waves + endless encore mode; build/upgrade/sell available between (and during) waves.
+- Cute cartoony canvas art (squash-and-stretch, blush, wobble), pastel chunky UI with HUD chips, wave previews with enemy chips, range ghosts, pause/speed/mute/restart, keyboard shortcuts, responsive layout (sidebar → stacked cards under 980 px), reduced-motion support.
+- Verified: JS parses (`node --check`); custom headless DOM-stub harness played the game end-to-end — 33/33 checks: boot state, placement/occupied-cell rejection, upgrade/sell economy (fixed a real 62-vs-63 float-floor refund bug), wave-1 kills, full 20-wave auto-playthrough with all 7 enemy types and the boss rendered, victory overlay, endless wave 21, restart/reroll, pause/speed. No runtime exceptions across ~30k simulated frames.
+- Added one tile to `tower-def/index.html`: Moonshot AI / Kimi K3 / Max, alphabetically between Grok 4.5 and Opus 4.6, with new `logo-moonshot` symbol and provider entry; 26 cards confirmed in case-insensitive alphabetical order; index JS parses.
