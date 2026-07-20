@@ -1,3 +1,66 @@
+# Todo: Redline Ascent Retro Intro and Gesture Guard
+
+## Task Packet
+
+- Goal: Restore the intro screen's grungy pixel-arcade marquee using the supplied screenshot and prevent right-click or horizontal swipe/trackpad navigation from escaping the game.
+- Project: The Grove / Redline Ascent.
+- Repo/path: `arcade/redline-ascent/`.
+- Constraints: Preserve the completed gameplay/HUD work and responsive layouts; keep menu controls accessible; do not add dependencies or replace the supplied reference with a new visual direction.
+- Non-goals: Reworking gameplay balance, changing generated sprites, or redesigning the in-game HUD.
+- Proof required: TypeScript, lint, production/standalone build, same-state visual comparison at desktop and compact sizes, right-click/secondary-button proof, horizontal wheel/touch guard proof, console/network inspection, and direct standalone smoke test.
+
+## Plan
+
+- [x] Compare the supplied marquee reference against the current and original intro treatments; identify the smallest style changes that restore the prior identity.
+- [x] Rework only the intro cabinet/title hierarchy around the hot-red pixel marquee, darker CRT framing, and worn amber/rust supporting UI.
+- [x] Add scoped context-menu, secondary-pointer, horizontal wheel, touch-move, and overscroll guards without breaking buttons or gameplay controls.
+- [x] Run static/build proof, real-browser interaction checks, responsive screenshots, and source-vs-rendered design QA.
+- [x] Record the correction, review results, residual browser limitations, and final standalone status.
+
+## Review
+
+- Restored the intro's high-salience identity: an oversized two-line Press Start 2P marquee, `#ff3b26` core, warm stepped bloom, tight line spacing, translucent wasteland, CRT scanlines, subtle mottling, and worn amber/rust framing. The newer pilot, mission, control, and START information remains intact.
+- The combined source/render comparison is recorded in `arcade/redline-ascent/design-qa.md`; an initial mobile crop was found and corrected. Final 390×844 title metrics are `scrollWidth = clientWidth = 308px`, and 390×844 plus 568×320 cabinets have no internal or document overflow. At 1280×720 the full footer is visible without scrolling.
+- Added shell-scoped context-menu, auxiliary-click, drag, gesture, horizontal-wheel, touch-move, and overscroll suppression while preserving vertical menu scrolling. Canvas and FIRE input reject secondary mouse/pen buttons, FIRE owns one pointer ID, unrelated releases cannot cancel a held touch, and mouse-button chord state follows the primary-button bit.
+- Browser proof passed at 1280×720, 390×844, and 568×320: START transitioned to gameplay; right-click produced no menu; horizontal scrolling left the URL and `scrollX = 0` unchanged; PAUSE/AUDIO remained present; and warning/error logs were empty. A direct smoke test of the regenerated standalone `index.html` repeated the intro, gesture, START, and gameplay checks.
+- Release proof passed: `npm run build`, `npm run lint`, and `git diff --check`. Build emitted only the existing Browserslist-age and large-bundle advisories. A final skeptical review approved the correction with no P0–P2 defects. Native iOS/Android edge-swipe and true simultaneous multitouch remain hardware-unverified; the event ownership paths received a separate static audit.
+
+---
+
+# Todo: Redline Ascent Gameplay and Art Pass
+
+## Task Packet
+
+- Goal: Improve `arcade/redline-ascent` gameplay, repair visibly broken sprites, and align the presentation with the Redline Automata design brief.
+- Project: The Grove / Arcade gallery.
+- Repo/path: `arcade/redline-ascent/`.
+- Constraints: Preserve the React + TypeScript + Canvas 2D architecture and standalone build; keep the four-color analog-apocalypse identity; avoid new runtime dependencies; make desktop, keyboard, pointer, and touch play remain viable.
+- Non-goals: A full engine rewrite, a new game mode, account/network features, or unrelated gallery changes.
+- Files likely involved: `src/game/engine.ts`, `src/game/pixelart.ts`, `src/game/obstacle-sprites.ts`, `src/App.tsx`, `src/index.css`, `index.source.html`, and selected PNGs under `src/assets/sprites/`.
+- Proof required: lint, TypeScript, production/standalone build, focused gameplay regression checks, desktop/mobile browser play, console/network inspection, visual screenshots, sprite alpha inspection, and an independent skeptical review.
+- Risks: asynchronous engine teardown under React Strict Mode; fast-object collision tunneling; generated sprite alpha/fringe quality; HUD crowding on narrow viewports; stage/boss balance in an endless run.
+
+## Plan
+
+- [x] Audit the engine, current art, design brief, baseline build, and live desktop behavior; reproduce the sprite corruption and identify root gameplay defects.
+- [x] Make engine lifetime and input handling robust, fix collision/reward defects, and add focused regression instrumentation where useful.
+- [x] Improve the endless loop with readable stage bands, a recurring Relay Warden encounter, faster difficulty ramping, and an arch-thread overdrive reward.
+- [x] Replace or retire corrupted environmental art, rebuild the cropped biomechanical tree with clean padded raster art, and polish procedural combat sprites/effects.
+- [x] Rework the menu, HUD, typography, and narrow-screen controls around the supplied oil-black/red/cream/amber cabinet system.
+- [x] Run static, build, gameplay, desktop/mobile, console/network, and visual proof; perform a separate skeptical review and fix any issues found.
+- [x] Add a concise review/proof record below and capture only genuinely durable lessons if this pass reveals any.
+
+## Review
+
+- Rebuilt the cabinet, HUD, typography, palette, game-over report, and touch controls around the supplied oil-black/signal-red/poster-cream/amber system. The final 568×320 menu uses a compact two-column layout with START visible without scrolling; 390×844 and 1440×900 layouts have no page overflow.
+- Replaced the cropped biomechanical tree with `tree-v2.png`, added a transparent `relay-warden.png`, and removed the visibly corrupted composite sprite sheets from the runtime map. Both new 640 px RGBA assets have transparent corners and no magenta-key pixels; the production JavaScript payload is about 311 kB smaller than baseline despite adding the boss.
+- Added recurring staged Relay Warden encounters, focused boss windows, faster pacing, arch-thread overdrive/heat venting, release-to-vent overheating, boss telemetry, and viewport-safe compact flight bounds. Fixed Strict Mode teardown, looping-audio cleanup, stale input, high-score loading, pointer/keyboard arbitration, collision tunneling/order, false collision rewards, pickup tunneling, and frame-order scoring.
+- Static/release proof passed: `npx tsc -b`, `npm run lint`, `npm run build`, and `git diff --check`. The regenerated 2.98 MB standalone `index.html` opens directly from `file://`; it contains the latest overheat copy and none of the retired corrupt sprite imports.
+- Chrome proof passed for menu/start, pointer steering, pause/resume (identical paused-frame hashes, changing again after resume), mute state, the portrait Warden encounter, uncluttered boss telemetry, visible Redline Overdrive state, compact ship clearance, and responsive cabinet bounds. Latest console warning/error logs were empty and every active sprite request was observed; the dedicated failed-request capture was aborted, so network-failure instrumentation is not conclusive.
+- Independent mechanics review approved the final collision/stage/director behavior. Deep review found no remaining source blocker; its stale-standalone condition was resolved by the final build. Physical iOS/Android simultaneous drag-and-fire, a full live Warden kill/stage advance, and automated gameplay regressions remain unverified. No cross-project durable memory or correction lesson was created from this scoped pass.
+
+---
+
 # Todo: Auralis Drift SVG Exploration
 
 ## Product Spec

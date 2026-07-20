@@ -3,7 +3,7 @@
 
 import { buildProcSprites, makeBoltSprite, makeEnemyBoltSprite, type ProcSprites } from './pixelart';
 import { Sfx } from './audio';
-import { OBSTACLE_SPRITES } from './obstacle-sprites';
+import { OBSTACLE_SPRITES, RELAY_WARDEN_SPRITE } from './obstacle-sprites';
 
 /* ================= constants ================= */
 const CELL = 46; // ground grid cell (world units)
@@ -11,22 +11,24 @@ const CAM_H = 60; // camera height above ground
 const ZP = 90; // player plane distance
 const FAR = 1150; // spawn distance
 const GROUND_ZMAX = 820; // ground detail range
+const STAGE_LENGTH = 90; // world distance between relay encounters
+const FIRST_RELAY_DIST = 58;
 
 const C = {
-  sky0: '#2b1608',
-  sky1: '#6b3a14',
-  sky2: '#c98a3a',
-  horizonGlow: '#f2c063',
-  groundA: '#b5793b',
-  groundB: '#8f5a2a',
-  groundLine: '#5c3a1e',
-  groundFog: '#c98a3a',
-  cream: '#f9ecb9',
-  tan: '#e8c384',
-  red: '#c1382a',
-  hotRed: '#ff3b26',
-  darkPanel: 'rgba(14,8,4,0.82)',
-  blue: '#8fd0e0',
+  sky0: '#0b0d0e',
+  sky1: '#612e2c',
+  sky2: '#c99963',
+  horizonGlow: '#f1d78f',
+  groundA: '#9b5e36',
+  groundB: '#612e2c',
+  groundLine: '#0b0d0e',
+  groundFog: '#c99963',
+  cream: '#f7eac1',
+  tan: '#f1d78f',
+  red: '#c83b3d',
+  hotRed: '#e94d49',
+  darkPanel: 'rgba(11,13,14,0.9)',
+  blue: '#8fbec7',
 };
 
 /* ================= types ================= */
@@ -43,23 +45,27 @@ interface Obstacle {
   img: HTMLImageElement;
   x: number;
   z: number;
+  prevZ: number;
   w: number; // world visual width
   passed: boolean;
 }
 
-type EnemyKind = 'grinder' | 'wasp' | 'mine';
+type EnemyKind = 'grinder' | 'wasp' | 'mine' | 'warden';
 
 interface Enemy {
   kind: EnemyKind;
   x: number;
   alt: number;
   z: number;
+  prevZ: number;
   hp: number;
+  maxHp: number;
   t: number;
   seed: number;
   fireCd: number;
   flash: number;
   r: number;
+  destroyedByPlayer: boolean;
 }
 
 interface Bolt {
@@ -97,7 +103,9 @@ interface Popup {
 export type GameEvent = 'gameover';
 export interface EngineCallbacks {
   onGameOver: (score: number, hiScore: number, dist: number) => void;
-  onReady: () => void;
+  onReady: (hiScore: number) => void;
+  onPauseChange: (paused: boolean) => void;
+  onMuteChange: (muted: boolean) => void;
 }
 
 type State = 'attract' | 'playing' | 'paused' | 'dying';
@@ -105,20 +113,11 @@ type State = 'attract' | 'playing' | 'paused' | 'dying';
 const OBSTACLE_DEFS: ObstacleDef[] = [
   { name: 'ring-arch', h: 175, cw: 0.62, ch: 0.95, hole: { hw: 0.16, y0: 0.08, y1: 0.62 } },
   { name: 'gate', h: 120, cw: 0.6, ch: 0.9, hole: { hw: 0.13, y0: 0.02, y1: 0.52 } },
-  { name: 'ring-trio', h: 100, cw: 0.6, ch: 0.9, hole: { hw: 0.11, y0: 0.08, y1: 0.55 } },
-  { name: 'spire', h: 155, cw: 0.34, ch: 0.95 },
   { name: 'crystal', h: 100, cw: 0.55, ch: 0.9 },
   { name: 'tree', h: 115, cw: 0.4, ch: 0.85 },
-  { name: 'tower-cluster', h: 130, cw: 0.55, ch: 0.95 },
-  { name: 'dark-turrets', h: 105, cw: 0.6, ch: 0.9 },
-  { name: 'crystal-field', h: 82, cw: 0.6, ch: 0.85 },
   { name: 'dome-big', h: 92, cw: 0.7, ch: 0.9 },
   { name: 'bunker', h: 74, cw: 0.7, ch: 0.85 },
   { name: 'silo', h: 115, cw: 0.5, ch: 0.95 },
-  { name: 'dome-trio', h: 64, cw: 0.7, ch: 0.85 },
-  { name: 'tree-grove', h: 88, cw: 0.5, ch: 0.85 },
-  { name: 'silo-trio', h: 78, cw: 0.6, ch: 0.9 },
-  { name: 'ziggurat', h: 68, cw: 0.7, ch: 0.85 },
   { name: 'dome-med', h: 52, cw: 0.7, ch: 0.85 },
   { name: 'dome-small', h: 44, cw: 0.7, ch: 0.85 },
 ];
@@ -150,6 +149,7 @@ export class Engine {
   private raf = 0;
   private lastT = 0;
   private time = 0;
+  private destroyed = false;
 
   state: State = 'attract';
 
@@ -157,13 +157,15 @@ export class Engine {
   private proc!: ProcSprites;
   private boltImg!: HTMLCanvasElement;
   private eBoltImg!: HTMLCanvasElement;
+  private wardenImg: HTMLImageElement | null = null;
   private obstacleImgs = new Map<string, HTMLImageElement>();
   private skyBack: HTMLCanvasElement | null = null;
   private skyFront: HTMLCanvasElement | null = null;
 
   // input
   private keys = new Set<string>();
-  private pointer = { x: 0, y: 0, active: false, down: false, lastMove: -10 };
+  private pointer = { x: 0, y: 0, active: false, down: false, id: -1, type: 'mouse', lastMove: -10 };
+  private touchFiring = false;
 
   // world
   private dist = 0;
@@ -208,12 +210,17 @@ export class Engine {
   private alertUntil = 0;
   private pickupTimer = 18;
   private pickups: { x: number; alt: number; z: number; t: number }[] = [];
+  private stage = 1;
+  private nextRelayDist = FIRST_RELAY_DIST;
+  private relayActive = false;
+  private stageBannerUntil = 0;
 
   // fx
   private shake = 0;
   private flashRed = 0;
   private dieTimer = 0;
   private muted = false;
+  private overdriveUntil = 0;
 
   constructor(canvas: HTMLCanvasElement, cb: EngineCallbacks) {
     this.canvas = canvas;
@@ -227,43 +234,55 @@ export class Engine {
     window.addEventListener('resize', this.resize);
     window.addEventListener('keydown', this.onKeyDown);
     window.addEventListener('keyup', this.onKeyUp);
+    window.addEventListener('blur', this.clearTransientInput);
+    document.addEventListener('visibilitychange', this.onVisibilityChange);
     canvas.addEventListener('pointermove', this.onPointerMove);
     canvas.addEventListener('pointerdown', this.onPointerDown);
     window.addEventListener('pointerup', this.onPointerUp);
+    window.addEventListener('pointercancel', this.onPointerCancel);
     void this.loadSprites().then(() => {
+      if (this.destroyed) return;
       this.bakeSkyline();
-      this.cb.onReady();
+      this.cb.onReady(this.hiScore);
       this.lastT = performance.now();
       this.raf = requestAnimationFrame(this.loop);
     });
   }
 
   destroy() {
+    if (this.destroyed) return;
+    this.destroyed = true;
     cancelAnimationFrame(this.raf);
     window.removeEventListener('resize', this.resize);
     window.removeEventListener('keydown', this.onKeyDown);
     window.removeEventListener('keyup', this.onKeyUp);
+    window.removeEventListener('blur', this.clearTransientInput);
+    document.removeEventListener('visibilitychange', this.onVisibilityChange);
     this.canvas.removeEventListener('pointermove', this.onPointerMove);
     this.canvas.removeEventListener('pointerdown', this.onPointerDown);
     window.removeEventListener('pointerup', this.onPointerUp);
+    window.removeEventListener('pointercancel', this.onPointerCancel);
     this.sfx.stopEngine();
   }
 
   private async loadSprites() {
-    await Promise.all(
-      OBSTACLE_DEFS.map(
-        (d) =>
-          new Promise<void>((resolve) => {
-            const img = new Image();
-            img.onload = () => {
-              this.obstacleImgs.set(d.name, img);
-              resolve();
-            };
-            img.onerror = () => resolve();
-            img.src = OBSTACLE_SPRITES[d.name];
-          })
-      )
-    );
+    const load = (src: string) =>
+      new Promise<HTMLImageElement | null>((resolve) => {
+        const img = new Image();
+        img.onload = () => resolve(img);
+        img.onerror = () => resolve(null);
+        img.src = src;
+      });
+    const [warden, ...obstacles] = await Promise.all([
+      load(RELAY_WARDEN_SPRITE),
+      ...OBSTACLE_DEFS.map((def) => load(OBSTACLE_SPRITES[def.name])),
+    ]);
+    if (this.destroyed) return;
+    this.wardenImg = warden;
+    for (let i = 0; i < OBSTACLE_DEFS.length; i++) {
+      const img = obstacles[i];
+      if (img) this.obstacleImgs.set(OBSTACLE_DEFS[i].name, img);
+    }
   }
 
   private resize = () => {
@@ -277,6 +296,7 @@ export class Engine {
     this.cx = this.W / 2;
     this.f = this.H * 0.95;
     this.horizonY = this.H * 0.36;
+    this.palt = clamp(this.palt, this.playerMinAlt(), 72);
     this.bakeSkyline();
   };
 
@@ -284,31 +304,55 @@ export class Engine {
   private onKeyDown = (e: KeyboardEvent) => {
     if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', ' '].includes(e.key)) e.preventDefault();
     this.keys.add(e.key.toLowerCase());
-    if (e.key.toLowerCase() === 'm') {
-      this.muted = !this.muted;
-      this.sfx.setMuted(this.muted);
-    }
+    if (e.repeat) return;
+    if (e.key.toLowerCase() === 'm') this.toggleMute();
     if (e.key.toLowerCase() === 'p' && (this.state === 'playing' || this.state === 'paused')) {
       this.togglePause();
     }
   };
   private onKeyUp = (e: KeyboardEvent) => this.keys.delete(e.key.toLowerCase());
+  private clearTransientInput = () => {
+    this.keys.clear();
+    this.pointer.down = false;
+    this.pointer.active = false;
+    this.pointer.id = -1;
+    this.touchFiring = false;
+  };
+  private onVisibilityChange = () => {
+    if (document.hidden) this.clearTransientInput();
+  };
   private onPointerMove = (e: PointerEvent) => {
+    if (this.pointer.down && e.pointerId !== this.pointer.id) return;
+    if (e.pointerType === 'touch' && (!this.pointer.down || e.pointerId !== this.pointer.id)) return;
+    if ((e.pointerType === 'mouse' || e.pointerType === 'pen') && e.pointerId === this.pointer.id) {
+      this.pointer.down = (e.buttons & 1) !== 0;
+    }
     this.pointer.x = e.clientX;
     this.pointer.y = e.clientY;
+    this.pointer.type = e.pointerType;
     this.pointer.active = true;
     this.pointer.lastMove = this.time;
   };
   private onPointerDown = (e: PointerEvent) => {
+    if ((e.pointerType === 'mouse' || e.pointerType === 'pen') && e.button !== 0) return;
+    if (this.pointer.down && e.pointerId !== this.pointer.id) return;
     this.pointer.x = e.clientX;
     this.pointer.y = e.clientY;
     this.pointer.down = true;
+    this.pointer.id = e.pointerId;
+    this.pointer.type = e.pointerType;
     this.pointer.active = true;
     this.pointer.lastMove = this.time;
+    this.canvas.setPointerCapture?.(e.pointerId);
   };
-  private onPointerUp = () => {
+  private onPointerUp = (e: PointerEvent) => {
+    if (e.pointerId !== this.pointer.id) return;
     this.pointer.down = false;
+    this.pointer.id = -1;
+    if (e.pointerType === 'touch') this.pointer.active = false;
+    if (this.canvas.hasPointerCapture?.(e.pointerId)) this.canvas.releasePointerCapture(e.pointerId);
   };
+  private onPointerCancel = (e: PointerEvent) => this.onPointerUp(e);
 
   /* ---------------- public control ---------------- */
   start() {
@@ -327,25 +371,39 @@ export class Engine {
     this.specks = [];
     this.pickups = [];
     this.px = 0;
-    this.palt = 26;
+    this.palt = Math.max(26, this.playerMinAlt());
     this.pvx = 0;
     this.pvalt = 0;
+    this.fireCd = 0;
+    this.firing = false;
+    this.touchFiring = false;
     this.heat = 0;
     this.overheated = false;
+    this.overdriveUntil = 0;
     this.shield = 100;
+    this.lastHurt = this.time;
     this.invulnUntil = this.time + 1.5;
     this.runTime = 0;
     this.score = 0;
     this.combo = 0;
     this.comboBest = 0;
+    this.comboTimer = 0;
     this.chain = 0;
+    this.chainTimer = 0;
     this.spawnTimer = 1.6;
     this.safeX = 0;
     this.pickupTimer = 16;
+    this.stage = 1;
+    this.nextRelayDist = FIRST_RELAY_DIST;
+    this.relayActive = false;
+    this.stageBannerUntil = this.time + 2.4;
     this.shake = 0;
     this.flashRed = 0;
+    this.dieTimer = 0;
     this.alertText = '';
+    this.alertUntil = 0;
     this.sfx.startEngine();
+    this.cb.onPauseChange(false);
   }
 
   togglePause() {
@@ -358,6 +416,7 @@ export class Engine {
       this.sfx.startEngine();
       this.lastT = performance.now();
     }
+    this.cb.onPauseChange(this.state === 'paused');
   }
 
   toAttract() {
@@ -377,12 +436,33 @@ export class Engine {
     return this.muted;
   }
 
+  get isPaused() {
+    return this.state === 'paused';
+  }
+
+  toggleMute() {
+    this.muted = !this.muted;
+    this.sfx.setMuted(this.muted);
+    this.cb.onMuteChange(this.muted);
+  }
+
+  setTouchFiring(active: boolean) {
+    this.touchFiring = active && this.state === 'playing';
+  }
+
   /* ---------------- projection ---------------- */
   private projX(x: number, z: number) {
     return this.cx + ((x - this.camX) * this.f) / z;
   }
   private projY(alt: number, z: number) {
     return this.horizonY + ((CAM_H - alt) * this.f) / z;
+  }
+
+  private playerMinAlt() {
+    if (this.W >= 680) return 18;
+    const lowestSafeCenter = this.H - 118;
+    const altitude = CAM_H - ((lowestSafeCenter - this.horizonY) * ZP) / Math.max(1, this.f);
+    return clamp(altitude, 18, 56);
   }
 
   /* ---------------- skyline bake ---------------- */
@@ -438,17 +518,31 @@ export class Engine {
 
   /* ---------------- spawning ---------------- */
   private spawnObstacle(defName: string | null, x: number, z: number) {
-    const def = defName ? OBSTACLE_DEFS.find((d) => d.name === defName)! : OBSTACLE_DEFS[Math.floor(rand(3, OBSTACLE_DEFS.length))];
+    const def = defName ? OBSTACLE_DEFS.find((d) => d.name === defName)! : OBSTACLE_DEFS[Math.floor(rand(2, OBSTACLE_DEFS.length))];
     const img = this.obstacleImgs.get(def.name);
     if (!img) return;
     const w = (def.h * img.width) / img.height;
-    this.obstacles.push({ def, img, x, z, w, passed: false });
+    this.obstacles.push({ def, img, x, z, prevZ: z, w, passed: false });
   }
 
   private spawnEnemy(kind: EnemyKind, x: number, alt: number, z: number) {
-    const hp = kind === 'grinder' ? 3 : 1;
-    const r = kind === 'grinder' ? 17 : kind === 'wasp' ? 14 : 13;
-    this.enemies.push({ kind, x, alt, z, hp, t: 0, seed: rand(0, 100), fireCd: rand(0.8, 2), flash: 0, r });
+    const hp = kind === 'warden' ? 18 + (this.stage - 1) * 4 : kind === 'grinder' ? 3 : 1;
+    const r = kind === 'warden' ? 38 : kind === 'grinder' ? 17 : kind === 'wasp' ? 14 : 13;
+    this.enemies.push({
+      kind,
+      x,
+      alt,
+      z,
+      prevZ: z,
+      hp,
+      maxHp: hp,
+      t: 0,
+      seed: rand(0, 100),
+      fireCd: kind === 'warden' ? 1.2 : rand(0.8, 2),
+      flash: 0,
+      r,
+      destroyedByPlayer: false,
+    });
   }
 
   private alert(text: string, dur = 2.2) {
@@ -458,13 +552,25 @@ export class Engine {
   }
 
   private director(dt: number) {
-    const diff = 1 + Math.min(2, this.dist / 3400);
-    this.spawnTimer -= dt;
+    if (!this.relayActive && this.dist >= this.nextRelayDist) {
+      this.relayActive = true;
+      this.spawnEnemy('warden', this.safeX, 46, FAR - 180);
+      this.spawnTimer = 3.8;
+      this.stageBannerUntil = this.time + 3.2;
+      this.alert(`STAGE ${String(this.stage).padStart(2, '0')} — RELAY WARDEN LOCKED`, 3.2);
+      return;
+    }
+
     this.pickupTimer -= dt;
     if (this.pickupTimer <= 0) {
       this.pickupTimer = rand(16, 26);
-      this.pickups.push({ x: this.safeX + rand(-40, 40), alt: rand(18, 55), z: FAR, t: 0 });
+      const pickupMinAlt = this.playerMinAlt();
+      this.pickups.push({ x: this.safeX + rand(-40, 40), alt: rand(pickupMinAlt, Math.max(55, pickupMinAlt + 10)), z: FAR, t: 0 });
     }
+    if (this.relayActive) return;
+
+    const diff = Math.min(3.1, 1 + (this.stage - 1) * 0.28 + this.runTime / 170);
+    this.spawnTimer -= dt;
     if (this.spawnTimer > 0) return;
     this.spawnTimer = rand(1.5, 2.6) / diff;
     this.safeX = clamp(this.safeX + rand(-70, 70), -150, 150);
@@ -481,9 +587,11 @@ export class Engine {
         this.spawnObstacle(null, clamp(x, -260, 260), z);
       }
     } else if (roll < 0.42) {
-      // arch run — thread the needle opportunity
-      const arch = ['ring-arch', 'gate', 'ring-trio'][Math.floor(rand(0, 3))];
-      this.spawnObstacle(arch, this.safeX + rand(-30, 30), FAR + 100);
+      // Honest three-plane arch run; each opening exists at its own world depth.
+      const lane = this.safeX + rand(-24, 24);
+      for (let i = 0; i < 3; i++) {
+        this.spawnObstacle(i === 1 ? 'gate' : 'ring-arch', lane + rand(-12, 12), FAR + 80 + i * 210);
+      }
       for (let i = 0; i < 3; i++) {
         const side = Math.random() < 0.5 ? -1 : 1;
         this.spawnObstacle(null, this.safeX + side * rand(120, 220), FAR + rand(0, 300));
@@ -538,6 +646,53 @@ export class Engine {
       this.score += 2500;
       this.popups.push({ text: '+2500 MEGA KILL', sx, sy: sy - 30, life: 1.3, color: C.hotRed });
     }
+  }
+
+  private resolveEnemy(enemy: Enemy) {
+    if (enemy.hp > 0) return;
+    if (!enemy.destroyedByPlayer) {
+      if (enemy.kind === 'warden') {
+        this.relayActive = false;
+        this.nextRelayDist = this.dist + 24;
+        this.alert('RELAY SIGNAL LOST — WARDEN REACQUIRING', 2.4);
+      }
+      enemy.z = -999;
+      return;
+    }
+
+    const sx = this.projX(enemy.x, Math.max(ZP, enemy.z));
+    const sy = this.projY(enemy.alt, Math.max(ZP, enemy.z));
+    const big = enemy.kind === 'grinder' || enemy.kind === 'warden';
+    this.explode(enemy.x, enemy.alt, enemy.z, big);
+    this.sfx.boom(big);
+    this.combo += 1;
+    this.comboBest = Math.max(this.comboBest, this.combo);
+    this.comboTimer = 4.5;
+    this.chain += 1;
+    this.chainTimer = 1.1;
+    const base = enemy.kind === 'warden' ? 5000 : enemy.kind === 'grinder' ? 500 : enemy.kind === 'wasp' ? 300 : 200;
+    const label =
+      enemy.kind === 'warden'
+        ? 'RELAY WARDEN SEVERED'
+        : enemy.kind === 'grinder'
+          ? 'GRINDER DESTROYED'
+          : enemy.kind === 'wasp'
+            ? 'WASP DOWN'
+            : 'MINE CLEARED';
+    this.addScore(base, sx, sy, label);
+    this.killChainBonus(sx, sy);
+    if (enemy.kind === 'warden') {
+      this.relayActive = false;
+      this.stage += 1;
+      this.nextRelayDist = this.dist + STAGE_LENGTH;
+      this.shield = Math.min(100, this.shield + 20);
+      this.overdriveUntil = Math.max(this.overdriveUntil, this.time) + 6;
+      this.stageBannerUntil = this.time + 3;
+      this.alertText = `RELAY ${String(this.stage - 1).padStart(2, '0')} DOWN — STAGE ${String(this.stage).padStart(2, '0')} OPEN`;
+      this.alertUntil = this.time + 3;
+      this.sfx.needle();
+    }
+    enemy.z = -999;
   }
 
   private explode(x: number, alt: number, z: number, big: boolean) {
@@ -604,7 +759,7 @@ export class Engine {
       dead: false,
     });
     this.sfx.laser();
-    this.heat += 3.4;
+    this.heat += this.time < this.overdriveUntil ? 1.35 : 3.4;
     if (this.heat >= 100) {
       this.heat = 100;
       this.overheated = true;
@@ -634,11 +789,12 @@ export class Engine {
 
   /* ---------------- main loop ---------------- */
   private loop = (t: number) => {
+    if (this.destroyed) return;
     this.raf = requestAnimationFrame(this.loop);
     let dt = (t - this.lastT) / 1000;
     this.lastT = t;
     dt = Math.min(dt, 0.05);
-    this.time += dt;
+    if (this.state !== 'paused') this.time += dt;
 
     if (this.state === 'playing' || this.state === 'dying') this.update(dt);
     else if (this.state === 'attract') this.updateAttract(dt);
@@ -653,7 +809,10 @@ export class Engine {
     if (this.obstacles.length < 8 && Math.random() < dt * 0.8) {
       this.spawnObstacle(null, rand(-240, 240), FAR + rand(0, 200));
     }
-    for (const o of this.obstacles) o.z -= this.speed * dt;
+    for (const o of this.obstacles) {
+      o.prevZ = o.z;
+      o.z -= this.speed * dt;
+    }
     this.obstacles = this.obstacles.filter((o) => o.z > 30);
   }
 
@@ -661,24 +820,41 @@ export class Engine {
     const dying = this.state === 'dying';
     if (dying) {
       this.dieTimer -= dt;
+      for (const p of this.particles) {
+        p.life -= dt;
+        p.x += p.vx * dt;
+        p.alt += p.valt * dt;
+        p.z += p.vz * dt;
+        p.valt -= 60 * dt;
+      }
+      this.particles = this.particles.filter((p) => p.life > 0 && p.z > 15);
+      for (const p of this.popups) {
+        p.life -= dt;
+        p.sy -= 34 * dt;
+      }
+      this.popups = this.popups.filter((p) => p.life > 0);
+      this.shake = Math.max(0, this.shake - dt * 24);
+      this.flashRed = Math.max(0, this.flashRed - dt * 1.6);
       if (this.dieTimer <= 0) {
         this.state = 'attract';
         const hi = Math.max(this.hiScore, this.score);
         this.hiScore = hi;
         localStorage.setItem('redline-hi', String(hi));
         this.cb.onGameOver(this.score, hi, this.dist);
-        return;
       }
+      return;
     }
 
     // speed ramps with distance
-    this.speed = Math.min(640, 240 + this.dist * 0.03);
-    this.sfx.setEngineSpeed((this.speed - 240) / 400);
+    this.speed = Math.min(560, 240 + this.dist * 0.8 + (this.stage - 1) * 10);
+    this.sfx.setEngineSpeed((this.speed - 240) / 320);
     this.scrollZ += this.speed * dt;
     this.dist += this.speed * dt * 0.01;
     this.runTime += dt;
 
     /* ---- player movement ---- */
+    const prevPx = this.px;
+    const prevPalt = this.palt;
     const k = this.keys;
     let ix = 0;
     let iy = 0;
@@ -687,12 +863,13 @@ export class Engine {
     if (k.has('arrowup') || k.has('w')) iy += 1;
     if (k.has('arrowdown') || k.has('s')) iy -= 1;
 
-    const usePointer = this.pointer.active && this.time - this.pointer.lastMove < 3 && (this.pointer.down || ix === 0);
+    const usePointer = this.pointer.active && this.time - this.pointer.lastMove < 3 && (this.pointer.down || (ix === 0 && iy === 0));
+    const minPlayerAlt = this.playerMinAlt();
     if (!dying) {
       if (usePointer) {
         // steer toward pointer position
         const tx = ((this.pointer.x - this.cx) * ZP) / this.f + this.camX;
-        const talt = clamp(CAM_H - ((this.pointer.y - this.horizonY) * ZP) / this.f, 8, 72);
+        const talt = clamp(CAM_H - ((this.pointer.y - this.horizonY) * ZP) / this.f, minPlayerAlt, 72);
         const dx = clamp(tx, -170, 170) - this.px;
         const da = talt - this.palt;
         this.pvx = lerp(this.pvx, clamp(dx * 8, -260, 260), 1 - Math.pow(0.0015, dt));
@@ -702,20 +879,21 @@ export class Engine {
         this.pvalt = lerp(this.pvalt, iy * 190, 1 - Math.pow(0.002, dt));
       }
       this.px = clamp(this.px + this.pvx * dt, -170, 170);
-      this.palt = clamp(this.palt + this.pvalt * dt, 8, 72);
+      this.palt = clamp(this.palt + this.pvalt * dt, minPlayerAlt, 72);
     }
     this.camX = lerp(this.camX, this.px * 0.55, 1 - Math.pow(0.01, dt));
 
     /* ---- firing & heat ---- */
-    this.firing = !dying && (k.has(' ') || this.pointer.down);
+    const pointerFiring = this.pointer.down && this.pointer.type !== 'touch';
+    this.firing = !dying && (k.has(' ') || pointerFiring || this.touchFiring);
     this.fireCd -= dt;
     if (this.firing && !this.overheated && this.fireCd <= 0) {
-      this.fireCd = 1 / 9;
+      this.fireCd = 1 / (this.time < this.overdriveUntil ? 14 : 9);
       this.firePlayerBolt();
     }
-    const coolRate = this.firing ? 13 : 34;
+    const coolRate = this.overheated ? (this.firing ? 0 : 42) : this.firing ? 13 : 34;
     this.heat = Math.max(0, this.heat - coolRate * dt);
-    if (this.overheated && this.heat < 25) this.overheated = false;
+    if (this.overheated && !this.firing && this.heat < 25) this.overheated = false;
 
     /* ---- shield regen ---- */
     if (this.time - this.lastHurt > 5 && !dying) this.shield = Math.min(100, this.shield + 4 * dt);
@@ -730,113 +908,112 @@ export class Engine {
 
     /* ---- obstacles ---- */
     for (const o of this.obstacles) {
+      o.prevZ = o.z;
       o.z -= this.speed * dt;
       // collision with player
-      if (!dying && !o.passed && o.z < ZP + 8 && o.z > ZP - 10) {
+      if (!dying && !o.passed && o.prevZ >= ZP && o.z <= ZP) {
+        const crossT = clamp((o.prevZ - ZP) / Math.max(0.0001, o.prevZ - o.z), 0, 1);
+        const playerX = lerp(prevPx, this.px, crossT);
+        const playerAlt = lerp(prevPalt, this.palt, crossT);
         const collW = (o.w * o.def.cw) / 2;
-        const dx = Math.abs(this.px - o.x);
+        const dx = Math.abs(playerX - o.x);
         const inHole =
           o.def.hole &&
           dx < o.w * o.def.hole.hw &&
-          this.palt > o.def.h * o.def.hole.y0 &&
-          this.palt < o.def.h * o.def.hole.y1;
-        if (dx < collW + 12 && this.palt < o.def.h * o.def.ch) {
+          playerAlt > o.def.h * o.def.hole.y0 &&
+          playerAlt < o.def.h * o.def.hole.y1;
+        if (dx < collW + 12 && playerAlt < o.def.h * o.def.ch) {
           if (inHole) {
             o.passed = true;
             this.score += 750;
-            this.popups.push({ text: '+750 THREAD THE NEEDLE', sx: this.cx, sy: this.H * 0.42, life: 1.4, color: C.tan });
+            this.comboTimer = Math.max(this.comboTimer, 4.5);
+            this.overdriveUntil = Math.max(this.overdriveUntil, this.time) + 5;
+            this.heat = 0;
+            this.overheated = false;
+            this.popups.push({ text: '+750 THREAD // REDLINE ONLINE', sx: this.cx, sy: this.H * 0.42, life: 1.6, color: C.tan });
             this.sfx.needle();
           } else {
             o.passed = true;
-            this.pvx = this.px > o.x ? 200 : -200;
+            this.pvx = playerX > o.x ? 200 : -200;
             this.hurtPlayer(26);
           }
         }
-      }
-      // player bolts blocked by obstacles
-      for (const b of this.bolts) {
-        if (b.dead || b.z < o.z - 8 || b.z > o.z + 8) continue;
-        if (Math.abs(b.x - o.x) < (o.w * o.def.cw) / 2 && b.alt < o.def.h * o.def.ch) {
-          const inHole =
-            o.def.hole &&
-            Math.abs(b.x - o.x) < o.w * o.def.hole.hw &&
-            b.alt > o.def.h * o.def.hole.y0 &&
-            b.alt < o.def.h * o.def.hole.y1;
-          if (!inHole) {
-            b.dead = true;
-            this.explode(b.x, b.alt, b.z, false);
-          }
-        }
+        o.passed = true;
       }
     }
-    this.obstacles = this.obstacles.filter((o) => o.z > 25);
 
     /* ---- enemies ---- */
     for (const e of this.enemies) {
+      e.prevZ = e.z;
       e.t += dt;
       e.flash = Math.max(0, e.flash - dt * 6);
-      if (e.kind === 'grinder') {
-        e.z -= this.speed * 0.42 * dt;
-        e.x += Math.sin(e.t * 1.3 + e.seed) * 26 * dt;
-        e.alt += Math.cos(e.t * 0.9 + e.seed) * 9 * dt;
-        e.fireCd -= dt;
-        if (e.fireCd <= 0 && e.z < 720 && e.z > 220 && !dying) {
-          e.fireCd = rand(1.4, 2.4);
-          this.enemyFire(e);
+      if (e.hp > 0) {
+        if (e.kind === 'warden') {
+          e.z -= this.speed * 0.2 * dt;
+          e.x += clamp((this.px - e.x) * 0.55, -55, 55) * dt + Math.sin(e.t * 1.8 + e.seed) * 12 * dt;
+          e.alt = clamp(e.alt + Math.cos(e.t * 1.3 + e.seed) * 10 * dt, 30, 62);
+          e.fireCd -= dt;
+          if (e.fireCd <= 0 && e.z < 880 && e.z > 190 && !dying) {
+            e.fireCd = rand(0.58, 0.9);
+            this.enemyFire(e);
+          }
+        } else if (e.kind === 'grinder') {
+          e.z -= this.speed * 0.42 * dt;
+          e.x += Math.sin(e.t * 1.3 + e.seed) * 26 * dt;
+          e.alt += Math.cos(e.t * 0.9 + e.seed) * 9 * dt;
+          e.fireCd -= dt;
+          if (e.fireCd <= 0 && e.z < 720 && e.z > 220 && !dying) {
+            e.fireCd = rand(1.4, 2.4);
+            this.enemyFire(e);
+          }
+        } else if (e.kind === 'wasp') {
+          e.z -= this.speed * 0.88 * dt;
+          e.x += Math.sin(e.t * 2.6 + e.seed) * 120 * dt;
+          e.alt += Math.cos(e.t * 1.8 + e.seed) * 30 * dt;
+          e.alt = clamp(e.alt, 8, 75);
+        } else {
+          // mine drifts with world
+          e.z -= this.speed * dt;
+          e.x += Math.sin(e.t * 0.8 + e.seed) * 8 * dt;
+          // proximity detonation
+          if (!dying && e.z < ZP + 60 && e.z > ZP - 20 && Math.abs(e.x - this.px) < 46 && Math.abs(e.alt - this.palt) < 34) {
+            e.hp = 0;
+            this.explode(e.x, e.alt, e.z, true);
+            this.sfx.boom(true);
+            this.hurtPlayer(20);
+          }
         }
-      } else if (e.kind === 'wasp') {
-        e.z -= this.speed * 0.88 * dt;
-        e.x += Math.sin(e.t * 2.6 + e.seed) * 120 * dt;
-        e.alt += Math.cos(e.t * 1.8 + e.seed) * 30 * dt;
-        e.alt = clamp(e.alt, 8, 75);
-      } else {
-        // mine drifts with world
-        e.z -= this.speed * dt;
-        e.x += Math.sin(e.t * 0.8 + e.seed) * 8 * dt;
-        // proximity detonation
-        if (!dying && e.z < ZP + 60 && e.z > ZP - 20 && Math.abs(e.x - this.px) < 46 && Math.abs(e.alt - this.palt) < 34) {
-          e.hp = 0;
-          this.explode(e.x, e.alt, e.z, true);
-          this.sfx.boom(true);
-          this.hurtPlayer(20);
+
+        // ram check
+        if (!dying && e.hp > 0 && e.prevZ >= ZP && e.z <= ZP) {
+          const crossT = clamp((e.prevZ - ZP) / Math.max(0.0001, e.prevZ - e.z), 0, 1);
+          const playerX = lerp(prevPx, this.px, crossT);
+          const playerAlt = lerp(prevPalt, this.palt, crossT);
+          const d = Math.hypot(e.x - playerX, (e.alt - playerAlt) * 1.4);
+          if (d < e.r + 12) {
+            e.hp = 0;
+            this.explode(e.x, e.alt, e.z, true);
+            this.sfx.boom(true);
+            this.hurtPlayer(e.kind === 'warden' ? 36 : 15);
+          }
         }
+
+        if (e.kind === 'warden' && e.hp > 0 && e.z <= ZP - 16) e.hp = 0;
       }
 
-      // ram check
-      if (!dying && e.hp > 0 && e.z < ZP + 10 && e.z > ZP - 12) {
-        const d = Math.hypot(e.x - this.px, (e.alt - this.palt) * 1.4);
-        if (d < e.r + 12) {
-          e.hp = 0;
-          this.explode(e.x, e.alt, e.z, true);
-          this.sfx.boom(true);
-          this.hurtPlayer(15);
-        }
-      }
-
-      // death by damage
-      if (e.hp <= 0 && e.z > 40) {
-        const sx = this.projX(e.x, Math.max(40, e.z));
-        const sy = this.projY(e.alt, Math.max(40, e.z));
-        this.explode(e.x, e.alt, e.z, e.kind === 'grinder');
-        this.sfx.boom(e.kind === 'grinder');
-        this.combo += 1;
-        this.comboBest = Math.max(this.comboBest, this.combo);
-        this.comboTimer = 4.5;
-        this.chain += 1;
-        this.chainTimer = 1.1;
-        const base = e.kind === 'grinder' ? 500 : e.kind === 'wasp' ? 300 : 200;
-        this.addScore(base, sx, sy, e.kind === 'grinder' ? 'GRINDER DESTROYED' : e.kind === 'wasp' ? 'WASP DOWN' : 'MINE CLEARED');
-        this.killChainBonus(sx, sy);
-        e.z = -999;
-      }
+      this.resolveEnemy(e);
     }
-    this.enemies = this.enemies.filter((e) => e.z > 30 && e.hp > 0);
+    this.enemies = this.enemies.filter((e) => e.z > ZP - 16 && e.hp > 0);
 
     /* ---- pickups ---- */
     for (const p of this.pickups) {
+      const prevZ = p.z;
       p.z -= this.speed * dt;
       p.t += dt;
-      if (!dying && p.z < ZP + 12 && p.z > ZP - 12 && Math.abs(p.x - this.px) < 26 && Math.abs(p.alt - this.palt) < 22) {
+      const crossT = clamp((prevZ - ZP) / Math.max(0.0001, prevZ - p.z), 0, 1);
+      const playerX = lerp(prevPx, this.px, crossT);
+      const playerAlt = lerp(prevPalt, this.palt, crossT);
+      if (!dying && prevZ >= ZP && p.z <= ZP && Math.abs(p.x - playerX) < 26 && Math.abs(p.alt - playerAlt) < 22) {
         p.z = -1;
         this.shield = Math.min(100, this.shield + 30);
         this.score += 250;
@@ -847,44 +1024,140 @@ export class Engine {
     this.pickups = this.pickups.filter((p) => p.z > 20);
 
     /* ---- player bolts ---- */
+    const lethalHits: { enemy: Enemy; crossT: number }[] = [];
     for (const b of this.bolts) {
+      const prevX = b.x;
+      const prevAlt = b.alt;
+      const prevZ = b.z;
       b.x += b.vx * dt;
       b.alt += b.valt * dt;
       b.z += b.vz * dt;
-      if (b.z > 1400 || b.alt < 0) b.dead = true;
       if (b.dead) continue;
-      for (const e of this.enemies) {
-        if (e.hp <= 0 || Math.abs(e.z - b.z) > 30) continue;
-        const d = Math.hypot(e.x - b.x, (e.alt - b.alt) * 1.3);
-        if (d < e.r + 9) {
-          b.dead = true;
-          e.hp -= 1;
-          e.flash = 1;
-          this.explode(b.x, b.alt, b.z, false);
-          break;
+
+      let hitT = Number.POSITIVE_INFINITY;
+      let hitObstacle: Obstacle | null = null;
+      let hitEnemy: Enemy | null = null;
+
+      for (const o of this.obstacles) {
+        const prevDelta = prevZ - o.prevZ;
+        const nextDelta = b.z - o.z;
+        if (prevDelta > 0 || nextDelta < 0) continue;
+        const crossT = clamp(-prevDelta / Math.max(0.0001, nextDelta - prevDelta), 0, 1);
+        if (crossT >= hitT) continue;
+        const hitX = lerp(prevX, b.x, crossT);
+        const hitAlt = lerp(prevAlt, b.alt, crossT);
+        if (Math.abs(hitX - o.x) >= (o.w * o.def.cw) / 2 || hitAlt >= o.def.h * o.def.ch) continue;
+        const inHole =
+          o.def.hole &&
+          Math.abs(hitX - o.x) < o.w * o.def.hole.hw &&
+          hitAlt > o.def.h * o.def.hole.y0 &&
+          hitAlt < o.def.h * o.def.hole.y1;
+        if (!inHole) {
+          hitT = crossT;
+          hitObstacle = o;
+          hitEnemy = null;
         }
       }
+
+      for (const e of this.enemies) {
+        if (e.hp <= 0) continue;
+        const prevDelta = prevZ - e.prevZ;
+        const nextDelta = b.z - e.z;
+        if (prevDelta > 0 || nextDelta < 0) continue;
+        const crossT = clamp(-prevDelta / Math.max(0.0001, nextDelta - prevDelta), 0, 1);
+        if (crossT >= hitT) continue;
+        const hitX = lerp(prevX, b.x, crossT);
+        const hitAlt = lerp(prevAlt, b.alt, crossT);
+        const d = Math.hypot(e.x - hitX, (e.alt - hitAlt) * 1.3);
+        if (d < e.r + 9) {
+          hitT = crossT;
+          hitEnemy = e;
+          hitObstacle = null;
+        }
+      }
+
+      if (hitEnemy) {
+        const hitX = lerp(prevX, b.x, hitT);
+        const hitAlt = lerp(prevAlt, b.alt, hitT);
+        b.dead = true;
+        hitEnemy.hp -= 1;
+        if (hitEnemy.hp <= 0) {
+          hitEnemy.destroyedByPlayer = true;
+          lethalHits.push({ enemy: hitEnemy, crossT: hitT });
+        }
+        hitEnemy.flash = 1;
+        this.explode(hitX, hitAlt, lerp(prevZ, b.z, hitT), false);
+      } else if (hitObstacle) {
+        const hitX = lerp(prevX, b.x, hitT);
+        const hitAlt = lerp(prevAlt, b.alt, hitT);
+        b.dead = true;
+        this.explode(hitX, hitAlt, lerp(prevZ, b.z, hitT), false);
+      } else if (b.z > 1400 || b.alt < 0) {
+        b.dead = true;
+      }
     }
+    lethalHits.sort((a, b) => a.crossT - b.crossT);
+    for (const hit of lethalHits) this.resolveEnemy(hit.enemy);
+    this.enemies = this.enemies.filter((e) => e.z > ZP - 16 && e.hp > 0);
     this.bolts = this.bolts.filter((b) => !b.dead);
 
     /* ---- enemy bolts ---- */
     for (const b of this.ebolts) {
+      const prevX = b.x;
+      const prevAlt = b.alt;
+      const prevZ = b.z;
       b.x += b.vx * dt;
       b.alt += b.valt * dt;
       b.z += b.vz * dt;
-      if (b.z < ZP - 20 || b.z > 1400) {
-        b.dead = true;
-        continue;
-      }
-      if (!dying && b.z < ZP + 10 && b.z > ZP - 14) {
-        const d = Math.hypot(b.x - this.px, (b.alt - this.palt) * 1.4);
-        if (d < 16) {
-          b.dead = true;
-          this.hurtPlayer(12);
+
+      let hitT = Number.POSITIVE_INFINITY;
+      let hitObstacle = false;
+      let hitPlayer = false;
+
+      for (const o of this.obstacles) {
+        const prevDelta = prevZ - o.prevZ;
+        const nextDelta = b.z - o.z;
+        if (prevDelta < 0 || nextDelta > 0) continue;
+        const crossT = clamp(prevDelta / Math.max(0.0001, prevDelta - nextDelta), 0, 1);
+        if (crossT >= hitT) continue;
+        const hitX = lerp(prevX, b.x, crossT);
+        const hitAlt = lerp(prevAlt, b.alt, crossT);
+        if (Math.abs(hitX - o.x) >= (o.w * o.def.cw) / 2 || hitAlt >= o.def.h * o.def.ch) continue;
+        const inHole =
+          o.def.hole &&
+          Math.abs(hitX - o.x) < o.w * o.def.hole.hw &&
+          hitAlt > o.def.h * o.def.hole.y0 &&
+          hitAlt < o.def.h * o.def.hole.y1;
+        if (!inHole) {
+          hitT = crossT;
+          hitObstacle = true;
+          hitPlayer = false;
         }
+      }
+
+      if (!dying && this.state !== 'dying' && prevZ >= ZP && b.z <= ZP) {
+        const crossT = clamp((prevZ - ZP) / Math.max(0.0001, prevZ - b.z), 0, 1);
+        const hitX = lerp(prevX, b.x, crossT);
+        const hitAlt = lerp(prevAlt, b.alt, crossT);
+        const playerX = lerp(prevPx, this.px, crossT);
+        const playerAlt = lerp(prevPalt, this.palt, crossT);
+        const d = Math.hypot(hitX - playerX, (hitAlt - playerAlt) * 1.4);
+        if (d < 16 && crossT < hitT) {
+          hitT = crossT;
+          hitPlayer = true;
+          hitObstacle = false;
+        }
+      }
+
+      if (hitPlayer) {
+        b.dead = true;
+        this.hurtPlayer(12);
+      } else if (hitObstacle || b.z < ZP - 20 || b.z > 1400) {
+        b.dead = true;
       }
     }
     this.ebolts = this.ebolts.filter((b) => !b.dead);
+    this.obstacles = this.obstacles.filter((o) => o.z > ZP - 12);
 
     /* ---- ground specks (speed sensation) ---- */
     if (Math.random() < dt * 26) this.specks.push({ x: rand(-400, 400), z: FAR * 0.8 });
@@ -951,11 +1224,11 @@ export class Engine {
     if (this.state === 'paused') {
       ctx.fillStyle = 'rgba(8,4,2,0.55)';
       ctx.fillRect(0, 0, W, H);
-      ctx.font = `${Math.round(H * 0.045)}px "Press Start 2P", monospace`;
+      ctx.font = `${Math.round(H * 0.045)}px Orbitron, sans-serif`;
       ctx.textAlign = 'center';
       ctx.fillStyle = C.cream;
       ctx.fillText('PAUSED', this.cx, H * 0.5);
-      ctx.font = `${Math.round(H * 0.02)}px "Press Start 2P", monospace`;
+      ctx.font = `${Math.round(H * 0.02)}px "Space Mono", monospace`;
       ctx.fillStyle = C.tan;
       ctx.fillText('PRESS P TO RESUME', this.cx, H * 0.56);
     }
@@ -1060,8 +1333,9 @@ export class Engine {
         z: o.z,
         draw: () => {
           const sc = this.f / o.z;
-          const w = o.w * sc;
-          const h = o.def.h * sc;
+          const rawH = o.def.h * sc;
+          const h = Math.min(rawH, this.H * 1.25);
+          const w = (h * o.img.width) / o.img.height;
           const sx = this.projX(o.x, o.z);
           const sy = this.projY(0, o.z);
           ctx.globalAlpha = clamp((FAR - o.z) / 200, 0, 1);
@@ -1099,7 +1373,8 @@ export class Engine {
         z: e.z,
         draw: () => {
           const sc = this.f / e.z;
-          const s = e.r * 2.6 * sc;
+          const maxScreenFraction = e.kind === 'warden' ? 0.46 : e.kind === 'grinder' ? 0.25 : e.kind === 'wasp' ? 0.24 : 0.18;
+          const s = Math.min(e.r * 2.6 * sc, this.H * maxScreenFraction);
           const sx = this.projX(e.x, e.z);
           const sy = this.projY(e.alt, e.z);
           ctx.globalAlpha = clamp((FAR - e.z) / 200, 0, 1);
@@ -1111,8 +1386,15 @@ export class Engine {
             ctx.fill();
             ctx.globalCompositeOperation = 'source-over';
           }
-          const img = e.kind === 'grinder' ? this.proc.grinder : e.kind === 'wasp' ? this.proc.wasp : this.proc.mine;
-          if (e.kind === 'mine') {
+          const img = e.kind === 'warden' ? this.wardenImg : e.kind === 'grinder' ? this.proc.grinder : e.kind === 'wasp' ? this.proc.wasp : this.proc.mine;
+          if (!img) {
+            ctx.globalAlpha = 1;
+            return;
+          }
+          if (e.kind === 'warden') {
+            const w = s * (img.width / img.height);
+            ctx.drawImage(img, sx - w / 2, sy - s / 2, w, s);
+          } else if (e.kind === 'mine') {
             ctx.save();
             ctx.translate(sx, sy);
             ctx.rotate(e.t * 2 + e.seed);
@@ -1122,10 +1404,14 @@ export class Engine {
             ctx.save();
             ctx.translate(sx, sy);
             ctx.rotate(Math.cos(e.t * 2.6 + e.seed) * 0.5);
-            ctx.drawImage(img, -s / 2, -s / 2, s, s * 0.62);
+            const h = s * 0.62;
+            const w = h * (img.width / img.height);
+            ctx.drawImage(img, -w / 2, -h / 2, w, h);
             ctx.restore();
           } else {
-            ctx.drawImage(img, sx - s / 2, sy - s / 2, s, s);
+            const h = e.kind === 'grinder' ? s * 0.82 : s;
+            const w = h * (img.width / img.height);
+            ctx.drawImage(img, sx - w / 2, sy - h / 2, w, h);
           }
           ctx.globalAlpha = 1;
         },
@@ -1194,8 +1480,8 @@ export class Engine {
     const sx = this.projX(this.px, ZP);
     const sy = this.projY(this.palt, ZP);
     const w = this.H * 0.17;
-    const h = (w * 22) / 30;
     const img = this.pvx < -70 ? this.proc.shipBankL : this.pvx > 70 ? this.proc.shipBankR : this.proc.ship;
+    const h = w * (img.height / img.width);
     const blink = this.time < this.invulnUntil && Math.floor(this.time * 12) % 2 === 0;
 
     // engine flames
@@ -1251,12 +1537,14 @@ export class Engine {
 
   /* ---------------- HUD ---------------- */
   private panel(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number) {
+    ctx.fillStyle = C.red;
+    ctx.fillRect(x + 4, y + 4, w, h);
     ctx.fillStyle = C.darkPanel;
     ctx.fillRect(x, y, w, h);
-    ctx.strokeStyle = C.tan;
+    ctx.strokeStyle = C.cream;
     ctx.lineWidth = 2;
     ctx.strokeRect(x, y, w, h);
-    ctx.strokeStyle = 'rgba(181,138,76,0.4)';
+    ctx.strokeStyle = 'rgba(241,215,143,0.45)';
     ctx.lineWidth = 1;
     ctx.strokeRect(x + 3, y + 3, w - 6, h - 6);
   }
@@ -1272,30 +1560,200 @@ export class Engine {
     }
   }
 
+  private setFittedFont(ctx: CanvasRenderingContext2D, text: string, maxWidth: number, startSize: number, family: string) {
+    let size = startSize;
+    do {
+      ctx.font = `${Math.round(size)}px ${family}`;
+      size -= 1;
+    } while (size > 8 && ctx.measureText(text).width > maxWidth);
+  }
+
+  private renderBossTelemetry(ctx: CanvasRenderingContext2D, y: number, compact: boolean) {
+    const boss = this.enemies.find((enemy) => enemy.kind === 'warden' && enemy.hp > 0);
+    if (!boss) return;
+    const width = compact ? Math.min(this.W - 24, 360) : Math.min(this.W * 0.38, 520);
+    const height = compact ? 34 : 42;
+    const x = this.cx - width / 2;
+    this.panel(ctx, x, y, width, height);
+    ctx.textAlign = 'left';
+    ctx.fillStyle = C.cream;
+    ctx.font = `${compact ? 10 : 12}px "Space Mono", monospace`;
+    ctx.fillText(`RELAY WARDEN // ${String(Math.max(0, boss.hp)).padStart(2, '0')}`, x + 9, y + (compact ? 13 : 16));
+    ctx.fillStyle = '#20282b';
+    ctx.fillRect(x + 9, y + height - 13, width - 18, 7);
+    ctx.fillStyle = C.hotRed;
+    ctx.fillRect(x + 9, y + height - 13, (width - 18) * clamp(boss.hp / boss.maxHp, 0, 1), 7);
+  }
+
+  private renderStageOverlay(ctx: CanvasRenderingContext2D) {
+    if (this.time >= this.stageBannerUntil) return;
+    if (this.W < 680 && this.H < 420 && this.time < this.alertUntil) return;
+    const w = Math.min(this.W - 32, 520);
+    const h = this.W < 680 ? 58 : 76;
+    const x = this.cx - w / 2;
+    const y = this.H * 0.27;
+    ctx.fillStyle = C.cream;
+    ctx.fillRect(x + 5, y + 5, w, h);
+    ctx.fillStyle = C.red;
+    ctx.fillRect(x, y, w, h);
+    ctx.strokeStyle = '#0b0d0e';
+    ctx.lineWidth = 4;
+    ctx.strokeRect(x, y, w, h);
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#0b0d0e';
+    ctx.font = `${this.W < 680 ? 16 : 23}px Orbitron, sans-serif`;
+    ctx.fillText(`STAGE ${String(this.stage).padStart(2, '0')}`, this.cx, y + (this.W < 680 ? 24 : 31));
+    ctx.font = `${this.W < 680 ? 10 : 13}px "Space Mono", monospace`;
+    ctx.fillText(this.relayActive ? 'DESTROY THE RELAY WARDEN' : 'PUNCH THROUGH // FIND THE RELAY', this.cx, y + (this.W < 680 ? 43 : 56));
+  }
+
+  private renderCompactHud(ctx: CanvasRenderingContext2D) {
+    const { W, H } = this;
+    const topH = 70;
+    const bottomH = 88;
+
+    ctx.fillStyle = C.darkPanel;
+    ctx.fillRect(0, 0, W, topH);
+    ctx.fillStyle = C.cream;
+    ctx.fillRect(0, topH - 4, W, 4);
+    ctx.fillStyle = C.red;
+    ctx.fillRect(0, topH - 8, W, 4);
+
+    ctx.font = '10px "Space Mono", monospace';
+    ctx.textAlign = 'left';
+    ctx.fillStyle = C.tan;
+    ctx.fillText('SCORE', 10, 17);
+    ctx.fillStyle = C.cream;
+    ctx.font = '15px "Space Mono", monospace';
+    ctx.fillText(String(this.score).padStart(7, '0'), 10, 38);
+    ctx.fillStyle = C.hotRed;
+    ctx.font = '9px "Space Mono", monospace';
+    ctx.fillText(`HI ${String(Math.max(this.hiScore, this.score)).padStart(7, '0')}`, 10, 56);
+
+    ctx.textAlign = 'center';
+    ctx.fillStyle = C.hotRed;
+    ctx.font = '13px Orbitron, sans-serif';
+    ctx.fillText('REDLINE', this.cx, 19);
+    ctx.fillStyle = C.cream;
+    ctx.font = '10px "Space Mono", monospace';
+    ctx.fillText(`STG ${String(this.stage).padStart(2, '0')}`, this.cx, 39);
+    ctx.fillStyle = C.tan;
+    ctx.fillText(`${(this.dist / 10).toFixed(1)} KM`, this.cx, 56);
+
+    ctx.textAlign = 'right';
+    ctx.fillStyle = C.tan;
+    ctx.font = '10px "Space Mono", monospace';
+    ctx.fillText('TIME', W - 10, 17);
+    ctx.fillStyle = C.cream;
+    ctx.font = '15px "Space Mono", monospace';
+    ctx.fillText(this.runTime.toFixed(1), W - 10, 38);
+    ctx.fillStyle = C.tan;
+    ctx.font = '9px "Space Mono", monospace';
+    ctx.fillText('CREDIT 02', W - 10, 56);
+
+    this.renderBossTelemetry(ctx, topH + 10, true);
+
+    const by = H - bottomH;
+    ctx.fillStyle = C.darkPanel;
+    ctx.fillRect(0, by, W, bottomH);
+    ctx.fillStyle = C.cream;
+    ctx.fillRect(0, by, W, 4);
+    ctx.fillStyle = C.red;
+    ctx.fillRect(0, by + 4, W, 4);
+    const barW = Math.max(94, W - 150);
+    ctx.textAlign = 'left';
+    ctx.font = '10px "Space Mono", monospace';
+    ctx.fillStyle = C.tan;
+    ctx.fillText('HEAT', 10, by + 27);
+    this.segBar(ctx, 55, by + 17, barW - 55, 10, this.heat / 100, 10, C.hotRed, this.overheated);
+    ctx.fillStyle = C.tan;
+    ctx.fillText('SHIELD', 10, by + 53);
+    this.segBar(ctx, 55, by + 43, barW - 55, 10, this.shield / 100, 10, C.blue, this.shield < 30);
+    ctx.fillStyle = C.cream;
+    ctx.font = '9px "Space Mono", monospace';
+    ctx.fillText(this.time < this.overdriveUntil ? 'REDLINE OVERDRIVE' : this.overheated ? 'OVERHEAT // RELEASE TRIGGER' : 'PHOTON BLASTER // READY', 10, by + 75);
+
+    const rr = 28;
+    const rx = W - 42;
+    const ry = by + 45;
+    ctx.beginPath();
+    ctx.arc(rx, ry, rr, 0, Math.PI * 2);
+    ctx.fillStyle = '#09161c';
+    ctx.fill();
+    ctx.strokeStyle = C.cream;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    for (const enemy of this.enemies) {
+      const bx = rx + clamp((enemy.x - this.px) / 260, -1, 1) * rr * 0.8;
+      const bz = ry + rr * 0.8 - clamp(enemy.z / 1250, 0, 1) * rr * 1.6;
+      if (Math.hypot(bx - rx, bz - ry) <= rr) {
+        ctx.fillStyle = C.hotRed;
+        ctx.fillRect(bx - 2, bz - 2, 4, 4);
+      }
+    }
+
+    if (this.time < this.alertUntil) {
+      const text = this.alertText;
+      const aw = W - 20;
+      const ay = this.enemies.some((enemy) => enemy.kind === 'warden' && enemy.hp > 0) ? topH + 51 : topH + 10;
+      ctx.fillStyle = C.hotRed;
+      ctx.fillRect(10, ay, aw, 28);
+      ctx.textAlign = 'center';
+      ctx.fillStyle = '#0b0d0e';
+      this.setFittedFont(ctx, text, aw - 16, 13, '"Space Mono", monospace');
+      ctx.fillText(text, this.cx, ay + 19);
+    }
+
+    if (this.runTime < 8) {
+      ctx.textAlign = 'center';
+      ctx.font = '10px "Space Mono", monospace';
+      ctx.fillStyle = C.cream;
+      ctx.fillText('DRAG TO FLY // HOLD FIRE', this.cx, by - 14);
+    }
+    this.renderStageOverlay(ctx);
+
+    ctx.textAlign = 'center';
+    for (const popup of this.popups) {
+      ctx.globalAlpha = clamp(popup.life / 0.4, 0, 1);
+      this.setFittedFont(ctx, popup.text, W - 24, 18, '"Space Mono", monospace');
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = '#0b0d0e';
+      ctx.strokeText(popup.text, popup.sx, popup.sy);
+      ctx.fillStyle = popup.color;
+      ctx.fillText(popup.text, popup.sx, popup.sy);
+      ctx.globalAlpha = 1;
+    }
+  }
+
   private renderHud(ctx: CanvasRenderingContext2D) {
     const { W, H } = this;
     const ui = clamp(Math.min(W, H) / 780, 0.72, 1.3);
     const pad = 12 * ui;
 
+    if (W < 680) {
+      this.renderCompactHud(ctx);
+      return;
+    }
+
     /* ---- top center logo ---- */
     ctx.textAlign = 'center';
-    ctx.font = `${Math.round(H * 0.03)}px "Press Start 2P", monospace`;
+    ctx.font = `${Math.round(H * 0.032)}px Orbitron, sans-serif`;
     ctx.lineWidth = 4;
     ctx.strokeStyle = 'rgba(20,10,5,0.9)';
     ctx.strokeText('REDLINE ASCENT', this.cx, pad + H * 0.028);
     ctx.fillStyle = C.hotRed;
     ctx.fillText('REDLINE ASCENT', this.cx, pad + H * 0.028);
-    ctx.font = `${Math.round(20 * ui)}px VT323, monospace`;
+    ctx.font = `${Math.round(16 * ui)}px "Space Mono", monospace`;
     ctx.fillStyle = C.tan;
     const km = (this.dist / 10).toFixed(1);
-    ctx.fillText(`— DIST ${km} KM —`, this.cx, pad + H * 0.028 + 22 * ui);
+    ctx.fillText(`STAGE ${String(this.stage).padStart(2, '0')} // DIST ${km} KM`, this.cx, pad + H * 0.028 + 22 * ui);
 
     /* ---- top left: score ---- */
     const pw = 240 * ui;
     const ph = 64 * ui;
     this.panel(ctx, pad, pad, pw, ph);
     ctx.textAlign = 'left';
-    ctx.font = `${Math.round(20 * ui)}px VT323, monospace`;
+    ctx.font = `${Math.round(16 * ui)}px "Space Mono", monospace`;
     ctx.fillStyle = C.tan;
     ctx.fillText('SCORE', pad + 10 * ui, pad + 20 * ui);
     ctx.fillText('HI SCORE', pad + 10 * ui, pad + 48 * ui);
@@ -1317,6 +1775,8 @@ export class Engine {
     ctx.fillStyle = C.cream;
     ctx.fillText('02', W - pad - 10 * ui, pad + 48 * ui);
 
+    this.renderBossTelemetry(ctx, pad + ph + 10 * ui, false);
+
     /* ---- bottom left: weapon / heat / shield ---- */
     const bw = 280 * ui;
     const bh = 96 * ui;
@@ -1324,7 +1784,7 @@ export class Engine {
     const by = H - pad - bh;
     this.panel(ctx, bx, by, bw, bh);
     ctx.textAlign = 'left';
-    ctx.font = `${Math.round(19 * ui)}px VT323, monospace`;
+    ctx.font = `${Math.round(15 * ui)}px "Space Mono", monospace`;
     ctx.fillStyle = C.hotRed;
     ctx.fillText('WEAPON', bx + 10 * ui, by + 20 * ui);
     ctx.fillStyle = C.cream;
@@ -1343,14 +1803,20 @@ export class Engine {
     ctx.fillStyle = this.shield < 30 ? C.hotRed : C.cream;
     ctx.fillText(`${Math.round(this.shield)}%`, bx + bw - 10 * ui, by + 74 * ui);
 
+    ctx.textAlign = 'left';
+    ctx.font = `${Math.round(12 * ui)}px "Space Mono", monospace`;
+    ctx.fillStyle = this.time < this.overdriveUntil ? C.tan : this.overheated ? C.hotRed : C.cream;
+    const weaponState = this.time < this.overdriveUntil ? 'REDLINE OVERDRIVE // 14 HZ' : this.overheated ? 'OVERHEAT // RELEASE TRIGGER' : 'SYSTEM NOMINAL';
+    ctx.fillText(weaponState, bx + 4 * ui, by - 10 * ui);
+
     /* ---- combo ---- */
     if (this.combo > 1) {
       const mult = Math.min(15, 1 + Math.floor(this.combo / 2));
       ctx.textAlign = 'left';
-      ctx.font = `${Math.round(16 * ui)}px "Press Start 2P", monospace`;
+      ctx.font = `${Math.round(13 * ui)}px Orbitron, sans-serif`;
       ctx.fillStyle = C.tan;
       ctx.fillText('COMBO', bx + 2 * ui, by - 44 * ui);
-      ctx.font = `${Math.round(30 * ui)}px "Press Start 2P", monospace`;
+      ctx.font = `${Math.round(26 * ui)}px Orbitron, sans-serif`;
       ctx.fillStyle = mult >= 8 ? C.hotRed : C.cream;
       ctx.fillText(`x${mult}`, bx + 2 * ui, by - 12 * ui);
     }
@@ -1389,7 +1855,7 @@ export class Engine {
     ctx.stroke();
     // blips
     const blip = (wx: number, z: number, color: string, s: number) => {
-      const bx2 = rx + clamp(wx / 260, -1, 1) * rr * 0.92;
+      const bx2 = rx + clamp((wx - this.px) / 260, -1, 1) * rr * 0.92;
       const by2 = ry + rr * 0.92 - clamp(z / 1250, 0, 1) * rr * 1.84;
       const dx = bx2 - rx;
       const dy = by2 - ry;
@@ -1409,28 +1875,26 @@ export class Engine {
     ctx.closePath();
     ctx.fill();
     ctx.textAlign = 'center';
-    ctx.font = `${Math.round(16 * ui)}px VT323, monospace`;
+    ctx.font = `${Math.round(12 * ui)}px "Space Mono", monospace`;
     ctx.fillStyle = C.hotRed;
     ctx.fillText('RADAR', rx, ry - rr - 6 * ui);
 
     /* ---- alert banner ---- */
     if (this.time < this.alertUntil) {
-      const blinkOn = Math.floor(this.time * 5) % 2 === 0;
-      if (blinkOn) {
-        ctx.textAlign = 'center';
-        ctx.font = `${Math.round(H * 0.021)}px "Press Start 2P", monospace`;
-        ctx.lineWidth = 4;
-        ctx.strokeStyle = 'rgba(20,10,5,0.9)';
-        ctx.strokeText(`⚠ ${this.alertText} ⚠`, this.cx, H * 0.17);
-        ctx.fillStyle = C.hotRed;
-        ctx.fillText(`⚠ ${this.alertText} ⚠`, this.cx, H * 0.17);
-      }
+      const aw = Math.min(W - 40, 760);
+      const ay = H * 0.15;
+      ctx.fillStyle = Math.floor(this.time * 5) % 2 === 0 ? C.hotRed : C.red;
+      ctx.fillRect(this.cx - aw / 2, ay, aw, 34 * ui);
+      ctx.textAlign = 'center';
+      ctx.fillStyle = '#0b0d0e';
+      this.setFittedFont(ctx, this.alertText, aw - 28, 16 * ui, '"Space Mono", monospace');
+      ctx.fillText(this.alertText, this.cx, ay + 23 * ui);
     }
 
     /* ---- shield critical ---- */
     if (this.shield < 30 && this.state === 'playing' && Math.floor(this.time * 3) % 2 === 0) {
       ctx.textAlign = 'center';
-      ctx.font = `${Math.round(H * 0.018)}px "Press Start 2P", monospace`;
+      ctx.font = `${Math.round(H * 0.018)}px Orbitron, sans-serif`;
       ctx.fillStyle = C.hotRed;
       ctx.fillText('SHIELD CRITICAL', this.cx, H * 0.24);
     }
@@ -1440,7 +1904,7 @@ export class Engine {
     for (const p of this.popups) {
       const a = clamp(p.life / 0.4, 0, 1);
       ctx.globalAlpha = a;
-      ctx.font = `${Math.round(24 * ui)}px VT323, monospace`;
+      ctx.font = `${Math.round(18 * ui)}px "Space Mono", monospace`;
       ctx.lineWidth = 3;
       ctx.strokeStyle = 'rgba(20,10,5,0.9)';
       ctx.strokeText(p.text, p.sx, p.sy);
@@ -1450,11 +1914,12 @@ export class Engine {
     }
 
     /* ---- controls hint (early game) ---- */
-    if (this.state === 'playing' && this.time < 9 && this.dist < 60) {
+    if (this.state === 'playing' && this.runTime < 9) {
       ctx.textAlign = 'center';
-      ctx.font = `${Math.round(18 * ui)}px VT323, monospace`;
+      ctx.font = `${Math.round(12 * ui)}px "Space Mono", monospace`;
       ctx.fillStyle = 'rgba(249,236,185,0.75)';
       ctx.fillText('WASD / ARROWS OR MOUSE TO FLY  —  HOLD SPACE / CLICK TO FIRE  —  P PAUSE  —  M MUTE', this.cx, H - 14 * ui);
     }
+    this.renderStageOverlay(ctx);
   }
 }

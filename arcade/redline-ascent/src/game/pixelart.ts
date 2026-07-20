@@ -1,19 +1,19 @@
 // Procedural pixel-art sprites (player ship, enemies) rendered to offscreen canvases.
 
 const PALETTE: Record<string, string> = {
-  k: '#16100c', // near-black outline
-  d: '#3a2a1c', // dark hull brown
-  D: '#241a10', // deeper shadow
-  r: '#c1382a', // redline red
-  R: '#7e2015', // dark red
-  t: '#e8c384', // desert tan
-  T: '#a8793f', // dark tan
-  w: '#f9ecb9', // cream
-  o: '#ff8c2e', // engine orange
-  y: '#ffd75e', // hot yellow
-  b: '#8fd0e0', // cockpit glass
-  g: '#ff3b26', // glowing red core
-  s: '#5c3a1e', // structure brown
+  k: '#0b0d0e', // oil-black outline
+  d: '#151b1e', // machine-blue hull
+  D: '#09161c', // deeper machine shadow
+  r: '#e94d49', // signal red
+  R: '#612e2c', // rust shadow
+  t: '#f1d78f', // amber voltage
+  T: '#c99963', // brass dust
+  w: '#f7eac1', // poster cream
+  o: '#e94d49', // engine red
+  y: '#f1d78f', // hot amber
+  b: '#8fbec7', // cockpit glass
+  g: '#e94d49', // glowing red core
+  s: '#612e2c', // structure rust
 };
 
 export function makePixelSprite(rows: string[], scale = 4): HTMLCanvasElement {
@@ -25,11 +25,12 @@ export function makePixelSprite(rows: string[], scale = 4): HTMLCanvasElement {
   const ctx = c.getContext('2d')!;
   for (let y = 0; y < h; y++) {
     const row = rows[y];
+    const xOffset = (w - row.length) / 2;
     for (let x = 0; x < row.length; x++) {
       const ch = row[x];
       if (ch === '.' || ch === ' ') continue;
       ctx.fillStyle = PALETTE[ch] ?? '#ff00ff';
-      ctx.fillRect(x * scale, y * scale, scale, scale);
+      ctx.fillRect((x + xOffset) * scale, y * scale, scale, scale);
     }
   }
   return c;

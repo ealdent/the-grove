@@ -1,9 +1,19 @@
 // Procedural WebAudio sound effects — no audio assets needed.
 
+interface EngineNodes {
+  osc1: OscillatorNode;
+  osc2: OscillatorNode;
+  windSource: AudioBufferSourceNode;
+  lowpass: BiquadFilterNode;
+  windFilter: BiquadFilterNode;
+  engineGain: GainNode;
+  windGain: GainNode;
+}
+
 export class Sfx {
   private ctx: AudioContext | null = null;
   private master: GainNode | null = null;
-  private engineNodes: { osc1: OscillatorNode; osc2: OscillatorNode; gain: GainNode; noise: GainNode } | null = null;
+  private engineNodes: EngineNodes | null = null;
   muted = false;
 
   ensure() {
@@ -11,7 +21,7 @@ export class Sfx {
       const AC = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
       this.ctx = new AC();
       this.master = this.ctx.createGain();
-      this.master.gain.value = 0.6;
+      this.master.gain.value = this.muted ? 0 : 0.6;
       this.master.connect(this.ctx.destination);
     }
     if (this.ctx.state === 'suspended') void this.ctx.resume();
@@ -135,24 +145,37 @@ export class Sfx {
     o1.start();
     o2.start();
     nsrc.start();
-    this.engineNodes = { osc1: o1, osc2: o2, gain: g, noise: ng };
+    this.engineNodes = {
+      osc1: o1,
+      osc2: o2,
+      windSource: nsrc,
+      lowpass: lp,
+      windFilter: bp,
+      engineGain: g,
+      windGain: ng,
+    };
   }
 
   setEngineSpeed(norm: number) {
     if (!this.engineNodes) return;
     this.engineNodes.osc1.frequency.value = 52 + norm * 42;
     this.engineNodes.osc2.frequency.value = 55.5 + norm * 45;
-    this.engineNodes.noise.gain.value = 0.015 + norm * 0.05;
+    this.engineNodes.windGain.gain.value = 0.015 + norm * 0.05;
   }
 
   stopEngine() {
-    if (!this.engineNodes) return;
-    try {
-      this.engineNodes.osc1.stop();
-      this.engineNodes.osc2.stop();
-    } catch {
-      /* already stopped */
-    }
+    const nodes = this.engineNodes;
+    if (!nodes) return;
     this.engineNodes = null;
+
+    for (const source of [nodes.osc1, nodes.osc2, nodes.windSource]) {
+      try {
+        source.stop();
+      } catch {
+        /* already stopped */
+      }
+    }
+
+    for (const node of Object.values(nodes)) node.disconnect();
   }
 }
