@@ -13,6 +13,8 @@ const FAR = 1150; // spawn distance
 const GROUND_ZMAX = 820; // ground detail range
 const STAGE_LENGTH = 90; // world distance between relay encounters
 const FIRST_RELAY_DIST = 58;
+const AIM_Z = 640; // depth of the ship-anchored aim reticle
+const NEAR_CULL = 12; // obstacles/enemies live until they pass well behind the player plane
 
 const C = {
   sky0: '#0b0d0e',
@@ -77,6 +79,7 @@ interface Bolt {
   vz: number;
   friendly: boolean;
   dead: boolean;
+  target?: Enemy;
 }
 
 interface Particle {
@@ -192,6 +195,8 @@ export class Engine {
   private invulnUntil = 0;
   private fireCd = 0;
   private firing = false;
+  private lockTarget: Enemy | null = null;
+  private muzzle = 0;
 
   // scoring
   private runTime = 0;
@@ -227,6 +232,7 @@ export class Engine {
     this.ctx = canvas.getContext('2d')!;
     this.cb = cb;
     this.hiScore = Number(localStorage.getItem('redline-hi') ?? 0) || 0;
+    (window as unknown as { __redline?: Engine }).__redline = this; // debug/verification handle
     this.proc = buildProcSprites();
     this.boltImg = makeBoltSprite();
     this.eBoltImg = makeEnemyBoltSprite();
@@ -377,6 +383,8 @@ export class Engine {
     this.fireCd = 0;
     this.firing = false;
     this.touchFiring = false;
+    this.lockTarget = null;
+    this.muzzle = 0;
     this.heat = 0;
     this.overheated = false;
     this.overdriveUntil = 0;
@@ -422,6 +430,7 @@ export class Engine {
   toAttract() {
     this.state = 'attract';
     this.sfx.stopEngine();
+    this.lockTarget = null;
     this.obstacles = [];
     this.enemies = [];
     this.bolts = [];
@@ -738,14 +747,11 @@ export class Engine {
   }
 
   private firePlayerBolt() {
-    // converge toward crosshair world point
-    const crossSy = this.horizonY + (this.H - this.horizonY) * 0.08;
-    const zt = 700;
-    const tx = this.camX;
-    const talt = CAM_H - ((crossSy - this.horizonY) * zt) / this.f;
-    const dx = tx - this.px;
-    const dalt = talt - this.palt;
-    const dz = zt - ZP;
+    // fire straight ahead from the ship; if a target is locked, aim at it and let homing finish the job
+    const locked = this.lockTarget && this.lockTarget.hp > 0 ? this.lockTarget : null;
+    const dx = locked ? locked.x - this.px : 0;
+    const dalt = locked ? locked.alt - this.palt : 0;
+    const dz = locked ? locked.z - ZP : AIM_Z - ZP;
     const len = Math.sqrt(dx * dx + dalt * dalt + dz * dz);
     const sp = 950;
     this.bolts.push({
@@ -757,7 +763,9 @@ export class Engine {
       vz: (dz / len) * sp,
       friendly: true,
       dead: false,
+      target: locked ?? undefined,
     });
+    this.muzzle = 0.07;
     this.sfx.laser();
     this.heat += this.time < this.overdriveUntil ? 1.35 : 3.4;
     if (this.heat >= 100) {
@@ -813,7 +821,7 @@ export class Engine {
       o.prevZ = o.z;
       o.z -= this.speed * dt;
     }
-    this.obstacles = this.obstacles.filter((o) => o.z > 30);
+    this.obstacles = this.obstacles.filter((o) => o.z > NEAR_CULL);
   }
 
   private update(dt: number) {
@@ -894,6 +902,27 @@ export class Engine {
     const coolRate = this.overheated ? (this.firing ? 0 : 42) : this.firing ? 13 : 34;
     this.heat = Math.max(0, this.heat - coolRate * dt);
     if (this.overheated && !this.firing && this.heat < 25) this.overheated = false;
+    this.muzzle = Math.max(0, this.muzzle - dt);
+
+    /* ---- target lock: nearest enemy in a screen-space cone around the reticle ---- */
+    const prevLock = this.lockTarget;
+    this.lockTarget = null;
+    if (!dying) {
+      const ax = this.projX(this.px, AIM_Z);
+      const ay = this.projY(this.palt, AIM_Z);
+      let bestD = Math.min(this.W, this.H) * 0.18;
+      for (const e of this.enemies) {
+        if (e.hp <= 0 || e.z < 170 || e.z > FAR - 30) continue;
+        const esx = this.projX(e.x, e.z);
+        const esy = this.projY(e.alt, e.z);
+        const d = Math.hypot(esx - ax, esy - ay);
+        if (d < bestD) {
+          bestD = d;
+          this.lockTarget = e;
+        }
+      }
+      if (this.lockTarget && this.lockTarget !== prevLock) this.sfx.lock();
+    }
 
     /* ---- shield regen ---- */
     if (this.time - this.lastHurt > 5 && !dying) this.shield = Math.min(100, this.shield + 4 * dt);
@@ -924,7 +953,6 @@ export class Engine {
           playerAlt < o.def.h * o.def.hole.y1;
         if (dx < collW + 12 && playerAlt < o.def.h * o.def.ch) {
           if (inHole) {
-            o.passed = true;
             this.score += 750;
             this.comboTimer = Math.max(this.comboTimer, 4.5);
             this.overdriveUntil = Math.max(this.overdriveUntil, this.time) + 5;
@@ -933,10 +961,19 @@ export class Engine {
             this.popups.push({ text: '+750 THREAD // REDLINE ONLINE', sx: this.cx, sy: this.H * 0.42, life: 1.6, color: C.tan });
             this.sfx.needle();
           } else {
-            o.passed = true;
             this.pvx = playerX > o.x ? 200 : -200;
             this.hurtPlayer(26);
           }
+        } else if (dx < collW + 64 && playerAlt < o.def.h * 1.05) {
+          // skimmed it — reward flying close
+          this.score += 100;
+          this.popups.push({
+            text: '+100 NEAR MISS',
+            sx: this.projX(o.x, ZP + 40),
+            sy: this.projY(playerAlt, ZP + 40) - 24,
+            life: 0.9,
+            color: C.tan,
+          });
         }
         o.passed = true;
       }
@@ -1003,7 +1040,7 @@ export class Engine {
 
       this.resolveEnemy(e);
     }
-    this.enemies = this.enemies.filter((e) => e.z > ZP - 16 && e.hp > 0);
+    this.enemies = this.enemies.filter((e) => e.z > NEAR_CULL && e.hp > 0);
 
     /* ---- pickups ---- */
     for (const p of this.pickups) {
@@ -1026,6 +1063,23 @@ export class Engine {
     /* ---- player bolts ---- */
     const lethalHits: { enemy: Enemy; crossT: number }[] = [];
     for (const b of this.bolts) {
+      // light homing toward the locked target this bolt was fired at
+      const tgt = b.target;
+      if (!b.dead && tgt && tgt.hp > 0 && tgt.z > b.z + 20) {
+        const hx = tgt.x - b.x;
+        const ha = tgt.alt - b.alt;
+        const hz = tgt.z - b.z;
+        const hl = Math.sqrt(hx * hx + ha * ha + hz * hz);
+        const k = Math.min(1, 9 * dt);
+        const sp = 950;
+        b.vx = lerp(b.vx, (hx / hl) * sp, k);
+        b.valt = lerp(b.valt, (ha / hl) * sp, k);
+        b.vz = lerp(b.vz, (hz / hl) * sp, k);
+        const vl = Math.sqrt(b.vx * b.vx + b.valt * b.valt + b.vz * b.vz);
+        b.vx = (b.vx / vl) * sp;
+        b.valt = (b.valt / vl) * sp;
+        b.vz = (b.vz / vl) * sp;
+      }
       const prevX = b.x;
       const prevAlt = b.alt;
       const prevZ = b.z;
@@ -1068,8 +1122,8 @@ export class Engine {
         if (crossT >= hitT) continue;
         const hitX = lerp(prevX, b.x, crossT);
         const hitAlt = lerp(prevAlt, b.alt, crossT);
-        const d = Math.hypot(e.x - hitX, (e.alt - hitAlt) * 1.3);
-        if (d < e.r + 9) {
+        const d = Math.hypot(e.x - hitX, (e.alt - hitAlt) * 1.15);
+        if (d < e.r + 14) {
           hitT = crossT;
           hitEnemy = e;
           hitObstacle = null;
@@ -1098,7 +1152,7 @@ export class Engine {
     }
     lethalHits.sort((a, b) => a.crossT - b.crossT);
     for (const hit of lethalHits) this.resolveEnemy(hit.enemy);
-    this.enemies = this.enemies.filter((e) => e.z > ZP - 16 && e.hp > 0);
+    this.enemies = this.enemies.filter((e) => e.z > NEAR_CULL && e.hp > 0);
     this.bolts = this.bolts.filter((b) => !b.dead);
 
     /* ---- enemy bolts ---- */
@@ -1157,7 +1211,7 @@ export class Engine {
       }
     }
     this.ebolts = this.ebolts.filter((b) => !b.dead);
-    this.obstacles = this.obstacles.filter((o) => o.z > ZP - 12);
+    this.obstacles = this.obstacles.filter((o) => o.z > NEAR_CULL);
 
     /* ---- ground specks (speed sensation) ---- */
     if (Math.random() < dt * 26) this.specks.push({ x: rand(-400, 400), z: FAR * 0.8 });
@@ -1208,7 +1262,7 @@ export class Engine {
     this.renderSky(ctx);
     this.renderGround(ctx);
     this.renderEntities(ctx);
-    if (this.state === 'playing' || this.state === 'paused') this.renderShip(ctx);
+    if (this.state === 'playing' || this.state === 'paused') this.renderReticle(ctx);
     if (this.state !== 'attract') this.renderHud(ctx);
 
     // damage flash
@@ -1334,11 +1388,12 @@ export class Engine {
         draw: () => {
           const sc = this.f / o.z;
           const rawH = o.def.h * sc;
-          const h = Math.min(rawH, this.H * 1.25);
+          const h = Math.min(rawH, this.H * 12); // let close obstacles keep growing so they sweep past
           const w = (h * o.img.width) / o.img.height;
           const sx = this.projX(o.x, o.z);
           const sy = this.projY(0, o.z);
-          ctx.globalAlpha = clamp((FAR - o.z) / 200, 0, 1);
+          const nearFade = clamp((o.z - NEAR_CULL) / 30, 0, 1);
+          ctx.globalAlpha = clamp((FAR - o.z) / 200, 0, 1) * nearFade;
           ctx.drawImage(o.img, sx - w / 2, sy - h, w, h);
           ctx.globalAlpha = 1;
         },
@@ -1373,11 +1428,12 @@ export class Engine {
         z: e.z,
         draw: () => {
           const sc = this.f / e.z;
-          const maxScreenFraction = e.kind === 'warden' ? 0.46 : e.kind === 'grinder' ? 0.25 : e.kind === 'wasp' ? 0.24 : 0.18;
+          const maxScreenFraction = e.kind === 'warden' ? 0.55 : e.kind === 'grinder' ? 0.42 : e.kind === 'wasp' ? 0.4 : 0.3;
           const s = Math.min(e.r * 2.6 * sc, this.H * maxScreenFraction);
           const sx = this.projX(e.x, e.z);
           const sy = this.projY(e.alt, e.z);
-          ctx.globalAlpha = clamp((FAR - e.z) / 200, 0, 1);
+          const nearFade = clamp((e.z - NEAR_CULL) / 26, 0, 1);
+          ctx.globalAlpha = clamp((FAR - e.z) / 200, 0, 1) * nearFade;
           if (e.flash > 0) {
             ctx.globalCompositeOperation = 'lighter';
             ctx.fillStyle = `rgba(255,220,160,${e.flash * 0.8})`;
@@ -1427,6 +1483,18 @@ export class Engine {
           const sx = this.projX(b.x, b.z);
           const sy = this.projY(b.alt, b.z);
           ctx.globalCompositeOperation = 'lighter';
+          // tracer trail: two ghosts back along the velocity vector
+          for (const back of [0.055, 0.028]) {
+            const tz = b.z - b.vz * back;
+            if (tz <= 12) continue;
+            const tsc = this.f / tz;
+            const ts = Math.max(3, 11 * tsc);
+            const tx = this.projX(b.x - b.vx * back, tz);
+            const ty = this.projY(b.alt - b.valt * back, tz);
+            ctx.globalAlpha = back > 0.04 ? 0.22 : 0.45;
+            ctx.drawImage(this.boltImg, tx - ts, ty - ts * 0.5, ts * 2, ts);
+          }
+          ctx.globalAlpha = 1;
           ctx.drawImage(this.boltImg, sx - s, sy - s * 0.5, s * 2, s);
           ctx.globalCompositeOperation = 'source-over';
         },
@@ -1467,16 +1535,17 @@ export class Engine {
       });
     }
 
+    // ship participates in the depth sort so close obstacles/enemies sweep over it
+    if (this.state === 'playing' || this.state === 'paused') {
+      items.push({ z: ZP, draw: () => this.renderShipBody(ctx) });
+    }
+
     items.sort((a, b) => b.z - a.z);
     for (const it of items) it.draw();
   }
 
-  private renderShip(ctx: CanvasRenderingContext2D) {
+  private renderShipBody(ctx: CanvasRenderingContext2D) {
     if (this.state === 'dying') return;
-    // invulnerability blink
-    if (this.time < this.invulnUntil && Math.floor(this.time * 12) % 2 === 0 && this.state === 'playing') {
-      // blink: skip hull draw but keep flames
-    }
     const sx = this.projX(this.px, ZP);
     const sy = this.projY(this.palt, ZP);
     const w = this.H * 0.17;
@@ -1516,23 +1585,67 @@ export class Engine {
       ctx.restore();
     }
 
-    // crosshair
-    const cross = { x: this.cx, y: this.horizonY + (this.H - this.horizonY) * 0.08 };
-    ctx.strokeStyle = 'rgba(255,59,38,0.85)';
+    // muzzle flash at the nose
+    if (this.muzzle > 0 && !blink) {
+      const mf = this.muzzle / 0.07;
+      const mr = w * 0.14 * (0.6 + mf * 0.4);
+      const my = sy - h * 0.42;
+      ctx.globalCompositeOperation = 'lighter';
+      const mg = ctx.createRadialGradient(sx, my, 0, sx, my, mr);
+      mg.addColorStop(0, `rgba(255,245,210,${0.85 * mf})`);
+      mg.addColorStop(0.5, `rgba(255,160,60,${0.5 * mf})`);
+      mg.addColorStop(1, 'rgba(255,60,20,0)');
+      ctx.fillStyle = mg;
+      ctx.fillRect(sx - mr, my - mr, mr * 2, mr * 2);
+      ctx.globalCompositeOperation = 'source-over';
+    }
+  }
+
+  private renderReticle(ctx: CanvasRenderingContext2D) {
+    if (this.state === 'dying') return;
+    const locked = this.lockTarget && this.lockTarget.hp > 0 ? this.lockTarget : null;
+
+    // ship-anchored crosshair: this is where unlocked bolts actually go
+    const crossX = this.projX(this.px, AIM_Z);
+    const crossY = this.projY(this.palt, AIM_Z);
+    ctx.strokeStyle = locked ? 'rgba(255,59,38,0.45)' : 'rgba(255,59,38,0.85)';
     ctx.lineWidth = 2;
     const cr = 14;
     ctx.beginPath();
-    ctx.moveTo(cross.x - cr, cross.y);
-    ctx.lineTo(cross.x - cr * 0.4, cross.y);
-    ctx.moveTo(cross.x + cr * 0.4, cross.y);
-    ctx.lineTo(cross.x + cr, cross.y);
-    ctx.moveTo(cross.x, cross.y - cr);
-    ctx.lineTo(cross.x, cross.y - cr * 0.4);
-    ctx.moveTo(cross.x, cross.y + cr * 0.4);
-    ctx.lineTo(cross.x, cross.y + cr);
+    ctx.moveTo(crossX - cr, crossY);
+    ctx.lineTo(crossX - cr * 0.4, crossY);
+    ctx.moveTo(crossX + cr * 0.4, crossY);
+    ctx.lineTo(crossX + cr, crossY);
+    ctx.moveTo(crossX, crossY - cr);
+    ctx.lineTo(crossX, crossY - cr * 0.4);
+    ctx.moveTo(crossX, crossY + cr * 0.4);
+    ctx.lineTo(crossX, crossY + cr);
     ctx.stroke();
     ctx.fillStyle = 'rgba(255,59,38,0.9)';
-    ctx.fillRect(cross.x - 1.5, cross.y - 1.5, 3, 3);
+    ctx.fillRect(crossX - 1.5, crossY - 1.5, 3, 3);
+
+    // lock brackets snap onto the acquired target
+    if (locked) {
+      const sx = this.projX(locked.x, locked.z);
+      const sy = this.projY(locked.alt, locked.z);
+      const s = Math.max(20, Math.min(this.H * 0.16, locked.r * 1.9 * (this.f / locked.z)));
+      const arm = s * 0.45;
+      const pulse = 1 + Math.sin(this.time * 10) * 0.06;
+      const r = s * pulse;
+      ctx.strokeStyle = C.hotRed;
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      for (const [gx, gy] of [[-1, -1], [1, -1], [-1, 1], [1, 1]] as const) {
+        ctx.moveTo(sx + gx * r, sy + gy * r - gy * arm);
+        ctx.lineTo(sx + gx * r, sy + gy * r);
+        ctx.lineTo(sx + gx * r - gx * arm, sy + gy * r);
+      }
+      ctx.stroke();
+      ctx.textAlign = 'center';
+      ctx.font = '11px "Space Mono", monospace';
+      ctx.fillStyle = C.hotRed;
+      ctx.fillText('LOCK', sx, sy + r + 14);
+    }
   }
 
   /* ---------------- HUD ---------------- */

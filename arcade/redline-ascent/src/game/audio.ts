@@ -106,6 +106,11 @@ export class Sfx {
     this.tone(520, 1040, 0.12, 'square', 0.1);
   }
 
+  lock() {
+    this.tone(1180, 1180, 0.045, 'square', 0.05);
+    this.tone(1560, 1560, 0.05, 'square', 0.04, 0.05);
+  }
+
   gameOver() {
     this.tone(330, 55, 1.4, 'sawtooth', 0.25);
     this.noise(1.2, 0.35, 1600, 60);
