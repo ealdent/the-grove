@@ -58,6 +58,8 @@ export default function App() {
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.key === 'Enter' || event.key === ' ') {
+        // let focused buttons (e.g. the audio toggle) handle their own activation
+        if (event.target instanceof HTMLElement && event.target.tagName === 'BUTTON') return;
         if (screenRef.current === 'menu' || screenRef.current === 'gameover') {
           event.preventDefault();
           startGame();
@@ -160,6 +162,9 @@ export default function App() {
             </button>
             <div className="poster-footer font-machine">
               <span className="blink">PRESS ENTER</span>
+              <button type="button" className="footer-audio" onClick={toggleMute} aria-pressed={muted}>
+                {muted ? 'AUDIO OFF' : 'AUDIO ON'}
+              </button>
               <span>HI {String(hiScore).padStart(8, '0')}</span>
             </div>
           </section>
@@ -183,7 +188,12 @@ export default function App() {
             <button type="button" onClick={startGame} className="coin-button font-arcade">
               INSERT COIN // RETRY
             </button>
-            <div className="poster-footer font-machine"><span className="blink">PRESS ENTER TO RETRY</span></div>
+            <div className="poster-footer font-machine">
+              <span className="blink">PRESS ENTER TO RETRY</span>
+              <button type="button" className="footer-audio" onClick={toggleMute} aria-pressed={muted}>
+                {muted ? 'AUDIO OFF' : 'AUDIO ON'}
+              </button>
+            </div>
           </section>
         </div>
       )}
