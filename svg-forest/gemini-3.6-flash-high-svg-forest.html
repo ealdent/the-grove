@@ -1,0 +1,1141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Lumina Grove - Pure SVG 1st-Person Exploration Game</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      user-select: none;
+      -webkit-user-select: none;
+      touch-action: none;
+    }
+
+    body, html {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background-color: #030408;
+      font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      color: #e0f7fc;
+    }
+
+    #game-container {
+      position: relative;
+      width: 100vw;
+      height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      background: #030408;
+    }
+
+    /* Main SVG Canvas */
+    #svg-viewport {
+      width: 100%;
+      height: 100%;
+      display: block;
+      cursor: grab;
+    }
+
+    #svg-viewport:active {
+      cursor: grabbing;
+    }
+
+    /* UI & HUD Overlay */
+    .hud-panel {
+      position: absolute;
+      pointer-events: none;
+      z-index: 10;
+    }
+
+    /* Top Left Radar Minimap */
+    #minimap-container {
+      top: 15px;
+      left: 15px;
+      width: 130px;
+      height: 130px;
+      background: rgba(7, 12, 24, 0.65);
+      border: 1px solid rgba(0, 243, 255, 0.4);
+      border-radius: 50%;
+      box-shadow: 0 0 15px rgba(0, 243, 255, 0.2), inset 0 0 10px rgba(0, 243, 255, 0.1);
+      backdrop-filter: blur(4px);
+      overflow: hidden;
+    }
+
+    #minimap-svg {
+      width: 100%;
+      height: 100%;
+    }
+
+    /* Top Center Compass */
+    #compass-container {
+      top: 15px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 280px;
+      height: 36px;
+      background: rgba(7, 12, 24, 0.65);
+      border: 1px solid rgba(0, 243, 255, 0.3);
+      border-radius: 18px;
+      backdrop-filter: blur(4px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 0 12px rgba(0, 243, 255, 0.15);
+      overflow: hidden;
+    }
+
+    #compass-strip {
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 2px;
+      color: #00f3ff;
+      text-shadow: 0 0 6px rgba(0, 243, 255, 0.8);
+      white-space: nowrap;
+      transition: transform 0.05s linear;
+    }
+
+    #compass-marker {
+      position: absolute;
+      top: 2px;
+      width: 0;
+      height: 0;
+      border-left: 5px solid transparent;
+      border-right: 5px solid transparent;
+      border-top: 6px solid #ff00a0;
+    }
+
+    /* Top Right Controls & Info */
+    #info-panel {
+      top: 15px;
+      right: 15px;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 8px;
+    }
+
+    .hud-badge {
+      background: rgba(7, 12, 24, 0.7);
+      border: 1px solid rgba(255, 0, 160, 0.3);
+      border-radius: 8px;
+      padding: 6px 12px;
+      font-size: 12px;
+      font-family: monospace;
+      color: #00ff9d;
+      box-shadow: 0 0 10px rgba(0, 255, 157, 0.15);
+      backdrop-filter: blur(4px);
+    }
+
+    .btn-action {
+      pointer-events: auto;
+      background: rgba(0, 243, 255, 0.15);
+      border: 1px solid rgba(0, 243, 255, 0.5);
+      color: #00f3ff;
+      border-radius: 8px;
+      padding: 6px 14px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .btn-action:hover {
+      background: rgba(0, 243, 255, 0.3);
+      box-shadow: 0 0 12px rgba(0, 243, 255, 0.5);
+    }
+
+    /* Crosshair */
+    #crosshair {
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 24px;
+      height: 24px;
+    }
+
+    /* Mobile Virtual Joysticks Overlay */
+    .joystick-zone {
+      position: absolute;
+      bottom: 25px;
+      width: 130px;
+      height: 130px;
+      border-radius: 50%;
+      background: rgba(7, 12, 24, 0.4);
+      border: 2px dashed rgba(0, 243, 255, 0.3);
+      box-shadow: 0 0 20px rgba(0, 243, 255, 0.1);
+      touch-action: none;
+      z-index: 20;
+    }
+
+    #joystick-left {
+      left: 25px;
+    }
+
+    #joystick-right {
+      right: 25px;
+    }
+
+    .joystick-thumb {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: 50px;
+      height: 50px;
+      margin-top: -25px;
+      margin-left: -25px;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(0,243,255,0.8) 0%, rgba(255,0,160,0.6) 100%);
+      border: 2px solid #ffffff;
+      box-shadow: 0 0 15px rgba(0, 243, 255, 0.6);
+      pointer-events: none;
+      transform: translate(0px, 0px);
+      transition: transform 0.03s linear;
+    }
+
+    /* Start Overlay / Instructions */
+    #start-overlay {
+      position: absolute;
+      inset: 0;
+      background: rgba(3, 4, 8, 0.85);
+      backdrop-filter: blur(8px);
+      z-index: 100;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      text-align: center;
+      padding: 20px;
+    }
+
+    #start-overlay h1 {
+      font-size: 2.8rem;
+      background: linear-gradient(135deg, #00f3ff, #ff00a0, #00ff9d);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      margin-bottom: 12px;
+      letter-spacing: 3px;
+      text-transform: uppercase;
+      filter: drop-shadow(0 0 15px rgba(0,243,255,0.4));
+    }
+
+    #start-overlay p {
+      max-width: 540px;
+      font-size: 1.05rem;
+      line-height: 1.6;
+      color: #b0c4de;
+      margin-bottom: 24px;
+    }
+
+    .controls-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      max-width: 500px;
+      margin-bottom: 30px;
+      text-align: left;
+      background: rgba(7, 12, 24, 0.7);
+      padding: 16px;
+      border-radius: 12px;
+      border: 1px solid rgba(0, 243, 255, 0.3);
+    }
+
+    .controls-item strong {
+      color: #00f3ff;
+      display: block;
+      margin-bottom: 4px;
+    }
+
+    #btn-start {
+      background: linear-gradient(135deg, #00f3ff, #ff00a0);
+      border: none;
+      color: #fff;
+      font-weight: 700;
+      font-size: 1.2rem;
+      padding: 14px 36px;
+      border-radius: 30px;
+      cursor: pointer;
+      box-shadow: 0 0 25px rgba(0, 243, 255, 0.5);
+      transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+
+    #btn-start:hover {
+      transform: scale(1.05);
+      box-shadow: 0 0 35px rgba(255, 0, 160, 0.7);
+    }
+
+    @media (max-width: 768px) {
+      #start-overlay h1 { font-size: 2rem; }
+      .controls-grid { grid-template-columns: 1fr; }
+      #minimap-container { width: 100px; height: 100px; }
+      #compass-container { width: 200px; }
+    }
+  </style>
+</head>
+<body>
+
+<div id="game-container">
+  <!-- Main Pure SVG Renderer -->
+  <svg id="svg-viewport" viewBox="0 0 1000 600" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <!-- Sky Gradient -->
+      <linearGradient id="sky-grad" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#020307"/>
+        <stop offset="50%" stop-color="#090d1f"/>
+        <stop offset="100%" stop-color="#190e2b"/>
+      </linearGradient>
+
+      <!-- Ground Horizon Gradient -->
+      <linearGradient id="ground-grad" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#0d0818"/>
+        <stop offset="30%" stop-color="#081021"/>
+        <stop offset="100%" stop-color="#020409"/>
+      </linearGradient>
+
+      <!-- Fog Gradient -->
+      <linearGradient id="fog-grad" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#140a26" stop-opacity="0.95"/>
+        <stop offset="100%" stop-color="#140a26" stop-opacity="0"/>
+      </linearGradient>
+
+      <!-- Crystal Core Glow Filter -->
+      <filter id="glow-cyan" x="-30%" y="-30%" width="160%" height="160%">
+        <feGaussianBlur stdDeviation="4" result="blur" />
+        <feComposite in="SourceGraphic" in2="blur" operator="over" />
+      </filter>
+
+      <filter id="glow-magenta" x="-30%" y="-30%" width="160%" height="160%">
+        <feGaussianBlur stdDeviation="5" result="blur" />
+        <feComposite in="SourceGraphic" in2="blur" operator="over" />
+      </filter>
+
+      <!-- Prop 1: Bioluminescent Crystal Spire -->
+      <g id="prop-crystal">
+        <!-- Base Shadow -->
+        <ellipse cx="0" cy="0" rx="35" ry="12" fill="#000000" opacity="0.6"/>
+        <!-- Main Shard Base -->
+        <polygon points="-25,0 0,-140 25,0" fill="url(#grad-crystal-left)" />
+        <polygon points="0,-140 25,0 35,-15" fill="#00b8d4" opacity="0.8" />
+        <polygon points="-25,0 0,-140 -35,-20" fill="#007791" opacity="0.9" />
+        <!-- Glowing Inner Core Lines -->
+        <path d="M0,-140 L-10,0 M0,-140 L10,0 M0,-140 L0,0" stroke="#ffffff" stroke-width="2" opacity="0.8" filter="url(#glow-cyan)"/>
+        <!-- Secondary Satellite Crystals -->
+        <polygon points="-35,0 -20,-60 -10,0" fill="#ff00a0" opacity="0.8" />
+        <polygon points="10,0 25,-80 38,0" fill="#00ff9d" opacity="0.85" />
+        <!-- Floating Energy Orbs -->
+        <circle cx="0" cy="-155" r="7" fill="#ffffff" filter="url(#glow-cyan)" />
+        <circle cx="-22" cy="-70" r="4" fill="#ff00a0" filter="url(#glow-magenta)" />
+      </g>
+
+      <!-- Prop 2: Alien Bioluminescent Tree -->
+      <g id="prop-tree">
+        <!-- Base Shadow -->
+        <ellipse cx="0" cy="0" rx="45" ry="14" fill="#000000" opacity="0.6"/>
+        <!-- Twisted Trunk -->
+        <path d="M-12,0 C-20,-40 -5,-90 -10,-130 C-15,-160 -5,-180 0,-200 C5,-180 15,-160 10,-130 C5,-90 20,-40 12,0 Z" fill="#150f2a" stroke="#00f3ff" stroke-width="1.5"/>
+        <!-- Luminescent Trunk Veins -->
+        <path d="M-6,0 C-12,-40 0,-90 -4,-130 C-8,-160 0,-200 0,-200" stroke="#00f3ff" stroke-width="2" fill="none" opacity="0.8" filter="url(#glow-cyan)"/>
+        <path d="M6,0 C12,-40 5,-90 8,-130 C4,-160 0,-200 0,-200" stroke="#ff00a0" stroke-width="1.5" fill="none" opacity="0.7"/>
+        <!-- Layered Canopy Disks -->
+        <ellipse cx="0" cy="-190" rx="65" ry="22" fill="#00ff9d" opacity="0.3" filter="url(#glow-cyan)"/>
+        <ellipse cx="0" cy="-195" rx="55" ry="18" fill="#00f3ff" opacity="0.6"/>
+        <ellipse cx="0" cy="-220" rx="45" ry="15" fill="#ff00a0" opacity="0.5" filter="url(#glow-magenta)"/>
+        <ellipse cx="0" cy="-225" rx="35" ry="12" fill="#ffffff" opacity="0.8"/>
+        <!-- Drooping Glow Fruit/Spores -->
+        <circle cx="-35" cy="-180" r="5" fill="#ff00a0" filter="url(#glow-magenta)"/>
+        <circle cx="40" cy="-185" r="6" fill="#00ff9d" filter="url(#glow-cyan)"/>
+        <circle cx="-15" cy="-210" r="4" fill="#00f3ff" filter="url(#glow-cyan)"/>
+        <circle cx="20" cy="-205" r="5" fill="#ffffff" filter="url(#glow-cyan)"/>
+      </g>
+
+      <!-- Prop 3: Glowing Spore Mushroom -->
+      <g id="prop-mushroom">
+        <!-- Base Shadow -->
+        <ellipse cx="0" cy="0" rx="28" ry="10" fill="#000000" opacity="0.6"/>
+        <!-- Stalk -->
+        <path d="M-8,0 C-12,-25 -4,-50 -6,-70 L6,-70 C4,-50 12,-25 8,0 Z" fill="#0a182e" stroke="#00ff9d" stroke-width="1.5"/>
+        <!-- Cap -->
+        <path d="M-40,-65 C-45,-105 45,-105 40,-65 C25,-60 -25,-60 -40,-65 Z" fill="#ff00a0" opacity="0.85" filter="url(#glow-magenta)"/>
+        <path d="M-32,-67 C-35,-95 35,-95 32,-67 Z" fill="#00f3ff" opacity="0.7"/>
+        <!-- Cap Dots -->
+        <circle cx="-15" cy="-82" r="4" fill="#ffffff"/>
+        <circle cx="12" cy="-85" r="5" fill="#ffffff"/>
+        <circle cx="0" cy="-75" r="3" fill="#ffffff"/>
+        <circle cx="25" cy="-76" r="3.5" fill="#ffffff"/>
+        <!-- Emitted Spore Particles -->
+        <circle cx="-20" cy="-105" r="2.5" fill="#00ff9d" opacity="0.9"/>
+        <circle cx="10" cy="-115" r="3" fill="#ff00a0" opacity="0.8"/>
+        <circle cx="-5" cy="-125" r="2" fill="#00f3ff" opacity="0.9"/>
+      </g>
+
+      <!-- Prop 4: Floating Ancient Monolith -->
+      <g id="prop-monolith">
+        <!-- Ground Shadow (shrinks when floating high) -->
+        <ellipse cx="0" cy="0" rx="30" ry="10" fill="#000000" opacity="0.4"/>
+        <!-- Floating Obelisk Body -->
+        <g id="monolith-body">
+          <polygon points="0,-160 -22,-90 0,-20 22,-90" fill="#0d1b2a" stroke="#00f3ff" stroke-width="2"/>
+          <polygon points="0,-160 0,-20 22,-90" fill="#1b263b" opacity="0.9"/>
+          <!-- Inner Rune Lines -->
+          <line x1="0" y1="-140" x2="0" y2="-40" stroke="#00ff9d" stroke-width="2" filter="url(#glow-cyan)"/>
+          <polygon points="-8,-90 0,-105 8,-90 0,-75" fill="none" stroke="#ff00a0" stroke-width="1.5" filter="url(#glow-magenta)"/>
+          <!-- Orbiting SVG Rings -->
+          <ellipse cx="0" cy="-90" rx="32" ry="8" fill="none" stroke="#00f3ff" stroke-width="1.5" stroke-dasharray="8,6" opacity="0.8"/>
+          <ellipse cx="0" cy="-90" rx="10" ry="34" fill="none" stroke="#ff00a0" stroke-width="1.5" stroke-dasharray="10,5" opacity="0.7"/>
+        </g>
+      </g>
+
+      <!-- Gradient for Crystal Facets -->
+      <linearGradient id="grad-crystal-left" x1="0" y1="0" x2="1" y2="0">
+        <stop offset="0%" stop-color="#00f3ff"/>
+        <stop offset="100%" stop-color="#ff00a0"/>
+      </linearGradient>
+    </defs>
+
+    <!-- 1. Sky & Celestial Layer -->
+    <rect x="0" y="0" width="1000" height="600" fill="url(#sky-grad)"/>
+
+    <!-- Starfield Group (Rotates with Camera Yaw/Pitch) -->
+    <g id="starfield"></g>
+
+    <!-- Distant Mountain / Horizon Silhouette Layer -->
+    <path id="horizon-mountains" d="M0,300 L100,280 L250,305 L400,270 L550,300 L700,275 L850,305 L1000,290 L1000,350 L0,350 Z" fill="#080714" opacity="0.8"/>
+
+    <!-- 2. Ground Layer -->
+    <rect id="ground-rect" x="0" y="300" width="1000" height="300" fill="url(#ground-grad)"/>
+
+    <!-- Perspective Grid Lines on Ground -->
+    <g id="ground-grid" opacity="0.35"></g>
+
+    <!-- 3. Dynamic 3D Objects Container (Depth Sorted) -->
+    <g id="world-objects"></g>
+
+    <!-- 4. Atmospheric Distance Fog Overlay -->
+    <rect id="fog-overlay" x="0" y="260" width="1000" height="90" fill="url(#fog-grad)"/>
+  </svg>
+
+  <!-- HUD Overlays -->
+
+  <!-- Top-Left Minimap -->
+  <div id="minimap-container" class="hud-panel">
+    <svg id="minimap-svg" viewBox="-100 -100 200 200">
+      <circle cx="0" cy="0" r="95" fill="none" stroke="rgba(0,243,255,0.3)" stroke-width="2"/>
+      <circle cx="0" cy="0" r="60" fill="none" stroke="rgba(0,243,255,0.15)" stroke-dasharray="4,4"/>
+      <circle cx="0" cy="0" r="30" fill="none" stroke="rgba(0,243,255,0.15)" stroke-dasharray="4,4"/>
+      <line x1="-95" y1="0" x2="95" y2="0" stroke="rgba(0,243,255,0.2)" stroke-width="1"/>
+      <line x1="0" y1="-95" x2="0" y2="95" stroke="rgba(0,243,255,0.2)" stroke-width="1"/>
+      <!-- Props on Radar -->
+      <g id="minimap-blips"></g>
+      <!-- Player Icon -->
+      <polygon id="minimap-player" points="0,-8 -6,7 0,4 6,7" fill="#ff00a0" stroke="#ffffff" stroke-width="1.5"/>
+    </svg>
+  </div>
+
+  <!-- Top-Center Compass -->
+  <div id="compass-container" class="hud-panel">
+    <div id="compass-marker"></div>
+    <div id="compass-strip">N . . . NE . . . E . . . SE . . . S . . . SW . . . W . . . NW . . . N</div>
+  </div>
+
+  <!-- Top-Right Info & Audio Toggle -->
+  <div id="info-panel" class="hud-panel">
+    <div class="hud-badge" id="fps-badge">60 FPS | POS: 0, 0</div>
+    <button class="btn-action" id="btn-audio">🔊 SOUND: OFF</button>
+  </div>
+
+  <!-- Center Crosshair -->
+  <div id="crosshair" class="hud-panel">
+    <svg width="24" height="24" viewBox="0 0 24 24">
+      <circle cx="12" cy="12" r="3" fill="none" stroke="#00f3ff" stroke-width="1.5" opacity="0.8"/>
+      <line x1="12" y1="2" x2="12" y2="7" stroke="#ff00a0" stroke-width="1.5"/>
+      <line x1="12" y1="17" x2="12" y2="22" stroke="#ff00a0" stroke-width="1.5"/>
+      <line x1="2" y1="12" x2="7" y2="12" stroke="#ff00a0" stroke-width="1.5"/>
+      <line x1="17" y1="12" x2="22" y2="12" stroke="#ff00a0" stroke-width="1.5"/>
+    </svg>
+  </div>
+
+  <!-- Mobile On-Screen Virtual Joysticks (Multitouch Supported) -->
+  <div id="joystick-left" class="joystick-zone">
+    <div id="thumb-left" class="joystick-thumb"></div>
+  </div>
+  <div id="joystick-right" class="joystick-zone">
+    <div id="thumb-right" class="joystick-thumb"></div>
+  </div>
+
+  <!-- Splash / Instructions Modal Overlay -->
+  <div id="start-overlay">
+    <h1>Lumina Grove</h1>
+    <p>Step into an infinite synthwave bioluminescent forest. Explore ancient glowing spires, giant alien trees, and floating monoliths rendered entirely in pure SVG graphics.</p>
+    <div class="controls-grid">
+      <div class="controls-item">
+        <strong>💻 Desktop Controls</strong>
+        • WASD / Arrows: Walk & Strafe<br>
+        • Click & Drag Mouse: Look Around<br>
+        • Shift: Run Speed
+      </div>
+      <div class="controls-item">
+        <strong>📱 Mobile Multitouch</strong>
+        • Left Joystick: Move & Strafe<br>
+        • Right Joystick: Turn & Pitch<br>
+        • Simultaneous 2-thumb control
+      </div>
+    </div>
+    <button id="btn-start">ENTER THE GROVE</button>
+  </div>
+</div>
+
+<script>
+  /* =========================================================================
+     LUMINA GROVE - PURE SVG 3D FIRST-PERSON ENGINE
+     ========================================================================= */
+
+  // Configuration & Constants
+  const VIEW_WIDTH = 1000;
+  const VIEW_HEIGHT = 600;
+  const CENTER_X = VIEW_WIDTH / 2;
+  const CENTER_Y = VIEW_HEIGHT / 2;
+  const FOV = 450; // Focal length / Field of View scale
+  const NEAR_PLANE = 0.8;
+  const MAX_VIEW_DIST = 90;
+  const WORLD_SIZE = 220; // Size of wrapping world grid boundary
+  const PROP_COUNT = 140; // Total rendered props in world
+
+  // Camera State
+  const camera = {
+    x: 0,
+    y: 0,
+    z: 0,
+    yaw: 0,   // horizontal angle in radians
+    pitch: 0, // vertical tilt in pixels offset
+    speed: 0,
+    strafe: 0,
+    height: 0,
+    bobPhase: 0,
+    bobY: 0,
+    bobRoll: 0
+  };
+
+  // Input State
+  const keys = {};
+  let mouseDragging = false;
+  let lastMouseX = 0;
+  let lastMouseY = 0;
+
+  // Touch Joysticks State
+  let leftTouchId = null;
+  let rightTouchId = null;
+  const leftStick = { dx: 0, dy: 0, originX: 0, originY: 0 };
+  const rightStick = { dx: 0, dy: 0, originX: 0, originY: 0 };
+  const STICK_MAX_RADIUS = 45;
+
+  // Audio Synthesizer (Web Audio API)
+  let audioCtx = null;
+  let audioEnabled = false;
+  let droneOsc1 = null;
+  let droneOsc2 = null;
+  let stepTimer = 0;
+
+  // World Props & Starfield Data
+  const worldProps = [];
+  const stars = [];
+
+  // SVG Element References
+  const viewportSvg = document.getElementById('svg-viewport');
+  const worldObjectsGroup = document.getElementById('world-objects');
+  const starfieldGroup = document.getElementById('starfield');
+  const groundGridGroup = document.getElementById('ground-grid');
+  const groundRect = document.getElementById('ground-rect');
+  const fogOverlay = document.getElementById('fog-overlay');
+  const mountainsPath = document.getElementById('horizon-mountains');
+  const compassStrip = document.getElementById('compass-strip');
+  const minimapBlips = document.getElementById('minimap-blips');
+  const minimapPlayer = document.getElementById('minimap-player');
+  const fpsBadge = document.getElementById('fps-badge');
+  const btnAudio = document.getElementById('btn-audio');
+
+  /* -------------------------------------------------------------------------
+     1. INITIALIZATION & PROCEDURAL GENERATION
+     ------------------------------------------------------------------------- */
+
+  function initStarfield() {
+    // Generate 120 SVG stars in background
+    for (let i = 0; i < 120; i++) {
+      const star = {
+        x: Math.random() * VIEW_WIDTH * 2 - VIEW_WIDTH / 2,
+        y: Math.random() * 260,
+        r: Math.random() * 1.8 + 0.5,
+        opacity: Math.random() * 0.8 + 0.2,
+        speed: Math.random() * 0.05 + 0.02
+      };
+      stars.push(star);
+
+      const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+      circle.setAttribute('cx', star.x);
+      circle.setAttribute('cy', star.y);
+      circle.setAttribute('r', star.r);
+      circle.setAttribute('fill', i % 3 === 0 ? '#00f3ff' : (i % 5 === 0 ? '#ff00a0' : '#ffffff'));
+      circle.setAttribute('opacity', star.opacity);
+      starfieldGroup.appendChild(circle);
+    }
+  }
+
+  function initWorldProps() {
+    const types = ['prop-crystal', 'prop-tree', 'prop-mushroom', 'prop-monolith'];
+
+    for (let i = 0; i < PROP_COUNT; i++) {
+      // Evenly distribute in world grid with randomness
+      const angle = Math.random() * Math.PI * 2;
+      const dist = Math.sqrt(Math.random()) * (WORLD_SIZE / 2 - 5) + 4;
+      const type = types[Math.floor(Math.random() * types.length)];
+
+      const prop = {
+        id: i,
+        type: type,
+        x: Math.cos(angle) * dist,
+        z: Math.sin(angle) * dist,
+        y: type === 'prop-monolith' ? -25 : 0, // Monolith floats above ground
+        scaleMod: Math.random() * 0.4 + 0.8,
+        floatPhase: Math.random() * Math.PI * 2
+      };
+      worldProps.push(prop);
+
+      // Create reusable SVG element group `<g>` using `<use>` tag pointing to defs
+      const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+      g.setAttribute('id', `render-prop-${i}`);
+      g.style.display = 'none';
+
+      const use = document.createElementNS('http://www.w3.org/2000/svg', 'use');
+      use.setAttributeNS('http://www.w3.org/1999/xlink', 'href', `#${type}`);
+      g.appendChild(use);
+      worldObjectsGroup.appendChild(g);
+
+      // Create minimap blip element
+      const blip = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+      blip.setAttribute('id', `blip-${i}`);
+      blip.setAttribute('r', type === 'prop-crystal' ? '3' : '2.5');
+      blip.setAttribute('fill', type === 'prop-crystal' ? '#00f3ff' : (type === 'prop-tree' ? '#00ff9d' : '#ff00a0'));
+      minimapBlips.appendChild(blip);
+    }
+  }
+
+  function initGroundGrid() {
+    // Pre-create SVG perspective grid lines
+    groundGridGroup.innerHTML = '';
+
+    // Longitudinal (Radiating) Lines
+    for (let i = -15; i <= 15; i++) {
+      const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+      line.setAttribute('id', `grid-rad-${i}`);
+      line.setAttribute('stroke', '#00f3ff');
+      line.setAttribute('stroke-width', '1');
+      groundGridGroup.appendChild(line);
+    }
+
+    // Latitudinal (Horizontal) Depth Lines
+    for (let i = 0; i < 18; i++) {
+      const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+      line.setAttribute('id', `grid-horiz-${i}`);
+      line.setAttribute('stroke', '#ff00a0');
+      line.setAttribute('stroke-width', '1');
+      groundGridGroup.appendChild(line);
+    }
+  }
+
+  /* -------------------------------------------------------------------------
+     2. 3D MATH & RENDERING ENGINE
+     ------------------------------------------------------------------------- */
+
+  // Wrap coordinate distance to keep endless seamlessly repeating world grid
+  function wrapDist(val, size) {
+    const half = size / 2;
+    return ((val + half) % size + size) % size - half;
+  }
+
+  function updateCamera(dt) {
+    // Movement vectors from Keys or Left Joystick
+    let moveFwd = 0;
+    let moveStrafe = 0;
+    let turnYaw = 0;
+    let lookPitch = 0;
+
+    // Keyboard Input
+    if (keys['KeyW'] || keys['ArrowUp']) moveFwd += 1;
+    if (keys['KeyS'] || keys['ArrowDown']) moveFwd -= 1;
+    if (keys['KeyA']) moveStrafe -= 1;
+    if (keys['KeyD']) moveStrafe += 1;
+    if (keys['ArrowLeft'] || keys['KeyQ']) turnYaw -= 1.8 * dt;
+    if (keys['ArrowRight'] || keys['KeyE']) turnYaw += 1.8 * dt;
+
+    // Mobile Joystick Input
+    if (leftTouchId !== null) {
+      moveFwd -= leftStick.dy; // joystick up is negative Y
+      moveStrafe += leftStick.dx;
+    }
+    if (rightTouchId !== null) {
+      turnYaw += rightStick.dx * 2.2 * dt;
+      lookPitch -= rightStick.dy * 150 * dt;
+    }
+
+    // Speed multiplier (Shift key)
+    const speedMult = keys['ShiftLeft'] || keys['ShiftRight'] ? 18.0 : 10.0;
+    const isMoving = Math.abs(moveFwd) > 0.05 || Math.abs(moveStrafe) > 0.05;
+
+    if (isMoving) {
+      // Velocity direction relative to camera yaw
+      const forwardX = Math.sin(camera.yaw);
+      const forwardZ = Math.cos(camera.yaw);
+      const rightX = Math.sin(camera.yaw + Math.PI / 2);
+      const rightZ = Math.cos(camera.yaw + Math.PI / 2);
+
+      camera.x += (forwardX * moveFwd + rightX * moveStrafe) * speedMult * dt;
+      camera.z += (forwardZ * moveFwd + rightZ * moveStrafe) * speedMult * dt;
+
+      // Head Bobbing calculation
+      camera.bobPhase += dt * 10.0;
+      camera.bobY = Math.sin(camera.bobPhase) * 1.8;
+      camera.bobRoll = Math.sin(camera.bobPhase * 0.5) * 0.025;
+
+      // Play Footstep Audio
+      if (audioEnabled && performance.now() - stepTimer > 350) {
+        playFootstepSound();
+        stepTimer = performance.now();
+      }
+    } else {
+      camera.bobY *= 0.85;
+      camera.bobRoll *= 0.85;
+    }
+
+    // Apply turning & pitch
+    camera.yaw += turnYaw;
+    camera.pitch = Math.max(-180, Math.min(180, camera.pitch + lookPitch));
+
+    // Normalize Yaw (0 to 2*PI)
+    camera.yaw = (camera.yaw % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2);
+  }
+
+  function renderScene() {
+    const horizonY = CENTER_Y + camera.pitch;
+
+    // Update Horizon & Ground Position
+    groundRect.setAttribute('y', Math.max(0, horizonY));
+    groundRect.setAttribute('height', Math.max(0, VIEW_HEIGHT - horizonY));
+    fogOverlay.setAttribute('y', horizonY - 45);
+
+    // Update Horizon Mountain Silhouette Shift
+    const mountainShift = -(camera.yaw / (Math.PI * 2)) * 1000;
+    mountainsPath.setAttribute('transform', `translate(${mountainShift % 1000}, ${horizonY - 300})`);
+
+    // Update Perspective Ground Grid
+    renderGroundGrid(horizonY);
+
+    // Render 3D Props (Painter's Algorithm: Far to Near)
+    renderProps(horizonY);
+
+    // Update Starfield Parallax
+    starfieldGroup.setAttribute('transform', `translate(${-camera.yaw * 80}, ${camera.pitch * 0.25})`);
+
+    // Update Compass HUD
+    const headingDeg = Math.round((camera.yaw * 180 / Math.PI)) % 360;
+    const compassPx = -(headingDeg / 360) * 240;
+    compassStrip.style.transform = `translateX(${compassPx}px)`;
+
+    // Update Minimap Radar
+    renderMinimap();
+  }
+
+  function renderGroundGrid(horizonY) {
+    const cosY = Math.cos(-camera.yaw);
+    const sinY = Math.sin(-camera.yaw);
+
+    // Radial Grid Lines
+    for (let i = -15; i <= 15; i++) {
+      const line = document.getElementById(`grid-rad-${i}`);
+      if (!line) continue;
+
+      const worldX = i * 6 - (camera.x % 6);
+      const worldZ = 40;
+
+      const rx = worldX * cosY - worldZ * sinY;
+      const rz = worldX * sinY + worldZ * cosY;
+
+      if (rz > 1) {
+        const screenX = CENTER_X + (rx / rz) * FOV;
+        line.setAttribute('x1', CENTER_X + (i * 12));
+        line.setAttribute('y1', horizonY);
+        line.setAttribute('x2', screenX);
+        line.setAttribute('y2', VIEW_HEIGHT);
+      }
+    }
+
+    // Horizontal Depth Grid Lines
+    const gridSpacing = 5.0;
+    const offsetZ = (camera.z % gridSpacing);
+
+    for (let i = 0; i < 18; i++) {
+      const line = document.getElementById(`grid-horiz-${i}`);
+      if (!line) continue;
+
+      const rz = (i * gridSpacing) - offsetZ + 2.0;
+      if (rz > NEAR_PLANE) {
+        const screenY = horizonY + ((camera.height + 15) / rz) * FOV;
+        const opacity = Math.max(0, 1 - (rz / MAX_VIEW_DIST));
+
+        line.setAttribute('x1', 0);
+        line.setAttribute('y1', screenY);
+        line.setAttribute('x2', VIEW_WIDTH);
+        line.setAttribute('y2', screenY);
+        line.setAttribute('opacity', opacity * 0.4);
+      }
+    }
+  }
+
+  function renderProps(horizonY) {
+    const cosY = Math.cos(-camera.yaw);
+    const sinY = Math.sin(-camera.yaw);
+    const time = performance.now() * 0.002;
+
+    const visibleList = [];
+
+    for (let i = 0; i < PROP_COUNT; i++) {
+      const prop = worldProps[i];
+
+      // Infinite World Grid Wrapping relative to camera position
+      const dx = wrapDist(prop.x - camera.x, WORLD_SIZE);
+      const dz = wrapDist(prop.z - camera.z, WORLD_SIZE);
+
+      // Rotate around Camera Yaw
+      const rx = dx * cosY - dz * sinY;
+      const rz = dx * sinY + dz * cosY;
+
+      prop.currentRz = rz;
+      prop.currentRx = rx;
+
+      // Near/Far clipping
+      if (rz > NEAR_PLANE && rz < MAX_VIEW_DIST) {
+        visibleList.push(prop);
+      } else {
+        const g = document.getElementById(`render-prop-${prop.id}`);
+        if (g) g.style.display = 'none';
+      }
+    }
+
+    // Painter's Algorithm: Sort farthest objects first so close objects render on top
+    visibleList.sort((a, b) => b.currentRz - a.currentRz);
+
+    for (let i = 0; i < visibleList.length; i++) {
+      const prop = visibleList[i];
+      const g = document.getElementById(`render-prop-${prop.id}`);
+      if (!g) continue;
+
+      const rz = prop.currentRz;
+      const rx = prop.currentRx;
+
+      // 3D Perspective Projection
+      const scale = (FOV / rz) * 0.08 * prop.scaleMod;
+      const screenX = CENTER_X + (rx / rz) * FOV;
+
+      // Vertical position including head bob & pitch
+      let posY = prop.y;
+      if (prop.type === 'prop-monolith') {
+        posY += Math.sin(time + prop.floatPhase) * 6; // Floating animation
+      }
+      const relY = posY - (camera.height + camera.bobY);
+      const screenY = horizonY + (relY / rz) * FOV;
+
+      // Distance Fog Opacity Fade
+      const opacity = Math.max(0, 1 - (rz / MAX_VIEW_DIST));
+
+      // Apply SVG Transformation
+      g.style.display = 'inline';
+      g.setAttribute('transform', `translate(${screenX.toFixed(1)}, ${screenY.toFixed(1)}) scale(${scale.toFixed(4)})`);
+      g.setAttribute('opacity', opacity.toFixed(3));
+    }
+  }
+
+  function renderMinimap() {
+    minimapPlayer.setAttribute('transform', `rotate(${camera.yaw * 180 / Math.PI})`);
+
+    const cosY = Math.cos(-camera.yaw);
+    const sinY = Math.sin(-camera.yaw);
+
+    for (let i = 0; i < PROP_COUNT; i++) {
+      const prop = worldProps[i];
+      const blip = document.getElementById(`blip-${i}`);
+      if (!blip) continue;
+
+      const dx = wrapDist(prop.x - camera.x, WORLD_SIZE);
+      const dz = wrapDist(prop.z - camera.z, WORLD_SIZE);
+
+      // Radar coordinates (radius = 90)
+      const radarX = dx * 1.5;
+      const radarY = -dz * 1.5;
+      const dist = Math.sqrt(radarX * radarX + radarY * radarY);
+
+      if (dist < 90) {
+        blip.setAttribute('cx', radarX);
+        blip.setAttribute('cy', radarY);
+        blip.setAttribute('opacity', (1 - dist / 90).toFixed(2));
+      } else {
+        blip.setAttribute('opacity', '0');
+      }
+    }
+  }
+
+  /* -------------------------------------------------------------------------
+     3. CONTROLS & MULTITOUCH INPUT HANDLERS
+     ------------------------------------------------------------------------- */
+
+  function setupDesktopControls() {
+    window.addEventListener('keydown', (e) => {
+      keys[e.code] = true;
+    });
+
+    window.addEventListener('keyup', (e) => {
+      keys[e.code] = false;
+    });
+
+    // Mouse Look (Drag)
+    viewportSvg.addEventListener('mousedown', (e) => {
+      mouseDragging = true;
+      lastMouseX = e.clientX;
+      lastMouseY = e.clientY;
+    });
+
+    window.addEventListener('mouseup', () => {
+      mouseDragging = false;
+    });
+
+    window.addEventListener('mousemove', (e) => {
+      if (!mouseDragging) return;
+      const dx = e.clientX - lastMouseX;
+      const dy = e.clientY - lastMouseY;
+      lastMouseX = e.clientX;
+      lastMouseY = e.clientY;
+
+      camera.yaw += dx * 0.004;
+      camera.pitch -= dy * 0.6;
+    });
+  }
+
+  function setupMobileTouchControls() {
+    const joyLeftEl = document.getElementById('joystick-left');
+    const joyRightEl = document.getElementById('joystick-right');
+    const thumbLeftEl = document.getElementById('thumb-left');
+    const thumbRightEl = document.getElementById('thumb-right');
+
+    function handleTouchStart(e) {
+      e.preventDefault();
+      const touches = e.changedTouches;
+
+      for (let i = 0; i < touches.length; i++) {
+        const touch = touches[i];
+        const rectLeft = joyLeftEl.getBoundingClientRect();
+        const rectRight = joyRightEl.getBoundingClientRect();
+
+        // Left Joystick Check
+        if (leftTouchId === null &&
+            touch.clientX >= rectLeft.left && touch.clientX <= rectLeft.right &&
+            touch.clientY >= rectLeft.top && touch.clientY <= rectLeft.bottom) {
+          leftTouchId = touch.identifier;
+          leftStick.originX = rectLeft.left + rectLeft.width / 2;
+          leftStick.originY = rectLeft.top + rectLeft.height / 2;
+          updateJoystick(touch, leftStick, thumbLeftEl);
+        }
+
+        // Right Joystick Check
+        if (rightTouchId === null &&
+            touch.clientX >= rectRight.left && touch.clientX <= rectRight.right &&
+            touch.clientY >= rectRight.top && touch.clientY <= rectRight.bottom) {
+          rightTouchId = touch.identifier;
+          rightStick.originX = rectRight.left + rectRight.width / 2;
+          rightStick.originY = rectRight.top + rectRight.height / 2;
+          updateJoystick(touch, rightStick, thumbRightEl);
+        }
+      }
+    }
+
+    function handleTouchMove(e) {
+      e.preventDefault();
+      const touches = e.changedTouches;
+
+      for (let i = 0; i < touches.length; i++) {
+        const touch = touches[i];
+        if (touch.identifier === leftTouchId) {
+          updateJoystick(touch, leftStick, thumbLeftEl);
+        } else if (touch.identifier === rightTouchId) {
+          updateJoystick(touch, rightStick, thumbRightEl);
+        }
+      }
+    }
+
+    function handleTouchEnd(e) {
+      e.preventDefault();
+      const touches = e.changedTouches;
+
+      for (let i = 0; i < touches.length; i++) {
+        const touch = touches[i];
+        if (touch.identifier === leftTouchId) {
+          leftTouchId = null;
+          leftStick.dx = 0;
+          leftStick.dy = 0;
+          thumbLeftEl.style.transform = 'translate(0px, 0px)';
+        }
+        if (touch.identifier === rightTouchId) {
+          rightTouchId = null;
+          rightStick.dx = 0;
+          rightStick.dy = 0;
+          thumbRightEl.style.transform = 'translate(0px, 0px)';
+        }
+      }
+    }
+
+    function updateJoystick(touch, stickState, thumbEl) {
+      let vx = touch.clientX - stickState.originX;
+      let vy = touch.clientY - stickState.originY;
+      const dist = Math.sqrt(vx * vx + vy * vy);
+
+      if (dist > STICK_MAX_RADIUS) {
+        vx = (vx / dist) * STICK_MAX_RADIUS;
+        vy = (vy / dist) * STICK_MAX_RADIUS;
+      }
+
+      stickState.dx = vx / STICK_MAX_RADIUS;
+      stickState.dy = vy / STICK_MAX_RADIUS;
+
+      thumbEl.style.transform = `translate(${vx}px, ${vy}px)`;
+    }
+
+    window.addEventListener('touchstart', handleTouchStart, { passive: false });
+    window.addEventListener('touchmove', handleTouchMove, { passive: false });
+    window.addEventListener('touchend', handleTouchEnd, { passive: false });
+    window.addEventListener('touchcancel', handleTouchEnd, { passive: false });
+  }
+
+  /* -------------------------------------------------------------------------
+     4. WEB AUDIO SYNTHESIZER
+     ------------------------------------------------------------------------- */
+
+  function initAudio() {
+    if (audioCtx) return;
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    audioCtx = new AudioContext();
+
+    // Ambient Drone Oscillator 1 (Low Bass Synth)
+    droneOsc1 = audioCtx.createOscillator();
+    const gain1 = audioCtx.createGain();
+    droneOsc1.type = 'sawtooth';
+    droneOsc1.frequency.setValueAtTime(55, audioCtx.currentTime); // A1 note
+    gain1.gain.setValueAtTime(0.06, audioCtx.currentTime);
+
+    // Lowpass Filter for Drone
+    const filter = audioCtx.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.frequency.setValueAtTime(180, audioCtx.currentTime);
+
+    droneOsc1.connect(filter);
+    filter.connect(gain1);
+    gain1.connect(audioCtx.destination);
+    droneOsc1.start();
+
+    // Ambient Drone Oscillator 2 (Fifth Interval Shimmer)
+    droneOsc2 = audioCtx.createOscillator();
+    const gain2 = audioCtx.createGain();
+    droneOsc2.type = 'sine';
+    droneOsc2.frequency.setValueAtTime(82.4, audioCtx.currentTime); // E2 note
+    gain2.gain.setValueAtTime(0.04, audioCtx.currentTime);
+
+    droneOsc2.connect(gain2);
+    gain2.connect(audioCtx.destination);
+    droneOsc2.start();
+  }
+
+  function playFootstepSound() {
+    if (!audioCtx) return;
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(120, audioCtx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(30, audioCtx.currentTime + 0.08);
+
+    gain.gain.setValueAtTime(0.05, audioCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.08);
+
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+
+    osc.start();
+    osc.stop(audioCtx.currentTime + 0.09);
+  }
+
+  /* -------------------------------------------------------------------------
+     5. MAIN GAME LOOP
+     ------------------------------------------------------------------------- */
+
+  let lastTime = performance.now();
+  let frameCount = 0;
+  let fpsTimer = performance.now();
+
+  function gameLoop(currentTime) {
+    const dt = Math.min(0.1, (currentTime - lastTime) / 1000);
+    lastTime = currentTime;
+
+    // Update Physics & Camera
+    updateCamera(dt);
+
+    // Render SVG Scene
+    renderScene();
+
+    // FPS Meter
+    frameCount++;
+    if (currentTime - fpsTimer >= 1000) {
+      const posX = Math.round(camera.x);
+      const posZ = Math.round(camera.z);
+      fpsBadge.textContent = `${frameCount} FPS | POS: ${posX}, ${posZ}`;
+      frameCount = 0;
+      fpsTimer = currentTime;
+    }
+
+    requestAnimationFrame(gameLoop);
+  }
+
+  // Start Overlay Event Handler
+  document.getElementById('btn-start').addEventListener('click', () => {
+    document.getElementById('start-overlay').style.display = 'none';
+    initAudio();
+    audioEnabled = true;
+    btnAudio.textContent = '🔊 SOUND: ON';
+  });
+
+  btnAudio.addEventListener('click', () => {
+    if (!audioCtx) initAudio();
+    audioEnabled = !audioEnabled;
+    btnAudio.textContent = audioEnabled ? '🔊 SOUND: ON' : '🔇 SOUND: OFF';
+    if (audioCtx) {
+      if (audioEnabled) audioCtx.resume();
+      else audioCtx.suspend();
+    }
+  });
+
+  // Window Resize Listener
+  window.addEventListener('resize', () => {
+    renderScene();
+  });
+
+  // Initialize Scene
+  initStarfield();
+  initWorldProps();
+  initGroundGrid();
+  setupDesktopControls();
+  setupMobileTouchControls();
+
+  // Run Game Loop
+  requestAnimationFrame(gameLoop);
+
+</script>
+</body>
+</html>
