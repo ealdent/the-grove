@@ -1,0 +1,1312 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Nightmare Nursery</title>
+<style>
+:root {
+  --bg-deep: #0d0618;
+  --bg-mid: #1a0b2e;
+  --panel: rgba(30, 12, 55, 0.9);
+  --border: rgba(196, 181, 253, 0.25);
+  --lavender: #c4b5fd;
+  --pink: #f9a8d4;
+  --mint: #6ee7b7;
+  --gold: #fcd34d;
+  --crimson: #fb7185;
+  --purple: #7c3aed;
+  --text: #f1f5f9;
+  --dim: #a5b4fc;
+  --glow: 0 0 14px rgba(196, 181, 253, 0.45);
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; overflow: hidden; background: var(--bg-deep); color: var(--text); font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+#app { display: flex; flex-direction: column; height: 100dvh; width: 100vw; position: relative; }
+
+#header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 8px 14px; background: var(--panel); backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--border); z-index: 20; flex-shrink: 0;
+}
+.logo {
+  font-weight: 800; font-size: 1.15rem; letter-spacing: -0.4px;
+  background: linear-gradient(90deg, var(--pink), var(--lavender));
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+}
+.stats { display: flex; gap: 18px; align-items: center; font-weight: 600; font-size: 0.95rem; }
+.stat { display: flex; align-items: center; gap: 5px; }
+#lives { color: var(--crimson); }
+#gold { color: var(--gold); }
+#wave-num { color: var(--mint); }
+
+#main { flex: 1; display: flex; overflow: hidden; position: relative; min-height: 0; }
+#sidebar {
+  width: 168px; background: var(--panel); border-right: 1px solid var(--border);
+  padding: 10px; overflow-y: auto; flex-shrink: 0; display: flex; flex-direction: column; gap: 8px;
+}
+#canvas-wrap {
+  flex: 1; position: relative; display: flex; align-items: center; justify-content: center;
+  background: radial-gradient(ellipse at 50% 40%, #1e0b36 0%, var(--bg-deep) 75%);
+  min-width: 0;
+}
+canvas {
+  display: block; max-width: 100%; max-height: 100%;
+  border-radius: 10px; box-shadow: 0 0 50px rgba(0,0,0,0.55);
+  cursor: crosshair; touch-action: none;
+}
+#info-panel {
+  width: 210px; background: var(--panel); border-left: 1px solid var(--border);
+  padding: 12px; overflow-y: auto; flex-shrink: 0; font-size: 0.9rem;
+}
+
+.section-label {
+  font-size: 0.68rem; color: var(--dim); text-transform: uppercase;
+  letter-spacing: 1.1px; margin-bottom: 2px;
+}
+.tower-btn {
+  background: rgba(46, 16, 101, 0.55); border: 1px solid var(--border);
+  border-radius: 12px; padding: 9px 10px; cursor: pointer; transition: all 0.18s;
+  text-align: left; display: flex; flex-direction: column; gap: 2px;
+}
+.tower-btn:hover, .tower-btn.selected {
+  background: rgba(124, 58, 237, 0.35); border-color: var(--lavender);
+  transform: translateY(-1px); box-shadow: var(--glow);
+}
+.tower-btn .tname { font-weight: 700; font-size: 0.9rem; }
+.tower-btn .tcost { color: var(--gold); font-size: 0.8rem; }
+.tower-btn.disabled { opacity: 0.38; pointer-events: none; }
+
+#bottom {
+  padding: 9px 14px; background: var(--panel); border-top: 1px solid var(--border);
+  display: flex; justify-content: space-between; align-items: center; flex-shrink: 0; gap: 12px;
+}
+#status-text { color: var(--dim); font-size: 0.9rem; flex: 1; }
+#start-wave-btn {
+  background: linear-gradient(135deg, #7c3aed, #db2777); color: white; border: none;
+  padding: 11px 26px; border-radius: 999px; font-weight: 700; font-size: 0.95rem;
+  cursor: pointer; box-shadow: 0 4px 18px rgba(219, 39, 119, 0.4);
+  transition: transform 0.15s, box-shadow 0.15s; white-space: nowrap;
+}
+#start-wave-btn:hover:not(:disabled) { transform: scale(1.04); box-shadow: 0 6px 22px rgba(219, 39, 119, 0.55); }
+#start-wave-btn:disabled { opacity: 0.45; cursor: not-allowed; transform: none; }
+
+.modal {
+  position: absolute; inset: 0; background: rgba(5, 2, 15, 0.88);
+  display: flex; align-items: center; justify-content: center; z-index: 100;
+  backdrop-filter: blur(7px);
+}
+.modal-card {
+  background: linear-gradient(165deg, #2e1065, #1a0b2e);
+  border: 1px solid rgba(196, 181, 253, 0.3); border-radius: 22px;
+  padding: 28px 34px; max-width: 420px; width: 92%; text-align: center;
+  box-shadow: 0 22px 60px rgba(0,0,0,0.65);
+}
+.modal h1 {
+  font-size: 1.85rem; margin-bottom: 10px;
+  background: linear-gradient(90deg, var(--pink), var(--lavender));
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+}
+.modal p { color: var(--dim); margin-bottom: 18px; line-height: 1.55; font-size: 0.95rem; }
+.btn-primary {
+  background: linear-gradient(135deg, #7c3aed, #db2777); color: white; border: none;
+  padding: 13px 32px; border-radius: 999px; font-weight: 700; font-size: 1.05rem;
+  cursor: pointer; transition: transform 0.15s;
+}
+.btn-primary:hover { transform: scale(1.04); }
+.btn-secondary {
+  background: transparent; color: var(--lavender); border: 1px solid var(--lavender);
+  padding: 10px 22px; border-radius: 999px; font-weight: 600; font-size: 0.9rem;
+  cursor: pointer; margin-top: 10px;
+}
+.hidden { display: none !important; }
+
+#info-content h3 { font-size: 1.05rem; margin-bottom: 4px; color: var(--lavender); }
+#info-content .lvl { color: var(--gold); font-size: 0.85rem; margin-bottom: 8px; }
+#info-content .stat-row { display: flex; justify-content: space-between; margin: 3px 0; font-size: 0.85rem; }
+#info-content .desc { color: var(--dim); font-size: 0.8rem; margin: 8px 0 12px; line-height: 1.4; }
+.upgrade-btn, .sell-btn {
+  width: 100%; padding: 9px; border-radius: 10px; border: none; font-weight: 700;
+  cursor: pointer; margin-top: 6px; font-size: 0.9rem;
+}
+.upgrade-btn { background: linear-gradient(135deg, #7c3aed, #a855f7); color: white; }
+.upgrade-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.sell-btn { background: rgba(251, 113, 133, 0.2); color: var(--crimson); border: 1px solid rgba(251, 113, 133, 0.4); }
+
+@media (max-width: 920px) {
+  #sidebar { width: 140px; }
+  #info-panel { width: 180px; }
+}
+@media (max-width: 720px) {
+  #main { flex-direction: column; }
+  #sidebar, #info-panel {
+    width: 100%; height: auto; max-height: 130px;
+    flex-direction: row; overflow-x: auto; overflow-y: hidden;
+    border: none; gap: 8px; padding: 8px;
+  }
+  #sidebar { border-bottom: 1px solid var(--border); }
+  #info-panel { border-top: 1px solid var(--border); order: 3; }
+  .tower-btn { min-width: 115px; flex-shrink: 0; }
+  .logo { font-size: 1rem; }
+  .stats { gap: 12px; font-size: 0.85rem; }
+}
+</style>
+</head>
+<body>
+<div id="app">
+  <header id="header">
+    <div class="logo">Nightmare Nursery</div>
+    <div class="stats">
+      <div class="stat"><span>❤️</span> <span id="lives">20</span></div>
+      <div class="stat"><span>✨</span> <span id="gold">180</span></div>
+      <div class="stat"><span>🌊</span> <span id="wave-num">0 / 25</span></div>
+    </div>
+    <button id="menu-btn" style="background:none;border:1px solid var(--lavender);color:var(--lavender);padding:5px 11px;border-radius:8px;cursor:pointer;font-size:0.85rem;">Menu</button>
+  </header>
+
+  <div id="main">
+    <aside id="sidebar">
+      <div class="section-label">Dream Constructs</div>
+      <div id="tower-shop"></div>
+    </aside>
+    <div id="canvas-wrap">
+      <canvas id="game"></canvas>
+    </div>
+    <aside id="info-panel">
+      <div id="info-content">
+        <p style="color:var(--dim);font-size:0.88rem;line-height:1.45;">Select a construct from the left to place, or click an existing one to upgrade.</p>
+        <p style="color:var(--dim);font-size:0.8rem;margin-top:12px;opacity:0.75;">Between waves you may freely place and upgrade. Survive 25 waves of increasingly twisted nightmares.</p>
+      </div>
+    </aside>
+  </div>
+
+  <div id="bottom">
+    <div id="status-text">The dream is quiet... prepare your wards.</div>
+    <button id="start-wave-btn">Start Wave 1</button>
+  </div>
+
+  <!-- Start -->
+  <div id="start-modal" class="modal">
+    <div class="modal-card">
+      <h1>Nightmare Nursery</h1>
+      <p>You are the guardian of a sleeping child's dreams. Adorable nightmares are slipping in — pastel faces, too-wide smiles, soft shapes with sharp intentions.</p>
+      <p style="font-size:0.86rem;opacity:0.85;">Place dream constructs along the shifting path. Banishing them releases dream dust. Fail, and the child wakes screaming.</p>
+      <p style="font-size:0.8rem;color:var(--pink);margin-bottom:20px;">Cute. Cartoony. Dark underneath.</p>
+      <button class="btn-primary" id="play-btn">Enter the Dream</button>
+    </div>
+  </div>
+
+  <!-- Game Over -->
+  <div id="gameover-modal" class="modal hidden">
+    <div class="modal-card">
+      <h1>Dreams Shattered</h1>
+      <p id="go-text">The nightmares reached the child. The void smiles.</p>
+      <p style="font-size:0.85rem;color:var(--dim);">Waves survived: <span id="go-waves">0</span></p>
+      <button class="btn-primary" id="retry-btn" style="margin-top:12px;">Try Again</button>
+    </div>
+  </div>
+
+  <!-- Victory -->
+  <div id="victory-modal" class="modal hidden">
+    <div class="modal-card">
+      <h1>Peaceful Slumber</h1>
+      <p>The child sleeps safely... for now. The void still watches from the edges of the dream.</p>
+      <button class="btn-primary" id="endless-btn">Endless Nightmares</button>
+      <br>
+      <button class="btn-secondary" id="newdream-btn">New Dream</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+  // ========== DATA ==========
+  const TOWER_DATA = {
+    pillowPuff: {
+      name: "Pillow Puff",
+      desc: "Fluffy cloud that pelts nightmares with soft pillows.",
+      baseCost: 50,
+      color: "#f9a8d4",
+      emoji: "☁️",
+      levels: [
+        { dmg: 14, rate: 1.15, range: 145, special: null },
+        { cost: 40, dmg: 22, rate: 1.35, range: 160, special: null },
+        { cost: 65, dmg: 34, rate: 1.55, range: 175, special: "pierce1" },
+        { cost: 95, dmg: 48, rate: 1.8, range: 190, special: "multi2" },
+        { cost: 135, dmg: 65, rate: 2.1, range: 205, special: "multi3" }
+      ]
+    },
+    lullabyBell: {
+      name: "Lullaby Bell",
+      desc: "Rings soft notes that slow and unsettle nightmares.",
+      baseCost: 65,
+      color: "#a78bfa",
+      emoji: "🔔",
+      levels: [
+        { dmg: 5, rate: 0.65, range: 135, special: "slow", slow: 0.28, duration: 1.9 },
+        { cost: 45, dmg: 8, rate: 0.75, range: 150, special: "slow", slow: 0.38, duration: 2.2 },
+        { cost: 70, dmg: 12, rate: 0.85, range: 165, special: "slow", slow: 0.48, duration: 2.5 },
+        { cost: 100, dmg: 16, rate: 0.95, range: 180, special: "slow+stun", slow: 0.55, duration: 2.8 },
+        { cost: 145, dmg: 22, rate: 1.05, range: 195, special: "slow+sleep", slow: 0.65, duration: 3.2 }
+      ]
+    },
+    stuffedSniper: {
+      name: "Stuffed Sniper",
+      desc: "A teddy with a piercing dream-gaze. Long range, high damage.",
+      baseCost: 100,
+      color: "#fcd34d",
+      emoji: "🧸",
+      levels: [
+        { dmg: 55, rate: 0.42, range: 280, special: null },
+        { cost: 70, dmg: 80, rate: 0.48, range: 300, special: null },
+        { cost: 105, dmg: 115, rate: 0.52, range: 320, special: "crit25" },
+        { cost: 150, dmg: 160, rate: 0.58, range: 340, special: "crit40+pierce" },
+        { cost: 200, dmg: 220, rate: 0.62, range: 360, special: "crit55+pierce2" }
+      ]
+    },
+    inkBloom: {
+      name: "Ink Bloom",
+      desc: "Cute flower that sprays corrosive dream-ink. Splash + poison.",
+      baseCost: 80,
+      color: "#34d399",
+      emoji: "🌸",
+      levels: [
+        { dmg: 11, rate: 0.7, range: 150, special: "splash+poison", splash: 55, poisonDps: 6, poisonDur: 3.2 },
+        { cost: 55, dmg: 16, rate: 0.8, range: 160, special: "splash+poison", splash: 65, poisonDps: 9, poisonDur: 3.6 },
+        { cost: 85, dmg: 23, rate: 0.9, range: 175, special: "splash+poison", splash: 80, poisonDps: 13, poisonDur: 4.0 },
+        { cost: 120, dmg: 32, rate: 1.0, range: 190, special: "splash+poison+slow", splash: 95, poisonDps: 17, poisonDur: 4.5 },
+        { cost: 165, dmg: 42, rate: 1.1, range: 205, special: "splash+spore", splash: 115, poisonDps: 24, poisonDur: 5.0 }
+      ]
+    },
+    shadowHug: {
+      name: "Shadow Hug",
+      desc: "Embraces nightmares... permanently. Aura damage + dark gifts.",
+      baseCost: 120,
+      color: "#c084fc",
+      emoji: "🌑",
+      levels: [
+        { dmg: 0, rate: 0, range: 100, special: "aura", auraDps: 9 },
+        { cost: 80, dmg: 0, rate: 0, range: 115, special: "aura", auraDps: 14 },
+        { cost: 115, dmg: 0, rate: 0, range: 130, special: "aura+pull", auraDps: 21 },
+        { cost: 160, dmg: 0, rate: 0, range: 145, special: "aura+convert", auraDps: 30 },
+        { cost: 215, dmg: 0, rate: 0, range: 165, special: "aura+strong", auraDps: 42 }
+      ]
+    }
+  };
+
+  const ENEMY_DATA = {
+    dreamlet:  { name: "Dreamlet",        hp: 48,  speed: 1.05, reward: 8,  r: 12, color: "#a5b4fc" },
+    sprite:    { name: "Speedy Sprite",   hp: 32,  speed: 1.95, reward: 10, r: 9,  color: "#6ee7b7" },
+    huggy:     { name: "Heavy Huggy",     hp: 175, speed: 0.52, reward: 18, r: 18, color: "#fcd34d" },
+    critter:   { name: "Critter",         hp: 22,  speed: 1.45, reward: 5,  r: 8,  color: "#f9a8d4" },
+    possessed: { name: "Possessed Plush", hp: 110, speed: 0.88, reward: 20, r: 14, color: "#e879f9", armor: 0.22 },
+    boss:      { name: "Nightmare Lord",  hp: 950, speed: 0.65, reward: 120,r: 24, color: "#9f1239", isBoss: true }
+  };
+
+  // 25 waves – groups of {type, count, interval, delay?}
+  const WAVES = [
+    [{type:'dreamlet', count:7, interval:1.0}],
+    [{type:'dreamlet', count:9, interval:0.9}, {type:'sprite', count:3, interval:1.1, delay:1.5}],
+    [{type:'dreamlet', count:8, interval:0.85}, {type:'critter', count:6, interval:0.55}],
+    [{type:'sprite', count:7, interval:0.8}, {type:'huggy', count:2, interval:2.0, delay:1}],
+    [{type:'dreamlet', count:10, interval:0.75}, {type:'huggy', count:3, interval:1.8}, {type:'boss', count:1, interval:0, delay:6}],
+    [{type:'critter', count:12, interval:0.4}, {type:'sprite', count:5, interval:0.9}],
+    [{type:'dreamlet', count:10, interval:0.7}, {type:'possessed', count:3, interval:1.6}],
+    [{type:'huggy', count:5, interval:1.5}, {type:'sprite', count:6, interval:0.75}],
+    [{type:'critter', count:14, interval:0.35}, {type:'possessed', count:4, interval:1.4}],
+    [{type:'dreamlet', count:8, interval:0.65}, {type:'huggy', count:4, interval:1.4}, {type:'boss', count:1, interval:0, delay:5}],
+    [{type:'sprite', count:10, interval:0.65}, {type:'critter', count:10, interval:0.4}],
+    [{type:'possessed', count:6, interval:1.2}, {type:'huggy', count:4, interval:1.5}],
+    [{type:'dreamlet', count:12, interval:0.55}, {type:'sprite', count:8, interval:0.7}, {type:'critter', count:8, interval:0.35}],
+    [{type:'huggy', count:6, interval:1.3}, {type:'possessed', count:5, interval:1.3}],
+    [{type:'critter', count:16, interval:0.3}, {type:'sprite', count:8, interval:0.6}, {type:'boss', count:1, interval:0, delay:4}],
+    [{type:'possessed', count:7, interval:1.1}, {type:'huggy', count:5, interval:1.2}, {type:'dreamlet', count:10, interval:0.5}],
+    [{type:'sprite', count:12, interval:0.55}, {type:'critter', count:14, interval:0.28}],
+    [{type:'huggy', count:7, interval:1.1}, {type:'possessed', count:6, interval:1.15}, {type:'sprite', count:6, interval:0.7}],
+    [{type:'dreamlet', count:14, interval:0.45}, {type:'critter', count:12, interval:0.3}, {type:'huggy', count:4, interval:1.3}],
+    [{type:'boss', count:1, interval:0}, {type:'possessed', count:8, interval:1.0}, {type:'huggy', count:5, interval:1.2}, {type:'sprite', count:8, interval:0.55}],
+    [{type:'critter', count:20, interval:0.25}, {type:'sprite', count:10, interval:0.5}, {type:'possessed', count:5, interval:1.0}],
+    [{type:'huggy', count:8, interval:1.0}, {type:'possessed', count:7, interval:0.95}, {type:'dreamlet', count:12, interval:0.4}],
+    [{type:'sprite', count:14, interval:0.45}, {type:'critter', count:16, interval:0.25}, {type:'huggy', count:6, interval:1.0}],
+    [{type:'possessed', count:9, interval:0.9}, {type:'huggy', count:7, interval:0.95}, {type:'boss', count:1, interval:0, delay:3}],
+    [{type:'boss', count:2, interval:8}, {type:'possessed', count:10, interval:0.85}, {type:'huggy', count:8, interval:0.9}, {type:'sprite', count:12, interval:0.4}, {type:'critter', count:15, interval:0.22}]
+  ];
+
+  // ========== STATE ==========
+  const canvas = document.getElementById('game');
+  const ctx = canvas.getContext('2d');
+  let W = 800, H = 500;
+  let cellSize = 40;
+  const COLS = 16, ROWS = 10;
+
+  let gold = 180, lives = 20, wave = 0, maxWaves = 25;
+  let state = 'title'; // title | prepare | combat | gameover | victory
+  let towers = [], enemies = [], projectiles = [], particles = [];
+  let pathCells = [], waypoints = [];
+  let selectedType = null;
+  let selectedTower = null;
+  let mouse = { x: 0, y: 0, gridX: -1, gridY: -1 };
+  let lastTime = 0;
+  let spawnQueue = [];
+  let spawnTimer = 0;
+  let waveActive = false;
+  let endless = false;
+  let pathCorruption = 0; // visual darken as waves progress
+  let stars = [];
+
+  // ========== PATH GENERATION ==========
+  function generateOnePath() {
+    const cells = [];
+    const visited = new Set();
+    let x = 0;
+    let y = Math.floor(ROWS / 2) + Math.floor((Math.random() - 0.5) * 3);
+    y = Math.max(1, Math.min(ROWS - 2, y));
+    cells.push({ x, y });
+    visited.add(`${x},${y}`);
+
+    let attempts = 0;
+    while (x < COLS - 1 && attempts < 500) {
+      attempts++;
+      const options = [];
+      if (x + 1 < COLS && !visited.has(`${x+1},${y}`)) options.push({ x: x+1, y, w: 5.0 });
+      if (y > 0 && !visited.has(`${x},${y-1}`)) options.push({ x, y: y-1, w: 1.6 });
+      if (y < ROWS-1 && !visited.has(`${x},${y+1}`)) options.push({ x, y: y+1, w: 1.6 });
+      if (options.length === 0 && x > 0 && !visited.has(`${x-1},${y}`)) {
+        options.push({ x: x-1, y, w: 0.8 });
+      }
+      if (options.length === 0) {
+        if (x + 1 < COLS) {
+          x++;
+          cells.push({ x, y });
+          visited.add(`${x},${y}`);
+          continue;
+        }
+        break;
+      }
+      const total = options.reduce((s, o) => s + o.w, 0);
+      let r = Math.random() * total;
+      let pick = options[0];
+      for (const o of options) {
+        r -= o.w;
+        if (r <= 0) { pick = o; break; }
+      }
+      x = pick.x; y = pick.y;
+      cells.push({ x, y });
+      visited.add(`${x},${y}`);
+    }
+
+    if (cells[cells.length - 1].x !== COLS - 1) {
+      let last = cells[cells.length - 1];
+      while (last.x < COLS - 1) {
+        last = { x: last.x + 1, y: last.y };
+        cells.push(last);
+      }
+    }
+    return cells;
+  }
+
+  function generatePath() {
+    // try several times, pick the most interesting (longer + more vertical variety)
+    let best = null;
+    let bestScore = -1;
+    for (let i = 0; i < 12; i++) {
+      const cells = generateOnePath();
+      const ys = new Set(cells.map(c => c.y));
+      const score = cells.length + ys.size * 3;
+      if (score > bestScore) {
+        bestScore = score;
+        best = cells;
+      }
+    }
+    pathCells = best;
+    waypoints = pathCells.map(c => ({
+      x: c.x * cellSize + cellSize / 2,
+      y: c.y * cellSize + cellSize / 2
+    }));
+  }
+
+  function isPathCell(gx, gy) {
+    return pathCells.some(c => c.x === gx && c.y === gy);
+  }
+
+  function isValidPlacement(gx, gy) {
+    if (gx < 0 || gy < 0 || gx >= COLS || gy >= ROWS) return false;
+    if (isPathCell(gx, gy)) return false;
+    // no overlap with existing towers
+    for (const t of towers) {
+      if (t.gx === gx && t.gy === gy) return false;
+    }
+    return true;
+  }
+
+  // ========== CLASSES ==========
+  class Tower {
+    constructor(typeKey, gx, gy) {
+      this.typeKey = typeKey;
+      this.data = TOWER_DATA[typeKey];
+      this.gx = gx; this.gy = gy;
+      this.x = gx * cellSize + cellSize / 2;
+      this.y = gy * cellSize + cellSize / 2;
+      this.level = 0;
+      this.cooldown = 0;
+      this.hauntTimer = 0; // stun from possessed
+      this.angle = 0;
+      this.bob = Math.random() * Math.PI * 2;
+    }
+    get stats() { return this.data.levels[this.level]; }
+    get range() { return this.stats.range * (cellSize / 40); } // scale with cell
+    canUpgrade() { return this.level < 4; }
+    upgradeCost() { return this.canUpgrade() ? this.data.levels[this.level + 1].cost : 0; }
+    upgrade() {
+      if (!this.canUpgrade()) return false;
+      const cost = this.upgradeCost();
+      if (gold < cost) return false;
+      gold -= cost;
+      this.level++;
+      spawnParticles(this.x, this.y, this.data.color, 12, 1.5);
+      return true;
+    }
+    sellValue() {
+      let v = this.data.baseCost;
+      for (let i = 1; i <= this.level; i++) v += this.data.levels[i].cost;
+      return Math.floor(v * 0.6);
+    }
+    update(dt) {
+      this.bob += dt * 2.2;
+      if (this.hauntTimer > 0) {
+        this.hauntTimer -= dt;
+        return;
+      }
+      this.cooldown -= dt;
+      const st = this.stats;
+      if (st.special && st.special.includes('aura')) {
+        // continuous aura
+        for (const e of enemies) {
+          const d = dist(this.x, this.y, e.x, e.y);
+          if (d < this.range) {
+            e.takeDamage(st.auraDps * dt, 'aura');
+            if (st.special.includes('pull') && e.hp > 0 && d > 20) {
+              const ang = Math.atan2(this.y - e.y, this.x - e.x);
+              e.x += Math.cos(ang) * 18 * dt;
+              e.y += Math.sin(ang) * 18 * dt;
+            }
+            // convert chance on very low HP
+            if ((st.special.includes('convert') || st.special.includes('strong')) && e.hp > 0 && e.hp / e.maxHp < 0.18) {
+              if (Math.random() < (st.special.includes('strong') ? 0.04 : 0.02) * dt * 60) {
+                // convert
+                gold += Math.floor(e.reward * 1.8);
+                if (Math.random() < 0.25) lives = Math.min(lives + 1, 30);
+                spawnParticles(e.x, e.y, '#c084fc', 16, 2);
+                e.hp = 0;
+                e.dead = true;
+              }
+            }
+          }
+        }
+        return;
+      }
+      // find target
+      if (this.cooldown <= 0) {
+        let target = null, best = Infinity;
+        for (const e of enemies) {
+          if (e.dead || e.hp <= 0) continue;
+          const d = dist(this.x, this.y, e.x, e.y);
+          if (d <= this.range && d < best) {
+            best = d; target = e;
+          }
+        }
+        if (target) {
+          this.shoot(target);
+          this.cooldown = 1 / st.rate;
+          this.angle = Math.atan2(target.y - this.y, target.x - this.x);
+        }
+      }
+    }
+    shoot(target) {
+      const st = this.stats;
+      const special = st.special || '';
+      const baseDmg = st.dmg;
+      let count = 1;
+      if (special.includes('multi2')) count = 2;
+      if (special.includes('multi3')) count = 3;
+      for (let i = 0; i < count; i++) {
+        const spread = (i - (count - 1) / 2) * 0.18;
+        projectiles.push(new Projectile(
+          this.x, this.y, target, baseDmg, this.data.color,
+          special, st.splash || 0, st.poisonDps || 0, st.poisonDur || 0,
+          st.slow || 0, st.duration || 0, spread
+        ));
+      }
+    }
+    draw() {
+      const st = this.stats;
+      const haunted = this.hauntTimer > 0;
+      ctx.save();
+      ctx.translate(this.x, this.y + Math.sin(this.bob) * 2.5);
+      // body
+      ctx.beginPath();
+      ctx.arc(0, 0, cellSize * 0.32, 0, Math.PI * 2);
+      const grad = ctx.createRadialGradient(-4, -4, 2, 0, 0, cellSize * 0.35);
+      grad.addColorStop(0, this.data.color);
+      grad.addColorStop(1, haunted ? '#4c0519' : shadeColor(this.data.color, -30));
+      ctx.fillStyle = grad;
+      ctx.fill();
+      ctx.strokeStyle = haunted ? '#fb7185' : 'rgba(0,0,0,0.45)';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      // eyes
+      const eyeY = -3;
+      ctx.fillStyle = '#fff';
+      ctx.beginPath(); ctx.arc(-6, eyeY, 4.2, 0, Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.arc(6, eyeY, 4.2, 0, Math.PI*2); ctx.fill();
+      ctx.fillStyle = haunted ? '#e11d48' : (this.level >= 3 ? '#4c1d95' : '#1e1b4b');
+      ctx.beginPath(); ctx.arc(-6, eyeY, 2.1, 0, Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.arc(6, eyeY, 2.1, 0, Math.PI*2); ctx.fill();
+      // smile / teeth for higher levels
+      ctx.strokeStyle = '#1e1b4b';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      if (this.level >= 3) {
+        // slightly sinister
+        ctx.moveTo(-5, 6); ctx.lineTo(-2, 9); ctx.lineTo(0, 6); ctx.lineTo(2, 9); ctx.lineTo(5, 6);
+      } else {
+        ctx.arc(0, 5, 5, 0.15, Math.PI - 0.15);
+      }
+      ctx.stroke();
+      // level dots
+      for (let i = 0; i <= this.level; i++) {
+        ctx.fillStyle = i === this.level ? varGold() : 'rgba(255,255,255,0.35)';
+        ctx.beginPath();
+        ctx.arc(-10 + i * 5, -16, 2.2, 0, Math.PI*2);
+        ctx.fill();
+      }
+      ctx.restore();
+      // range when selected
+      if (selectedTower === this) {
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.range, 0, Math.PI*2);
+        ctx.strokeStyle = 'rgba(196,181,253,0.35)';
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash([6, 5]);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
+    }
+  }
+
+  class Enemy {
+    constructor(typeKey, scale) {
+      this.typeKey = typeKey;
+      this.data = ENEMY_DATA[typeKey];
+      this.maxHp = this.data.hp * scale.hp;
+      this.hp = this.maxHp;
+      this.speed = this.data.speed * scale.speed;
+      this.reward = Math.floor(this.data.reward * scale.reward);
+      this.r = this.data.r * (cellSize / 40);
+      this.color = this.data.color;
+      this.armor = this.data.armor || 0;
+      this.isBoss = !!this.data.isBoss;
+      this.pathIndex = 0;
+      this.t = 0; // progress 0-1 between waypoints
+      this.x = waypoints[0].x;
+      this.y = waypoints[0].y;
+      this.dead = false;
+      this.slowUntil = 0;
+      this.poisonUntil = 0;
+      this.poisonDps = 0;
+      this.stunUntil = 0;
+      this.bob = Math.random() * 10;
+    }
+    update(dt) {
+      if (this.dead || this.hp <= 0) return;
+      const now = performance.now() / 1000;
+      if (this.poisonUntil > now) {
+        this.hp -= this.poisonDps * dt;
+      }
+      if (this.stunUntil > now) return;
+      let spd = this.speed * cellSize * 0.55; // tuned
+      if (this.slowUntil > now) spd *= (1 - (this._slowAmount || 0.3));
+      // move along path
+      if (this.pathIndex >= waypoints.length - 1) {
+        // reached end
+        lives--;
+        this.dead = true;
+        spawnParticles(this.x, this.y, '#fb7185', 10, 1.2);
+        updateHUD();
+        if (lives <= 0) endGame(false);
+        return;
+      }
+      const a = waypoints[this.pathIndex];
+      const b = waypoints[this.pathIndex + 1];
+      const distSeg = dist(a.x, a.y, b.x, b.y) || 1;
+      this.t += (spd * dt) / distSeg;
+      if (this.t >= 1) {
+        this.t = 0;
+        this.pathIndex++;
+        if (this.pathIndex >= waypoints.length - 1) {
+          this.x = waypoints[waypoints.length-1].x;
+          this.y = waypoints[waypoints.length-1].y;
+        }
+      } else {
+        this.x = a.x + (b.x - a.x) * this.t;
+        this.y = a.y + (b.y - a.y) * this.t;
+      }
+      this.bob += dt * 6;
+    }
+    takeDamage(amount, source) {
+      if (this.dead) return;
+      let dmg = amount * (1 - this.armor);
+      // crit handled in projectile
+      this.hp -= dmg;
+      if (this.hp <= 0) {
+        this.hp = 0;
+        this.dead = true;
+        gold += this.reward;
+        spawnParticles(this.x, this.y, this.color, 14, 1.8);
+        // pacified spirit (subtle reward)
+        if (Math.random() < 0.35) {
+          gold += 1;
+          spawnParticles(this.x, this.y - 10, '#fcd34d', 6, 0.8);
+        }
+        // dark twist: possessed can haunt a tower
+        if (this.typeKey === 'possessed' && Math.random() < 0.35) {
+          const nearby = towers.filter(t => dist(t.x, t.y, this.x, this.y) < 180);
+          if (nearby.length) {
+            const t = nearby[Math.floor(Math.random() * nearby.length)];
+            t.hauntTimer = 2.2;
+            spawnParticles(t.x, t.y, '#e11d48', 8, 1.2);
+          }
+        }
+        updateHUD();
+      }
+    }
+    applySlow(amount, dur) {
+      this.slowUntil = performance.now() / 1000 + dur;
+      this._slowAmount = amount;
+    }
+    applyPoison(dps, dur) {
+      this.poisonDps = Math.max(this.poisonDps, dps);
+      this.poisonUntil = performance.now() / 1000 + dur;
+    }
+    applyStun(dur) {
+      this.stunUntil = performance.now() / 1000 + dur;
+    }
+    draw() {
+      if (this.dead) return;
+      ctx.save();
+      ctx.translate(this.x, this.y + Math.sin(this.bob) * 1.8);
+      // body
+      ctx.beginPath();
+      ctx.arc(0, 0, this.r, 0, Math.PI * 2);
+      const g = ctx.createRadialGradient(-this.r*0.3, -this.r*0.3, 1, 0, 0, this.r);
+      g.addColorStop(0, this.color);
+      g.addColorStop(1, shadeColor(this.color, -40));
+      ctx.fillStyle = g;
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(0,0,0,0.5)';
+      ctx.lineWidth = 1.8;
+      ctx.stroke();
+      // eyes – wider when damaged
+      const dmgRatio = 1 - this.hp / this.maxHp;
+      const eyeSize = 3.2 + dmgRatio * 1.5;
+      ctx.fillStyle = '#fff';
+      ctx.beginPath(); ctx.arc(-this.r*0.35, -2, eyeSize, 0, Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.arc(this.r*0.35, -2, eyeSize, 0, Math.PI*2); ctx.fill();
+      ctx.fillStyle = dmgRatio > 0.5 ? '#9f1239' : '#1e1b4b';
+      ctx.beginPath(); ctx.arc(-this.r*0.35, -2, eyeSize*0.45, 0, Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.arc(this.r*0.35, -2, eyeSize*0.45, 0, Math.PI*2); ctx.fill();
+      // smile that gets sharper
+      ctx.strokeStyle = '#1e1b4b';
+      ctx.lineWidth = 1.4;
+      ctx.beginPath();
+      if (dmgRatio > 0.4 || this.isBoss) {
+        ctx.moveTo(-this.r*0.4, 5); ctx.quadraticCurveTo(0, 11 + dmgRatio*3, this.r*0.4, 5);
+      } else {
+        ctx.arc(0, 4, this.r*0.4, 0.2, Math.PI-0.2);
+      }
+      ctx.stroke();
+      // hp bar
+      if (this.hp < this.maxHp) {
+        const bw = this.r * 2;
+        ctx.fillStyle = 'rgba(0,0,0,0.45)';
+        ctx.fillRect(-bw/2, -this.r - 10, bw, 4);
+        ctx.fillStyle = this.hp / this.maxHp > 0.4 ? '#6ee7b7' : '#fb7185';
+        ctx.fillRect(-bw/2, -this.r - 10, bw * (this.hp / this.maxHp), 4);
+      }
+      // effect indicators
+      if (this.slowUntil > performance.now()/1000) {
+        ctx.fillStyle = 'rgba(96,165,250,0.5)';
+        ctx.beginPath(); ctx.arc(0, 0, this.r + 3, 0, Math.PI*2); ctx.fill();
+      }
+      ctx.restore();
+    }
+  }
+
+  class Projectile {
+    constructor(x, y, target, dmg, color, special, splash, poisonDps, poisonDur, slow, slowDur, spread) {
+      this.x = x; this.y = y;
+      this.target = target;
+      this.dmg = dmg;
+      this.color = color;
+      this.special = special || '';
+      this.splash = splash;
+      this.poisonDps = poisonDps;
+      this.poisonDur = poisonDur;
+      this.slow = slow;
+      this.slowDur = slowDur;
+      this.speed = 320 * (cellSize / 40);
+      this.alive = true;
+      this.pierceLeft = 0;
+      if (special.includes('pierce1')) this.pierceLeft = 1;
+      if (special.includes('pierce2')) this.pierceLeft = 2;
+      this.hit = new Set();
+      // direction with spread
+      const ang = Math.atan2(target.y - y, target.x - x) + spread;
+      this.vx = Math.cos(ang) * this.speed;
+      this.vy = Math.sin(ang) * this.speed;
+      this.life = 2.5;
+      // for non-homing after first
+      this.homing = true;
+    }
+    update(dt) {
+      this.life -= dt;
+      if (this.life <= 0) { this.alive = false; return; }
+      if (this.homing && this.target && !this.target.dead && this.target.hp > 0) {
+        const ang = Math.atan2(this.target.y - this.y, this.target.x - this.x);
+        this.vx = Math.cos(ang) * this.speed;
+        this.vy = Math.sin(ang) * this.speed;
+      }
+      this.x += this.vx * dt;
+      this.y += this.vy * dt;
+      // collision
+      for (const e of enemies) {
+        if (e.dead || e.hp <= 0 || this.hit.has(e)) continue;
+        if (dist(this.x, this.y, e.x, e.y) < e.r + 6) {
+          this.onHit(e);
+          if (this.pierceLeft > 0) {
+            this.pierceLeft--;
+            this.hit.add(e);
+            this.homing = false;
+          } else {
+            this.alive = false;
+            break;
+          }
+        }
+      }
+    }
+    onHit(e) {
+      let dmg = this.dmg;
+      if (this.special.includes('crit')) {
+        const chance = this.special.includes('crit55') ? 0.55 : this.special.includes('crit40') ? 0.4 : 0.25;
+        if (Math.random() < chance) dmg *= 1.85;
+      }
+      e.takeDamage(dmg, 'proj');
+      if (this.slow > 0) e.applySlow(this.slow, this.slowDur);
+      if (this.poisonDps > 0) e.applyPoison(this.poisonDps, this.poisonDur);
+      if (this.special.includes('stun') || this.special.includes('sleep')) {
+        if (Math.random() < (this.special.includes('sleep') ? 0.35 : 0.2)) e.applyStun(0.9);
+      }
+      // splash
+      if (this.splash > 0) {
+        for (const o of enemies) {
+          if (o === e || o.dead) continue;
+          if (dist(e.x, e.y, o.x, o.y) < this.splash * (cellSize / 40)) {
+            o.takeDamage(this.dmg * 0.55, 'splash');
+            if (this.poisonDps > 0) o.applyPoison(this.poisonDps * 0.7, this.poisonDur * 0.8);
+          }
+        }
+        spawnParticles(e.x, e.y, this.color, 8, 1.1);
+      }
+    }
+    draw() {
+      ctx.beginPath();
+      ctx.arc(this.x, this.y, 5, 0, Math.PI*2);
+      ctx.fillStyle = this.color;
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(255,255,255,0.5)';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+    }
+  }
+
+  // ========== PARTICLES ==========
+  function spawnParticles(x, y, color, n, speedMul) {
+    for (let i = 0; i < n; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const sp = (0.6 + Math.random()) * 40 * speedMul;
+      particles.push({
+        x, y,
+        vx: Math.cos(a) * sp,
+        vy: Math.sin(a) * sp - 20,
+        life: 0.5 + Math.random() * 0.5,
+        maxLife: 1,
+        color,
+        size: 2 + Math.random() * 3
+      });
+    }
+  }
+
+  // ========== HELPERS ==========
+  function dist(x1,y1,x2,y2) { return Math.hypot(x2-x1, y2-y1); }
+  function shadeColor(col, percent) {
+    const f = parseInt(col.slice(1), 16), t = percent < 0 ? 0 : 255, p = Math.abs(percent)/100;
+    const R = f >> 16, G = (f >> 8) & 0x00FF, B = f & 0x0000FF;
+    return '#' + (0x1000000 + (Math.round((t-R)*p)+R)*0x10000 + (Math.round((t-G)*p)+G)*0x100 + (Math.round((t-B)*p)+B)).toString(16).slice(1);
+  }
+  function varGold() { return getComputedStyle(document.documentElement).getPropertyValue('--gold').trim() || '#fcd34d'; }
+
+  // ========== GAME LOGIC ==========
+  function resize() {
+    const wrap = document.getElementById('canvas-wrap');
+    const rect = wrap.getBoundingClientRect();
+    const maxW = rect.width - 8;
+    const maxH = rect.height - 8;
+    // prefer ~16:10
+    let cw = maxW, ch = maxW * (10/16);
+    if (ch > maxH) { ch = maxH; cw = maxH * (16/10); }
+    W = Math.floor(cw);
+    H = Math.floor(ch);
+    canvas.width = W * devicePixelRatio;
+    canvas.height = H * devicePixelRatio;
+    canvas.style.width = W + 'px';
+    canvas.style.height = H + 'px';
+    ctx.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
+    cellSize = Math.min(W / COLS, H / ROWS);
+    // re-center waypoints if path exists
+    if (pathCells.length) {
+      waypoints = pathCells.map(c => ({
+        x: c.x * cellSize + cellSize / 2,
+        y: c.y * cellSize + cellSize / 2
+      }));
+      for (const t of towers) {
+        t.x = t.gx * cellSize + cellSize / 2;
+        t.y = t.gy * cellSize + cellSize / 2;
+      }
+    }
+    // stars
+    if (stars.length === 0) {
+      for (let i = 0; i < 60; i++) {
+        stars.push({ x: Math.random()*W, y: Math.random()*H, s: Math.random()*1.5 + 0.3, a: Math.random() });
+      }
+    }
+  }
+
+  function startNewGame(isEndless = false) {
+    gold = 180;
+    lives = 20;
+    wave = 0;
+    endless = isEndless;
+    towers = [];
+    enemies = [];
+    projectiles = [];
+    particles = [];
+    selectedType = null;
+    selectedTower = null;
+    pathCorruption = 0;
+    generatePath();
+    state = 'prepare';
+    waveActive = false;
+    document.getElementById('start-modal').classList.add('hidden');
+    document.getElementById('gameover-modal').classList.add('hidden');
+    document.getElementById('victory-modal').classList.add('hidden');
+    document.getElementById('start-wave-btn').disabled = false;
+    document.getElementById('start-wave-btn').textContent = 'Start Wave 1';
+    document.getElementById('status-text').textContent = 'The dream is quiet... prepare your wards.';
+    buildShop();
+    updateHUD();
+    updateInfoPanel();
+  }
+
+  function startWave() {
+    if (state !== 'prepare' && !endless) return;
+    wave++;
+    if (!endless && wave > maxWaves) {
+      endGame(true);
+      return;
+    }
+    pathCorruption = Math.min(1, wave / 25);
+    const scale = {
+      hp: Math.pow(1.125, wave - 1),
+      speed: 1 + (wave - 1) * 0.012,
+      reward: 1 + (wave - 1) * 0.04
+    };
+    spawnQueue = [];
+    const waveDef = WAVES[Math.min(wave - 1, WAVES.length - 1)];
+    let t = 0;
+    for (const g of waveDef) {
+      const delay = g.delay || 0;
+      t += delay;
+      for (let i = 0; i < g.count; i++) {
+        spawnQueue.push({ type: g.type, time: t, scale });
+        t += g.interval;
+      }
+    }
+    // sort by time
+    spawnQueue.sort((a, b) => a.time - b.time);
+    spawnTimer = 0;
+    waveActive = true;
+    state = 'combat';
+    document.getElementById('start-wave-btn').disabled = true;
+    document.getElementById('status-text').textContent = `Wave ${wave} – nightmares incoming...`;
+    updateHUD();
+  }
+
+  function checkWaveEnd() {
+    if (!waveActive) return;
+    if (spawnQueue.length === 0 && enemies.every(e => e.dead || e.hp <= 0)) {
+      waveActive = false;
+      enemies = [];
+      projectiles = [];
+      if (!endless && wave >= maxWaves) {
+        endGame(true);
+        return;
+      }
+      state = 'prepare';
+      document.getElementById('start-wave-btn').disabled = false;
+      document.getElementById('start-wave-btn').textContent = `Start Wave ${wave + 1}`;
+      document.getElementById('status-text').textContent = `Wave ${wave} cleared. The dream settles... upgrade and prepare.`;
+      gold += 25 + wave * 3; // clear bonus
+      updateHUD();
+    }
+  }
+
+  function endGame(won) {
+    state = won ? 'victory' : 'gameover';
+    waveActive = false;
+    if (won) {
+      document.getElementById('victory-modal').classList.remove('hidden');
+    } else {
+      document.getElementById('go-waves').textContent = Math.max(0, wave - 1);
+      document.getElementById('gameover-modal').classList.remove('hidden');
+    }
+  }
+
+  // ========== UI ==========
+  function buildShop() {
+    const shop = document.getElementById('tower-shop');
+    shop.innerHTML = '';
+    for (const key of Object.keys(TOWER_DATA)) {
+      const d = TOWER_DATA[key];
+      const btn = document.createElement('div');
+      btn.className = 'tower-btn';
+      btn.dataset.type = key;
+      btn.innerHTML = `<div class="tname">${d.emoji} ${d.name}</div><div class="tcost">${d.baseCost} ✨</div>`;
+      btn.addEventListener('click', () => {
+        if (state === 'title' || state === 'gameover' || state === 'victory') return;
+        selectedType = key;
+        selectedTower = null;
+        document.querySelectorAll('.tower-btn').forEach(b => b.classList.remove('selected'));
+        btn.classList.add('selected');
+        updateInfoPanel();
+      });
+      shop.appendChild(btn);
+    }
+  }
+
+  function updateHUD() {
+    document.getElementById('lives').textContent = lives;
+    document.getElementById('gold').textContent = gold;
+    document.getElementById('wave-num').textContent = `${wave} / ${endless ? '∞' : maxWaves}`;
+    // disable shop buttons if can't afford
+    document.querySelectorAll('.tower-btn').forEach(btn => {
+      const key = btn.dataset.type;
+      const cost = TOWER_DATA[key].baseCost;
+      btn.classList.toggle('disabled', gold < cost);
+    });
+  }
+
+  function updateInfoPanel() {
+    const el = document.getElementById('info-content');
+    if (selectedTower) {
+      const t = selectedTower;
+      const st = t.stats;
+      const next = t.canUpgrade() ? t.data.levels[t.level + 1] : null;
+      el.innerHTML = `
+        <h3>${t.data.emoji} ${t.data.name}</h3>
+        <div class="lvl">Level ${t.level + 1} / 5</div>
+        <div class="desc">${t.data.desc}</div>
+        <div class="stat-row"><span>Damage</span><span>${st.dmg || st.auraDps + '/s'}</span></div>
+        <div class="stat-row"><span>Range</span><span>${Math.round(st.range)}</span></div>
+        <div class="stat-row"><span>Rate</span><span>${st.rate ? st.rate.toFixed(2) + '/s' : 'Aura'}</span></div>
+        ${st.special ? `<div class="stat-row"><span>Special</span><span style="color:var(--pink)">${st.special}</span></div>` : ''}
+        ${next ? `
+          <div style="margin-top:12px;font-size:0.8rem;color:var(--dim);">Next upgrade (${next.cost}✨):</div>
+          <div class="stat-row"><span>→ Dmg</span><span>${next.dmg || next.auraDps + '/s'}</span></div>
+          <div class="stat-row"><span>→ Range</span><span>${next.range}</span></div>
+        ` : '<div style="margin-top:10px;color:var(--mint);font-size:0.85rem;">Max level reached</div>'}
+        <button class="upgrade-btn" id="upg-btn" ${!t.canUpgrade() || gold < t.upgradeCost() ? 'disabled' : ''}>
+          Upgrade (${t.canUpgrade() ? t.upgradeCost() + '✨' : 'MAX'})
+        </button>
+        <button class="sell-btn" id="sell-btn">Sell (+${t.sellValue()}✨)</button>
+      `;
+      document.getElementById('upg-btn')?.addEventListener('click', () => {
+        if (t.upgrade()) {
+          updateHUD();
+          updateInfoPanel();
+        }
+      });
+      document.getElementById('sell-btn')?.addEventListener('click', () => {
+        gold += t.sellValue();
+        towers = towers.filter(x => x !== t);
+        selectedTower = null;
+        updateHUD();
+        updateInfoPanel();
+      });
+    } else if (selectedType) {
+      const d = TOWER_DATA[selectedType];
+      const st = d.levels[0];
+      el.innerHTML = `
+        <h3>${d.emoji} ${d.name}</h3>
+        <div class="lvl">Ready to place – ${d.baseCost}✨</div>
+        <div class="desc">${d.desc}</div>
+        <div class="stat-row"><span>Damage</span><span>${st.dmg || st.auraDps + '/s'}</span></div>
+        <div class="stat-row"><span>Range</span><span>${st.range}</span></div>
+        <div class="stat-row"><span>Fire rate</span><span>${st.rate ? st.rate.toFixed(2) + '/s' : 'Aura'}</span></div>
+        <p style="margin-top:12px;font-size:0.8rem;color:var(--dim);">Click a valid grassy cell (not on the path) to place.</p>
+      `;
+    } else {
+      el.innerHTML = `
+        <p style="color:var(--dim);font-size:0.88rem;line-height:1.45;">Select a construct from the left to place, or click an existing one to upgrade.</p>
+        <p style="color:var(--dim);font-size:0.8rem;margin-top:12px;opacity:0.75;">Between waves you may freely place and upgrade. Survive 25 waves of increasingly twisted nightmares.</p>
+      `;
+    }
+  }
+
+  // ========== INPUT ==========
+  canvas.addEventListener('pointermove', e => {
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = W / rect.width;
+    const scaleY = H / rect.height;
+    mouse.x = (e.clientX - rect.left) * scaleX;
+    mouse.y = (e.clientY - rect.top) * scaleY;
+    mouse.gridX = Math.floor(mouse.x / cellSize);
+    mouse.gridY = Math.floor(mouse.y / cellSize);
+  });
+
+  canvas.addEventListener('pointerdown', e => {
+    if (state === 'title' || state === 'gameover' || state === 'victory') return;
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = W / rect.width;
+    const scaleY = H / rect.height;
+    const mx = (e.clientX - rect.left) * scaleX;
+    const my = (e.clientY - rect.top) * scaleY;
+    const gx = Math.floor(mx / cellSize);
+    const gy = Math.floor(my / cellSize);
+
+    // click existing tower?
+    for (const t of towers) {
+      if (dist(mx, my, t.x, t.y) < cellSize * 0.4) {
+        selectedTower = t;
+        selectedType = null;
+        document.querySelectorAll('.tower-btn').forEach(b => b.classList.remove('selected'));
+        updateInfoPanel();
+        return;
+      }
+    }
+
+    // place new
+    if (selectedType && isValidPlacement(gx, gy)) {
+      const cost = TOWER_DATA[selectedType].baseCost;
+      if (gold >= cost) {
+        gold -= cost;
+        towers.push(new Tower(selectedType, gx, gy));
+        spawnParticles(gx * cellSize + cellSize/2, gy * cellSize + cellSize/2, TOWER_DATA[selectedType].color, 10, 1.3);
+        updateHUD();
+        // keep selected for multi-place, or clear
+        // selectedType stays
+      }
+    } else {
+      selectedTower = null;
+      updateInfoPanel();
+    }
+  });
+
+  document.getElementById('start-wave-btn').addEventListener('click', startWave);
+  document.getElementById('play-btn').addEventListener('click', () => startNewGame(false));
+  document.getElementById('retry-btn').addEventListener('click', () => startNewGame(false));
+  document.getElementById('endless-btn').addEventListener('click', () => {
+    document.getElementById('victory-modal').classList.add('hidden');
+    endless = true;
+    state = 'prepare';
+    document.getElementById('start-wave-btn').disabled = false;
+    document.getElementById('start-wave-btn').textContent = `Start Wave ${wave + 1}`;
+    document.getElementById('status-text').textContent = 'Endless mode – how long can the dream hold?';
+  });
+  document.getElementById('newdream-btn').addEventListener('click', () => startNewGame(false));
+  document.getElementById('menu-btn').addEventListener('click', () => {
+    if (confirm('Return to title? Progress will be lost.')) {
+      state = 'title';
+      document.getElementById('start-modal').classList.remove('hidden');
+      document.getElementById('gameover-modal').classList.add('hidden');
+      document.getElementById('victory-modal').classList.add('hidden');
+    }
+  });
+
+  // ========== DRAW ==========
+  function drawBackground() {
+    // stars
+    for (const s of stars) {
+      ctx.globalAlpha = 0.3 + s.a * 0.5;
+      ctx.fillStyle = '#e0e7ff';
+      ctx.beginPath();
+      ctx.arc(s.x, s.y, s.s, 0, Math.PI*2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+    // subtle vignette already from CSS
+  }
+
+  function drawPath() {
+    if (waypoints.length < 2) return;
+    // soft path fill
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    // dark under
+    ctx.beginPath();
+    ctx.moveTo(waypoints[0].x, waypoints[0].y);
+    for (let i = 1; i < waypoints.length; i++) ctx.lineTo(waypoints[i].x, waypoints[i].y);
+    ctx.strokeStyle = `rgba(30, 10, 50, ${0.7 + pathCorruption * 0.25})`;
+    ctx.lineWidth = cellSize * 0.72;
+    ctx.stroke();
+    // main glow path
+    ctx.beginPath();
+    ctx.moveTo(waypoints[0].x, waypoints[0].y);
+    for (let i = 1; i < waypoints.length; i++) ctx.lineTo(waypoints[i].x, waypoints[i].y);
+    const pathCol = pathCorruption > 0.5 ? `rgba(120, 40, 90, 0.75)` : `rgba(100, 80, 160, 0.7)`;
+    ctx.strokeStyle = pathCol;
+    ctx.lineWidth = cellSize * 0.55;
+    ctx.stroke();
+    // highlight
+    ctx.beginPath();
+    ctx.moveTo(waypoints[0].x, waypoints[0].y);
+    for (let i = 1; i < waypoints.length; i++) ctx.lineTo(waypoints[i].x, waypoints[i].y);
+    ctx.strokeStyle = `rgba(196, 181, 253, ${0.35 - pathCorruption * 0.15})`;
+    ctx.lineWidth = cellSize * 0.22;
+    ctx.stroke();
+
+    // start portal
+    const s = waypoints[0];
+    ctx.beginPath();
+    ctx.arc(s.x, s.y, cellSize * 0.35, 0, Math.PI*2);
+    ctx.fillStyle = 'rgba(124, 58, 237, 0.45)';
+    ctx.fill();
+    ctx.strokeStyle = '#c4b5fd';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    // end bed
+    const e = waypoints[waypoints.length - 1];
+    ctx.save();
+    ctx.translate(e.x, e.y);
+    // bed base
+    ctx.fillStyle = '#4c1d95';
+    ctx.fillRect(-cellSize*0.35, -cellSize*0.15, cellSize*0.7, cellSize*0.35);
+    // pillow
+    ctx.fillStyle = '#f9a8d4';
+    ctx.beginPath();
+    ctx.ellipse(0, -cellSize*0.22, cellSize*0.22, cellSize*0.12, 0, 0, Math.PI*2);
+    ctx.fill();
+    // zzz
+    ctx.fillStyle = 'rgba(196,181,253,0.7)';
+    ctx.font = `${Math.max(10, cellSize*0.28)}px system-ui`;
+    ctx.fillText('z', cellSize*0.25, -cellSize*0.4);
+    ctx.fillText('z', cellSize*0.38, -cellSize*0.55);
+    ctx.restore();
+  }
+
+  function drawGridHints() {
+    // optional light cells for placeable
+    if (selectedType) {
+      for (let gy = 0; gy < ROWS; gy++) {
+        for (let gx = 0; gx < COLS; gx++) {
+          if (isValidPlacement(gx, gy)) {
+            ctx.fillStyle = 'rgba(110, 231, 183, 0.06)';
+            ctx.fillRect(gx * cellSize + 1, gy * cellSize + 1, cellSize - 2, cellSize - 2);
+          }
+        }
+      }
+      // ghost
+      if (isValidPlacement(mouse.gridX, mouse.gridY)) {
+        const d = TOWER_DATA[selectedType];
+        const cx = mouse.gridX * cellSize + cellSize / 2;
+        const cy = mouse.gridY * cellSize + cellSize / 2;
+        ctx.globalAlpha = 0.45;
+        ctx.beginPath();
+        ctx.arc(cx, cy, cellSize * 0.32, 0, Math.PI*2);
+        ctx.fillStyle = d.color;
+        ctx.fill();
+        ctx.globalAlpha = 0.25;
+        ctx.beginPath();
+        ctx.arc(cx, cy, d.levels[0].range * (cellSize / 40), 0, Math.PI*2);
+        ctx.strokeStyle = d.color;
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash([5, 4]);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.globalAlpha = 1;
+      }
+    }
+  }
+
+  function draw() {
+    ctx.clearRect(0, 0, W, H);
+    drawBackground();
+    drawPath();
+    drawGridHints();
+    for (const t of towers) t.draw();
+    for (const e of enemies) e.draw();
+    for (const p of projectiles) p.draw();
+    // particles
+    for (const p of particles) {
+      ctx.globalAlpha = Math.max(0, p.life / p.maxLife);
+      ctx.fillStyle = p.color;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.size, 0, Math.PI*2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  // ========== LOOP ==========
+  function loop(ts) {
+    const dt = Math.min(0.05, (ts - lastTime) / 1000 || 0.016);
+    lastTime = ts;
+
+    if (state === 'combat' || state === 'prepare') {
+      // spawn
+      if (waveActive && spawnQueue.length) {
+        spawnTimer += dt;
+        while (spawnQueue.length && spawnQueue[0].time <= spawnTimer) {
+          const s = spawnQueue.shift();
+          enemies.push(new Enemy(s.type, s.scale));
+        }
+      }
+      // update
+      for (const t of towers) t.update(dt);
+      for (const e of enemies) e.update(dt);
+      for (const p of projectiles) p.update(dt);
+      projectiles = projectiles.filter(p => p.alive);
+      enemies = enemies.filter(e => !e.dead);
+      // particles
+      for (const p of particles) {
+        p.x += p.vx * dt;
+        p.y += p.vy * dt;
+        p.vy += 60 * dt;
+        p.life -= dt;
+      }
+      particles = particles.filter(p => p.life > 0);
+      checkWaveEnd();
+    }
+    draw();
+    requestAnimationFrame(loop);
+  }
+
+  // init
+  window.addEventListener('resize', resize);
+  resize();
+  buildShop();
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
