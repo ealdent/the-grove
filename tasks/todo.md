@@ -241,6 +241,39 @@ Refactored `learn/loop-engineering-antigravity.html` for a non-developer audienc
 5. **Tile Update**: Updated `learn/index.html` card description to reflect the beginner-friendly AI agent loop guide.
 6. **Formatting Fix**: Replaced unrendered LaTeX `$\rightarrow$` artifacts with clean native HTML `&rarr;` arrow entities across `learn/loop-engineering-antigravity.html`.
 
+---
+
+# Task: Redesign Live Loop Simulator Sandbox for Intuitive AI Task Visualization
+
+## Task packet
+
+Goal: Replace abstract bouncing dots in `learn/loop-engineering-antigravity.html` simulator with an intuitive, meaningful visual simulation showing incoming tasks, AI agent nodes cycling through the 5 loop stages (`Inspect` → `Plan` → `Act` → `Verify` → `Remember`), audit shields, and memory recall. Add a "What Am I Looking At?" explainer box and canvas legend. Verify, commit, and push to `origin/main`.
+
+Project: The Grove (personal).
+
+Path:
+- `/Users/jason/dev/personal/the-grove/learn/loop-engineering-antigravity.html`
+
+Implementation checklist:
+- [x] Create implementation plan artifact and task list in `tasks/todo.md`.
+- [x] Add "What Am I Looking At?" explainer guide and visual legend above the simulator.
+- [x] Rewrite canvas simulation engine to visualize discrete task cards, AI agent nodes, scanning beams, verification audit shields, and memory token recall.
+- [x] Verify HTML syntax, canvas rendering, responsiveness, and zero console errors.
+- [x] Complete Review section in `tasks/todo.md`.
+- [x] Commit and push to `origin/main`.
+
+## Review
+
+Redesigned the **Live Loop Simulator Sandbox** in `learn/loop-engineering-antigravity.html`:
+1. **Meaningful Visual Simulation**: Replaced abstract bouncing dots with a complete visual workflow of autonomous AI agents taking incoming system tasks (e.g. *Rate-Limit Spike*, *Access Control Flaw*, *Config Secret Leak*), cycling through the 5 loop stages (`Inspect` → `Plan` → `Act` → `Verify` → `Remember`), and storing verified tasks in the `Verified Vault`.
+2. **Explainer Guide Box**: Added a clear "What am I looking at in this simulation?" guide box directly above the simulator breakdown explaining incoming work, AI assistant loops, audit shields, and memory recall.
+3. **Interactive Controls & Memory Recall**:
+   - Helper Assistants (1-8): Spawns 1-8 active AI assistant nodes (`A1`, `A2`, etc.).
+   - Memory Recall (`tasks/lessons.md`): When Memory is enabled, lessons from past errors sit in the `Memory Bank`. When matching incident types arrive later, assistants display `[🧠 LESSON RECALLED]` and fast-track to 100% clean verification without retries!
+4. **Verification**: Verified HTML parsing cleanly and confirmed smooth canvas animation.
+
+
+
 
 
 

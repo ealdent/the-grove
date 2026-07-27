@@ -597,7 +597,7 @@
     }
     .sim-canvas-box {
       width: 100%;
-      height: 320px;
+      height: 380px;
       background: #040711;
       border: 1px solid var(--bg-surface-border);
       border-radius: 12px;
@@ -691,10 +691,8 @@
           <div class="metric-label">Inspects Actual System Data</div>
         </div>
         <div class="metric-card">
-          <div class="metric-card-content">
-            <div class="metric-val">Sandboxed</div>
-            <div class="metric-label">Delegates Safely to Helpers</div>
-          </div>
+          <div class="metric-val">Sandboxed</div>
+          <div class="metric-label">Delegates Safely to Helpers</div>
         </div>
         <div class="metric-card">
           <div class="metric-val">Rule-Bound</div>
@@ -877,7 +875,7 @@
           <div class="log-meta-bar">
             <div>STAGE: <span class="log-phase phase-observe" id="traj-phase">1. INSPECT EVIDENCE</span></div>
             <div>AI WORKLOAD: <span style="color: var(--cyan);" id="traj-tokens">Focused &amp; Clean</span></div>
-            <div>ACTION: <span style="color: var(--amber);" id="traj-tool">Reading System Security Log</span></div>
+            <div>ACTION: <span style="color: var(--amber);" id="traj-tool">Reading Security System Logs</span></div>
           </div>
           <div class="log-content-area" id="traj-body">
             <!-- Dynamic step contents injected via JS -->
@@ -893,8 +891,21 @@
         Live Loop Simulator Sandbox
       </div>
       <p class="section-desc">
-        Adjust the safety controls below to see how safety guardrails, helper assistants, and memory retention affect resolution speed and security pass rates.
+        Watch autonomous AI agent loops resolve incoming system tasks in real-time. Adjust the safety controls below to see how helper assistants, guardrails, and memory retention impact task resolution.
       </p>
+
+      <!-- Explainer Guide Box -->
+      <div style="background: rgba(10, 14, 26, 0.85); border: 1px solid var(--bg-surface-border); border-radius: 12px; padding: 1.2rem; margin-bottom: 1.5rem; font-size: 0.9rem; color: var(--text-muted);">
+        <div style="font-weight: 700; color: var(--cyan); margin-bottom: 0.6rem; font-family: var(--font-mono); text-transform: uppercase; font-size: 0.8rem; letter-spacing: 0.08em; display: flex; align-items: center; gap: 0.5rem;">
+          💡 What am I looking at in this simulation?
+        </div>
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1rem; line-height: 1.5;">
+          <div><strong style="color: var(--cyan);">1. Incoming Incidents:</strong> System tasks arrive on the left (e.g. <em>Access Control Bug</em>, <em>Rate-Limit Spike</em>).</div>
+          <div><strong style="color: var(--amber);">2. 5-Stage Agent Loops:</strong> AI Assistants pick up tasks and cycle through <code>Inspect</code> &rarr; <code>Plan</code> &rarr; <code>Act</code> &rarr; <code>Verify</code> &rarr; <code>Remember</code>.</div>
+          <div><strong style="color: var(--purple);">3. Audit Shields:</strong> Green audit rings verify the fix before moving tasks to the <strong>Verified Vault</strong>.</div>
+          <div><strong style="color: var(--emerald);">4. Memory Bank:</strong> When Memory is enabled, past incident fixes are remembered so similar future tasks resolve instantly without retries!</div>
+        </div>
+      </div>
 
       <div class="simulator-layout">
         <div class="sim-controls-panel">
@@ -931,7 +942,7 @@
         </div>
 
         <div class="sim-viewport-panel">
-          <div class="sim-canvas-box">
+          <div class="sim-canvas-box" style="height: 380px;">
             <canvas id="sim-canvas"></canvas>
           </div>
 
@@ -1327,7 +1338,7 @@
       });
 
       /* ------------------------------------------------------------------ *
-       *  4. Live Loop Simulator Sandbox Canvas                             *
+       *  4. Live Loop Simulator Sandbox Canvas Engine (Task Flow Visualization)
        * ------------------------------------------------------------------ */
       const simCanvas = document.getElementById('sim-canvas');
       const simCtx = simCanvas.getContext('2d');
@@ -1341,7 +1352,6 @@
       window.addEventListener('resize', resizeSim);
       resizeSim();
 
-      // Control Inputs
       const inSwarm = document.getElementById('input-swarm');
       const inGuard = document.getElementById('input-guard');
       const inNoise = document.getElementById('input-noise');
@@ -1353,20 +1363,36 @@
 
       const guardLabels = { 1: 'Basic', 2: 'Balanced', 3: 'Strict Audit' };
 
-      const simAgents = [];
+      // Incident Task Types
+      const taskCatalog = [
+        { type: 'rate-limit', title: 'Rate-Limit Spike', color: '#38bdf8' },
+        { type: 'auth-flaw', title: 'Access Control Flaw', color: '#f59e0b' },
+        { type: 'config-leak', title: 'Config Secret Leak', color: '#f43f5e' },
+        { type: 'log-error', title: 'Unhandled Log Flaw', color: '#a855f7' }
+      ];
 
-      function initSimAgents() {
-        simAgents.length = 0;
+      const activeTasks = [];
+      const resolvedTasks = [];
+      const memoryLessons = new Set();
+      const agents = [];
+
+      let spawnTimer = 0;
+      let totalCompleted = 0;
+      let totalThrashes = 0;
+
+      function initAgents() {
+        agents.length = 0;
         const count = parseInt(inSwarm.value, 10);
         for (let i = 0; i < count; i++) {
-          simAgents.push({
-            x: Math.random() * (simW || 400),
-            y: Math.random() * (simH || 300),
-            targetX: Math.random() * (simW || 400),
-            targetY: Math.random() * (simH || 300),
-            speed: 2 + Math.random() * 2,
-            phase: i % 5,
-            trail: []
+          agents.push({
+            id: i + 1,
+            x: 180 + (i % 4) * 70,
+            y: 90 + Math.floor(i / 4) * 80,
+            state: 'IDLE', // IDLE, INSPECT, PLAN, ACT, VERIFY, REMEMBER
+            assignedTask: null,
+            progress: 0,
+            statusText: 'IDLE',
+            memoryRecalled: false
           });
         }
       }
@@ -1377,27 +1403,25 @@
         const noise = parseInt(inNoise.value, 10);
         const hasMem = inMemory.checked;
 
-        // Formula for loop convergence time
-        const baseTime = 3.5;
-        const swarmBonus = (swarm - 1) * 0.35;
-        const guardBonus = (guard - 1) * 0.4;
-        const noisePenalty = (noise / 100) * 1.8;
-        const memBonus = hasMem ? 1.2 : 0;
+        const baseTime = 3.2;
+        const swarmBonus = (swarm - 1) * 0.3;
+        const guardBonus = (guard - 1) * 0.35;
+        const noisePenalty = (noise / 100) * 1.5;
+        const memBonus = (hasMem && memoryLessons.size > 0) ? 1.4 : 0;
 
         const timeVal = Math.max(0.4, (baseTime + noisePenalty - swarmBonus - guardBonus - memBonus)).toFixed(1);
-        const tokenVal = Math.min(99.8, Math.max(65.0, (80 + (hasMem ? 12 : 0) + (guard * 3) - (noise * 0.3)))).toFixed(1);
-        const successVal = Math.min(99.9, Math.max(70.0, (85 + (guard * 4) + (hasMem ? 8 : 0) - (noise * 0.4)))).toFixed(1);
-        const thrashes = Math.max(0, Math.round((noise * 0.15) - (guard * 0.8) - (hasMem ? 2 : 0)));
+        const tokenVal = Math.min(99.8, Math.max(68.0, (82 + (hasMem ? 12 : 0) + (guard * 3) - (noise * 0.25)))).toFixed(1);
+        const successVal = Math.min(99.9, Math.max(72.0, (85 + (guard * 4) + (hasMem ? 8 : 0) - (noise * 0.35)))).toFixed(1);
 
         document.getElementById('tele-time').textContent = `${timeVal}s`;
         document.getElementById('tele-tokens').textContent = `${tokenVal}%`;
         document.getElementById('tele-success').textContent = `${successVal}%`;
-        document.getElementById('tele-thrashes').textContent = thrashes;
+        document.getElementById('tele-thrashes').textContent = totalThrashes;
       }
 
       inSwarm.addEventListener('input', () => {
         valSwarm.textContent = `${inSwarm.value} Assistant${inSwarm.value > 1 ? 's' : ''}`;
-        initSimAgents();
+        initAgents();
         updateTelemetry();
       });
       inGuard.addEventListener('input', () => {
@@ -1408,64 +1432,299 @@
         valNoise.textContent = `${inNoise.value}% Noise`;
         updateTelemetry();
       });
-      inMemory.addEventListener('change', updateTelemetry);
+      inMemory.addEventListener('change', () => {
+        if (!inMemory.checked) memoryLessons.clear();
+        updateTelemetry();
+      });
 
-      initSimAgents();
+      initAgents();
       updateTelemetry();
 
-      function drawSim() {
+      function spawnTask() {
+        if (activeTasks.length >= 6) return;
+        const cat = taskCatalog[Math.floor(Math.random() * taskCatalog.length)];
+        activeTasks.push({
+          id: Date.now() + Math.random(),
+          type: cat.type,
+          title: cat.title,
+          color: cat.color,
+          x: 40,
+          y: 70 + (activeTasks.length * 48),
+          targetY: 70 + (activeTasks.length * 48),
+          status: 'QUEUED', // QUEUED, PROCESSING, VERIFIED
+          hasGlitch: false
+        });
+      }
+
+      // Initial task queue
+      spawnTask();
+      spawnTask();
+      spawnTask();
+
+      let lastTime = performance.now();
+
+      function drawSim(now) {
+        const dt = Math.min(0.05, (now - lastTime) / 1000);
+        lastTime = now;
+
         simCtx.clearRect(0, 0, simW, simH);
 
-        // Draw central target hub (Goal State)
-        const gX = simW / 2;
-        const gY = simH / 2;
+        // 1. Draw Columns & Zones
+        // Left Column: Inbox
+        simCtx.fillStyle = 'rgba(15, 23, 42, 0.6)';
+        simCtx.fillRect(15, 15, 150, simH - 95);
+        simCtx.strokeStyle = 'rgba(56, 189, 248, 0.2)';
+        simCtx.strokeRect(15, 15, 150, simH - 95);
 
-        simCtx.beginPath();
-        simCtx.arc(gX, gY, 18, 0, Math.PI * 2);
-        simCtx.fillStyle = 'rgba(16, 185, 129, 0.2)';
-        simCtx.strokeStyle = '#10b981';
-        simCtx.lineWidth = 2;
-        simCtx.fill();
-        simCtx.stroke();
+        simCtx.fillStyle = '#38bdf8';
+        simCtx.font = '700 11px JetBrains Mono';
+        simCtx.fillText('📥 INCOMING WORK', 25, 34);
+
+        // Right Column: Vault
+        const vaultX = simW - 165;
+        simCtx.fillStyle = 'rgba(15, 23, 42, 0.6)';
+        simCtx.fillRect(vaultX, 15, 150, simH - 95);
+        simCtx.strokeStyle = 'rgba(16, 185, 129, 0.2)';
+        simCtx.strokeRect(vaultX, 15, 150, simH - 95);
 
         simCtx.fillStyle = '#10b981';
-        simCtx.font = '10px JetBrains Mono';
-        simCtx.textAlign = 'center';
-        simCtx.fillText('GOAL', gX, gY + 3.5);
+        simCtx.font = '700 11px JetBrains Mono';
+        simCtx.fillText('🔐 VERIFIED VAULT', vaultX + 12, 34);
 
-        // Update and draw agents
-        simAgents.forEach(a => {
-          const dx = gX - a.x;
-          const dy = gY - a.y;
-          const dist = Math.hypot(dx, dy);
+        // Bottom Bar: Memory Bank
+        const memY = simH - 65;
+        simCtx.fillStyle = 'rgba(15, 23, 42, 0.7)';
+        simCtx.fillRect(15, memY, simW - 30, 50);
+        simCtx.strokeStyle = inMemory.checked ? 'rgba(245, 158, 11, 0.3)' : 'rgba(255,255,255,0.05)';
+        simCtx.strokeRect(15, memY, simW - 30, 50);
 
-          if (dist > 30) {
-            a.x += (dx / dist) * a.speed;
-            a.y += (dy / dist) * a.speed;
-          } else {
-            a.x = Math.random() * simW;
-            a.y = Math.random() * simH;
+        simCtx.fillStyle = inMemory.checked ? '#f59e0b' : '#64748b';
+        simCtx.font = '700 11px JetBrains Mono';
+        simCtx.fillText(`🧠 MEMORY BANK (tasks/lessons.md) ${inMemory.checked ? '[ACTIVE]' : '[DISABLED]'}`, 25, memY + 18);
+
+        // Render Memory Tokens on shelf
+        if (inMemory.checked && memoryLessons.size > 0) {
+          let mx = 300;
+          memoryLessons.forEach(m => {
+            simCtx.fillStyle = 'rgba(245, 158, 11, 0.15)';
+            simCtx.strokeStyle = '#f59e0b';
+            simCtx.lineWidth = 1;
+            simCtx.fillRect(mx, memY + 10, 110, 26);
+            simCtx.strokeRect(mx, memY + 10, 110, 26);
+
+            simCtx.fillStyle = '#f59e0b';
+            simCtx.font = '10px JetBrains Mono';
+            simCtx.fillText(`Lesson: ${m}`, mx + 8, memY + 26);
+            mx += 120;
+          });
+        } else if (!inMemory.checked) {
+          simCtx.fillStyle = '#64748b';
+          simCtx.font = '10px Outfit';
+          simCtx.fillText('Enable Memory toggle to store lessons from past errors', 300, memY + 28);
+        }
+
+        // Spawn timer
+        spawnTimer += dt;
+        if (spawnTimer > 3.0) {
+          spawnTimer = 0;
+          spawnTask();
+        }
+
+        // 2. Process & Draw Tasks
+        activeTasks.forEach((t, idx) => {
+          t.targetY = 50 + (idx * 44);
+          t.y += (t.targetY - t.y) * 0.1;
+
+          simCtx.fillStyle = 'rgba(30, 41, 59, 0.85)';
+          simCtx.strokeStyle = t.color;
+          simCtx.lineWidth = 1.5;
+          simCtx.fillRect(t.x, t.y, 125, 34);
+          simCtx.strokeRect(t.x, t.y, 125, 34);
+
+          simCtx.fillStyle = '#ffffff';
+          simCtx.font = '500 10px Outfit';
+          simCtx.fillText(t.title, t.x + 8, t.y + 20);
+
+          // Glitch indicator if noise triggered
+          if (t.hasGlitch) {
+            simCtx.fillStyle = '#f43f5e';
+            simCtx.font = '700 9px JetBrains Mono';
+            simCtx.fillText('⚠️ NOISE GLITCH', t.x + 8, t.y + 30);
+          }
+        });
+
+        // 3. Process & Draw Agents (Assistants)
+        agents.forEach(a => {
+          // Assign available task if idle
+          if (a.state === 'IDLE') {
+            const freeTask = activeTasks.find(t => t.status === 'QUEUED');
+            if (freeTask) {
+              freeTask.status = 'PROCESSING';
+              a.assignedTask = freeTask;
+              a.state = 'INSPECT';
+              a.progress = 0;
+
+              // Check if memory recall applies!
+              if (inMemory.checked && memoryLessons.has(freeTask.type)) {
+                a.memoryRecalled = true;
+              } else {
+                a.memoryRecalled = false;
+              }
+            }
           }
 
-          // Trail
-          a.trail.push({ x: a.x, y: a.y });
-          if (a.trail.length > 12) a.trail.shift();
+          // State Machine for Active Agent
+          if (a.assignedTask && a.state !== 'IDLE') {
+            const task = a.assignedTask;
+            const targetX = 220 + (a.id * 50);
+            const targetY = task.y;
 
+            // Move agent toward task
+            a.x += (targetX - a.x) * 0.15;
+            a.y += (targetY - a.y) * 0.15;
+
+            // If Memory Recalled, fast-track straight to VERIFY cleanly!
+            if (a.memoryRecalled) {
+              a.state = 'VERIFY';
+              a.statusText = '🧠 LESSON RECALLED';
+              a.progress += dt * 2.5;
+
+              // Visual FX: Memory beam connecting Memory Bank to Task
+              simCtx.beginPath();
+              simCtx.moveTo(a.x, memY);
+              simCtx.lineTo(a.x, a.y);
+              simCtx.strokeStyle = 'rgba(245, 158, 11, 0.5)';
+              simCtx.setLineDash([4, 4]);
+              simCtx.stroke();
+              simCtx.setLineDash([]);
+            } else {
+              // Standard Loop Stages
+              a.progress += dt;
+
+              if (a.progress < 0.8) {
+                a.state = 'INSPECT';
+                a.statusText = '🔍 1. INSPECTING';
+                // Scanning beam
+                simCtx.fillStyle = 'rgba(56, 189, 248, 0.15)';
+                simCtx.fillRect(task.x, task.y, 125, 34);
+              } else if (a.progress < 1.6) {
+                a.state = 'PLAN';
+                a.statusText = '📋 2. PLANNING';
+                // Golden aura
+                simCtx.beginPath();
+                simCtx.arc(a.x, a.y, 22, 0, Math.PI * 2);
+                simCtx.fillStyle = 'rgba(245, 158, 11, 0.15)';
+                simCtx.fill();
+              } else if (a.progress < 2.4) {
+                a.state = 'ACT';
+                a.statusText = '⚡ 3. ACTING';
+                // Pulse line to task
+                simCtx.beginPath();
+                simCtx.moveTo(a.x, a.y);
+                simCtx.lineTo(task.x + 125, task.y + 17);
+                simCtx.strokeStyle = '#38bdf8';
+                simCtx.lineWidth = 2;
+                simCtx.stroke();
+              } else if (a.progress < 3.2) {
+                a.state = 'VERIFY';
+                a.statusText = '🛡️ 4. VERIFYING';
+
+                // Audit Shield FX
+                simCtx.beginPath();
+                simCtx.arc(task.x + 62, task.y + 17, 24, 0, Math.PI * 2);
+                simCtx.strokeStyle = '#10b981';
+                simCtx.lineWidth = 2.5;
+                simCtx.stroke();
+
+                // Trigger noise glitch check if unhandled
+                const noiseRate = parseInt(inNoise.value, 10);
+                if (Math.random() < (noiseRate / 1000) && !task.hasGlitch) {
+                  task.hasGlitch = true;
+                  totalThrashes++;
+
+                  if (inMemory.checked) {
+                    memoryLessons.add(task.type);
+                    a.state = 'REMEMBER';
+                    a.statusText = '🧠 5. LESSON SAVED';
+                  } else {
+                    // Retry thrash
+                    a.progress = 0; // reset loop
+                  }
+                  updateTelemetry();
+                }
+              } else {
+                // Task Complete!
+                task.status = 'VERIFIED';
+                resolvedTasks.push({
+                  title: task.title,
+                  x: vaultX + 12,
+                  y: 50 + ((totalCompleted % 6) * 44)
+                });
+                totalCompleted++;
+
+                // Remove task from active queue
+                const idx = activeTasks.indexOf(task);
+                if (idx > -1) activeTasks.splice(idx, 1);
+
+                a.assignedTask = null;
+                a.state = 'IDLE';
+                a.statusText = 'IDLE';
+              }
+            }
+
+            // Finish memory-recalled task
+            if (a.memoryRecalled && a.progress > 0.8) {
+              task.status = 'VERIFIED';
+              resolvedTasks.push({
+                title: task.title,
+                x: vaultX + 12,
+                y: 50 + ((totalCompleted % 6) * 44)
+              });
+              totalCompleted++;
+
+              const idx = activeTasks.indexOf(task);
+              if (idx > -1) activeTasks.splice(idx, 1);
+
+              a.assignedTask = null;
+              a.state = 'IDLE';
+              a.statusText = 'IDLE';
+            }
+          }
+
+          // Draw Agent Body (Robot / Assistant Node)
           simCtx.beginPath();
-          for (let i = 0; i < a.trail.length; i++) {
-            const pt = a.trail[i];
-            if (i === 0) simCtx.moveTo(pt.x, pt.y);
-            else simCtx.lineTo(pt.x, pt.y);
-          }
-          simCtx.strokeStyle = 'rgba(56, 189, 248, 0.3)';
+          simCtx.arc(a.x, a.y, 12, 0, Math.PI * 2);
+          simCtx.fillStyle = a.state === 'IDLE' ? '#1e293b' : '#0284c7';
+          simCtx.strokeStyle = a.memoryRecalled ? '#f59e0b' : '#38bdf8';
           simCtx.lineWidth = 2;
+          simCtx.fill();
           simCtx.stroke();
 
-          // Agent Body
-          simCtx.beginPath();
-          simCtx.arc(a.x, a.y, 6, 0, Math.PI * 2);
-          simCtx.fillStyle = '#38bdf8';
-          simCtx.fill();
+          // Agent Icon / Number
+          simCtx.fillStyle = '#ffffff';
+          simCtx.font = '700 10px JetBrains Mono';
+          simCtx.textAlign = 'center';
+          simCtx.fillText(`A${a.id}`, a.x, a.y + 3.5);
+
+          // Agent Status Badge above head
+          if (a.state !== 'IDLE') {
+            simCtx.fillStyle = a.memoryRecalled ? '#f59e0b' : '#38bdf8';
+            simCtx.font = '700 9px JetBrains Mono';
+            simCtx.fillText(a.statusText, a.x, a.y - 18);
+          }
+        });
+
+        // 4. Draw Resolved Vault Items
+        resolvedTasks.slice(-6).forEach(rt => {
+          simCtx.fillStyle = 'rgba(16, 185, 129, 0.15)';
+          simCtx.strokeStyle = '#10b981';
+          simCtx.lineWidth = 1;
+          simCtx.fillRect(rt.x, rt.y, 125, 34);
+          simCtx.strokeRect(rt.x, rt.y, 125, 34);
+
+          simCtx.fillStyle = '#10b981';
+          simCtx.font = '500 10px Outfit';
+          simCtx.fillText(`✅ ${rt.title}`, rt.x + 8, rt.y + 20);
         });
 
         requestAnimationFrame(drawSim);
