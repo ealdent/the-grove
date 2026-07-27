@@ -273,6 +273,38 @@ Redesigned the **Live Loop Simulator Sandbox** in `learn/loop-engineering-antigr
 4. **Canvas Geometry & High-DPR Fix**: Added `window.devicePixelRatio` canvas scaling (`setTransform(dpr, 0, 0, dpr, 0, 0)`) to ensure crisp text rendering on Retina displays; refactored dynamic column layout math and added `fitText` truncation so Inbox task cards, Vault items, and Memory Bank lesson chips stay strictly bounded inside their respective borders without clipping or overflowing.
 5. **Verification**: Verified HTML parsing cleanly and confirmed razor-sharp high-DPR canvas rendering.
 
+---
+
+# Task: Fix Page Flickering & Add Simulator Speed Control
+
+## Task packet
+
+Goal: Eliminate GPU composite page flickering in `learn/loop-engineering-antigravity.html` by removing heavy CSS `backdrop-filter: blur(...)` layers and guarding canvas resize handlers. Add a `Simulation Speed` slider (`0.25x` to `2.0x`) so users can slow down agent movements and watch loop stages at a comfortable pace. Verify, commit, and push to `origin/main`.
+
+Project: The Grove (personal).
+
+Path:
+- `/Users/jason/dev/personal/the-grove/learn/loop-engineering-antigravity.html`
+
+Implementation checklist:
+- [x] Create implementation plan artifact and task list in `tasks/todo.md`.
+- [x] Replace `backdrop-filter: blur(...)` CSS with solid dark translucent backgrounds (`rgba(10, 14, 26, 0.94)`).
+- [x] Guard `resizeBg()`, `resizeTop()`, and `resizeSim()` to prevent redundant canvas resizing.
+- [x] Add `Simulation Speed` control slider (`0.25x` to `2.0x`) and scale `dt` in `drawSim()`.
+- [x] Verify HTML syntax, smooth animation without flickering, and speed scaling.
+- [x] Complete Review section in `tasks/todo.md`.
+- [x] Commit and push to `origin/main`.
+
+## Review
+
+Fixed page flickering and added simulator speed control in `learn/loop-engineering-antigravity.html`:
+1. **GPU Compositing & Flickering Fix**: Removed heavy `backdrop-filter: blur(...)` CSS layers from sticky navigation headers and panel cards, replacing them with performant solid translucent backgrounds (`rgba(10, 14, 26, 0.95)`). This eliminates GPU composite thrashing during continuous multi-canvas rendering.
+2. **Canvas Resize Guarding**: Added dimensional check guards in `resizeBg()`, `resizeTop()`, and `resizeSim()` so canvas element `width` and `height` properties are only modified when integer sizes actually change, preventing redundant 1-frame canvas clears.
+3. **Simulation Speed Control Slider**: Added a `Simulation Speed` slider (`0.25x` to `2.0x`, default `1.0x`) in the simulator controls panel. Connected `speedFactor` directly to canvas `dt` delta-time so users can slow down agent movements (e.g. `0.25x` or `0.5x`) to inspect each 5-stage loop step at their own pace.
+4. **Verification**: Verified HTML syntax cleanly and verified smooth, flicker-free rendering across speed modes.
+
+
+
 
 
 

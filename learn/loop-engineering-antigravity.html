@@ -10,9 +10,9 @@
 
     :root {
       --bg: #06080e;
-      --bg-surface: rgba(13, 19, 34, 0.7);
+      --bg-surface: rgba(13, 19, 34, 0.95);
       --bg-surface-border: rgba(255, 255, 255, 0.08);
-      --bg-surface-hover: rgba(20, 30, 54, 0.85);
+      --bg-surface-hover: rgba(20, 30, 54, 0.95);
 
       --emerald: #10b981;
       --emerald-glow: rgba(16, 185, 129, 0.35);
@@ -71,9 +71,7 @@
       justify-content: space-between;
       align-items: center;
       padding: 1rem 1.5rem;
-      background: rgba(10, 14, 26, 0.65);
-      backdrop-filter: blur(16px);
-      -webkit-backdrop-filter: blur(16px);
+      background: rgba(10, 14, 26, 0.95);
       border: 1px solid var(--bg-surface-border);
       border-radius: 12px;
       margin-bottom: 2.5rem;
@@ -189,11 +187,10 @@
       margin: 0 auto;
     }
     .metric-card {
-      background: var(--bg-surface);
+      background: rgba(13, 19, 34, 0.90);
       border: 1px solid var(--bg-surface-border);
       border-radius: 10px;
       padding: 1.2rem;
-      backdrop-filter: blur(12px);
       text-align: center;
       transition: transform 0.25s, border-color 0.25s;
     }
@@ -246,7 +243,6 @@
       border: 1px solid var(--bg-surface-border);
       border-radius: 16px;
       padding: clamp(1.5rem, 3vw, 2.5rem);
-      backdrop-filter: blur(16px);
       margin-bottom: 3.5rem;
       box-shadow: 0 20px 40px -15px rgba(0, 0, 0, 0.4);
     }
@@ -891,7 +887,7 @@
         Live Loop Simulator Sandbox
       </div>
       <p class="section-desc">
-        Watch autonomous AI agent loops resolve incoming system tasks in real-time. Adjust the safety controls below to see how helper assistants, guardrails, and memory retention impact task resolution.
+        Watch autonomous AI agent loops resolve incoming system tasks in real-time. Adjust the safety controls and speed below to see how helper assistants, guardrails, and memory retention impact task resolution.
       </p>
 
       <!-- Explainer Guide Box -->
@@ -909,6 +905,14 @@
 
       <div class="simulator-layout">
         <div class="sim-controls-panel">
+          <div class="control-group">
+            <label>
+              Simulation Speed
+              <span class="control-val" id="val-speed">1.0x</span>
+            </label>
+            <input type="range" id="input-speed" min="0.25" max="2.0" step="0.25" value="1.0">
+          </div>
+
           <div class="control-group">
             <label>
               Helper AI Assistants
@@ -988,8 +992,11 @@
       const bgParticles = [];
 
       function resizeBg() {
-        w = bgCanvas.width = window.innerWidth;
-        h = bgCanvas.height = window.innerHeight;
+        const newW = window.innerWidth;
+        const newH = window.innerHeight;
+        if (w === newW && h === newH) return;
+        w = bgCanvas.width = newW;
+        h = bgCanvas.height = newH;
       }
       window.addEventListener('resize', resizeBg);
       resizeBg();
@@ -1034,10 +1041,13 @@
       function resizeTop() {
         const dpr = Math.min(window.devicePixelRatio || 1, 2);
         const rect = topCanvas.parentElement.getBoundingClientRect();
-        topW = rect.width;
-        topH = rect.height;
-        topCanvas.width = Math.round(rect.width * dpr);
-        topCanvas.height = Math.round(rect.height * dpr);
+        const newW = Math.round(rect.width);
+        const newH = Math.round(rect.height);
+        if (topW === newW && topH === newH && topCanvas.width === Math.round(newW * dpr)) return;
+        topW = newW;
+        topH = newH;
+        topCanvas.width = Math.round(newW * dpr);
+        topCanvas.height = Math.round(newH * dpr);
         topCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
       }
       window.addEventListener('resize', resizeTop);
@@ -1351,24 +1361,30 @@
       function resizeSim() {
         const dpr = Math.min(window.devicePixelRatio || 1, 2);
         const rect = simCanvas.parentElement.getBoundingClientRect();
-        simW = rect.width;
-        simH = rect.height;
-        simCanvas.width = Math.round(rect.width * dpr);
-        simCanvas.height = Math.round(rect.height * dpr);
+        const newW = Math.round(rect.width);
+        const newH = Math.round(rect.height);
+        if (simW === newW && simH === newH && simCanvas.width === Math.round(newW * dpr)) return;
+        simW = newW;
+        simH = newH;
+        simCanvas.width = Math.round(newW * dpr);
+        simCanvas.height = Math.round(newH * dpr);
         simCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
       }
       window.addEventListener('resize', resizeSim);
       resizeSim();
 
+      const inSpeed = document.getElementById('input-speed');
       const inSwarm = document.getElementById('input-swarm');
       const inGuard = document.getElementById('input-guard');
       const inNoise = document.getElementById('input-noise');
       const inMemory = document.getElementById('input-memory');
 
+      const valSpeed = document.getElementById('val-speed');
       const valSwarm = document.getElementById('val-swarm');
       const valGuard = document.getElementById('val-guard');
       const valNoise = document.getElementById('val-noise');
 
+      let speedFactor = 1.0;
       const guardLabels = { 1: 'Basic', 2: 'Balanced', 3: 'Strict Audit' };
 
       // Incident Task Types
@@ -1417,7 +1433,7 @@
         const noisePenalty = (noise / 100) * 1.5;
         const memBonus = (hasMem && memoryLessons.size > 0) ? 1.4 : 0;
 
-        const timeVal = Math.max(0.4, (baseTime + noisePenalty - swarmBonus - guardBonus - memBonus)).toFixed(1);
+        const timeVal = Math.max(0.4, ((baseTime + noisePenalty - swarmBonus - guardBonus - memBonus) / speedFactor)).toFixed(1);
         const tokenVal = Math.min(99.8, Math.max(68.0, (82 + (hasMem ? 12 : 0) + (guard * 3) - (noise * 0.25)))).toFixed(1);
         const successVal = Math.min(99.9, Math.max(72.0, (85 + (guard * 4) + (hasMem ? 8 : 0) - (noise * 0.35)))).toFixed(1);
 
@@ -1427,6 +1443,11 @@
         document.getElementById('tele-thrashes').textContent = totalThrashes;
       }
 
+      inSpeed.addEventListener('input', () => {
+        speedFactor = parseFloat(inSpeed.value);
+        valSpeed.textContent = `${speedFactor.toFixed(2)}x`;
+        updateTelemetry();
+      });
       inSwarm.addEventListener('input', () => {
         valSwarm.textContent = `${inSwarm.value} Assistant${inSwarm.value > 1 ? 's' : ''}`;
         initAgents();
@@ -1481,7 +1502,7 @@
       }
 
       function drawSim(now) {
-        const dt = Math.min(0.05, (now - lastTime) / 1000);
+        const dt = Math.min(0.05, (now - lastTime) / 1000) * speedFactor;
         lastTime = now;
 
         simCtx.clearRect(0, 0, simW, simH);
