@@ -303,6 +303,38 @@ Fixed page flickering and added simulator speed control in `learn/loop-engineeri
 3. **Simulation Speed Control Slider**: Added a `Simulation Speed` slider (`0.25x` to `2.0x`, default `1.0x`) in the simulator controls panel. Connected `speedFactor` directly to canvas `dt` delta-time so users can slow down agent movements (e.g. `0.25x` or `0.5x`) to inspect each 5-stage loop step at their own pace.
 4. **Verification**: Verified HTML syntax cleanly and verified smooth, flicker-free rendering across speed modes.
 
+---
+
+# Task: Slow Down Simulator Stage Timing & Enhance Readability
+
+## Task packet
+
+Goal: Increase base stage durations in `learn/loop-engineering-antigravity.html` simulator from 0.8s to 2.5s per stage (10s total cycle), expand speed slider down to `0.1x` (Ultra Slow), increase task spawn intervals to 8s, and use smooth `dt`-scaled motion lerping so users can comfortably read every agent stage badge and task status. Verify, commit, and push to `origin/main`.
+
+Project: The Grove (personal).
+
+Path:
+- `/Users/jason/dev/personal/the-grove/learn/loop-engineering-antigravity.html`
+
+Implementation checklist:
+- [x] Create implementation plan artifact and task list in `tasks/todo.md`.
+- [x] Update `input-speed` slider: `min="0.1" max="1.5" step="0.1" value="0.5"`.
+- [x] Extend stage durations in `drawSim()` from `0.8s` to `2.5s` per step (10.0s total cycle).
+- [x] Increase task spawn interval from 3s to 8s and smooth motion lerps.
+- [x] Verify HTML syntax, slow motion readability, and step timing.
+- [x] Complete Review section in `tasks/todo.md`.
+- [x] Commit and push to `origin/main`.
+
+## Review
+
+Extended simulator stage timing and enhanced text readability in `learn/loop-engineering-antigravity.html`:
+1. **Extended Stage Durations**: Increased base stage duration from 0.8s to 2.5s per loop step (10.0s total turn). Every status badge (`🔍 1. INSPECTING`, `📋 2. PLANNING`, `⚡ 3. ACTING`, `🛡️ 4. VERIFYING`, `🧠 5. LESSON SAVED`) stays active for multiple seconds so users can comfortably read each action.
+2. **Ultra-Slow Speed Slider**: Expanded the speed slider to range from `0.1x` (Ultra Slow Readability mode) up to `1.5x`, with `0.5x` as the default pace.
+3. **Paced Spawning & Smooth Motion**: Increased task spawn interval from 3s to 8s (scaled by speed) to prevent Inbox queue flooding. Replaced frame-rate dependent lerping with smooth `dt`-scaled motion so assistant nodes slide gracefully.
+4. **Verification**: Verified HTML syntax cleanly and verified readable slow-motion agent loop cycles.
+
+
+
 
 
 

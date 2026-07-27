@@ -908,9 +908,9 @@
           <div class="control-group">
             <label>
               Simulation Speed
-              <span class="control-val" id="val-speed">1.0x</span>
+              <span class="control-val" id="val-speed">0.50x (Readable)</span>
             </label>
-            <input type="range" id="input-speed" min="0.25" max="2.0" step="0.25" value="1.0">
+            <input type="range" id="input-speed" min="0.1" max="1.5" step="0.1" value="0.5">
           </div>
 
           <div class="control-group">
@@ -952,7 +952,7 @@
 
           <div class="sim-telemetry-bar">
             <div class="tele-card">
-              <div class="tele-val" id="tele-time">1.8s</div>
+              <div class="tele-val" id="tele-time">5.4s</div>
               <div class="tele-label">Resolution Speed</div>
             </div>
             <div class="tele-card">
@@ -1384,7 +1384,7 @@
       const valGuard = document.getElementById('val-guard');
       const valNoise = document.getElementById('val-noise');
 
-      let speedFactor = 1.0;
+      let speedFactor = 0.5;
       const guardLabels = { 1: 'Basic', 2: 'Balanced', 3: 'Strict Audit' };
 
       // Incident Task Types
@@ -1427,13 +1427,13 @@
         const noise = parseInt(inNoise.value, 10);
         const hasMem = inMemory.checked;
 
-        const baseTime = 3.2;
-        const swarmBonus = (swarm - 1) * 0.3;
-        const guardBonus = (guard - 1) * 0.35;
-        const noisePenalty = (noise / 100) * 1.5;
-        const memBonus = (hasMem && memoryLessons.size > 0) ? 1.4 : 0;
+        const baseTime = 10.0;
+        const swarmBonus = (swarm - 1) * 0.8;
+        const guardBonus = (guard - 1) * 0.9;
+        const noisePenalty = (noise / 100) * 3.5;
+        const memBonus = (hasMem && memoryLessons.size > 0) ? 4.0 : 0;
 
-        const timeVal = Math.max(0.4, ((baseTime + noisePenalty - swarmBonus - guardBonus - memBonus) / speedFactor)).toFixed(1);
+        const timeVal = Math.max(0.8, ((baseTime + noisePenalty - swarmBonus - guardBonus - memBonus) / Math.max(0.1, speedFactor))).toFixed(1);
         const tokenVal = Math.min(99.8, Math.max(68.0, (82 + (hasMem ? 12 : 0) + (guard * 3) - (noise * 0.25)))).toFixed(1);
         const successVal = Math.min(99.9, Math.max(72.0, (85 + (guard * 4) + (hasMem ? 8 : 0) - (noise * 0.35)))).toFixed(1);
 
@@ -1445,7 +1445,7 @@
 
       inSpeed.addEventListener('input', () => {
         speedFactor = parseFloat(inSpeed.value);
-        valSpeed.textContent = `${speedFactor.toFixed(2)}x`;
+        valSpeed.textContent = `${speedFactor.toFixed(2)}x ${speedFactor <= 0.2 ? '(Ultra Slow)' : speedFactor <= 0.5 ? '(Readable Pace)' : ''}`;
         updateTelemetry();
       });
       inSwarm.addEventListener('input', () => {
@@ -1486,7 +1486,6 @@
       }
 
       // Initial task queue
-      spawnTask();
       spawnTask();
       spawnTask();
 
@@ -1588,9 +1587,9 @@
           simCtx.fillText('Enable Memory toggle to store lessons from past errors', margin + 145, memY + 27);
         }
 
-        // Spawn timer
+        // Spawn timer (Slower, scaled to speed)
         spawnTimer += dt;
-        if (spawnTimer > 3.0) {
+        if (spawnTimer > (8.0 / Math.max(0.2, speedFactor))) {
           spawnTimer = 0;
           spawnTask();
         }
@@ -1602,7 +1601,7 @@
 
         activeTasks.forEach((t, idx) => {
           t.targetY = 46 + (idx * 40);
-          t.y += (t.targetY - t.y) * 0.15;
+          t.y += (t.targetY - t.y) * Math.min(1.0, dt * 3.0);
           t.x = cardX;
 
           simCtx.fillStyle = 'rgba(30, 41, 59, 0.85)';
@@ -1649,20 +1648,20 @@
             }
           }
 
-          // State Machine
+          // State Machine (2.5 seconds per stage = 10s total cycle base)
           if (a.assignedTask && a.state !== 'IDLE') {
             const task = a.assignedTask;
             const targetX = midX + 20 + ((a.id - 1) * Math.min(55, (midW - 40) / Math.max(1, agents.length - 1)));
             const targetY = task.y;
 
-            a.x += (targetX - a.x) * 0.15;
-            a.y += (targetY - a.y) * 0.15;
+            a.x += (targetX - a.x) * Math.min(1.0, dt * 3.0);
+            a.y += (targetY - a.y) * Math.min(1.0, dt * 3.0);
 
             // Memory Recalled Fast-Track
             if (a.memoryRecalled) {
               a.state = 'VERIFY';
               a.statusText = '🧠 LESSON RECALLED';
-              a.progress += dt * 2.5;
+              a.progress += dt;
 
               // Memory beam
               simCtx.beginPath();
@@ -1675,19 +1674,19 @@
             } else {
               a.progress += dt;
 
-              if (a.progress < 0.8) {
+              if (a.progress < 2.5) {
                 a.state = 'INSPECT';
                 a.statusText = '🔍 1. INSPECTING';
                 simCtx.fillStyle = 'rgba(56, 189, 248, 0.15)';
                 simCtx.fillRect(cardX, task.y, cardW, cardH);
-              } else if (a.progress < 1.6) {
+              } else if (a.progress < 5.0) {
                 a.state = 'PLAN';
                 a.statusText = '📋 2. PLANNING';
                 simCtx.beginPath();
                 simCtx.arc(a.x, a.y, 20, 0, Math.PI * 2);
                 simCtx.fillStyle = 'rgba(245, 158, 11, 0.15)';
                 simCtx.fill();
-              } else if (a.progress < 2.4) {
+              } else if (a.progress < 7.5) {
                 a.state = 'ACT';
                 a.statusText = '⚡ 3. ACTING';
                 simCtx.beginPath();
@@ -1696,7 +1695,7 @@
                 simCtx.strokeStyle = '#38bdf8';
                 simCtx.lineWidth = 1.5;
                 simCtx.stroke();
-              } else if (a.progress < 3.2) {
+              } else if (a.progress < 10.0) {
                 a.state = 'VERIFY';
                 a.statusText = '🛡️ 4. VERIFYING';
 
@@ -1707,7 +1706,7 @@
                 simCtx.stroke();
 
                 const noiseRate = parseInt(inNoise.value, 10);
-                if (Math.random() < (noiseRate / 1000) && !task.hasGlitch) {
+                if (Math.random() < (noiseRate / 800) && !task.hasGlitch) {
                   task.hasGlitch = true;
                   totalThrashes++;
 
@@ -1739,7 +1738,7 @@
               }
             }
 
-            if (a.memoryRecalled && a.progress > 0.8) {
+            if (a.memoryRecalled && a.progress > 3.0) {
               task.status = 'VERIFIED';
               resolvedTasks.push({
                 title: task.title,
@@ -1757,8 +1756,8 @@
               a.statusText = 'IDLE';
             }
           } else {
-            a.x += (defaultX - a.x) * 0.1;
-            a.y += (defaultY - a.y) * 0.1;
+            a.x += (defaultX - a.x) * Math.min(1.0, dt * 3.0);
+            a.y += (defaultY - a.y) * Math.min(1.0, dt * 3.0);
           }
 
           // Draw Agent Body
