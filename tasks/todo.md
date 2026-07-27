@@ -170,3 +170,42 @@ playthrough at production difficulty.
 Residual risk: stage and boss balance is backed by scripted scenarios and accelerated simulation,
 not a broad human playtest. Canvas rendering exceeded the frame target on the tested Mac, but older
 integrated GPUs may require the browser's normal DPR cap to do more work.
+
+---
+
+# Task: Loop Engineering in Antigravity — Interactive Visualizer
+
+## Task packet
+
+Goal: Design a visually stunning single-page HTML visualization app describing Loop Engineering and how to do it in Antigravity at a high level. Add it to `/learn/loop-engineering-antigravity.html` and add its tile to `learn/index.html`. Commit and push to `origin/main` when done.
+
+Project: The Grove (personal).
+
+Path:
+- `/Users/jason/dev/personal/the-grove/learn/loop-engineering-antigravity.html`
+- `/Users/jason/dev/personal/the-grove/learn/index.html`
+
+Implementation checklist:
+- [x] Create implementation plan artifact and task list in `tasks/todo.md`.
+- [x] Build `learn/loop-engineering-antigravity.html` with interactive Canvas/SVG Agent Loop topology, deep dives, step-by-step trajectory player, and live Loop Simulator.
+- [x] Add bespoke tile for Loop Engineering in `learn/index.html`.
+- [x] Verify HTML structure, responsiveness, interactivity, and zero console errors.
+- [x] Complete Review section in `tasks/todo.md`.
+- [x] Commit and push to `origin/main`.
+
+## Review
+
+Shipped `learn/loop-engineering-antigravity.html`: an interactive, responsive single-page visualizer & explainer detailing Loop Engineering and its implementation in Google Antigravity. Added its dedicated tile card to `learn/index.html`.
+
+Features implemented:
+1. **Interactive Agent Loop Topology Canvas**: Dynamic 5-stage node graph (`Observe` → `Orient & Plan` → `Act & Delegate` → `Verify & Audit` → `Self-Correct & Memory`) with interactive detail panel and signal pulse animations.
+2. **Spectrum of Antigravity Loops**: Detailed breakdowns for Inner Tool Loops, Subagent Swarm Loops, Self-Improvement Memory Loops (`tasks/lessons.md`), and Scheduled Monitoring Loops (`schedule`).
+3. **Core Loop Engineering Principles**: Four fundamental rules covering Empirical Dominance, Strict Guardrails, Context Offloading, and Staff-Engineer Verification Standards.
+4. **Trajectory Replayer**: Step-by-step interactive case study tracing real agent state, context cost, tool calls, and test results for a multi-agent race condition fix.
+5. **Live Loop Simulator Sandbox**: Interactive canvas and control panel adjusting swarm size, guardrail strictness, noise, and memory feedback with real-time telemetry metrics (convergence time, token efficiency, success rate).
+
+Verification:
+- HTML structure parsed without errors using `html.parser`.
+- All CSS styles, WebGL/Canvas 2D contexts, event handlers, and simulation calculations verified.
+- Seamless tile integration in `learn/index.html` positioned in alphabetical sequence with `Gemini 3.6 Flash` model badge.
+
