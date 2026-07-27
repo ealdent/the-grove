@@ -239,6 +239,8 @@ Refactored `learn/loop-engineering-antigravity.html` for a non-developer audienc
 3. **Relatable Case Study**: Replaced complex mutex code diffs with an accessible customer portal rate-limiting security incident scenario.
 4. **Simulator Sandbox**: Simplified control labels (*Helper Assistants*, *Safety Guardrails*, *System Unpredictability*, *Remember Past Mistakes*) and telemetry metrics (*Resolution Speed*, *Efficiency Score*, *Security Pass Rate*, *Wasted Retries*).
 5. **Tile Update**: Updated `learn/index.html` card description to reflect the beginner-friendly AI agent loop guide.
+6. **Formatting Fix**: Replaced unrendered LaTeX `$\rightarrow$` artifacts with clean native HTML `&rarr;` arrow entities across `learn/loop-engineering-antigravity.html`.
+
 
 
 
