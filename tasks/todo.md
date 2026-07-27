@@ -270,7 +270,9 @@ Redesigned the **Live Loop Simulator Sandbox** in `learn/loop-engineering-antigr
 3. **Interactive Controls & Memory Recall**:
    - Helper Assistants (1-8): Spawns 1-8 active AI assistant nodes (`A1`, `A2`, etc.).
    - Memory Recall (`tasks/lessons.md`): When Memory is enabled, lessons from past errors sit in the `Memory Bank`. When matching incident types arrive later, assistants display `[🧠 LESSON RECALLED]` and fast-track to 100% clean verification without retries!
-4. **Verification**: Verified HTML parsing cleanly and confirmed smooth canvas animation.
+4. **Canvas Geometry & High-DPR Fix**: Added `window.devicePixelRatio` canvas scaling (`setTransform(dpr, 0, 0, dpr, 0, 0)`) to ensure crisp text rendering on Retina displays; refactored dynamic column layout math and added `fitText` truncation so Inbox task cards, Vault items, and Memory Bank lesson chips stay strictly bounded inside their respective borders without clipping or overflowing.
+5. **Verification**: Verified HTML parsing cleanly and confirmed razor-sharp high-DPR canvas rendering.
+
 
 
 
