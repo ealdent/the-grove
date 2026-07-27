@@ -209,3 +209,36 @@ Verification:
 - All CSS styles, WebGL/Canvas 2D contexts, event handlers, and simulation calculations verified.
 - Seamless tile integration in `learn/index.html` positioned in alphabetical sequence with `Gemini 3.6 Flash` model badge.
 
+---
+
+# Task: Simplify Loop Engineering Visualizer for Non-Developers
+
+## Task packet
+
+Goal: Refactor `learn/loop-engineering-antigravity.html` to target a non-developer audience with an AI/cybersecurity background. Remove developer-heavy coding jargon, replace with intuitive analogies, security oversight concepts, empirical evidence, and clear feedback cycles. Update tile description, verify, commit, and push to `origin/main`.
+
+Project: The Grove (personal).
+
+Path:
+- `/Users/jason/dev/personal/the-grove/learn/loop-engineering-antigravity.html`
+- `/Users/jason/dev/personal/the-grove/learn/index.html`
+
+Implementation checklist:
+- [x] Create implementation plan artifact and task list in `tasks/todo.md`.
+- [x] Rewrite hero, topology nodes, loop spectrum, principles, case study, and simulator UI in beginner-accessible plain language.
+- [x] Update `learn/index.html` tile description to reflect the simplified AI agent loop visualizer.
+- [x] Verify HTML syntax, layout responsiveness, and zero console errors.
+- [x] Complete Review section in `tasks/todo.md`.
+- [x] Commit and push to `origin/main`.
+
+## Review
+
+Refactored `learn/loop-engineering-antigravity.html` for a non-developer audience with an AI and cybersecurity background:
+1. **Plain Language & Concepts**: Replaced code syntax (`AST`, `pytest`, `RLock`) with concepts like empirical facts, security guardrails, sandboxed delegation, empirical audits, and organizational memory (`tasks/lessons.md`).
+2. **Simplified Decision Cycle (Topology)**: Reframed 5 stages into `1. Inspect Evidence`, `2. Plan Safety Bounds`, `3. Act & Delegate`, `4. Verify & Audit`, and `5. Remember Lessons`.
+3. **Relatable Case Study**: Replaced complex mutex code diffs with an accessible customer portal rate-limiting security incident scenario.
+4. **Simulator Sandbox**: Simplified control labels (*Helper Assistants*, *Safety Guardrails*, *System Unpredictability*, *Remember Past Mistakes*) and telemetry metrics (*Resolution Speed*, *Efficiency Score*, *Security Pass Rate*, *Wasted Retries*).
+5. **Tile Update**: Updated `learn/index.html` card description to reflect the beginner-friendly AI agent loop guide.
+
+
+
