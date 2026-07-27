@@ -1,85 +1,172 @@
-# Task: LAMPBLACK — Opus 5 Ultra tower defense (green field)
+# Task: GILDWAKE — A Space Harrier descendant
 
-Goal: single-file, zero-dependency tower defense at `tower-def/opus5-ultra-tower-def.html`, plus a tile
-in `tower-def/index.html` (provider anthropic / model "Opus 5" / effort "Ultra").
+## Task packet
 
-Constraints: no external deps (no CDN fonts/scripts), opens from `file://`, random track per run,
-dark grungy look, responsive, professional UI. No borrowing from other games in this repo.
+Goal: Ship a striking, complete pseudo-3D rail shooter as one self-contained HTML file, add it
+to the Arcade, prove it in a real browser, then commit and push `main`.
 
-## Theme / hook
+Project: The Grove (personal).
 
-**LAMPBLACK — Deep Shift**: a flooded, collapsed colliery. The Pilot Flame at the shaft head is the
-core. The attackers are *the Unlit* — things made of absence that crawl the old rail line.
+Repo/path:
 
-Central mechanic: **light is a weapon.**
-- Every tower projects a *lumen field*. Enemies inside any lumen field are REVEALED.
-- Enemies outside all lumen are SHROUDED: reduced damage taken, faster, slow regen.
-- Losing core integrity dims the whole mine (compounding), restorable with scrap ("Stoke").
-- Enemy counterplay: Lightleech (dims towers), Nightcap (suppression aura), Gloamwisp (self-shroud).
-- Tower counterplay: the Sounder reveals by sonar (no light needed) and ignores the shroud penalty.
+- `/Users/jason/dev/personal/the-grove/arcade/gildwake.html`
+- `/Users/jason/dev/personal/the-grove/arcade/index.html`
 
-## Checklist
+Constraints:
 
-- [x] Inspect index.html tile format + confirm filters auto-derive from cards
-- [x] Procedural track generator (randomized DFS, non-touching corridors, length band, fallback)
-- [x] Fit-to-container world transform (DPR aware, grid sized so a tile lands near 56 screen px)
-- [x] Darkness/lumen compositing layer (half-res, destination-out light sprite, additive bloom)
-- [x] 5 towers x 4 upgrades, distinct roles + Mk5 transformations + 4 targeting modes
-- [x] 16 kinds of Unlit (speed/HP/armour/trait variety) incl. 4 bosses
-- [x] 25 waves with named modifiers (Blackout, Firedamp, Damp Air, Static Storm, Veil, Rush, Boss)
-- [x] Prep phase between waves (manual send), build + upgrade + sell any time, Stoke sink
-- [x] Grunge UI: top stat bar, machine shop, works order, wave preview, shaft log
-- [x] Responsive: desktop sidebar -> mobile stacked rail; pointer + keyboard input
-- [x] WebAudio SFX (synth only, muted-safe, created on first gesture)
-- [x] Title / victory / defeat overlays with sticky CTA
-- [x] Verify headless: no console errors, path gen over many seeds, 25-wave sim
-- [x] Add index.html tile (Opus 5 / Ultra, alphabetical slot after opus48)
-- [x] Commit + push to main
+- One HTML file; no external images, fonts, audio, scripts, or build step.
+- Must open directly from `file://` in a modern desktop browser.
+- Raw Canvas2D rendering and Web Audio synthesis only.
+- 60 fps target, DPR-aware, delta-time simulation, bounded entity/particle counts.
+- Mouse plus WASD/arrows; hold mouse/space to fire.
+- Pause, mute, restart, title, defeat, and victory flows must all work.
+- Preserve unrelated repository work; stage only task files.
+
+Non-goals:
+
+- No mobile/touch control requirement.
+- No online services, leaderboards, downloadable assets, or CDN fallback.
+- No reuse of Redline Ascent code, art, world, silhouettes, or language.
+
+Proof required:
+
+- Direct `file://` load and Arcade card navigation in Chrome.
+- No uncaught console errors during title, gameplay, pause, stage transitions, boss, defeat,
+  victory, restart, resize, and visibility changes.
+- Observed keyboard and mouse movement, firing, enemy damage, unshootable obstacle ricochet,
+  player damage/invulnerability, near misses, score/combo, stage escalation, and boss tells.
+- Screenshot(s) of the title/first act and at least one later act or boss.
+- Static checks for duplicate IDs, missing functions, external dependencies, TODO/placeholders,
+  and malformed HTML/script.
+- `git diff --check`, scoped diff review, commit, push, and remote parity check.
+
+Risks:
+
+- Canvas art can become visually busy enough to hide attack tells.
+- A single-file game of this scope can accumulate state-machine and entity-lifecycle edge cases.
+- Web Audio cannot legally begin before the first browser gesture; title interaction must resume it.
+- Long-form balance can be hard to verify without accelerated test hooks.
+
+## World / art bible
+
+**One-sentence hook:** A gold-lacquer repair spirit rides a calligrapher's brush across the painted
+interior of a continent-sized porcelain vessel, racing the living fracture behind it to mend the
+original impact before the remembered world becomes shards.
+
+Why forward motion is mandatory: the vessel is trapped in the stretched instant after it hit the
+floor. The original impact lies ahead while the branching Breakfront chases the Mendling from
+behind. The lower frame crazes and sheds into darkness as pressure rises.
+
+Visual grammar:
+
+- Gold: player, repair darts, score, vulnerable seams, safe gaps.
+- Cobalt/ink: shootable painted life peeling out of the glaze.
+- White/celadon/charcoal ceramic: physical relief and unshootable obstacles.
+- Vermilion: attack tells and danger only.
+
+Player: the Mendling, a faceless lacquer figure riding a long restoration brush. Bristles open
+when climbing, compress when diving, and leave a gold-lacquer afterimage while banking.
+
+Acts:
+
+1. `GLAZE I / BLUE MEMORY`: luminous bone porcelain, cobalt rivers/mountains, crane and koi waves,
+   maker's stamps, pagoda finials, willow reliefs. Spacious teaching waves.
+2. `GLAZE II / CELADON DELUGE`: sea-green translucent glaze, driving rain, lateral gusts, glaze
+   bubbles, lotus masks, rain eels, moving safe lanes.
+3. `GLAZE III / BLACK KILN`: charcoal clay, ember snow, molten fissures, shard rays, soot moths,
+   kiln furniture, denser interleaved waves and higher speed.
+
+Boss: `THE FIRST IMPACT`, a rotating chrysanthemum crater of broken porcelain. Patterns use
+one-second tells:
+
+- Stress Script: vermilion crack lanes write toward the player, then erupt; blank lanes are safe.
+- Rosette Volley: petals flash in sequence and arrive as walls; the unlit petal marks the gap.
+- Singing Ring: music ducks and a bowl tone rises before a shock ring with a gold-edged hole.
+- Kiln Breath: core heats black → red → white while gold dust blows toward the safe side.
+- The core opens for a damage window after each pattern; armored petals ricochet shots.
+
+Audio identity: inharmonic FM porcelain bowls, rim-singing partials, filtered brush noise, crack
+ticks, tuned water drops, ember crackle, and a kiln drone. Enemy/boss tells should be audible.
+
+HUD language: `VESSEL`, `UNBROKEN`, `ORIGINAL IMPACT`, `HAIRLINE`, `THE FALL HOLDS`,
+`THE VESSEL PARTED`, `MEND AGAIN`.
+
+## Implementation checklist
+
+- [x] Inspect repo state, local rules, lessons, existing arcade conventions, and collision risk.
+- [x] Lock the world, visual grammar, acts, enemy roster, obstacles, boss, audio, and UI language.
+- [x] Build semantic title/game/pause/defeat/victory overlays and responsive Canvas2D shell.
+- [x] Build DPR-aware pseudo-3D projection, curved bowl ground, streaming brushwork, craquelure,
+      atmospheric perspective, Breakfront pressure, shadows, and bounded particles.
+- [x] Build spring-damped mouse/keyboard flight, banking, firing, collision/invulnerability,
+      screen shake, hit stop, near misses, combo, scoring, and health.
+- [x] Build enemy/obstacle entity system with meaningful wave formations and stage-specific art.
+- [x] Build three acts with palette, weather, movement pressure, spawn grammar, and audio changes.
+- [x] Build The First Impact boss with multi-pattern tells, armored/damage phases, and finale.
+- [x] Build procedural Web Audio music and SFX with gesture-safe init, mute, pause, and teardown.
+- [x] Add local high score, compact onboarding, pause/mute/restart keys, and focus/visibility pause.
+- [x] Add GILDWAKE accent/card to `arcade/index.html`.
+- [x] Add safe accelerated verification hooks that do not affect normal play.
+- [x] Run static checks and browser automation; capture live-UI proof and fix defects.
+- [x] Conduct a skeptical code/gameplay review and complete this file's Review section.
+- [x] Run git safety checks, commit only intended files, push `origin main`, verify parity.
 
 ## Review
 
-Shipped `tower-def/opus5-ultra-tower-def.html` (~3.9k lines, zero dependencies, opens from
-`file://`) plus the index tile. Theme: **LAMPBLACK — Deep Shift**, a collapsed colliery where
-light is the weapon and the dark is the enemy's armour.
+Shipped `arcade/gildwake.html`: a 4,400-line, 162 KB, zero-dependency Canvas2D rail shooter
+with procedural Web Audio, three acts, nine enemy types, nine physical obstacle types, a
+four-pattern boss, score/combo/high-score systems, onboarding, pause, mute, defeat, victory, and
+immediate restart flows. Added its card and bespoke accent treatment to `arcade/index.html`.
 
-Proof captured:
+Live-UI proof:
 
-- **Track generator**, 400 generated tracks across varied grid sizes: 0 failures, 0 self-touching
-  corridors, 0 disconnected steps, correct entry/exit edges, length 25-177 tiles.
-- **25-shift simulation**, three scripted build strategies, no exceptions and no console errors in
-  any run:
-  - spam Mk1 machines everywhere (109 towers) → dies wave 24
-  - half-upgraded spread (20 towers, 8 maxed) → holds 92% integrity to wave 24, dies to the
-    Deepmother on 25
-  - focused, sounder-heavy, everything maxed (11 towers) → wins 25/25 at 100% integrity, 788 kills
-  That gradient is the intent: depth beats breadth, and the final boss is the skill check.
-- **Live input path** driven with real pointer/DOM events in a browser: shop select → canvas click
-  places a machine (scrap 210→140), auto-selects it, works order shows the next upgrade, klaxon
-  starts the shift with the right queue. 18-control sweep (speed, mute, pause, stoke, sell, all
-  keyboard shortcuts, help, defeat, restart, restart→send) — every one clean, `window.onerror`
-  empty throughout.
-- **Screenshots** at 1440x900, 800x869 and 390x844 confirming layout, the lighting model, the
-  build-mode grid, wave-modifier banner and mobile HUD/shop.
+- Environment: Codex in-app Chromium at 1280×720 and 900×600 against a byte-identical local
+  static server; desktop Chrome also loaded the exact `file:///.../arcade/gildwake.html` path and
+  rendered live gameplay without an HTTP server.
+- Title/start, mouse flight, held and tapped fire, keyboard pause/restart, pause/resume,
+  mute/unmute, restart-from-pause, focused-button activation, defeat/retry, victory/restart, and
+  Arcade-card navigation were exercised through real browser input.
+- All three acts rendered as distinct environments. Each First Impact tell was observed through
+  tell → attack → vulnerable state; armored shots ricochet and vulnerable shots reduce boss health.
+- A shootable target produced one hit, one kill, and +320. A physical finial produced a ricochet,
+  no hit/kill/score, remained in the world, then damaged the vessel. A close pass produced one
+  `HAIRLINE`, +250, and no vessel damage.
+- Dense Singing Ring combat measured 89.1 fps / 11.23 ms average frame time at 1280×720; ordinary
+  play reported up to 120 fps. The compact viewport preserved the HUD, overlays, and playfield.
+- Audio unlocked only after the start gesture, created active synthesized voices, respected mute
+  and pause, and resumed its scheduler without replaying muted time.
+- The final fixed-seed soak ran 36,000 simulation frames (10 simulated minutes) twice with
+  byte-identical audits. Both reached victory with 52 kills, zero damage under the test's
+  invulnerability, zero non-finite state, zero runtime errors, and maxima of 19 enemies and 61
+  combined projectiles. Final entity counts stayed below every configured cap.
+- Browser console: zero warnings or errors. Final loads requested only the HTML; the favicon is an
+  inline data URI and there are no network assets.
+- Screenshots:
+  `/Users/jason/.codex/visualizations/2026/07/27/019fa120-f5c3-7942-b941-4f3a3b37808b/gildwake/`
+  (`01-title.png` through `06-file-url.png`).
 
-Bugs found and fixed during verification (both were visible only in a render, not in the sim):
+Static proof:
 
-1. `offsetPoly` used `na+nb` as the miter vector, which doubles the offset on straight runs — the
-   rails drew as a bright outline at the trench edge instead of two rails inside it. Correct miter
-   is `(na+nb)/(1+na·nb)`.
-2. The trench floor was stroked near-black, so the (lighter) sleepers read as a glowing ladder
-   across the map. Rebuilt the rail bed: lighter ballast, parametric chippings placed along the
-   path, sleepers sunk darker than the ballast.
-3. Enemy hit-flash was a filled white disc at 0.8 alpha that swallowed the whole creature; now a
-   rim highlight.
-4. Core embers were spawned from the render pass, so particles accumulated while paused or on the
-   title screen. Gated on a `G.simming` flag.
+- Inline JavaScript parses with `new Function`; one script, 30 unique IDs, no duplicate IDs, one
+  matched canvas pair.
+- No fetch, XHR, WebSocket, dynamic import, external script/font/image/audio reference, TODO,
+  FIXME, placeholder copy, or console logging.
+- `git diff --check` passes. Intended staging is limited to `arcade/gildwake.html`,
+  `arcade/index.html`, and `tasks/todo.md`; unrelated Weftrunner work is preserved unstaged.
 
-Not verified: real human play at speed on a touchscreen (only synthetic pointer events), and audio
-output (synthesis is silent until the first user gesture by design, so headless runs prove only
-that it never throws).
+The independent skeptical review initially found and then re-verified fixes for:
 
-Residual risk: balance is tuned by simulation with scripted build orders rather than human play. A
-player who ignores the light mechanic — no Sounder coverage on the Deepmother, which smothers
-itself and so can never be revealed by lamps — will find shift 25 close to unkillable. That is the
-designed counterplay and it is stated in the briefing, the Sounder blurb and the Deepmother
-tooltip, but it is the one lesson the game teaches late and hard.
+1. Singing Ring and Rosette volleys now keep the exact safe gap shown by their gold tells.
+2. Unmuting resets the music scheduler so muted time cannot become a catch-up loop.
+3. Restarting from pause restores the pause glyph and accessible label.
+4. Space activates focused controls while remaining the in-game fire key.
+
+Additional focus hardening makes outgoing overlays inert immediately, moves focus to the active
+dialog action, and pauses live combat when the desktop window loses focus.
+
+Not verified: subjective loudness/timbre on the user's speakers and a full unassisted human
+playthrough at production difficulty.
+
+Residual risk: stage and boss balance is backed by scripted scenarios and accelerated simulation,
+not a broad human playtest. Canvas rendering exceeded the frame target on the tested Mac, but older
+integrated GPUs may require the browser's normal DPR cap to do more work.
