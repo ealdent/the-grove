@@ -4047,7 +4047,10 @@ function buildGreenhouse() {
     //   near    — fades out within ~4 m of the camera, so the cone you are standing
     //             under doesn't fill the screen. Matches how godrays actually read.
     const shaftTopY = hoodBottomY;              // emerges from the shade rim
-    const shaftHeight = shaftTopY - 1.0;        // ends at the table top
+    // Stop clear of the pot rims rather than at the table top. The pots are the
+    // things you aim at and click, and running the haze down through them left
+    // them veiled; the lit pool on the bench is the SpotLight's job anyway.
+    const shaftHeight = shaftTopY - 1.24;
     const shaftGeom = new THREE.CylinderGeometry(hoodRimR * 0.95, 0.85, shaftHeight, 24, 1, true);
     const shaftMat = new THREE.ShaderMaterial({
         uniforms: {
@@ -4082,15 +4085,28 @@ function buildGreenhouse() {
                 // A higher exponent keeps the glow as a narrow core down the axis
                 // instead of filling the whole cone silhouette evenly, which is
                 // what made it read as frosted plastic rather than lit air.
-                float facing = pow(abs(dot(n, v)), 2.0);
+                // The exponent trades core density against edge softness. A dense
+                // core is what actually hides the woods; a steep exponent is what
+                // keeps the silhouette from going with it and reading as plastic.
+                float facing = pow(abs(dot(n, v)), 2.6);
                 // v = 1 at the shade rim, 0 at the table top. The top ramp is
                 // short on purpose: a long one bled glow up over the shade and
                 // lost its edge. The geometry's top rim sits just inside the
                 // shade, so the shade occludes the cut itself.
                 float along = (1.0 - smoothstep(0.965, 1.0, vUv.y))
-                            * smoothstep(0.0, 0.34, vUv.y)
+                            * smoothstep(0.0, 0.42, vUv.y)
                             * mix(0.35, 1.0, vUv.y);
-                float near = smoothstep(1.0, 4.5, length(vViewPos));
+                // Short fade, and only as a safety margin. This used to ramp from
+                // 1 m to 4.5 m, which was the right answer while the cone was
+                // additive — back then a nearby cone brightened the whole
+                // background and had to be suppressed. Now that it composites
+                // over instead, that long ramp was the bug: at 2 m it left the
+                // cone barely 19% opaque, so the forest showed straight through
+                // the beam. Table collision keeps the camera at least 1 m from a
+                // lamp axis and the cone is only 0.62 m wide at eye height, so it
+                // is never entered; this just thins it if you press right up
+                // against one, rather than filling the screen with flat glow.
+                float near = smoothstep(0.3, 1.4, length(vViewPos));
                 // Alpha is density, not brightness. NormalBlending turns it into
                 // bg * (1 - a) + colour * a, so a dense core genuinely hides the
                 // woods behind it instead of adding a tint on top of them.
@@ -4758,10 +4774,12 @@ function updateSunAndLighting() {
         sharedAssets._bulbMat.emissiveIntensity = nightness * 1.8;
     }
     // Light shafts: fade in at night, hide entirely during day. This is peak haze
-    // density, which the shader's facing/along/near terms scale well down before
-    // anything reaches the framebuffer.
+    // density and it deliberately exceeds 1 — the shader's facing/along/near terms
+    // scale it well down everywhere except the core, so overdriving it is what
+    // saturates the core to fully opaque while leaving the shoulder to fall off
+    // smoothly. Measured leak through the core at this value: 0.000.
     if (sharedAssets._shaftMat) {
-        sharedAssets._shaftMat.uniforms.uIntensity.value = nightness * 0.62;
+        sharedAssets._shaftMat.uniforms.uIntensity.value = nightness * 1.8;
     }
     shaftMeshes.forEach(mesh => {
         mesh.visible = bulbsOn;
