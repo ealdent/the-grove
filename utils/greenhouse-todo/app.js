@@ -4020,30 +4020,41 @@ function buildGreenhouse() {
     // that covers the full 2×3 m table with penumbra falloff at the edges, and
     // the cone continues past it to spill a soft pool on the aisle floor.
     const SPOT_ANGLE = Math.PI / 3.5;
-    // Visible haze cone. An additive cone with flat opacity shows its own
-    // silhouette as a hard-edged triangle, and because additive blending brightens
-    // whatever is behind it, that triangle acted like a tan filter laid over the
-    // forest 30 m past the glass — the woods looked lit. Three terms in the shader
-    // fix that:
+    // Visible haze cone, as emissive *and absorbing* media.
     //
-    //   facing  — alpha follows |dot(normal, view)|, so it peaks down the middle
-    //             of the cone where a sightline crosses the most air and falls to
-    //             zero at the silhouette. That is what removes the hard edge, and
-    //             it is also roughly how much haze a ray actually travels through.
-    //   along   — softens the ring where the cone leaves the shade and the ring
-    //             where it reaches the table, and dims with distance from the bulb.
-    //   near    — fades the cone out within a couple of metres of the camera, so
-    //             standing in a pool of light doesn't wash the whole screen.
+    // This was additive at first, and additive light can only ever brighten — it
+    // has no way to hide what is behind it. So the wall grime and the tree line
+    // kept their full contrast straight through the beam and read as a ghostly
+    // negative laid over the cone. Real dust does two things at once: it scatters
+    // light toward you, and it obscures what is behind it. That is exactly
+    // `bg * T + L` for transmittance T, and setting L = colour * (1 - T) makes it
+    // ordinary alpha-over compositing — so this uses NormalBlending, with alpha as
+    // the density of air the sightline crossed. At full density the cone replaces
+    // what is behind it instead of tinting it.
     //
-    // Together they cut the peak alpha over the background by roughly an order of
-    // magnitude while making the shaft read as thicker, softer air.
+    // Because every fragment emits the same colour, the compositing is
+    // order-independent (`c·(a₁+a₂−a₁a₂)` either way), which matters: all 20 cones
+    // are one InstancedMesh and therefore cannot be depth-sorted against each other.
+    //
+    // Three terms shape the density:
+    //   facing  — follows |dot(normal, view)|, peaking down the middle of the cone
+    //             where a sightline crosses the most air and falling to zero at the
+    //             silhouette. Removes the hard triangular edge, and is roughly the
+    //             real path length through the volume.
+    //   along   — dims with distance from the bulb, and closes off both ends. The
+    //             ramp at the rim is deliberately short so the shade keeps a crisp
+    //             edge instead of dissolving into its own glow.
+    //   near    — fades out within ~4 m of the camera, so the cone you are standing
+    //             under doesn't fill the screen. Matches how godrays actually read.
     const shaftTopY = hoodBottomY;              // emerges from the shade rim
     const shaftHeight = shaftTopY - 1.0;        // ends at the table top
     const shaftGeom = new THREE.CylinderGeometry(hoodRimR * 0.95, 0.85, shaftHeight, 24, 1, true);
     const shaftMat = new THREE.ShaderMaterial({
         uniforms: {
             uIntensity: { value: 0 },
-            uColor: { value: new THREE.Color(0xffb070) }
+            // Radiance of the lit air, deliberately over 1 so the dense core
+            // tone-maps to a warm near-white glow rather than flat orange paint.
+            uColor: { value: new THREE.Color(0xffd7a8).multiplyScalar(1.7) }
         },
         vertexShader: `
             varying vec2 vUv;
@@ -4072,24 +4083,23 @@ function buildGreenhouse() {
                 // instead of filling the whole cone silhouette evenly, which is
                 // what made it read as frosted plastic rather than lit air.
                 float facing = pow(abs(dot(n, v)), 2.0);
-                // v = 1 at the shade rim, 0 at the table top.
-                float along = (1.0 - smoothstep(0.90, 1.0, vUv.y))
+                // v = 1 at the shade rim, 0 at the table top. The top ramp is
+                // short on purpose: a long one bled glow up over the shade and
+                // lost its edge. The geometry's top rim sits just inside the
+                // shade, so the shade occludes the cut itself.
+                float along = (1.0 - smoothstep(0.965, 1.0, vUv.y))
                             * smoothstep(0.0, 0.34, vUv.y)
                             * mix(0.35, 1.0, vUv.y);
-                // The cone you are standing under is the one that ruins the shot:
-                // it fills the screen, and additive blending then brightens the
-                // wall and the woods 30 m past it. Fading it out to almost
-                // nothing within ~4 m means you see shafts down the length of the
-                // house — where they belong — but never through the one at your
-                // shoulder. It matches how godrays actually read, too.
                 float near = smoothstep(1.0, 4.5, length(vViewPos));
+                // Alpha is density, not brightness. NormalBlending turns it into
+                // bg * (1 - a) + colour * a, so a dense core genuinely hides the
+                // woods behind it instead of adding a tint on top of them.
                 float a = uIntensity * facing * along * near;
-                // AdditiveBlending is (SRC_ALPHA, ONE) — alpha is the multiplier.
                 gl_FragColor = vec4(uColor, a);
             }
         `,
         transparent: true,
-        blending: THREE.AdditiveBlending,
+        blending: THREE.NormalBlending, // absorbs as well as emits — see above
         depthWrite: false,
         side: THREE.DoubleSide
     });
@@ -4747,11 +4757,11 @@ function updateSunAndLighting() {
     if (sharedAssets._bulbMat) {
         sharedAssets._bulbMat.emissiveIntensity = nightness * 1.8;
     }
-    // Light shafts: fade in at night, hide entirely during day. The shader's
-    // facing/along/near terms scale this down a long way before it reaches the
-    // framebuffer, so the number is much larger than the old flat opacity.
+    // Light shafts: fade in at night, hide entirely during day. This is peak haze
+    // density, which the shader's facing/along/near terms scale well down before
+    // anything reaches the framebuffer.
     if (sharedAssets._shaftMat) {
-        sharedAssets._shaftMat.uniforms.uIntensity.value = nightness * 0.45;
+        sharedAssets._shaftMat.uniforms.uIntensity.value = nightness * 0.62;
     }
     shaftMeshes.forEach(mesh => {
         mesh.visible = bulbsOn;
