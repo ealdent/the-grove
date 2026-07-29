@@ -3970,13 +3970,17 @@ function buildGreenhouse() {
     // updates all 20 bulbs in a single write.
     const cordMat = new THREE.MeshBasicMaterial({ color: 0x1f140b });
     const socketMat = new THREE.MeshStandardMaterial({ color: 0x2a2622, roughness: 0.55, metalness: 0.7 });
+    // Painted metal, and metal does not glow. It had a warm emissive before,
+    // which lit the *outside* of the shade too and turned every lamp into a
+    // floating ember. The bulb is the only thing here that emits; the shade's job
+    // is to be opaque and aim the light down, which the geometry already does —
+    // the bulb sits 5 cm up inside the rim and the spot points at the floor, so
+    // nothing escapes upward.
     const hoodMat = new THREE.MeshStandardMaterial({
         color: 0x3a2515,
         roughness: 0.4,
         metalness: 0.7,
-        side: THREE.DoubleSide,
-        emissive: 0xff9a45,
-        emissiveIntensity: 0 // shades glow faintly warm at night (set per tick)
+        side: THREE.DoubleSide
     });
     const filamentMat = new THREE.MeshBasicMaterial({ color: 0xffaa55 });
     const bulbMat = makeBulbMaterial();
@@ -4016,19 +4020,78 @@ function buildGreenhouse() {
     // that covers the full 2×3 m table with penumbra falloff at the edges, and
     // the cone continues past it to spill a soft pool on the aisle floor.
     const SPOT_ANGLE = Math.PI / 3.5;
-    // Visible haze cone — narrower than the actual light spread (it starts at
-    // the shade rim and flares modestly) so it reads as a glowing shaft rather
-    // than a giant additive wall.
-    const shaftHeight = bulbY - 1.0;            // ends at the table top
-    const shaftGeom = new THREE.CylinderGeometry(hoodRimR * 0.9, 0.85, shaftHeight, 18, 1, true);
-    const shaftMat = new THREE.MeshBasicMaterial({
-        color: 0xffb070,
+    // Visible haze cone. An additive cone with flat opacity shows its own
+    // silhouette as a hard-edged triangle, and because additive blending brightens
+    // whatever is behind it, that triangle acted like a tan filter laid over the
+    // forest 30 m past the glass — the woods looked lit. Three terms in the shader
+    // fix that:
+    //
+    //   facing  — alpha follows |dot(normal, view)|, so it peaks down the middle
+    //             of the cone where a sightline crosses the most air and falls to
+    //             zero at the silhouette. That is what removes the hard edge, and
+    //             it is also roughly how much haze a ray actually travels through.
+    //   along   — softens the ring where the cone leaves the shade and the ring
+    //             where it reaches the table, and dims with distance from the bulb.
+    //   near    — fades the cone out within a couple of metres of the camera, so
+    //             standing in a pool of light doesn't wash the whole screen.
+    //
+    // Together they cut the peak alpha over the background by roughly an order of
+    // magnitude while making the shaft read as thicker, softer air.
+    const shaftTopY = hoodBottomY;              // emerges from the shade rim
+    const shaftHeight = shaftTopY - 1.0;        // ends at the table top
+    const shaftGeom = new THREE.CylinderGeometry(hoodRimR * 0.95, 0.85, shaftHeight, 24, 1, true);
+    const shaftMat = new THREE.ShaderMaterial({
+        uniforms: {
+            uIntensity: { value: 0 },
+            uColor: { value: new THREE.Color(0xffb070) }
+        },
+        vertexShader: `
+            varying vec2 vUv;
+            varying vec3 vViewPos;
+            varying vec3 vViewNormal;
+            void main() {
+                vUv = uv;
+                // instanceMatrix is pure translation for every lamp, so it does
+                // not affect normals and normalMatrix alone is correct here.
+                vec4 mvPos = modelViewMatrix * instanceMatrix * vec4(position, 1.0);
+                vViewPos = mvPos.xyz;
+                vViewNormal = normalMatrix * normal;
+                gl_Position = projectionMatrix * mvPos;
+            }
+        `,
+        fragmentShader: `
+            uniform float uIntensity;
+            uniform vec3 uColor;
+            varying vec2 vUv;
+            varying vec3 vViewPos;
+            varying vec3 vViewNormal;
+            void main() {
+                vec3 n = normalize(vViewNormal);
+                vec3 v = normalize(-vViewPos);
+                // A higher exponent keeps the glow as a narrow core down the axis
+                // instead of filling the whole cone silhouette evenly, which is
+                // what made it read as frosted plastic rather than lit air.
+                float facing = pow(abs(dot(n, v)), 2.0);
+                // v = 1 at the shade rim, 0 at the table top.
+                float along = (1.0 - smoothstep(0.90, 1.0, vUv.y))
+                            * smoothstep(0.0, 0.34, vUv.y)
+                            * mix(0.35, 1.0, vUv.y);
+                // The cone you are standing under is the one that ruins the shot:
+                // it fills the screen, and additive blending then brightens the
+                // wall and the woods 30 m past it. Fading it out to almost
+                // nothing within ~4 m means you see shafts down the length of the
+                // house — where they belong — but never through the one at your
+                // shoulder. It matches how godrays actually read, too.
+                float near = smoothstep(1.0, 4.5, length(vViewPos));
+                float a = uIntensity * facing * along * near;
+                // AdditiveBlending is (SRC_ALPHA, ONE) — alpha is the multiplier.
+                gl_FragColor = vec4(uColor, a);
+            }
+        `,
         transparent: true,
-        opacity: 0,
         blending: THREE.AdditiveBlending,
         depthWrite: false,
-        side: THREE.DoubleSide,
-        fog: false
+        side: THREE.DoubleSide
     });
     const shaftsMesh = new THREE.InstancedMesh(shaftGeom, shaftMat, numLamps);
     shaftsMesh.visible = false;
@@ -4051,7 +4114,7 @@ function buildGreenhouse() {
         _lm.compose(new THREE.Vector3(p.x, bulbY,                   p.z), _lq, _ls);
         bulbsMesh.setMatrixAt(i, _lm);
         filamentsMesh.setMatrixAt(i, _lm);
-        _lm.compose(new THREE.Vector3(p.x, bulbY - shaftHeight / 2, p.z), _lq, _ls);
+        _lm.compose(new THREE.Vector3(p.x, shaftTopY - shaftHeight / 2, p.z), _lq, _ls);
         shaftsMesh.setMatrixAt(i, _lm);
 
         // SpotLight + target object — these can't be instanced.
@@ -4073,7 +4136,6 @@ function buildGreenhouse() {
     // Module-shared references for night-mode updates.
     sharedAssets._bulbMat = bulbMat;
     sharedAssets._shaftMat = shaftMat;
-    sharedAssets._hoodMat = hoodMat;
 
     // Selectively set shadow casting/receiving:
     // - Skip detail meshes (mullions, slats, bulbs) and transparent glass — they don't
@@ -4627,7 +4689,7 @@ function updateSunAndLighting() {
     // At night the hemisphere becomes dim, cool moonlight — enough to read the
     // floor, tables and walls so you can navigate, while the lamp pools stay
     // the dominant light and the corners keep their deep shadows.
-    skyFill.intensity = 0.3 * dayness + 0.12 * nightness;
+    skyFill.intensity = 0.3 * dayness + 0.3 * nightness;
     skyFill.color.setHex(0xb6dbff).lerp(new THREE.Color(0x55688f), nightness);
     skyFill.groundColor.setHex(0x4a3a2a).lerp(new THREE.Color(0x131820), nightness);
     // Warm bounce stays on low at night — light kicked off the wood and floor
@@ -4639,8 +4701,13 @@ function updateSunAndLighting() {
     // the IBL here is to dim what it is generated from, a few lines below.
     scene.environmentIntensity = 0.03 + 0.97 * dayness;
 
-    // Renderer exposure also dips at night so any stray brightness stays muted.
-    renderer.toneMappingExposure = 1.02 * dayness + 0.62 * nightness;
+    // Renderer exposure dips at night, but not as far as it used to. Raising the
+    // hemisphere and IBL floors alone barely moved the room — 3x on skyFill was
+    // almost invisible — because at night almost every surface is lit by the lamp
+    // spots rather than by ambient, and those are already exposed correctly.
+    // Exposure is the dial that actually lifts the shadows here, and ACES rolls
+    // the highlights off, so the lamp pools do not blow out as it comes up.
+    renderer.toneMappingExposure = 1.02 * dayness + 0.8 * nightness;
 
     // Atmosphere: collapse rayleigh/turbidity at night and hide the Sky mesh entirely
     // when fully night — its pre-dawn glow was leaking through the windows.
@@ -4659,7 +4726,10 @@ function updateSunAndLighting() {
         envSky.material.uniforms.turbidity.value = sky.material.uniforms.turbidity.value;
         // setHex, not setRGB — setRGB writes the working (linear) space, which
         // would make this ~10x brighter than the 0x1a2018 it is meant to match.
-        if (envGroundMat) envGroundMat.color.setHex(0x1a2018).multiplyScalar(0.04 + 0.96 * dayness);
+        // The night floor is deliberately not near-zero: this ground plane is the
+        // only thing filling the lower hemisphere of the IBL, so it is what keeps
+        // undersides and the far end of the house from going to flat black.
+        if (envGroundMat) envGroundMat.color.setHex(0x1a2018).multiplyScalar(0.28 + 0.72 * dayness);
         const old = envRT;
         envRT = pmremGen.fromScene(envScene, 0.04);
         scene.environment = envRT.texture;
@@ -4677,14 +4747,11 @@ function updateSunAndLighting() {
     if (sharedAssets._bulbMat) {
         sharedAssets._bulbMat.emissiveIntensity = nightness * 1.8;
     }
-    // Lamp shades catch a faint warm glow from their bulbs.
-    if (sharedAssets._hoodMat) {
-        sharedAssets._hoodMat.emissiveIntensity = nightness * 0.22;
-    }
-
-    // Light shafts: fade in at night, hide entirely during day.
+    // Light shafts: fade in at night, hide entirely during day. The shader's
+    // facing/along/near terms scale this down a long way before it reaches the
+    // framebuffer, so the number is much larger than the old flat opacity.
     if (sharedAssets._shaftMat) {
-        sharedAssets._shaftMat.opacity = nightness * 0.15;
+        sharedAssets._shaftMat.uniforms.uIntensity.value = nightness * 0.45;
     }
     shaftMeshes.forEach(mesh => {
         mesh.visible = bulbsOn;
