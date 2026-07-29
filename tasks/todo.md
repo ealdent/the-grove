@@ -333,7 +333,153 @@ Extended simulator stage timing and enhanced text readability in `learn/loop-eng
 3. **Paced Spawning & Smooth Motion**: Increased task spawn interval from 3s to 8s (scaled by speed) to prevent Inbox queue flooding. Replaced frame-rate dependent lerping with smooth `dt`-scaled motion so assistant nodes slide gracefully.
 4. **Verification**: Verified HTML syntax cleanly and verified readable slow-motion agent loop cycles.
 
+---
 
+# Task: Greenhouse To-Do — rendering quality pass
+
+## Task packet
+
+Goal: Raise render quality in `utils/greenhouse-todo/` — transmissive glass, ACES tone mapping,
+PMREM sky IBL, PCF soft shadows, N8AO, subtle bloom, procedural soil/wood, per-instance foliage
+colour, and volumetric light shafts through the roof glass.
+
+Project: The Grove (personal).
+
+Path:
+- `/Users/jason/dev/personal/the-grove/utils/greenhouse-todo/index.html`
+- `/Users/jason/dev/personal/the-grove/utils/greenhouse-todo/app.js`
+- `/Users/jason/dev/personal/the-grove/utils/greenhouse-todo/vendor/postprocessing-pass-shim.js`
+
+## Audit of the requested list (before changes)
+
+| Requested | State found |
+| --- | --- |
+| ACESFilmicToneMapping | already present (`setupRenderer`) |
+| PMREM env map from procedural sky | already present, rebuilt every 30 s — but its night dimming used `scene.environmentIntensity`, which **does not exist in three r160** (added r163), so it was a silent no-op |
+| PCFSoftShadowMap | already present |
+| Subtle UnrealBloomPass | already present (0.10 strength / 0.97 threshold) |
+| Canvas procedural soil + wood textures | already present (`getSoilMaterial`, `getWoodTextureSet`) |
+| MeshPhysicalMaterial + transmission glass | **missing** — glass was unlit `MeshBasicMaterial` |
+| N8AO ambient occlusion | **missing** — not in the project at all |
+| Instanced foliage w/ per-instance colour | **partial** — instanced, but every instance shared one colour |
+| Volumetric shafts through roof glass | **missing** — only additive cones under the night lamps |
+
+## Implementation checklist
+
+- [x] `index.html`: add `three/examples/jsm/` + `n8ao` importmap entries; add a minimal
+      `postprocessing` shim so n8ao's unused `N8AOPostPass` import resolves without pulling a
+      ~350 kB library we never instantiate.
+- [x] Glass: rewrite `makeGlassMaterial` as `MeshPhysicalMaterial` with `transmission`, `ior`,
+      `thickness`, a procedural roughness map and a subtle normal map (old rolled-glass waviness).
+      Keep `depthWrite: false` so screen-space AO reads the geometry *behind* the panes.
+- [x] Post-processing: `N8AOPass` replaces `RenderPass` (it renders the beauty pass itself),
+      tuned to greenhouse scale, `gammaCorrection: false` so `OutputPass` keeps owning tone
+      mapping, `transparencyAware: false` to avoid two extra scene renders per frame.
+- [x] Per-instance foliage colour: canopy foliage, undergrowth ferns/bushes, far-band billboards.
+- [x] Volumetric sun shafts: instanced additive billboard beams anchored on the sunlit roof
+      slope, one group per truss bay, axis-billboarded on the CPU, forward-scatter phase term in
+      the shader, gated on sun elevation and dayness.
+- [x] Fix the no-op `scene.environmentIntensity` by dimming the PMREM *source* scene instead.
+- [x] Verify in a real browser: no console/WebGL errors, screenshots at several sun elevations,
+      frame-time measurement.
+- [x] Complete Review section in `tasks/todo.md`.
+
+## Review
+
+Five of the nine requested items were already in place (see the audit table above). The four
+that were missing are now implemented, plus one latent bug found on the way.
+
+**Glass — `MeshPhysicalMaterial` with transmission.** `makeGlassMaterial` now paints three
+canvases from one pass of procedural grime, so the same condensation runs, algae film and
+mineral spots drive colour, roughness and a normal map together. Wall glass:
+`transmission 0.97`, `roughness 0.05`, `ior 1.52`. Roof glass: `transmission 0.9`,
+`roughness 0.28` — the roughness is what makes it *diffusing* horticultural glass, because
+transmission samples the backdrop from a blurrier mip as roughness rises. `depthWrite: false`
+is kept, which is also what keeps the screen-space AO reading the geometry behind the panes
+instead of painting occlusion onto them.
+
+Two things had to be tuned against the render, not guessed:
+- `envMapIntensity` had to come down to 0.18 / 0.3. The only IBL here is the outdoor sky, and
+  smooth glass at a grazing angle is nearly a mirror, so at full strength the side walls
+  mirrored the sky into a flat milky sheet and the forest behind them disappeared entirely.
+- The night handling was replaced. The old code dimmed an unlit material's colour and opacity;
+  a lit material darkens on its own, so instead the tint now goes neutral and transmission
+  opens toward 1.0 after dark, which is what keeps the fireflies and moonlit trees visible.
+
+**N8AO.** `N8AOPass` replaces `RenderPass` — it renders the beauty pass itself, so following a
+RenderPass would render the scene twice. `gammaCorrection: false` so `OutputPass` keeps owning
+tone mapping; `transparencyAware: false` (and `autoDetectTransparency = false`, or it turns
+itself back on when it walks the scene) to avoid two extra full scene renders and four scene
+traversals every frame. Tuned to `intensity 3.0 / aoRadius 0.9 / distanceFalloff 0.8` by A/B
+against `renderMode: 2` on a close-up bench view — the first values were too local to register
+at all, and the default `intensity: 5` crushes the pots to black.
+
+n8ao statically imports `postprocessing` for `N8AOPostPass`, which this app never uses. Rather
+than ship 350 kB to supply a base class that is never instantiated, the importmap resolves that
+specifier to `vendor/postprocessing-pass-shim.js` (`export class Pass {}`), and
+`jest.config.mjs` gets a matching `moduleNameMapper` so the test suite resolves it the same way.
+
+**Per-instance foliage colour.** `foliageTint` / `applyInstanceTints` now write a tint per
+instance on canopy foliage, trunks, the 700-instance far billboard band, and the undergrowth
+ferns and bushes — 14 instanced meshes, every instance distinct. The distribution is skewed low
+(foliage sits in its own shade) but deliberately centred on 1.0: the first version had a mean
+multiplier of 0.75, which quietly dimmed every instanced plant by 25%. Measured per-mesh means
+after the fix: 0.987–1.024.
+
+**Volumetric sun shafts.** 24 additive billboard quads in one `InstancedMesh`, each spinning
+around its own axis on the CPU to stay square to the camera. Each shaft owns a fixed spot on the
+floor; every frame `distanceToRoof` traces from that spot toward the sun, solves against the two
+roof planes and stands the quad up between the two points — so shafts sweep across the floor
+over the day, stand vertical at noon, and swap slopes at the ridge with no seam, each exactly as
+long as it needs to be. A shaft whose ray would exit through a wall instead of the roof collapses
+to zero scale. Fragment shader has soft shoulders, end fades, a forward-scatter phase term
+(brighter looking into the sun) and a near-camera fade. Gated on sun elevation and dayness.
+
+**Fixed on the way:**
+- `scene.environmentIntensity` (used to dim the IBL at night) only exists from three r163; this
+  page pins r160, so that line was a silent no-op. The IBL is now dimmed at its source instead,
+  by darkening the env scene's ground plane on the same 30 s rebuild.
+- `onWindowResize` forwarded a zero-area viewport straight into `composer.setSize`, which made
+  N8AO allocate 0×0 render targets, raise `GL_INVALID_VALUE` (1281) and stay broken — it has no
+  reason to resize again once a real size comes back. Now guarded.
+- The shaft shader emitted `vec4(uColor * a, a)` under `AdditiveBlending`, which is
+  `(SRC_ALPHA, ONE)` — so alpha was applied twice and the beams rendered at ~3% of intended
+  energy (invisible). Now `vec4(uColor, a)`.
+
+## Proof
+
+- Verified in the in-app Chromium against `http://localhost:8002/utils/greenhouse-todo/`.
+- Console: clean. The only entries are `PointerLockControls: Unable to use Pointer Lock API`,
+  which the embedded browser raises for automated clicks; unrelated to this change.
+- Network: `n8ao@2.0.0` loads from the CDN and the local `postprocessing` shim resolves.
+- Screenshots at 10:15, 10:20, 10:40, 11:00, 11:30, 13:10, 15:40 and 18:20 local, plus night —
+  confirming shaft angle tracking, the ridge handover, and the elevation gate hiding shafts at
+  low sun rather than firing them through the walls.
+- AO proven by A/B against `renderMode: 2` on the same frame, and by pushing
+  `intensity: 15 / radius: 1.5` to confirm it responds.
+- Per-instance tint proven numerically (103/103 distinct tints per mesh, warm instances present,
+  per-mesh mean luminance 0.987–1.024) and visually by flattening all tints to 1.0 and back.
+- Resize verified both ways: 414×840 → AO targets 621×1260, 1440×900 → 2160×1350, matching the
+  drawing buffer exactly, `gl.getError() === 0`.
+- Pick path verified directly: raycast at a pot returns `instanceId: 7`, `isEmptyPotMesh: true`.
+  The glass materials are never in `gatherIntersectables()`, so transmissive panes cannot
+  intercept plant clicks.
+- `npm test`: the greenhouse suite passes. `arcade/mother-os-defense/js/__tests__/gameplay.test.js`
+  fails, but pre-existing and unrelated — it uses CJS `require` in an ESM package (added in 3ad3563).
+- Frame pacing at 1920×1080 on an Apple M5 Pro: p50 8.3 ms, i.e. pinned to the 120 Hz vsync cap.
+
+## Not verified
+
+- The walk-and-plant flow through real pointer lock — the embedded browser refuses the Pointer
+  Lock API. The pick path was verified directly by raycast instead, and no interaction code was
+  touched.
+- True GPU cost. rAF deltas are vsync-locked, so 8.3 ms is a ceiling, not the frame's actual
+  cost; `gl.finish()` does not reliably block under ANGLE/Metal, so the synchronous burst timings
+  it produced were self-contradictory and were discarded. Transmission adds one extra opaque
+  scene render plus a mipmap chain per frame and N8AO adds AO + denoise passes, so weaker or
+  integrated GPUs will pay noticeably more than this machine does. `aoPass.configuration.halfRes`
+  is the first dial to reach for if that becomes a problem.
+- Real mobile hardware. Only an emulated 414×840 viewport was checked.
 
 
 

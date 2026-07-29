@@ -2,17 +2,20 @@ import * as THREE from 'three';
 import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
 import { Sky } from 'three/addons/objects/Sky.js';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
-import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import Stats from 'three/addons/libs/stats.module.js';
+// N8AO — screen-space ambient occlusion. It renders the beauty pass itself, so it
+// stands in for RenderPass rather than following one.
+import { N8AOPass } from 'n8ao';
 
 THREE.Cache.enabled = true;
 
 let camera, scene, renderer, controls;
 let raycaster, mouse;
 let composer; // post-processing composer
+let aoPass;   // N8AO — renders the beauty pass and multiplies in ambient occlusion
 let sharedLeafMat; // shared leaf material across plants
 const textureLoader = new THREE.TextureLoader();
 const sharedAssets = {}; // shared textures / materials
@@ -20,6 +23,7 @@ const sharedAssets = {}; // shared textures / materials
 // Sun + lighting (updated each tick)
 let sky, sunLight, skyFill, warmFill;
 let pmremGen, envScene, envSky, envRT; // sky-driven IBL, refreshed with the sun
+let envGroundMat; // lower hemisphere of the IBL scene — dimmed after dark
 const bulbLights = []; // SpotLights at each lamp's bulb
 const bulbMeshes = []; // bulb glass meshes for emissive control
 const SUN_LOCATION = { lat: 40.7128, lng: -74.0060 }; // NYC — Eastern Time
@@ -32,6 +36,8 @@ const emptyPotOccupied = [];
 // Forest + atmosphere
 const treeMaterials = [];    // tree/foliage materials with onBeforeCompile-injected wind
 const shaftMeshes = [];      // additive light-shaft cones below each lamp (night only)
+let sunShafts = null;        // volumetric sun beams through the roof glass (day only)
+const sunDir = new THREE.Vector3(0, 1, 0); // unit vector from origin toward the sun
 let currentDayness = 1;      // 1 = full day, 0 = full night (set by updateSunAndLighting)
 const eyePairs = [];         // glowing-red eye pair state machines
 
@@ -42,6 +48,11 @@ let dustSystem = null;       // floating dust motes / pollen
 let fireflySystem = null;    // night fireflies out in the forest
 const mistSprites = [];      // drifting ground-fog sprites outside
 const GREENHOUSE_BOUNDS = { xMin: -8, xMax: 8, zMin: -45, zMax: 5 };
+const _WHITE = new THREE.Color(0xffffff); // scratch constant for colour lerps
+// Roof plane geometry, filled in by buildGreenhouse() from the same locals it
+// uses to place the panes. buildSunShafts() needs it to work out where a sunbeam
+// enters the glass, and reading it from here keeps the two from drifting apart.
+const roofShape = { wallTopY: 0, ridgeY: 0, halfWidth: 0, zMin: 0, zMax: 0 };
 
 // FPS / stats overlay (toggled with F)
 let stats = null;
@@ -182,6 +193,7 @@ function setupLighting() {
     envGround.rotation.x = -Math.PI / 2;
     envGround.position.y = -1;
     envScene.add(envGround);
+    envGroundMat = envGround.material;
 
     // 5. Sky shader for outdoor backdrop
     sky = new Sky();
@@ -373,11 +385,44 @@ function setupDiagnostics() {
 }
 
 function setupPostProcessing() {
-    // 10. Post-processing — bloom for soft highlights through the glass
+    // 10. Post-processing — ambient occlusion, then bloom for soft highlights
+    // through the glass. EffectComposer.addPass() calls setSize() itself, so the
+    // passes pick up the pixel ratio set here.
     composer = new EffectComposer(renderer);
     composer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
     composer.setSize(window.innerWidth, window.innerHeight);
-    composer.addPass(new RenderPass(scene, camera));
+
+    // N8AO renders the scene into its own beauty buffer and multiplies the
+    // result by the occlusion it derives from that buffer's depth, so it takes
+    // the place of RenderPass instead of following one.
+    aoPass = new N8AOPass(scene, camera, window.innerWidth, window.innerHeight);
+    // Radius is in world units, and this is an interior: what we want is contact
+    // shadow where a pot meets a bench, under table tops, in the corners of the
+    // wooden bases — not a metre-scale wash.
+    aoPass.configuration.aoRadius = 0.9;
+    aoPass.configuration.distanceFalloff = 0.8;
+    aoPass.configuration.intensity = 3.0;
+    aoPass.configuration.aoSamples = 16;
+    aoPass.configuration.denoiseSamples = 8;
+    aoPass.configuration.denoiseRadius = 12;
+    // Occlusion tinted toward damp green-black rather than neutral grey — it
+    // reads as shade under leaves instead of dirt on the lens.
+    aoPass.configuration.color = new THREE.Color(0x0b1712);
+    // OutputPass at the end of the chain owns tone mapping and the sRGB
+    // conversion; N8AO must hand its result on in linear space or the bloom
+    // threshold and the tone curve both get applied to already-encoded colour.
+    aoPass.configuration.gammaCorrection = false;
+    // Transparency-aware mode costs two extra full scene renders and four scene
+    // traversals per frame, and it exists to keep AO off transparent surfaces.
+    // The glass is already handled — depthWrite: false keeps it out of the depth
+    // buffer the AO samples — and the only other transparent things here are
+    // drips, mist, dust and fireflies, which are too small and too dim to show
+    // the difference. Turning autodetect off is what keeps it from switching
+    // itself back on when it walks the scene.
+    aoPass.autoDetectTransparency = false;
+    aoPass.configuration.transparencyAware = false;
+    composer.addPass(aoPass);
+
     const bloom = new UnrealBloomPass(
         new THREE.Vector2(window.innerWidth, window.innerHeight),
         0.10, // strength — gentle bloom so it doesn't fake ambient brightness
@@ -420,6 +465,9 @@ function init() {
     buildVinesAndIvy();
     buildClutter();
     buildGreenhouseParticles();
+
+    // 8d. Sun shafts through the roof glass (needs roofShape from buildGreenhouse)
+    buildSunShafts();
 
     // 9. Initial sun + lighting (uses real Eastern Time)
     updateSunAndLighting();
@@ -647,61 +695,149 @@ function makeWoodMaterial({ repeat = [1, 1], roughness = 0.85, color = 0xffffff 
     });
 }
 
-// MeshBasicMaterial — unlit, so glass tint is constant from every angle. No envMap
-// reflections, no specular glare, no view-dependent color. A streaky grime map
-// (condensation runs, algae film, mineral spots) makes the panes read as decades-old
-// greenhouse glass rather than clean acrylic. Because the material is unlit, the
-// map renders at full brightness even after dark, so updateSunAndLighting() dims
-// the color and opacity with nightness — otherwise the panes become a pale wall
-// that hides the forest at night.
-function makeGlassMaterial({ base, streaks, algae, spots, opacity }) {
+// Real refracting glass: MeshPhysicalMaterial with transmission, so what you see
+// through a pane is the scene behind it sampled from the renderer's transmission
+// buffer, blurred by the pane's own roughness and bent by its IOR. That gives the
+// three things an unlit tinted plane can never fake — grazing-angle Fresnel
+// brightening, a specular sun glint, and slightly soft, displaced silhouettes
+// behind the dirty spots.
+//
+// Three canvases are painted from one pass of procedural grime (condensation
+// runs, algae film, mineral spots) so the same marks drive all three channels:
+//   • color     — the tint, which also tints the transmitted light
+//   • roughness — smeared film scatters, clean glass stays mirror-smooth
+//   • height    — a gentle normal map, i.e. the waviness of old rolled glass
+//
+// depthWrite stays off. The panes are drawn after the opaque scene, and leaving
+// depth alone means the screen-space AO pass reads the geometry *behind* the
+// glass rather than painting occlusion onto the panes themselves.
+function makeGlassMaterial({ base, streaks, algae, spots, tint, roughness, transmission, thickness, envMapIntensity }) {
     const SIZE = 256;
     const canvas = document.createElement('canvas');
     canvas.width = canvas.height = SIZE;
     const ctx = canvas.getContext('2d');
+    // Roughness channel: black = polished glass, white = fully diffuse film.
+    const roughCanvas = document.createElement('canvas');
+    roughCanvas.width = roughCanvas.height = SIZE;
+    const rctx = roughCanvas.getContext('2d');
+    // Height channel for the normal map: mid grey is flat.
+    const heightCanvas = document.createElement('canvas');
+    heightCanvas.width = heightCanvas.height = SIZE;
+    const hctx = heightCanvas.getContext('2d');
+
     ctx.fillStyle = base;
     ctx.fillRect(0, 0, SIZE, SIZE);
+    rctx.fillStyle = '#000000';
+    rctx.fillRect(0, 0, SIZE, SIZE);
+    hctx.fillStyle = '#808080';
+    hctx.fillRect(0, 0, SIZE, SIZE);
+
+    // Broad, very low-frequency waves — the ripple of hand-drawn glass. Drawn
+    // into the height channel only, so it distorts what you see through the pane
+    // without dirtying it.
+    for (let i = 0; i < 10; i++) {
+        const wy = Math.random() * SIZE;
+        const grad = hctx.createLinearGradient(0, wy - 26, 0, wy + 26);
+        grad.addColorStop(0, 'rgba(128,128,128,0)');
+        grad.addColorStop(0.5, `rgba(${Math.random() < 0.5 ? 168 : 88},128,128,0.5)`);
+        grad.addColorStop(1, 'rgba(128,128,128,0)');
+        hctx.fillStyle = grad;
+        hctx.fillRect(0, wy - 26, SIZE, 52);
+    }
+
     // Vertical condensation streaks running down the pane
     for (let i = 0; i < streaks; i++) {
         const x = Math.random() * SIZE;
         const top = Math.random() * SIZE * 0.5;
         const len = 30 + Math.random() * (SIZE - top);
         const light = Math.random() < 0.5;
-        ctx.strokeStyle = light
+        const width = 0.6 + Math.random() * 2.2;
+        const cx = x + (Math.random() - 0.5) * 5;
+        const ex = x + (Math.random() - 0.5) * 7;
+        const stroke = (context, style, w) => {
+            context.strokeStyle = style;
+            context.lineWidth = w;
+            context.beginPath();
+            context.moveTo(x, top);
+            context.quadraticCurveTo(cx, top + len * 0.5, ex, top + len);
+            context.stroke();
+        };
+        stroke(ctx, light
             ? `rgba(230,245,235,${0.10 + Math.random() * 0.20})`
-            : `rgba(90,120,95,${0.08 + Math.random() * 0.18})`;
-        ctx.lineWidth = 0.6 + Math.random() * 2.2;
-        ctx.beginPath();
-        ctx.moveTo(x, top);
-        ctx.quadraticCurveTo(x + (Math.random() - 0.5) * 5, top + len * 0.5, x + (Math.random() - 0.5) * 7, top + len);
-        ctx.stroke();
+            : `rgba(90,120,95,${0.08 + Math.random() * 0.18})`, width);
+        // A wet run is smoother than the film around it; a dried one is rougher.
+        stroke(rctx, light
+            ? `rgba(0,0,0,${0.25 + Math.random() * 0.3})`
+            : `rgba(255,255,255,${0.20 + Math.random() * 0.35})`, width);
+        stroke(hctx, `rgba(${light ? 150 : 105},128,128,0.35)`, width * 1.4);
     }
-    // Algae film creeping up from the bottom edge
+
+    // Algae film creeping up from the bottom edge — opaque and matte down there
     const algaeGrad = ctx.createLinearGradient(0, SIZE, 0, SIZE * 0.55);
     algaeGrad.addColorStop(0, `rgba(70,110,70,${algae})`);
     algaeGrad.addColorStop(1, 'rgba(70,110,70,0)');
     ctx.fillStyle = algaeGrad;
     ctx.fillRect(0, 0, SIZE, SIZE);
-    // Mineral spots / old splashes
+    const algaeRough = rctx.createLinearGradient(0, SIZE, 0, SIZE * 0.55);
+    algaeRough.addColorStop(0, `rgba(255,255,255,${Math.min(1, algae * 1.6)})`);
+    algaeRough.addColorStop(1, 'rgba(255,255,255,0)');
+    rctx.fillStyle = algaeRough;
+    rctx.fillRect(0, 0, SIZE, SIZE);
+
+    // Mineral spots / old splashes — hard little rough specks that catch light
     for (let i = 0; i < spots; i++) {
+        const sx = Math.random() * SIZE;
+        const sy = Math.random() * SIZE;
+        const sr = 0.5 + Math.random() * 2.2;
         ctx.fillStyle = `rgba(225,235,220,${0.06 + Math.random() * 0.16})`;
         ctx.beginPath();
-        ctx.arc(Math.random() * SIZE, Math.random() * SIZE, 0.5 + Math.random() * 2.2, 0, Math.PI * 2);
+        ctx.arc(sx, sy, sr, 0, Math.PI * 2);
         ctx.fill();
+        rctx.fillStyle = `rgba(255,255,255,${0.3 + Math.random() * 0.5})`;
+        rctx.beginPath();
+        rctx.arc(sx, sy, sr, 0, Math.PI * 2);
+        rctx.fill();
+        hctx.fillStyle = `rgba(${150 + Math.random() * 40 | 0},128,128,0.5)`;
+        hctx.beginPath();
+        hctx.arc(sx, sy, sr, 0, Math.PI * 2);
+        hctx.fill();
     }
+
     const grimeTex = new THREE.CanvasTexture(canvas);
     configureRepeat(grimeTex, [3, 1], true);
+    const roughTex = new THREE.CanvasTexture(roughCanvas);
+    configureRepeat(roughTex, [3, 1], false);
+    const normalTex = makeNormalMapFromCanvas(heightCanvas, 2.2);
+    configureRepeat(normalTex, [3, 1], false);
 
-    const mat = new THREE.MeshBasicMaterial({
-        color: 0xffffff,
+    const mat = new THREE.MeshPhysicalMaterial({
+        color: tint,
         map: grimeTex,
+        roughness,
+        roughnessMap: roughTex,
+        normalMap: normalTex,
+        normalScale: new THREE.Vector2(0.35, 0.35),
+        metalness: 0,
+        transmission,
+        thickness,
+        ior: 1.52,                 // soda-lime glass
+        specularIntensity: 1,
+        // The only IBL in this scene is the outdoor sky. Smooth glass viewed at a
+        // grazing angle is nearly a mirror, so at full strength the side walls
+        // mirrored the sky into a flat milky sheet and the forest behind them
+        // vanished. The reflection is kept, just turned down to the level the
+        // missing interior half of the environment would have justified.
+        envMapIntensity,
+        // transparent+opacity here is only about how a pane composites over the
+        // pane behind it; transmission is what makes it see-through.
         transparent: true,
-        opacity,
-        side: THREE.DoubleSide,
+        opacity: 1,
+        side: THREE.FrontSide,     // every pane is a closed box or extrusion
         depthWrite: false,
         fog: true
     });
-    mat.userData.dayOpacity = opacity;
+    mat.userData.dayTint = new THREE.Color(tint);
+    mat.userData.dayTransmission = transmission;
     return mat;
 }
 
@@ -710,18 +846,24 @@ function makeGlassMaterial({ base, streaks, algae, spots, opacity }) {
 function getWallGlassMaterial() {
     if (sharedAssets.wallGlass) return sharedAssets.wallGlass;
     sharedAssets.wallGlass = makeGlassMaterial({
-        base: '#d4e3d8', streaks: 40, algae: 0.3, spots: 110, opacity: 0.15
+        base: '#d4e3d8', streaks: 40, algae: 0.3, spots: 110,
+        tint: 0xd8e8dc, roughness: 0.05, transmission: 0.97, thickness: 0.16,
+        envMapIntensity: 0.18
     });
     return sharedAssets.wallGlass;
 }
 
 // Roof glazing — more translucent and greener, like old diffusing
 // horticultural glass: it scatters the overhead sun rather than passing a
-// clear view, and collects a heavier film of algae and mineral haze.
+// clear view, and collects a heavier film of algae and mineral haze. The
+// higher roughness is what does the scattering: transmission samples the
+// backdrop from a blurrier mip the rougher the surface gets.
 function getRoofGlassMaterial() {
     if (sharedAssets.roofGlass) return sharedAssets.roofGlass;
     sharedAssets.roofGlass = makeGlassMaterial({
-        base: '#aed2b6', streaks: 90, algae: 0.55, spots: 280, opacity: 0.32
+        base: '#aed2b6', streaks: 90, algae: 0.55, spots: 280,
+        tint: 0xb6d6bd, roughness: 0.28, transmission: 0.9, thickness: 0.3,
+        envMapIntensity: 0.3
     });
     return sharedAssets.roofGlass;
 }
@@ -1571,6 +1713,37 @@ function buildTreeArchetype({ dead = false } = {}) {
     return { barkGeom, foliageGeom };
 }
 
+// Per-instance colour for instanced foliage. instanceColor multiplies the
+// material's own colour, so these are multipliers centred near 1.0 rather than
+// absolute colours: one shared canopy texture then reads as hundreds of
+// individually-aged trees. `warmth` biases the spread toward autumn (red/yellow
+// gain, green loss); `spread` is how far the value can wander.
+const _tintScratch = new THREE.Color();
+function foliageTint(spread = 0.22, warmth = 0.35) {
+    // Value is skewed low — most foliage sits in its own shade — but deliberately
+    // centred on 1.0. A distribution with a mean below 1 would quietly dim every
+    // instanced plant in the scene, which is a lighting change disguised as
+    // variation. pow(r, 1.6) has mean 1/2.6, hence the 0.385 offset.
+    const v = 1 + spread * (Math.pow(Math.random(), 1.6) - 0.385);
+    // A minority of instances turn — the rest just vary in green. The red gain
+    // and the green/blue loss are balanced to be near luminance-neutral, so
+    // turning changes hue without changing how bright the forest reads.
+    const turn = Math.random() < warmth ? Math.pow(Math.random(), 1.6) : 0;
+    return _tintScratch.setRGB(
+        v * (1 + turn * 0.55),
+        v * (1 - turn * 0.10),
+        v * (1 - turn * 0.45) * (0.9 + Math.random() * 0.2)
+    );
+}
+
+// Write a tint per instance and flag the buffer. Safe to call on any InstancedMesh.
+function applyInstanceTints(mesh, count, spread, warmth) {
+    for (let i = 0; i < count; i++) {
+        mesh.setColorAt(i, foliageTint(spread, warmth));
+    }
+    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+}
+
 function buildHauntedForest() {
     // --- Real 3D trees in the near/mid bands ---
     const livingBarkTex = makeBarkTexture(96, 74, 56);
@@ -1653,12 +1826,15 @@ function buildHauntedForest() {
             if (foliage) foliage.setMatrixAt(i, _m);
         }
         bark.instanceMatrix.needsUpdate = true;
+        // Trunks vary too, just far less and never toward autumn.
+        applyInstanceTints(bark, list.length, 0.16, 0);
         bark.castShadow = true;
         bark.receiveShadow = false;
         bark.frustumCulled = false;
         scene.add(bark);
         if (foliage) {
             foliage.instanceMatrix.needsUpdate = true;
+            applyInstanceTints(foliage, list.length, 0.3, 0.4);
             foliage.castShadow = false;
             foliage.receiveShadow = false;
             foliage.frustumCulled = false;
@@ -1707,6 +1883,10 @@ function buildHauntedForest() {
             mesh.setMatrixAt(i, _m);
         }
         mesh.instanceMatrix.needsUpdate = true;
+        // The far band is 700 copies of two billboards; without per-instance
+        // tint it reads as wallpaper. Bare snags get a narrow grey spread,
+        // leafy ones a wide one with plenty of turned colour.
+        applyInstanceTints(mesh, subset.length, type === 0 ? 0.34 : 0.42, type === 0 ? 0.1 : 0.45);
         mesh.castShadow = false;
         mesh.receiveShadow = false;
         mesh.frustumCulled = false; // bounding sphere doesn't account for scattered instances
@@ -1935,9 +2115,9 @@ function buildUndergrowth(foliageTex) {
     const _q = new THREE.Quaternion();
     const _yAxis = new THREE.Vector3(0, 1, 0);
     [
-        { mat: fernMat, count: 450 },
-        { mat: bushMat, count: 520 }
-    ].forEach(({ mat, count }) => {
+        { mat: fernMat, count: 450, spread: 0.34, warmth: 0.3 },
+        { mat: bushMat, count: 520, spread: 0.38, warmth: 0.42 }
+    ].forEach(({ mat, count, spread, warmth }) => {
         const mesh = new THREE.InstancedMesh(crossGeom, mat, count);
         for (let i = 0; i < count; i++) {
             const side = i % 4;
@@ -1955,6 +2135,7 @@ function buildUndergrowth(foliageTex) {
             mesh.setMatrixAt(i, _m);
         }
         mesh.instanceMatrix.needsUpdate = true;
+        applyInstanceTints(mesh, count, spread, warmth);
         mesh.castShadow = false;
         mesh.receiveShadow = false;
         mesh.frustumCulled = false;
@@ -3481,6 +3662,13 @@ function buildGreenhouse() {
     const slopeLength = Math.hypot(slopeRun, slopeRise); // ~9.434
     const slopeAngle = Math.atan2(slopeRise, slopeRun);  // ~32°
 
+    // Publish the roof planes for buildSunShafts()
+    roofShape.wallTopY = wallTopY;
+    roofShape.ridgeY = ridgeY;
+    roofShape.halfWidth = halfWidth;
+    roofShape.zMin = -45;
+    roofShape.zMax = -45 + totalLength;
+
     // Wood Bases
     const leftBase = new THREE.Mesh(new THREE.BoxGeometry(0.2, baseHeight, totalLength), woodMat);
     leftBase.position.set(-8, baseHeight / 2, zCenter);
@@ -4189,6 +4377,186 @@ function createPlant(todoData, isLoad = false) {
     return true;
 }
 
+// --- Volumetric sun shafts through the roof glass ---
+//
+// Real volumetrics would mean ray-marching the shadow map. This does the cheap
+// trick that sells the same read: each shaft is a flat quad that spins around
+// its own axis to keep facing the camera, so it never shows an edge and reads as
+// a solid column of lit dust.
+//
+// The geometry is derived backwards from where you want the light to land. Each
+// shaft owns a fixed spot on the floor; every frame we trace from that spot
+// toward the sun, find where the ray crosses one of the two roof planes, and
+// stand the quad up between the two points. That means the shafts track the real
+// sun continuously — sweeping across the floor over the day, standing straight up
+// at noon, swinging over to the other slope in the afternoon — with no seam when
+// the sun crosses the ridge, and each one is exactly as long as it needs to be.
+const SUNSHAFT_COUNT = 24;
+
+function buildSunShafts() {
+    // Unit quad hanging from its top edge: local -Y is down-beam, v = 1 is the
+    // roof end, v = 0 the floor end. The instance matrix supplies width, length
+    // and orientation.
+    const geom = new THREE.PlaneGeometry(1, 1);
+    geom.translate(0, -0.5, 0);
+
+    const seeds = new Float32Array(SUNSHAFT_COUNT);
+    const beams = [];
+    for (let i = 0; i < SUNSHAFT_COUNT; i++) {
+        seeds[i] = Math.random();
+        // Spread the landing spots down the length of the house and across it,
+        // biased away from dead centre so shafts fall across the benches and
+        // aisle rather than lining up in one stripe.
+        const row = i % 3;                    // left aisle / centre / right aisle
+        const along = (Math.floor(i / 3) + 0.5) / Math.ceil(SUNSHAFT_COUNT / 3);
+        beams.push({
+            x: (row - 1) * 4.3 + (Math.random() - 0.5) * 2.6,
+            z: THREE.MathUtils.lerp(roofShape.zMin + 2, roofShape.zMax - 2, along)
+                + (Math.random() - 0.5) * 3,
+            width: 0.85 + Math.random() * 1.15
+        });
+    }
+    geom.setAttribute('aSeed', new THREE.InstancedBufferAttribute(seeds, 1));
+
+    const mat = new THREE.ShaderMaterial({
+        uniforms: {
+            uSunDir: { value: new THREE.Vector3(0, 1, 0) },
+            uIntensity: { value: 0 },
+            uColor: { value: new THREE.Color(0xffeec2) }
+        },
+        vertexShader: `
+            attribute float aSeed;
+            varying vec2 vUv;
+            varying vec3 vWorldPos;
+            varying float vSeed;
+            void main() {
+                vUv = uv;
+                vSeed = aSeed;
+                vec4 wp = modelMatrix * instanceMatrix * vec4(position, 1.0);
+                vWorldPos = wp.xyz;
+                gl_Position = projectionMatrix * viewMatrix * wp;
+            }
+        `,
+        fragmentShader: `
+            uniform vec3 uSunDir;
+            uniform float uIntensity;
+            uniform vec3 uColor;
+            varying vec2 vUv;
+            varying vec3 vWorldPos;
+            varying float vSeed;
+            void main() {
+                // Soft shoulders across the beam so there is no hard silhouette.
+                float across = 1.0 - abs(vUv.x * 2.0 - 1.0);
+                float edge = smoothstep(0.0, 0.42, across);
+                edge *= edge;
+                // Fade in below the glass and out again before the floor, so the
+                // quad never shows a crisp line where it meets geometry.
+                float along = smoothstep(0.0, 0.30, vUv.y) * (1.0 - smoothstep(0.80, 1.0, vUv.y));
+                // Forward scattering: dust lights up when you look toward the sun.
+                vec3 viewDir = normalize(vWorldPos - cameraPosition);
+                float phase = mix(0.28, 1.0, pow(max(dot(viewDir, uSunDir), 0.0), 2.5));
+                // Standing inside a shaft should not white out the screen.
+                float near = smoothstep(0.5, 3.2, length(vWorldPos - cameraPosition));
+                float a = uIntensity * edge * along * phase * near * (0.65 + vSeed * 0.7);
+                // AdditiveBlending is (SRC_ALPHA, ONE), so the alpha channel is
+                // the multiplier — pre-multiplying rgb here would apply it twice.
+                gl_FragColor = vec4(uColor, a);
+            }
+        `,
+        transparent: true,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        side: THREE.DoubleSide
+    });
+
+    sunShafts = new THREE.InstancedMesh(geom, mat, SUNSHAFT_COUNT);
+    sunShafts.frustumCulled = false; // instances are repositioned every frame
+    sunShafts.visible = false;
+    sunShafts.userData.beams = beams;
+    // Last of the transparent objects, so a beam adds light on top of the drips,
+    // mist and dust it passes through rather than being occluded by their sort
+    // order. (The glass is already ahead of all of them — three draws the
+    // transmissive pass before the transparent one.)
+    sunShafts.renderOrder = 5;
+    scene.add(sunShafts);
+}
+
+const _shaftEntry = new THREE.Vector3();
+const _shaftAxis = new THREE.Vector3();
+const _shaftRight = new THREE.Vector3();
+const _shaftUp = new THREE.Vector3();
+const _shaftFwd = new THREE.Vector3();
+const _shaftToCam = new THREE.Vector3();
+const _shaftMatrix = new THREE.Matrix4();
+const _ROOF_SIGNS = [-1, 1];
+
+// Trace from a floor point toward the sun and return the distance to the roof
+// glass, or -1 if that ray leaves through a wall or gable instead.
+function distanceToRoof(x, z) {
+    const { wallTopY, ridgeY, halfWidth, zMin, zMax } = roofShape;
+    const slope = (ridgeY - wallTopY) / halfWidth;
+    // The two roof planes, as  ±slope * x + y = ridgeY.
+    for (const sign of _ROOF_SIGNS) {
+        const denom = sign * slope * sunDir.x + sunDir.y;
+        if (Math.abs(denom) < 1e-4) continue;
+        const s = (ridgeY - (sign * slope * x + 0.05)) / denom;
+        if (s <= 0.5) continue;
+        const hx = x + sunDir.x * s;
+        const hy = 0.05 + sunDir.y * s;
+        const hz = z + sunDir.z * s;
+        // Only count it if the hit is actually on that pane.
+        if (sign * hx < -1e-3 || sign * hx > halfWidth) continue;
+        if (hy < wallTopY - 1e-3 || hy > ridgeY + 1e-3) continue;
+        if (hz < zMin || hz > zMax) continue;
+        return s;
+    }
+    return -1;
+}
+
+function updateSunShafts() {
+    if (!sunShafts) return;
+    // Only while the sun is high enough to actually come through the roof rather
+    // than the side walls, and only in daylight.
+    const elevGate = THREE.MathUtils.smoothstep(sunDir.y, 0.18, 0.5);
+    const strength = currentDayness * elevGate;
+    if (strength <= 0.001) {
+        sunShafts.visible = false;
+        return;
+    }
+    sunShafts.visible = true;
+    sunShafts.material.uniforms.uIntensity.value = 0.30 * strength;
+    sunShafts.material.uniforms.uSunDir.value.copy(sunDir);
+
+    const beams = sunShafts.userData.beams;
+    _shaftAxis.copy(sunDir).multiplyScalar(-1); // direction the light travels
+    for (let i = 0; i < beams.length; i++) {
+        const b = beams[i];
+        const len = distanceToRoof(b.x, b.z);
+        if (len < 0) {
+            // No roof entry for this spot right now — collapse the instance.
+            _shaftMatrix.makeScale(0, 0, 0);
+            sunShafts.setMatrixAt(i, _shaftMatrix);
+            continue;
+        }
+        _shaftEntry.set(b.x + sunDir.x * len, 0.05 + sunDir.y * len, b.z + sunDir.z * len);
+        // Billboard around the beam's own axis: spin the quad until its face is
+        // as square to the camera as the axis allows.
+        _shaftToCam.subVectors(camera.position, _shaftEntry);
+        _shaftRight.crossVectors(_shaftAxis, _shaftToCam);
+        if (_shaftRight.lengthSq() < 1e-8) {
+            // Looking straight down the beam — any perpendicular will do.
+            _shaftRight.set(1, 0, 0).cross(_shaftAxis);
+        }
+        _shaftRight.normalize().multiplyScalar(b.width);
+        _shaftUp.copy(sunDir).multiplyScalar(len);           // local +Y = up-beam
+        _shaftFwd.crossVectors(_shaftRight, _shaftUp).normalize();
+        _shaftMatrix.makeBasis(_shaftRight, _shaftUp, _shaftFwd);
+        _shaftMatrix.setPosition(_shaftEntry);
+        sunShafts.setMatrixAt(i, _shaftMatrix);
+    }
+    sunShafts.instanceMatrix.needsUpdate = true;
+}
+
 // --- Sun position (SunCalc algorithm) and day/night lighting ---
 
 function computeSunPosition(date, lat, lng) {
@@ -4246,6 +4614,7 @@ function updateSunAndLighting() {
 
     sky.material.uniforms.sunPosition.value.copy(dir);
     sunLight.position.copy(dir).multiplyScalar(40);
+    sunDir.copy(dir); // read every frame by updateSunShafts
 
     // dayness: 1 fully day, 0 fully night, smooth between altitude -6° → +5°
     const dayness = THREE.MathUtils.clamp((altDeg + 6) / 11, 0, 1);
@@ -4265,8 +4634,9 @@ function updateSunAndLighting() {
     // by the lamp row.
     warmFill.intensity = 0.6 * dayness + 0.5 * nightness;
 
-    // Global IBL multiplier — drops to a faint floor at night so direct lamp
-    // cones dominate without crushing everything else to black.
+    // Global IBL multiplier. scene.environmentIntensity only landed in three
+    // r163, so on the r160 build this page pins it does nothing — the way to dim
+    // the IBL here is to dim what it is generated from, a few lines below.
     scene.environmentIntensity = 0.03 + 0.97 * dayness;
 
     // Renderer exposure also dips at night so any stray brightness stays muted.
@@ -4279,11 +4649,17 @@ function updateSunAndLighting() {
     sky.visible = dayness > 0.05;
 
     // Rebuild the IBL from the sky in its current state (runs at the same 30 s
-    // cadence as this function — a few ms of GPU work).
+    // cadence as this function — a few ms of GPU work). Collapsing rayleigh and
+    // turbidity above already darkens the sky dome; the ground plane is a flat
+    // colour, so it has to be dimmed by hand or it keeps up-lighting every
+    // surface with daytime mossy green long after dark.
     if (pmremGen && envSky) {
         envSky.material.uniforms.sunPosition.value.copy(dir);
         envSky.material.uniforms.rayleigh.value = sky.material.uniforms.rayleigh.value;
         envSky.material.uniforms.turbidity.value = sky.material.uniforms.turbidity.value;
+        // setHex, not setRGB — setRGB writes the working (linear) space, which
+        // would make this ~10x brighter than the 0x1a2018 it is meant to match.
+        if (envGroundMat) envGroundMat.color.setHex(0x1a2018).multiplyScalar(0.04 + 0.96 * dayness);
         const old = envRT;
         envRT = pmremGen.fromScene(envScene, 0.04);
         scene.environment = envRT.texture;
@@ -4314,14 +4690,15 @@ function updateSunAndLighting() {
         mesh.visible = bulbsOn;
     });
 
-    // Glass is unlit (MeshBasicMaterial), so its grime map renders at constant
-    // brightness — left alone it becomes a glowing pale wall after dark. Dim
-    // the tint and thin the opacity with nightness so the woods (fireflies,
-    // eyes, moonlit trees) stay visible through the panes.
+    // The glass is lit now, so it darkens on its own after sunset — no tint hack
+    // needed. What it still needs is help seeing *out*: the transmission buffer
+    // is dim at night, and the grime tint on top of that hides the woods
+    // (fireflies, eyes, moonlit trees). Open the panes up toward clear glass and
+    // let the tint go neutral as it gets dark.
     for (const mat of [sharedAssets.wallGlass, sharedAssets.roofGlass]) {
         if (!mat) continue;
-        mat.color.setScalar(0.22 + 0.78 * dayness);
-        mat.opacity = mat.userData.dayOpacity * (0.35 + 0.65 * dayness);
+        mat.color.copy(mat.userData.dayTint).lerp(_WHITE, nightness * 0.75);
+        mat.transmission = THREE.MathUtils.lerp(1, mat.userData.dayTransmission, dayness);
     }
 
     // Humid haze: thicker and colder at night, soft green-grey by day.
@@ -4459,10 +4836,20 @@ addTodoForm.addEventListener('submit', function(e) {
 });
 
 function onWindowResize() {
-    camera.aspect = window.innerWidth / window.innerHeight;
+    const w = window.innerWidth;
+    const h = window.innerHeight;
+    // A resize to zero area has to be ignored, not forwarded. Passing 0 through
+    // composer.setSize() makes N8AO allocate 0×0 render targets, which raises
+    // GL_INVALID_VALUE and leaves the AO pass permanently broken — it has no
+    // reason to resize itself again once a later event brings the real size
+    // back. Keeping the last good size is both harmless and self-correcting.
+    if (w === 0 || h === 0) return;
+    camera.aspect = w / h;
     camera.updateProjectionMatrix();
-    renderer.setSize(window.innerWidth, window.innerHeight);
-    if (composer) composer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setSize(w, h);
+    // composer.setSize forwards the pixel-ratio-scaled size to every pass,
+    // including N8AO's beauty/depth/AO targets.
+    if (composer) composer.setSize(w, h);
 }
 
 function animate() {
@@ -4541,6 +4928,8 @@ function animate() {
     updateTreeWind(time);
     updateHauntedEyes(time);
     updateParticles(time, delta);
+    // Shafts re-aim at the camera every frame, so this can't ride the 30 s tick.
+    updateSunShafts();
 
     prevTime = time;
 
