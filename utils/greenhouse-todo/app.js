@@ -22,12 +22,37 @@ const sharedAssets = {}; // shared textures / materials
 
 // Sun + lighting (updated each tick)
 let sky, sunLight, skyFill, warmFill;
+let moonLight;   // pale blue directional at the real lunar position
 let pmremGen, envScene, envSky, envRT; // sky-driven IBL, refreshed with the sun
 let envGroundMat; // lower hemisphere of the IBL scene — dimmed after dark
-const bulbLights = []; // SpotLights at each lamp's bulb
+const bulbLights = []; // PointLights standing in for the lamp bulbs
 const bulbMeshes = []; // bulb glass meshes for emissive control
 const SUN_LOCATION = { lat: 40.7128, lng: -74.0060 }; // NYC — Eastern Time
 let lastSunUpdate = 0;
+
+// Hooded pendant lamps. `lampSlots` is the fixed list of fixture positions;
+// `bulbLights` is a pool of point lights that gets *reassigned* to those slots
+// every so often by distance to the camera, so the few shadow-casting lights are
+// always the ones you are standing under. See assignLampLights().
+const lampSlots = [];        // { pos: Vector3, flicker: bool }
+let lampShadowCount = 0;     // how many of bulbLights[] cast shadows (3–4)
+// Filament state. The lamps do not snap on: `on` flips with hysteresis around
+// +2°/+3.5° solar elevation and `level` chases it over a few seconds, which is
+// what a cold tungsten filament actually does.
+const lampState = { on: false, level: 0, flicker: 1 };
+const LAMP_ON_ELEV = 2.0;    // degrees — switch on below this
+const LAMP_OFF_ELEV = 3.5;   // degrees — switch off above this (hysteresis gap)
+const LAMP_WARMUP = 3.4;     // seconds from cold to full
+const LAMP_COOLDOWN = 1.6;   // seconds to fade back out
+
+// Debug clock. updateSunAndLighting reads this instead of the wall clock when it
+// is set, which is the only practical way to screenshot noon, dusk and midnight
+// in one sitting. Driven from window.greenhouseDebug — see setupDebugHooks().
+let sunClockOverride = null;
+const sunClockNow = () => (sunClockOverride ? new Date(sunClockOverride) : new Date());
+
+// Last computed sky state, for the diagnostics overlay.
+const skyState = { altDeg: 0, twilight: 0, moonAltDeg: 0, moonPhase: 0 };
 
 // Instanced empty pots — one InstancedMesh per pot piece, hidden per-slot when planted
 let emptyPotInstances = null;
@@ -212,7 +237,11 @@ function setupLighting() {
     // 6. Lighting — sun (directional) + soft fill from sky
     sunLight = new THREE.DirectionalLight(0xfff0d6, 0); // intensity set by updateSunAndLighting
     sunLight.castShadow = true;
-    sunLight.shadow.mapSize.set(1024, 1024);
+    // 2048 on a pointer device: the thing the sun shadow has to draw is the
+    // window frame — mullions 4 cm wide thrown 8 m across the floor — and at
+    // 1024 over a 50 m frustum a mullion is under a texel wide and dissolves.
+    const sunShadowRes = isTouchDevice ? 1024 : 2048;
+    sunLight.shadow.mapSize.set(sunShadowRes, sunShadowRes);
     sunLight.shadow.camera.left = -25;
     sunLight.shadow.camera.right = 25;
     sunLight.shadow.camera.top = 15;
@@ -221,8 +250,43 @@ function setupLighting() {
     sunLight.shadow.camera.far = 120;
     sunLight.shadow.bias = -0.0005;
     sunLight.shadow.normalBias = 0.04;
-    sunLight.shadow.radius = 4;
+    // Hard-edged. The sun subtends half a degree; a bar of window frame two
+    // metres up casts an edge only ~2 cm soft, which at this scale is a crisp
+    // line. The old radius of 4 was blurring the frame pattern into a smear.
+    sunLight.shadow.radius = 1;
+    // Every shadow in this scene is re-rendered on demand rather than every
+    // frame. Nothing that casts one ever moves: the house, the benches and the
+    // pots are static, and the only animated things — moths, dust, the swaying
+    // vine, the drips — all have castShadow off. So a shadow map only has to be
+    // rebuilt when the sun or moon moves (the 30 s tick), when a lamp light is
+    // reassigned to a different fixture, or when a plant is added or removed.
+    // Left on autoUpdate this scene renders 25 shadow passes per frame for
+    // results identical to the last one.
+    sunLight.shadow.autoUpdate = false;
     scene.add(sunLight);
+
+    // Moonlight. A real directional light at the real lunar position, scaled by
+    // the illuminated fraction — a waxing crescent barely registers, a full moon
+    // throws a legible pattern of frame shadows across the floor. Deliberately
+    // its own light rather than a re-coloured sun: the two are up together for
+    // hours, they come from different directions, and this one wants soft edges
+    // (the moon is as wide as the sun but a thousand times dimmer, so what you
+    // actually see of a moon shadow is its penumbra).
+    moonLight = new THREE.DirectionalLight(0xbcd0f2, 0);
+    moonLight.castShadow = true;
+    moonLight.shadow.mapSize.set(1024, 1024);
+    moonLight.shadow.camera.left = -25;
+    moonLight.shadow.camera.right = 25;
+    moonLight.shadow.camera.top = 15;
+    moonLight.shadow.camera.bottom = -55;
+    moonLight.shadow.camera.near = 1;
+    moonLight.shadow.camera.far = 120;
+    moonLight.shadow.bias = -0.0008;
+    moonLight.shadow.normalBias = 0.06;
+    moonLight.shadow.radius = 7;
+    moonLight.shadow.autoUpdate = false;
+    moonLight.visible = false;
+    scene.add(moonLight);
 
     skyFill = new THREE.HemisphereLight(0xb6dbff, 0x4a3a2a, 0);
     scene.add(skyFill);
@@ -391,6 +455,80 @@ function setupDiagnostics() {
     document.body.appendChild(diagPanel);
 }
 
+// Everything in this scene is driven by the real position of the sun, which makes
+// it awkward to look at: you cannot see dusk at eleven in the morning. This
+// exposes a settable clock plus a couple of read-backs, which is also how the
+// day/twilight/night screenshots in the commit history were taken.
+function setupDebugHooks() {
+    window.greenhouseDebug = {
+        // Pass an ISO string / Date / ms to freeze the astro clock there, or null
+        // to hand it back to the wall clock. Snaps the lamps to their steady
+        // state so a screenshot isn't caught mid warm-up.
+        setSunTime(when) {
+            sunClockOverride = when === null || when === undefined ? null : new Date(when).getTime();
+            updateSunAndLighting();
+            lampState.level = lampState.on ? 1 : 0;
+            updateLamps(performance.now(), 0);
+            return this.state();
+        },
+        // Warm the lamps from cold, to watch the filament ramp.
+        restartLamps() {
+            lampState.level = 0;
+            return this.state();
+        },
+        // Drive the filament ramp by hand, in `dt`-second steps. The ramp is the
+        // one thing here that is a function of elapsed real time, and headless
+        // Chrome under a virtual-time budget hands requestAnimationFrame a delta
+        // of zero — so without this the warm-up cannot be observed at all outside
+        // an interactive browser. Returns one row per step.
+        advanceLamps(dt = 0.25, steps = 20) {
+            const rows = [];
+            let clock = performance.now();
+            for (let i = 0; i < steps; i++) {
+                clock += dt * 1000;
+                updateLamps(clock, dt);
+                rows.push({
+                    t: +(i * dt).toFixed(2),
+                    level: +lampState.level.toFixed(3),
+                    intensity: +bulbLights[0].intensity.toFixed(3),
+                    color: '#' + bulbLights[0].color.getHexString(),
+                    flicker: +lampState.flicker.toFixed(3),
+                    flickerLamp: lampState.flickerLight,
+                    flickerIntensity: lampState.flickerLight >= 0
+                        ? +bulbLights[lampState.flickerLight].intensity.toFixed(3) : null
+                });
+            }
+            return rows;
+        },
+        // Live handles. Worth exposing: "which mesh is that pale blob on the
+        // floor" is otherwise unanswerable without rebuilding the page, and
+        // toggling a candidate's visibility answers it in one render.
+        get scene() { return scene; },
+        get camera() { return camera; },
+        get renderer() { return renderer; },
+        get lights() { return { sunLight, moonLight, skyFill, warmFill, bulbLights }; },
+        state() {
+            return {
+                sunAltDeg: +skyState.altDeg.toFixed(2),
+                dayness: +currentDayness.toFixed(3),
+                twilight: +skyState.twilight.toFixed(3),
+                moonAltDeg: +skyState.moonAltDeg.toFixed(2),
+                moonPhase: +skyState.moonPhase.toFixed(3),
+                moonIntensity: moonLight ? +moonLight.intensity.toFixed(3) : null,
+                moonShadow: moonLight ? moonLight.castShadow && moonLight.visible : null,
+                sunIntensity: sunLight ? +sunLight.intensity.toFixed(3) : null,
+                lampsOn: lampState.on,
+                lampLevel: +lampState.level.toFixed(3),
+                lampShadowCasters: lampShadowCount,
+                exposure: +renderer.toneMappingExposure.toFixed(3),
+                fogDensity: scene.fog ? +scene.fog.density.toFixed(5) : null,
+                drawCalls: renderer.info.render.calls,
+                programs: renderer.info.programs ? renderer.info.programs.length : null
+            };
+        }
+    };
+}
+
 function setupPostProcessing() {
     // 10. Post-processing — ambient occlusion, then bloom for soft highlights
     // through the glass. EffectComposer.addPass() calls setSize() itself, so the
@@ -466,12 +604,16 @@ function init() {
     buildHauntedForest();
     buildForestAtmosphere();
     buildHauntedEyes();
+    buildFarForestLight();
 
     // 8c. Wet, messy, overgrown interior
     buildPuddles();
     buildVinesAndIvy();
+    buildSwayingVine();
     buildClutter();
     buildGreenhouseParticles();
+    buildGroundFog();
+    buildPaneCondensation();
 
     // 8d. Sun shafts through the roof glass (needs roofShape from buildGreenhouse)
     buildSunShafts();
@@ -479,8 +621,16 @@ function init() {
     // 8e. Stars + moon, so the roof isn't a black void after dark
     buildNightSky();
 
+    // 8f. Debug hooks — a settable astro clock, so any hour of the day can be
+    // inspected without waiting for it.
+    setupDebugHooks();
+
     // 9. Initial sun + lighting (uses real Eastern Time)
     updateSunAndLighting();
+    // Lamps start already at their steady state rather than warming up on load —
+    // walking into a dark greenhouse and waiting four seconds is not the effect.
+    lampState.level = lampState.on ? 1 : 0;
+    updateLamps(performance.now(), 0);
 
     // 10. Load Saved Data
     loadTodosFromLocal();
@@ -590,16 +740,31 @@ function getWoodTextureSet() {
     const warp = makeFbmField(SIZE, 4, 4);
     const fine = makeFbmField(SIZE, 5, 22);
 
-    // Per-plank character: tone variation + how far it has greyed with age
+    // Per-plank character: tone variation + how far it has greyed with age. The
+    // spreads here are narrower than they were — planks in one bench came off
+    // the same stack, and a wide per-plank tone spread read as a deliberate
+    // stripe pattern rather than as timber.
     const planks = [];
     for (let p = 0; p < 4; p++) {
         planks.push({
-            tone: 0.82 + Math.random() * 0.3,
-            grey: 0.15 + Math.random() * 0.4,
+            tone: 0.9 + Math.random() * 0.16,
+            grey: 0.2 + Math.random() * 0.25,
             phase: Math.random() * Math.PI * 2,
             freq: 0.26 + Math.random() * 0.18
         });
     }
+    // Where hands, pots and sleeves have rubbed the boards. A worn patch is
+    // *lighter* (the grey weathered layer is gone) and *smoother* (the raised
+    // grain is polished flat), which is what makes it catch a lamp. Thresholded
+    // high on purpose: wear is a few patches along the front edge of a bench, and
+    // at 50 % coverage the whole top goes smooth enough to mirror the sky.
+    // baseFreq must be an INTEGER. makeFbmField indexes its lattice with
+    // `gy % freq`, so a fractional frequency produces fractional indices, every
+    // lookup is undefined, and the whole field comes back NaN — which then lands
+    // in a Uint8ClampedArray as 0. The failure is silent and spectacular: a black
+    // albedo and a roughness map of zero, i.e. mirror-finish benches reflecting
+    // the sky as flat blue sheets.
+    const wearField = makeFbmField(SIZE, 3, 3);
 
     const colorCanvas = document.createElement('canvas');
     const bumpCanvas = document.createElement('canvas');
@@ -618,22 +783,34 @@ function getWoodTextureSet() {
             const plank = planks[Math.floor(x / PLANK) % 4];
             const gx = x % PLANK;
             const isGap = gx < 2 || gx > PLANK - 2;
-            // Grain: streaks running along the plank, warped by low-freq noise
+            // Grain: streaks running along the plank, warped by low-freq noise.
+            // Half the contrast it had. Old oak seen across a room is a tone with
+            // a texture in it, not a set of stripes; at the previous amplitude the
+            // benches read as painted-on woodgrain wallpaper.
             const s = 0.5 + 0.5 * Math.sin((x + warp[i] * 46) * plank.freq + plank.phase);
-            const lum = (0.58 + 0.22 * fine[i] + 0.2 * s) * plank.tone * (isGap ? 0.4 : 1);
-            // Base oak browns desaturated toward weathered grey per plank
+            // Worn patches: only the upper half of each board wears, since that
+            // is the face people and pots actually touch.
+            const wear = Math.max(0, wearField[i] - 0.64) * 2.6;
+            const lum = (0.62 + 0.11 * fine[i] + 0.1 * s + 0.1 * wear)
+                      * plank.tone * (isGap ? 0.4 : 1);
+            // Base oak browns desaturated toward weathered grey per plank, and
+            // back *toward* the raw brown wherever it has been rubbed.
             const r0 = 128, g0 = 101, b0 = 74;
             const grey = (r0 + g0 + b0) / 3;
-            const k = plank.grey;
+            const k = plank.grey * (1 - wear * 0.8);
             const px = i * 4;
             cimg.data[px + 0] = (r0 * (1 - k) + grey * k) * lum;
             cimg.data[px + 1] = (g0 * (1 - k) + grey * k) * lum;
             cimg.data[px + 2] = (b0 * (1 - k) + grey * k) * lum;
             cimg.data[px + 3] = 255;
-            const b = isGap ? 40 : 110 + fine[i] * 80 + s * 50;
+            const b = isGap ? 40 : 110 + fine[i] * 60 + s * 34 - wear * 45;
             bimg.data[px + 0] = bimg.data[px + 1] = bimg.data[px + 2] = b;
             bimg.data[px + 3] = 255;
-            const rough = 205 + fine[i] * 35 - s * 18;
+            // Rough weathered timber, polished down where it is worn. The dip is
+            // small — 0.83 to 0.65 after the material's own multiplier — because a
+            // bench top is oiled timber, and anything that reaches 0.45 stops
+            // being wood and starts mirroring the sky in a flat blue sheet.
+            const rough = 212 + fine[i] * 30 - s * 14 - wear * 34;
             rimg.data[px + 0] = rimg.data[px + 1] = rimg.data[px + 2] = rough;
             rimg.data[px + 3] = 255;
         }
@@ -675,6 +852,28 @@ function getWoodTextureSet() {
         );
         cctx.fill();
     }
+    // Scuffs and gouges — decades of trowels, pot rims and dragged crates. Short
+    // strokes across the grain, because that is the direction a tool travels.
+    for (let s = 0; s < 34; s++) {
+        const sx = Math.random() * SIZE, sy = Math.random() * SIZE;
+        const len = 6 + Math.random() * 26;
+        const dark = Math.random() < 0.6;
+        cctx.strokeStyle = dark
+            ? `rgba(48, 34, 21, ${0.18 + Math.random() * 0.24})`
+            : `rgba(196, 168, 132, ${0.12 + Math.random() * 0.18})`;
+        cctx.lineWidth = 0.6 + Math.random() * 1.6;
+        cctx.beginPath();
+        cctx.moveTo(sx, sy);
+        cctx.lineTo(sx + (Math.random() - 0.5) * 6, sy + len);
+        cctx.stroke();
+        // Same mark in the bump channel, so it reads as cut into the board.
+        bctx.strokeStyle = `rgba(${dark ? 52 : 190}, 128, 128, 0.5)`;
+        bctx.lineWidth = 0.8 + Math.random() * 1.6;
+        bctx.beginPath();
+        bctx.moveTo(sx, sy);
+        bctx.lineTo(sx + (Math.random() - 0.5) * 6, sy + len);
+        bctx.stroke();
+    }
 
     sharedAssets.woodSet = {
         color: new THREE.CanvasTexture(colorCanvas),
@@ -701,7 +900,17 @@ function makeWoodMaterial({ repeat = [1, 1], roughness = 0.85, color = 0xffffff 
         roughnessMap: roughMap,
         roughness,
         metalness: 0,
-        envMapIntensity: 0.5
+        // The only IBL here is the sky, so a bench with a strong environment term
+        // is a bench that reflects a blue ceiling. Turned down to what the missing
+        // interior half of the environment would have justified.
+        envMapIntensity: 0.28,
+        // Dielectric specular tinted warm. Physically the specular lobe of bare
+        // wood is neutral, but these boards are decades of soaked-in linseed and
+        // handling — the reflection off them under a tungsten lamp is amber, not
+        // white, and it is what makes the worn patches read as polished rather
+        // than bleached. Intensity stays at the default; the tint is the point.
+        specularColor: new THREE.Color(0xffddb0),
+        specularIntensity: 1
     });
 }
 
@@ -832,6 +1041,12 @@ function makeGlassMaterial({ base, streaks, algae, spots, tint, roughness, trans
         thickness,
         ior: 1.52,                 // soda-lime glass
         specularIntensity: 1,
+        // Non-zero from the outset on purpose. three compiles USE_CLEARCOAT only
+        // when this is > 0, so starting at 0 and raising it after dark would
+        // recompile every glass program mid-dusk; starting low and animating the
+        // value keeps one program for the whole day. See updateSunAndLighting.
+        clearcoat: 0.08,
+        clearcoatRoughness: 0.22,
         // The only IBL in this scene is the outdoor sky. Smooth glass viewed at a
         // grazing angle is nearly a mirror, so at full strength the side walls
         // mirrored the sky into a flat milky sheet and the forest behind them
@@ -848,6 +1063,13 @@ function makeGlassMaterial({ base, streaks, algae, spots, tint, roughness, trans
     });
     mat.userData.dayTint = new THREE.Color(tint);
     mat.userData.dayTransmission = transmission;
+    // Slightly clearer after dark so the tree line survives a dim transmission
+    // buffer, and smoother so the lamp row reflects as distinct bulbs rather than
+    // a diffuse smear. Roof glass is the rougher of the two by design, so both
+    // are derived from its own daytime value rather than pinned to a constant.
+    mat.userData.nightTransmission = Math.min(1, transmission + 0.05);
+    mat.userData.dayRoughness = roughness;
+    mat.userData.nightRoughness = roughness * 0.45;
     return mat;
 }
 
@@ -1006,19 +1228,29 @@ function getDirtFloorMaterial() {
         img.data[i * 4 + 3] = 255;
     }
     cctx.putImageData(img, 0, 0);
-    // Pebbles + bits of debris pressed into the mud
-    for (let i = 0; i < 260; i++) {
-        const shade = 60 + Math.random() * 70;
-        cctx.fillStyle = `rgb(${shade|0},${(shade-12)|0},${(shade-22)|0})`;
+    // Grit pressed into the mud. Small and numerous, and only a little lighter
+    // than the soil around it.
+    //
+    // This tile covers 16.7 m of floor, so a radius here of 4 px is a 13 cm
+    // stone — and at the old lightness (up to 130 against a soil base of 22–86)
+    // a field of those read from eye height as pale discs scattered across the
+    // aisle, like dropped coins. Grit is what makes earth look like earth, but
+    // only at grit scale: many small, low-contrast, and a handful of larger
+    // stones for punctuation.
+    for (let i = 0; i < 1100; i++) {
+        const big = Math.random() < 0.06;
+        const shade = 44 + Math.random() * (big ? 34 : 26);
+        cctx.fillStyle = `rgba(${shade|0},${(shade-9)|0},${(shade-17)|0},${0.5 + Math.random() * 0.4})`;
         cctx.beginPath();
-        cctx.arc(Math.random() * SIZE, Math.random() * SIZE, 1.5 + Math.random() * 4, 0, Math.PI * 2);
+        cctx.arc(Math.random() * SIZE, Math.random() * SIZE,
+                 big ? 1.8 + Math.random() * 1.6 : 0.5 + Math.random() * 1.2, 0, Math.PI * 2);
         cctx.fill();
     }
     // Scattered dead-leaf fragments trodden into the floor
     for (let i = 0; i < 120; i++) {
-        const r = 80 + Math.random() * 50;
-        const g = 55 + Math.random() * 35;
-        cctx.fillStyle = `rgba(${r|0},${g|0},20,${0.4 + Math.random() * 0.4})`;
+        const r = 66 + Math.random() * 34;
+        const g = 46 + Math.random() * 24;
+        cctx.fillStyle = `rgba(${r|0},${g|0},20,${0.3 + Math.random() * 0.35})`;
         cctx.save();
         cctx.translate(Math.random() * SIZE, Math.random() * SIZE);
         cctx.rotate(Math.random() * Math.PI);
@@ -1030,14 +1262,19 @@ function getDirtFloorMaterial() {
     const colorTex = new THREE.CanvasTexture(colorCanvas);
     configureRepeat(colorTex, [12, 12], true);
 
-    // Roughness — wet patches are glossy (low roughness) so they catch the light
+    // Roughness — damp patches take a sheen, but only a sheen. This used to drop
+    // to 0.18, and since the moisture field is fBm the result was a field of
+    // smooth pale ellipses across the whole floor, each one mirroring the sky:
+    // from eye height they read as scattered sheets of paper, not damp earth. The
+    // actual standing water in this room is the puddle geometry, which is a
+    // separate mesh and still a proper mirror.
     const roughCanvas = document.createElement('canvas');
     roughCanvas.width = roughCanvas.height = SIZE;
     const rctx = roughCanvas.getContext('2d');
     const rimg = rctx.createImageData(SIZE, SIZE);
     for (let i = 0; i < SIZE * SIZE; i++) {
         const w = Math.pow(wet[i], 1.6);
-        const rough = 235 - w * 190 + grain[i] * 20;
+        const rough = 240 - w * 70 + grain[i] * 15;
         rimg.data[i * 4 + 0] = rimg.data[i * 4 + 1] = rimg.data[i * 4 + 2] = rough;
         rimg.data[i * 4 + 3] = 255;
     }
@@ -1066,7 +1303,7 @@ function getDirtFloorMaterial() {
         roughnessMap: roughTex,
         roughness: 1.0,
         metalness: 0,
-        envMapIntensity: 0.9
+        envMapIntensity: 0.35
     });
     return sharedAssets.floor;
 }
@@ -1149,14 +1386,18 @@ function getPotMaterial() {
     colorTex.wrapS = colorTex.wrapT = THREE.RepeatWrapping;
     colorTex.anisotropy = 8;
 
-    // Roughness: damp clay is slightly glossy, salt bloom is bone dry
+    // Roughness. Unglazed terracotta is *slightly* rough — enough of a sheen to
+    // pick out the throwing rings and the rim under a lamp, nowhere near enough
+    // to mirror anything. The band here is deliberately narrow (0.63–0.92): the
+    // old one reached 0.45 where the clay was damp, and a fired-clay pot with a
+    // 0.45 patch on it looks glazed, not wet.
     const roughCanvas = document.createElement('canvas');
     roughCanvas.width = roughCanvas.height = SIZE;
     const rctx = roughCanvas.getContext('2d');
     const rimg = rctx.createImageData(SIZE, SIZE);
     for (let i = 0; i < SIZE * SIZE; i++) {
         const wet = Math.max(0, 0.4 - blotch[i]) * 2.2;
-        const rough = 225 - wet * 110 + grain[i] * 25;
+        const rough = 226 - wet * 40 - grain[i] * 20;
         const px = i * 4;
         rimg.data[px + 0] = rimg.data[px + 1] = rimg.data[px + 2] = rough;
         rimg.data[px + 3] = 255;
@@ -1188,7 +1429,7 @@ function getPotMaterial() {
         roughnessMap: roughTex,
         roughness: 1.0,
         metalness: 0,
-        envMapIntensity: 0.4
+        envMapIntensity: 0.3
     });
     return sharedAssets.pot;
 }
@@ -1203,12 +1444,15 @@ function getSoilMaterial() {
     const ctx = colorCanvas.getContext('2d');
     const img = ctx.createImageData(SIZE, SIZE);
     for (let i = 0; i < SIZE * SIZE; i++) {
-        // Fresh potting mix: nearly black where damp, browner where drying out
+        // Potting mix: dark brown, browner where it is drying out. It used to
+        // bottom out near black, which combined with the gloss below to read as
+        // wet tarmac; a matte medium-dark brown is what peat actually looks like
+        // and it gives the bump detail something to sit on.
         const m = moist[i];
         const px = i * 4;
-        img.data[px + 0] = 18 + (1 - m) * 26;
-        img.data[px + 1] = 11 + (1 - m) * 16;
-        img.data[px + 2] = 6 + (1 - m) * 8;
+        img.data[px + 0] = 40 + (1 - m) * 34;
+        img.data[px + 1] = 27 + (1 - m) * 22;
+        img.data[px + 2] = 17 + (1 - m) * 13;
         img.data[px + 3] = 255;
     }
     ctx.putImageData(img, 0, 0);
@@ -1236,20 +1480,14 @@ function getSoilMaterial() {
     const colorTex = new THREE.CanvasTexture(colorCanvas);
     colorTex.colorSpace = THREE.SRGBColorSpace;
 
-    // Damp patches catch the light — low roughness where the mix is wet
-    const roughCanvas = document.createElement('canvas');
-    roughCanvas.width = roughCanvas.height = SIZE;
-    const rctx = roughCanvas.getContext('2d');
-    const rimg = rctx.createImageData(SIZE, SIZE);
-    for (let i = 0; i < SIZE * SIZE; i++) {
-        const rough = 235 - Math.pow(moist[i], 1.4) * 150;
-        const px = i * 4;
-        rimg.data[px + 0] = rimg.data[px + 1] = rimg.data[px + 2] = rough;
-        rimg.data[px + 3] = 255;
-    }
-    rctx.putImageData(rimg, 0, 0);
-    const roughTex = new THREE.CanvasTexture(roughCanvas);
-
+    // No roughness map at all. There used to be one driven by the same moisture
+    // field as the colour, dipping to 0.33 where the mix was damp — and because
+    // the field is fBm, what that produced was a set of smooth glossy swirls
+    // sitting on the surface of every pot, catching the sky and reading as
+    // spilled oil. Soil is the one material in this scene that is uniformly,
+    // completely matte: it is loose organic crumb, there is no flat facet
+    // anywhere on it to form a highlight. All the variation it needs is in the
+    // colour and the normal map.
     const heightCanvas = document.createElement('canvas');
     heightCanvas.width = heightCanvas.height = SIZE;
     const hctx = heightCanvas.getContext('2d');
@@ -1271,11 +1509,13 @@ function getSoilMaterial() {
     sharedAssets.soil = new THREE.MeshPhysicalMaterial({
         map: colorTex,
         normalMap: normalTex,
-        normalScale: new THREE.Vector2(1.3, 1.3),
-        roughnessMap: roughTex,
+        normalScale: new THREE.Vector2(1.45, 1.45),
         roughness: 1,
         metalness: 0,
-        envMapIntensity: 0.5
+        // Barely any environment reflection either. A fully rough surface still
+        // picks up the IBL as a broad sheen, and on the pots that sheen was
+        // most of what made the soil look wet.
+        envMapIntensity: 0.18
     });
     return sharedAssets.soil;
 }
@@ -2263,6 +2503,76 @@ function buildForestAtmosphere() {
     scene.add(fireflySystem);
 }
 
+// --- The far light ---
+//
+// One cold blue-white light, a long way back in the trees, at about the height of
+// a window. It is never explained and never approached: the tree line hides it
+// for most of a lap of the greenhouse and it is only ever a few pixels across.
+//
+// Opaque on purpose, like the stars and the moon. The renderer builds its
+// transmission buffer from the opaque draw list only, so a transparent sprite —
+// which is what the fireflies and the eyes are — does not exist as far as the
+// glass is concerned, and the whole point of this one is that you catch it
+// through a pane. transparent:false plus a discard in the shader gets it into
+// that buffer; on a near-black night wood, "replace" and "add" look the same.
+let farLight = null;
+function buildFarForestLight() {
+    const geom = new THREE.PlaneGeometry(1.7, 1.7);
+    const mat = new THREE.ShaderMaterial({
+        uniforms: { uNight: { value: 0 }, uPulse: { value: 1 } },
+        vertexShader: `
+            varying vec2 vUv;
+            void main() {
+                vUv = uv;
+                gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+            }
+        `,
+        fragmentShader: `
+            uniform float uNight;
+            uniform float uPulse;
+            varying vec2 vUv;
+            void main() {
+                vec2 p = (vUv - 0.5) * 2.0;
+                float r = length(p);
+                if (r > 1.0) discard;
+                // Tight core with a wide halo — a small bright source seen through
+                // a lot of damp air.
+                float core = pow(1.0 - smoothstep(0.0, 0.30, r), 2.0);
+                float halo = pow(1.0 - smoothstep(0.1, 1.0, r), 2.4) * 0.28;
+                float b = (core + halo) * uNight * uPulse;
+                if (b < 0.004) discard;
+                // Mercury-vapour blue-white, and brighter than 1 so the core
+                // tone-maps to a hard point rather than a pale smudge.
+                gl_FragColor = vec4(vec3(0.62, 0.80, 1.0) * b * 2.6, 1.0);
+            }
+        `,
+        transparent: false,
+        depthWrite: false,
+        fog: false
+    });
+    farLight = new THREE.Mesh(geom, mat);
+    // Deep in the woods off the north-west corner, well beyond the far tree band
+    // (which reaches ~46 m) so there is a lot of forest between you and it.
+    farLight.position.set(-41, 2.6, -63);
+    farLight.renderOrder = 1;
+    farLight.visible = false;
+    scene.add(farLight);
+    sharedAssets._farLightMat = mat;
+}
+
+function updateFarForestLight(now) {
+    if (!farLight) return;
+    const night = farLight.material.uniforms.uNight.value;
+    farLight.visible = night > 0.02;
+    if (!farLight.visible) return;
+    farLight.quaternion.copy(camera.quaternion);
+    // Slow unsteadiness, and every so often it drops out for a second or two.
+    const t = now / 1000;
+    const breathe = 0.72 + 0.28 * Math.sin(t * 0.29) * Math.sin(t * 0.11 + 2.0);
+    const gap = THREE.MathUtils.smoothstep(Math.sin(t * 0.041), -0.999, -0.986);
+    farLight.material.uniforms.uPulse.value = breathe * gap;
+}
+
 // --- Glowing red eyes at the forest edge (night only) ---
 
 function createEyeTexture() {
@@ -2491,7 +2801,10 @@ function buildGreenhouseParticles() {
     dripSystem = { points: dripPoints, positions, speeds, roofY };
 
     // --- Ripple pool: rings that expand where drips land ---
-    const rippleGeom = new THREE.RingGeometry(0.75, 0.85, 24);
+    // Broad and faint. A narrow bright ring on a dark floor does not read as
+    // water — it reads as a drawn circle, which is exactly what the old
+    // 0.75→0.85 ring at 0.45 opacity looked like once the night ambient came down.
+    const rippleGeom = new THREE.RingGeometry(0.5, 0.9, 24);
     rippleGeom.rotateX(-Math.PI / 2);
     for (let i = 0; i < 10; i++) {
         const mat = new THREE.MeshBasicMaterial({
@@ -2556,6 +2869,271 @@ function buildGreenhouseParticles() {
     scene.add(dustSystem);
 }
 
+// --- Night garnish: ground fog, condensation on the panes, one restless vine ---
+
+// Cold air settling onto a warm wet floor after dark. Three horizontal planes
+// rather than a volume: at eye height you are looking along them, so each one
+// reads as a sheet of haze lying in the aisle, and three stacked at different
+// drift rates give it depth without a single ray-march.
+//
+// NormalBlending with alpha as density, not additive: fog's whole job here is to
+// *hide* the floor as it recedes. Additive would leave the floor's contrast
+// intact and paint a pale film over the top of it.
+let groundFog = null;
+const groundFogMats = [];
+function buildGroundFog() {
+    // Each layer gets its own material rather than sharing one. They sample the
+    // same noise function, so with a shared uniform block all three would show the
+    // *same* patch of fog stacked on itself; uOffset decorrelates them, which is
+    // what makes three planes read as a volume.
+    const LAYERS = [
+        { y: 0.10, scale: 0.95, drift: 0.013, alpha: 1.0, offset: [0, 0] },
+        { y: 0.24, scale: 1.05, drift: -0.009, alpha: 0.7, offset: [11.3, 4.1] },
+        { y: 0.42, scale: 1.15, drift: 0.006, alpha: 0.42, offset: [3.7, 19.6] }
+    ];
+    groundFog = new THREE.Group();
+    groundFogMats.length = 0;
+    const geom = new THREE.PlaneGeometry(17, 54);
+    geom.rotateX(-Math.PI / 2);
+    const baseMat = new THREE.ShaderMaterial({
+        uniforms: {
+            uTime: { value: 0 },
+            uNight: { value: 0 },
+            uAlpha: { value: 1 },
+            uOffset: { value: new THREE.Vector2() },
+            uColor: { value: new THREE.Color(0x9fb4bd) }
+        },
+        vertexShader: `
+            varying vec2 vUv;
+            varying vec3 vViewPos;
+            varying vec3 vViewNormal;
+            void main() {
+                vUv = uv;
+                vec4 mv = modelViewMatrix * vec4(position, 1.0);
+                vViewPos = mv.xyz;
+                vViewNormal = normalMatrix * normal;
+                gl_Position = projectionMatrix * mv;
+            }
+        `,
+        fragmentShader: `
+            uniform float uTime;
+            uniform float uNight;
+            uniform float uAlpha;
+            uniform vec2 uOffset;
+            uniform vec3 uColor;
+            varying vec2 vUv;
+            varying vec3 vViewPos;
+            varying vec3 vViewNormal;
+            // Value noise. Two octaves is plenty — fog has no fine detail, and
+            // any more just costs fill rate on a plane this large on screen.
+            float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+            float vnoise(vec2 p) {
+                vec2 i = floor(p), f = fract(p);
+                f = f * f * (3.0 - 2.0 * f);
+                return mix(mix(hash(i), hash(i + vec2(1, 0)), f.x),
+                           mix(hash(i + vec2(0, 1)), hash(i + vec2(1, 1)), f.x), f.y);
+            }
+            void main() {
+                vec2 uv = vUv * vec2(6.0, 19.0) + uOffset;
+                float n = vnoise(uv + vec2(uTime, uTime * 0.6)) * 0.65
+                        + vnoise(uv * 2.7 - vec2(uTime * 1.7, 0.0)) * 0.35;
+                n = smoothstep(0.42, 0.95, n);
+                // Thin out toward the ends of the house so the sheet has no edge,
+                // and fade the few metres nearest the camera: you are standing in
+                // this, and un-faded it becomes a flat wash across the screen.
+                // Fade every edge of the sheet, sides as well as ends. Without the
+                // side fade the plane's own boundary lands on the floor as a
+                // straight-edged pale rectangle in each near corner — the layers
+                // are wider than the house, so that edge is inside the view.
+                float ends = smoothstep(0.0, 0.06, vUv.y) * (1.0 - smoothstep(0.94, 1.0, vUv.y))
+                           * smoothstep(0.0, 0.14, vUv.x) * (1.0 - smoothstep(0.86, 1.0, vUv.x));
+                float near = smoothstep(2.5, 9.0, length(vViewPos));
+                // Grazing term — the whole reason this reads as fog rather than as
+                // paint. A sheet of haze contributes in proportion to how much of
+                // it a sightline crosses: looking along it, metres; looking
+                // straight down at it, millimetres. Without this the layer nearest
+                // the camera is seen face-on and lands on the floor as a flat
+                // white smear.
+                vec3 nrm = normalize(vViewNormal);
+                float grazing = pow(1.0 - abs(dot(nrm, normalize(-vViewPos))), 2.0);
+                float a = n * ends * near * grazing * uNight * uAlpha * 0.42;
+                if (a < 0.004) discard;
+                gl_FragColor = vec4(uColor, a);
+            }
+        `,
+        transparent: true,
+        depthWrite: false,
+        side: THREE.DoubleSide,
+        fog: false
+    });
+    for (const L of LAYERS) {
+        const mat = baseMat.clone();
+        mat.uniforms.uAlpha.value = L.alpha;
+        mat.uniforms.uOffset.value.set(L.offset[0], L.offset[1]);
+        const m = new THREE.Mesh(geom, mat);
+        m.position.set(0, L.y, -20);
+        m.scale.set(L.scale, 1, 1);
+        m.renderOrder = 2;
+        m.userData.fogLayer = L;
+        groundFog.add(m);
+        groundFogMats.push(mat);
+    }
+    baseMat.dispose();
+    groundFog.visible = false;
+    scene.add(groundFog);
+}
+
+// Condensation gathering on the inside of the wall panes, running down in fits
+// and starts, then letting go and falling. Each drop carries its own stall timer
+// — a real runnel hangs up on a speck of grime, swells, and goes again.
+let paneDrops = null;
+function buildPaneCondensation() {
+    const COUNT = 30;
+    const pos = new Float32Array(COUNT * 3);
+    const state = [];
+    for (let i = 0; i < COUNT; i++) {
+        const s = {
+            x: (i % 2 === 0 ? -1 : 1) * 7.72,
+            y: 1.4 + Math.random() * 3.4,
+            z: -44 + Math.random() * 48,
+            v: 0,
+            stall: Math.random() * 3,
+            falling: false
+        };
+        state.push(s);
+        pos[i * 3] = s.x; pos[i * 3 + 1] = s.y; pos[i * 3 + 2] = s.z;
+    }
+    const geom = new THREE.BufferGeometry();
+    geom.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    const mat = new THREE.ShaderMaterial({
+        uniforms: { uNight: { value: 0 } },
+        vertexShader: `
+            void main() {
+                vec4 mv = modelViewMatrix * vec4(position, 1.0);
+                // Hard clamp — a drop can pass close to the camera, and an
+                // unclamped attenuated point becomes a screen-filling quad.
+                gl_PointSize = clamp(26.0 / max(0.6, -mv.z), 1.0, 7.0);
+                gl_Position = projectionMatrix * mv;
+            }
+        `,
+        fragmentShader: `
+            void main() {
+                vec2 p = gl_PointCoord - vec2(0.5);
+                // Slightly taller than wide: a bead of water on glass, not a dot.
+                p.y *= 0.62;
+                float a = smoothstep(0.5, 0.1, length(p));
+                if (a < 0.02) discard;
+                gl_FragColor = vec4(0.80, 0.88, 0.94, a * 0.5);
+            }
+        `,
+        transparent: true,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending
+    });
+    const points = new THREE.Points(geom, mat);
+    points.frustumCulled = false;
+    scene.add(points);
+    paneDrops = { points, positions: pos, state };
+}
+
+function updatePaneCondensation(delta) {
+    if (!paneDrops) return;
+    const { positions, state } = paneDrops;
+    for (let i = 0; i < state.length; i++) {
+        const s = state[i];
+        if (s.stall > 0) {
+            // Hung up on the glass, swelling. Nothing moves.
+            s.stall -= delta;
+        } else if (!s.falling) {
+            // Creeping down the pane, held back by surface tension.
+            s.v = Math.min(0.35, s.v + delta * 0.5);
+            s.y -= s.v * delta;
+            if (Math.random() < delta * 0.7) { s.stall = 0.4 + Math.random() * 2.5; s.v = 0; }
+            // Occasionally it detaches from the glass entirely and drops.
+            if (Math.random() < delta * 0.06) { s.falling = true; s.v = 0.4; }
+        } else {
+            s.v += delta * 9.8;
+            s.y -= s.v * delta;
+            s.x += (s.x > 0 ? -1 : 1) * delta * 0.05; // clears the wall base as it goes
+        }
+        if (s.y <= 0.03) {
+            if (s.falling) spawnRipple(s.x, s.z);
+            s.x = (i % 2 === 0 ? -1 : 1) * 7.72;
+            s.y = 2.4 + Math.random() * 3.2;
+            s.z = -44 + Math.random() * 48;
+            s.v = 0;
+            s.falling = false;
+            s.stall = Math.random() * 4;
+        }
+        positions[i * 3] = s.x;
+        positions[i * 3 + 1] = s.y;
+        positions[i * 3 + 2] = s.z;
+    }
+    paneDrops.points.geometry.attributes.position.needsUpdate = true;
+}
+
+// One vine that will not hold still. Everything else in here is merged into a
+// single static mesh, which is the right call for 300 metres of ivy — but a room
+// where nothing at all moves reads as a photograph. This is a separate group
+// pivoted at the beam it hangs from, swinging on two beats so it never looks like
+// a metronome.
+let swayVine = null;
+function buildSwayingVine() {
+    const anchor = new THREE.Vector3(-1.7, 3.0, -11.0);
+    const pts = [];
+    const len = 1.9;
+    for (let s = 0; s <= 6; s++) {
+        const f = s / 6;
+        pts.push(new THREE.Vector3(
+            Math.sin(f * 2.2) * 0.16,
+            -f * len,
+            Math.sin(f * 3.1) * 0.1
+        ));
+    }
+    const curve = new THREE.CatmullRomCurve3(pts);
+    swayVine = new THREE.Group();
+    swayVine.position.copy(anchor);
+    const stem = new THREE.Mesh(
+        new THREE.TubeGeometry(curve, 22, 0.012, 5, false),
+        new THREE.MeshStandardMaterial({ color: 0x3c4a24, roughness: 0.9, metalness: 0 })
+    );
+    swayVine.add(stem);
+
+    const leafMat = new THREE.MeshStandardMaterial({
+        map: makeIvyLeafTexture(), alphaTest: 0.4, transparent: false,
+        side: THREE.DoubleSide, roughness: 0.75, metalness: 0
+    });
+    const leafGeom = new THREE.PlaneGeometry(1, 1);
+    const COUNT = 22;
+    const leaves = new THREE.InstancedMesh(leafGeom, leafMat, COUNT);
+    const _m = new THREE.Matrix4();
+    const _q = new THREE.Quaternion();
+    const _e = new THREE.Euler();
+    for (let i = 0; i < COUNT; i++) {
+        const p = curve.getPointAt(Math.min(0.99, (i + 0.5) / COUNT));
+        _e.set(Math.random() * 0.9 - 0.45, Math.random() * Math.PI * 2, Math.random() * 0.9 - 0.45);
+        _q.setFromEuler(_e);
+        const s = 0.075 + Math.random() * 0.06;
+        _m.compose(
+            new THREE.Vector3(p.x + (Math.random() - 0.5) * 0.05, p.y, p.z + (Math.random() - 0.5) * 0.05),
+            _q, new THREE.Vector3(s, s, s));
+        leaves.setMatrixAt(i, _m);
+    }
+    leaves.instanceMatrix.needsUpdate = true;
+    leaves.frustumCulled = false;
+    swayVine.add(leaves);
+    scene.add(swayVine);
+}
+
+function updateSwayingVine(now) {
+    if (!swayVine) return;
+    const t = now / 1000;
+    // Two incommensurate periods, so the swing never repeats on a beat you can
+    // count. Amplitude is a couple of degrees — draughty, not windy.
+    swayVine.rotation.z = Math.sin(t * 0.41) * 0.045 + Math.sin(t * 0.97 + 1.1) * 0.016;
+    swayVine.rotation.x = Math.sin(t * 0.33 + 2.0) * 0.03;
+}
+
 function spawnRipple(x, z) {
     const free = ripplePool.find(r => !r.active);
     if (!free) return;
@@ -2597,12 +3175,29 @@ function updateParticles(now, delta) {
         }
         const s = 0.08 + k * 0.55;
         r.mesh.scale.set(s, 1, s);
-        r.mesh.material.opacity = 0.45 * (1 - k);
+        // Fades in fast then out, so it never appears at full strength — a ripple
+        // is a disturbance you half-notice, not an outline.
+        r.mesh.material.opacity = 0.17 * Math.min(1, k * 6) * (1 - k) * (1 - k);
     }
 
     // Dust + firefly shader clocks
     if (dustSystem) dustSystem.material.uniforms.uTime.value = t;
     if (fireflySystem) fireflySystem.material.uniforms.uTime.value = t;
+
+    // Night garnish: fog sheets drift at their own rates, condensation runs.
+    if (groundFog) {
+        groundFog.visible = groundFogMats[0].uniforms.uNight.value > 0.02;
+        if (groundFog.visible) {
+            for (let i = 0; i < groundFog.children.length; i++) {
+                const layer = groundFog.children[i];
+                groundFogMats[i].uniforms.uTime.value = t * 0.02;
+                // Each sheet creeps along the house at its own pace; the parallax
+                // between them is what reads as depth in three flat planes.
+                layer.position.z = -20 + Math.sin(t * layer.userData.fogLayer.drift) * 6;
+            }
+        }
+    }
+    updatePaneCondensation(delta);
 
     // Ground mist drifts slowly through the trees; denser at night
     const mistDayFactor = 0.06 + (1 - currentDayness) * 0.16;
@@ -2996,7 +3591,11 @@ function buildClutter() {
         const s = where === 0 ? 0.12 + Math.random() * 0.1 : 0.25 + Math.random() * 0.55;
         _m.compose(new THREE.Vector3(x, y, z), _q, new THREE.Vector3(s, 1, s));
         moss.setMatrixAt(i, _m);
-        tint.setHSL(0.3 + Math.random() * 0.05, 0.4 + Math.random() * 0.2, 0.3 + Math.random() * 0.15);
+        // Desaturated and dark. The tint multiplies an already-green texture, so a
+        // saturated green here squares up into flat kelly-green plates on the
+        // benches — moss growing in the dark under a bench is nearly black-green,
+        // and only the odd patch by a window is bright.
+        tint.setHSL(0.27 + Math.random() * 0.07, 0.16 + Math.random() * 0.16, 0.16 + Math.random() * 0.12);
         moss.setColorAt(i, tint);
     }
     moss.instanceMatrix.needsUpdate = true;
@@ -3079,20 +3678,66 @@ function buildClutter() {
     hose.add(nozzle);
     scene.add(hose);
 
-    // --- Half-used bag of potting soil slumped against the right base ---
+    // --- Bags of potting soil slumped against the bases ---
+    // One open and half used with its contents spilling out, one still sealed and
+    // lying flat where it was dropped, plus a third leaning further down the row.
     const bagMat = new THREE.MeshStandardMaterial({ color: 0x33281c, roughness: 1, metalness: 0 });
-    const bag = new THREE.Mesh(new THREE.CapsuleGeometry(0.22, 0.36, 4, 10), bagMat);
-    bag.scale.set(1, 0.85, 0.6);
-    bag.position.set(7.45, 0.3, -12.3);
-    bag.rotation.z = 0.42;
-    bag.castShadow = true;
-    bag.receiveShadow = true;
-    scene.add(bag);
-    const bagSpill = new THREE.Mesh(new THREE.CircleGeometry(0.3, 12), soilMat);
-    bagSpill.rotation.x = -Math.PI / 2;
-    bagSpill.position.set(7.1, 0.017, -12.0);
-    bagSpill.scale.set(1.3, 1, 0.9);
-    scene.add(bagSpill);
+    const bags = [
+        { p: [7.45, 0.3, -12.3], rot: [0, 0, 0.42], s: [1, 0.85, 0.6], spill: [7.1, -12.0] },
+        { p: [7.3, 0.18, -13.4], rot: [0, 0.6, Math.PI / 2], s: [1, 0.8, 0.65], spill: null },
+        { p: [-7.4, 0.31, -30.6], rot: [0, -0.3, -0.38], s: [1, 0.9, 0.6], spill: [-7.05, -30.2] }
+    ];
+    for (const b of bags) {
+        const bag = new THREE.Mesh(new THREE.CapsuleGeometry(0.22, 0.36, 4, 10), bagMat);
+        bag.scale.set(b.s[0], b.s[1], b.s[2]);
+        bag.position.set(b.p[0], b.p[1], b.p[2]);
+        bag.rotation.set(b.rot[0], b.rot[1], b.rot[2]);
+        bag.castShadow = true;
+        bag.receiveShadow = true;
+        scene.add(bag);
+        if (!b.spill) continue;
+        const bagSpill = new THREE.Mesh(new THREE.CircleGeometry(0.3, 12), soilMat);
+        bagSpill.rotation.x = -Math.PI / 2;
+        bagSpill.position.set(b.spill[0], 0.017, b.spill[1]);
+        bagSpill.scale.set(1.3, 1, 0.9);
+        scene.add(bagSpill);
+    }
+
+    // --- Stacks of empty pots, nested rim-to-rim ---
+    // Nested pots do not sit one on top of another; each drops most of the way
+    // into the one below, so a stack of six is only about knee high and every rim
+    // shows as a ring. The lean accumulates up the stack the way a real one does.
+    const stacks = [
+        { x: -6.2, z: -18.4, n: 7, lean: 0.035, ry: 0.4 },
+        { x: 6.4, z: -37.2, n: 5, lean: -0.05, ry: -1.1 },
+        // Kept out of the centre aisle: nothing here has collision, and a stack
+        // in the walkway is a stack you walk straight through every lap.
+        { x: 5.95, z: 2.6, n: 4, lean: 0.06, ry: 2.2 }
+    ];
+    stacks.forEach((st, si) => {
+        const g = new THREE.Group();
+        g.position.set(st.x, 0, st.z);
+        g.rotation.y = st.ry;
+        const stackMat = getPotVariantMaterial(si * 2);
+        const bodyGeom = new THREE.CylinderGeometry(0.155, 0.105, 0.2, 16, 1, true);
+        const rimGeom = new THREE.TorusGeometry(0.155, 0.012, 6, 16);
+        for (let i = 0; i < st.n; i++) {
+            const y = 0.045 * i;      // nesting depth, not pot height
+            const tilt = st.lean * i;
+            const body = new THREE.Mesh(bodyGeom, stackMat);
+            body.position.set(Math.sin(tilt) * 0.1 * i, y + 0.1, 0);
+            body.rotation.z = tilt;
+            body.rotation.y = i * 1.3;
+            body.castShadow = true;
+            body.receiveShadow = true;
+            g.add(body);
+            const rim = new THREE.Mesh(rimGeom, stackMat);
+            rim.position.set(body.position.x, y + 0.205, 0);
+            rim.rotation.set(Math.PI / 2, 0, tilt);
+            g.add(rim);
+        }
+        scene.add(g);
+    });
 
     // --- Water rings and dirt smudges staining the tabletops ---
     const stainCanvas = document.createElement('canvas');
@@ -3991,8 +4636,8 @@ function buildGreenhouse() {
     // which lit the *outside* of the shade too and turned every lamp into a
     // floating ember. The bulb is the only thing here that emits; the shade's job
     // is to be opaque and aim the light down, which the geometry already does —
-    // the bulb sits 5 cm up inside the rim and the spot points at the floor, so
-    // nothing escapes upward.
+    // the bulb sits 5 cm up inside the rim, and on the few lamps that cast
+    // shadows the hood genuinely occludes the upward half of the bulb's output.
     const hoodMat = new THREE.MeshStandardMaterial({
         color: 0x3a2515,
         roughness: 0.4,
@@ -4033,10 +4678,6 @@ function buildGreenhouse() {
         m.userData.detail = true;
     });
 
-    // Light spread — wide (~51° half-angle): from ~1.5 m above the table top
-    // that covers the full 2×3 m table with penumbra falloff at the edges, and
-    // the cone continues past it to spill a soft pool on the aisle floor.
-    const SPOT_ANGLE = Math.PI / 3.5;
     // Visible haze cone, as emissive *and absorbing* media.
     //
     // This was additive at first, and additive light can only ever brighten — it
@@ -4066,22 +4707,34 @@ function buildGreenhouse() {
     const shaftTopY = hoodBottomY;              // emerges from the shade rim
     // Stop clear of the pot rims rather than at the table top. The pots are the
     // things you aim at and click, and running the haze down through them left
-    // them veiled; the lit pool on the bench is the SpotLight's job anyway.
+    // them veiled; the lit pool on the bench is the bulb's job anyway.
     const shaftHeight = shaftTopY - 1.24;
     const shaftGeom = new THREE.CylinderGeometry(hoodRimR * 0.95, 0.85, shaftHeight, 24, 1, true);
+    // One lamp misbehaves, and its haze cone has to misbehave with it or the
+    // flicker reads as a bug in the light rather than a bad fixture. All 20 cones
+    // are one InstancedMesh sharing one uniform, so the flickering one is singled
+    // out by a per-instance flag: aFlicker is 1 on that lamp and 0 on the rest.
+    const shaftFlickerAttr = new THREE.InstancedBufferAttribute(new Float32Array(numLamps), 1);
     const shaftMat = new THREE.ShaderMaterial({
         uniforms: {
             uIntensity: { value: 0 },
-            // Radiance of the lit air, deliberately over 1 so the dense core
-            // tone-maps to a warm near-white glow rather than flat orange paint.
-            uColor: { value: new THREE.Color(0xffd7a8).multiplyScalar(1.7) }
+            uFlicker: { value: 1 },
+            // Radiance of the lit air. Over 1 so the core tone-maps to a warm
+            // near-white glow rather than flat orange paint — but only just. This
+            // was 1.7 when the room had a generous ambient fill to compete with;
+            // against the near-black night ambient the cones at that radiance
+            // saturated to opaque white and read as milk-glass lampshades.
+            uColor: { value: new THREE.Color(0xffd7a8).multiplyScalar(1.3) }
         },
         vertexShader: `
+            attribute float aFlicker;
             varying vec2 vUv;
             varying vec3 vViewPos;
             varying vec3 vViewNormal;
+            varying float vFlicker;
             void main() {
                 vUv = uv;
+                vFlicker = aFlicker;
                 // instanceMatrix is pure translation for every lamp, so it does
                 // not affect normals and normalMatrix alone is correct here.
                 vec4 mvPos = modelViewMatrix * instanceMatrix * vec4(position, 1.0);
@@ -4092,10 +4745,12 @@ function buildGreenhouse() {
         `,
         fragmentShader: `
             uniform float uIntensity;
+            uniform float uFlicker;
             uniform vec3 uColor;
             varying vec2 vUv;
             varying vec3 vViewPos;
             varying vec3 vViewNormal;
+            varying float vFlicker;
             void main() {
                 vec3 n = normalize(vViewNormal);
                 vec3 v = normalize(-vViewPos);
@@ -4105,7 +4760,7 @@ function buildGreenhouse() {
                 // The exponent trades core density against edge softness. A dense
                 // core is what actually hides the woods; a steep exponent is what
                 // keeps the silhouette from going with it and reading as plastic.
-                float facing = pow(abs(dot(n, v)), 2.6);
+                float facing = pow(abs(dot(n, v)), 3.0);
                 // v = 1 at the shade rim, 0 at the table top. The top ramp is
                 // short on purpose: a long one bled glow up over the shade and
                 // lost its edge. The geometry's top rim sits just inside the
@@ -4127,7 +4782,7 @@ function buildGreenhouse() {
                 // Alpha is density, not brightness. NormalBlending turns it into
                 // bg * (1 - a) + colour * a, so a dense core genuinely hides the
                 // woods behind it instead of adding a tint on top of them.
-                float a = uIntensity * facing * along * near;
+                float a = uIntensity * facing * along * near * mix(1.0, uFlicker, vFlicker);
                 gl_FragColor = vec4(uColor, a);
             }
         `,
@@ -4137,48 +4792,113 @@ function buildGreenhouse() {
         side: THREE.DoubleSide
     });
     const shaftsMesh = new THREE.InstancedMesh(shaftGeom, shaftMat, numLamps);
+    shaftGeom.setAttribute('aFlicker', shaftFlickerAttr);
     shaftsMesh.visible = false;
     shaftsMesh.userData.detail = true;
     // Track a single mesh-and-material pair for night updates
     shaftMeshes.length = 0;
     shaftMeshes.push(shaftsMesh);
 
+    // The one bad fixture. Fixed index rather than random so it is always the
+    // same lamp between reloads — a flicker that moves house every session reads
+    // as a rendering glitch, not as a fixture that needs replacing.
+    const FLICKER_LAMP = 7;
+
     const _lm = new THREE.Matrix4();
     const _lq = new THREE.Quaternion();
     const _ls = new THREE.Vector3(1, 1, 1);
+    lampSlots.length = 0;
     for (let i = 0; i < numLamps; i++) {
         const p = lampPositions[i];
+        const flickers = i === FLICKER_LAMP;
         _lm.compose(new THREE.Vector3(p.x, cordCenterY,             p.z), _lq, _ls);
         cordsMesh.setMatrixAt(i, _lm);
         _lm.compose(new THREE.Vector3(p.x, cordBottomY + 0.03,      p.z), _lq, _ls);
         socketsMesh.setMatrixAt(i, _lm);
         _lm.compose(new THREE.Vector3(p.x, hoodCenterY,             p.z), _lq, _ls);
         hoodsMesh.setMatrixAt(i, _lm);
-        _lm.compose(new THREE.Vector3(p.x, bulbY,                   p.z), _lq, _ls);
+        // The flickering lamp's bulb is built separately below with its own
+        // material, so that its glass can dim with the light. The instanced bulbs
+        // all share one material and cannot be varied per instance.
+        _lm.compose(
+            new THREE.Vector3(p.x, bulbY, p.z), _lq,
+            flickers ? new THREE.Vector3(0, 0, 0) : _ls
+        );
         bulbsMesh.setMatrixAt(i, _lm);
         filamentsMesh.setMatrixAt(i, _lm);
         _lm.compose(new THREE.Vector3(p.x, shaftTopY - shaftHeight / 2, p.z), _lq, _ls);
         shaftsMesh.setMatrixAt(i, _lm);
+        shaftFlickerAttr.setX(i, flickers ? 1 : 0);
 
-        // SpotLight + target object — these can't be instanced.
-        const spot = new THREE.SpotLight(0xffaa55, 0, 10, SPOT_ANGLE, 0.55, 1.6);
-        spot.position.set(p.x, bulbY, p.z);
-        const target = new THREE.Object3D();
-        target.position.set(p.x, 0, p.z);
-        ghGroup.add(target);
-        spot.target = target;
-        spot.castShadow = false;
-        ghGroup.add(spot);
-        bulbLights.push(spot);
+        lampSlots.push({ pos: new THREE.Vector3(p.x, bulbY, p.z), flicker: flickers });
     }
+    shaftFlickerAttr.needsUpdate = true;
+
+    // Its own bulb + filament, at full scale where the instanced pair is zeroed.
+    const soloBulbMat = makeBulbMaterial();
+    const soloFilamentMat = new THREE.MeshBasicMaterial({ color: 0xffaa55 });
+    const soloBulb = new THREE.Mesh(bulbGeom, soloBulbMat);
+    const soloFilament = new THREE.Mesh(filamentGeom, soloFilamentMat);
+    const fp = lampPositions[FLICKER_LAMP];
+    soloBulb.position.set(fp.x, bulbY, fp.z);
+    soloFilament.position.copy(soloBulb.position);
+    soloBulb.userData.detail = true;
+    soloFilament.userData.detail = true;
+    ghGroup.add(soloBulb, soloFilament);
+
+    // --- Bulb lights ---
+    // A pool of point lights, not one light per fixture. Only the first few cast
+    // shadows, and rather than switching castShadow on and off as you walk — which
+    // changes numPointLightShadows and recompiles every material in the scene —
+    // the pool is *reassigned* to fixtures by distance to the camera. The lamps
+    // are identical, so swapping which position a light occupies is invisible,
+    // and the light and shadow counts never change after startup.
+    //
+    // Point, not spot: the hood is real opaque geometry, so on the lights that
+    // cast shadows it does the aiming physically, the way a reflector actually
+    // does — and the leakage the far un-shadowed ones allow is what puts warm
+    // glints on the rafters and reflections in the panes after dark.
+    lampShadowCount = isTouchDevice ? 3 : 4;
+    for (let i = 0; i < numLamps; i++) {
+        // 2700 K tungsten. Decay 2 is the physical inverse square; with it the
+        // pool of light on the bench falls off fast enough that the aisle between
+        // two lamps stays genuinely dim.
+        const light = new THREE.PointLight(0xffa957, 0, 9, 2);
+        light.position.copy(lampSlots[i].pos);
+        if (i < lampShadowCount) {
+            light.castShadow = true;
+            light.shadow.mapSize.set(512, 512);
+            light.shadow.camera.near = 0.04;
+            // Short of the light's own 9 m range: at decay 2 anything past 6 m
+            // receives under 3 % of the bulb's output, and this is a *cube* map,
+            // so every metre of far plane is paid for six times over.
+            light.shadow.camera.far = 6;
+            light.shadow.bias = -0.004;
+            light.shadow.normalBias = 0.03;
+            light.shadow.radius = 3;
+            // Rebuilt only when this light is moved to another fixture — see
+            // assignLampLights. Six faces × four lights every frame is 24 full
+            // scene passes for a picture that never changes.
+            light.shadow.autoUpdate = false;
+            light.shadow.needsUpdate = true;
+        }
+        ghGroup.add(light);
+        bulbLights.push(light);
+    }
+
+    // Module-shared references for night-mode updates.
+    sharedAssets._bulbMat = bulbMat;
+    sharedAssets._soloBulbMat = soloBulbMat;
+    sharedAssets._shaftMat = shaftMat;
+    sharedAssets._lampFlickerIndex = FLICKER_LAMP;
+
     [cordsMesh, socketsMesh, hoodsMesh, bulbsMesh, filamentsMesh, shaftsMesh].forEach(m => {
         m.instanceMatrix.needsUpdate = true;
         ghGroup.add(m);
     });
 
-    // Module-shared references for night-mode updates.
-    sharedAssets._bulbMat = bulbMat;
-    sharedAssets._shaftMat = shaftMat;
+    buildLampMotes(lampSlots, bulbY, shaftTopY - shaftHeight, hoodRimR * 0.95, 0.85);
+    buildLampMoths(lampSlots);
 
     // Selectively set shadow casting/receiving:
     // - Skip detail meshes (mullions, slats, bulbs) and transparent glass — they don't
@@ -4193,6 +4913,299 @@ function buildGreenhouse() {
     });
 
     scene.add(ghGroup);
+}
+
+// --- Lamps: dust in the beam, the shadow-caster pool, and the filament ramp ---
+
+// Motes suspended in the lit air under each shade. The haze cone sells the shape
+// of the beam; these sell that it is full of something. They are placed *inside*
+// the cone geometry at build time — a mote outside the beam is just a firefly —
+// and drift by a few centimetres in the shader, which is small enough that none
+// of them wanders out of it.
+let lampMotes = null;
+function buildLampMotes(slots, bulbY, botY, rTop, rBot) {
+    const PER_LAMP = 26;
+    const total = slots.length * PER_LAMP;
+    const pos = new Float32Array(total * 3);
+    const phase = new Float32Array(total);
+    const depth = new Float32Array(total);   // 0 at the shade rim, 1 at the bottom
+    const flick = new Float32Array(total);
+    let n = 0;
+    for (const slot of slots) {
+        for (let i = 0; i < PER_LAMP; i++) {
+            // Biased toward the top: that is where the light is strongest and
+            // where you actually notice dust in a beam.
+            const f = Math.pow(Math.random(), 1.6);
+            const r = (rTop + (rBot - rTop) * f) * 0.88 * Math.sqrt(Math.random());
+            const a = Math.random() * Math.PI * 2;
+            pos[n * 3 + 0] = slot.pos.x + Math.cos(a) * r;
+            pos[n * 3 + 1] = bulbY + (botY - bulbY) * f;
+            pos[n * 3 + 2] = slot.pos.z + Math.sin(a) * r;
+            phase[n] = Math.random() * Math.PI * 2;
+            depth[n] = f;
+            flick[n] = slot.flicker ? 1 : 0;
+            n++;
+        }
+    }
+    const geom = new THREE.BufferGeometry();
+    geom.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    geom.setAttribute('aPhase', new THREE.BufferAttribute(phase, 1));
+    geom.setAttribute('aDepth', new THREE.BufferAttribute(depth, 1));
+    geom.setAttribute('aFlicker', new THREE.BufferAttribute(flick, 1));
+    const mat = new THREE.ShaderMaterial({
+        uniforms: {
+            uTime: { value: 0 },
+            uLevel: { value: 0 },
+            uFlicker: { value: 1 }
+        },
+        vertexShader: `
+            uniform float uTime;
+            attribute float aPhase;
+            attribute float aDepth;
+            attribute float aFlicker;
+            varying float vBright;
+            varying float vFlick;
+            void main() {
+                vec3 p = position;
+                // Slow convection, not wind — warm air rising off a hot bulb.
+                p.x += sin(uTime * 0.21 + aPhase) * 0.05;
+                p.y += sin(uTime * 0.17 + aPhase * 1.7) * 0.04;
+                p.z += cos(uTime * 0.19 + aPhase) * 0.05;
+                vBright = 1.0 - aDepth * 0.65;
+                vFlick = aFlicker;
+                vec4 mv = modelViewMatrix * vec4(p, 1.0);
+                // Hard clamp, always. An attenuated point that drifts near the
+                // camera otherwise rasterises as a screen-filling quad.
+                gl_PointSize = clamp(2.6 * (12.0 / max(0.5, -mv.z)), 1.0, 6.0);
+                gl_Position = projectionMatrix * mv;
+            }
+        `,
+        fragmentShader: `
+            uniform float uLevel;
+            uniform float uFlicker;
+            varying float vBright;
+            varying float vFlick;
+            void main() {
+                float d = length(gl_PointCoord - vec2(0.5));
+                float falloff = smoothstep(0.5, 0.04, d);
+                float a = falloff * vBright * uLevel * mix(1.0, uFlicker, vFlick) * 0.5;
+                if (a < 0.003) discard;
+                gl_FragColor = vec4(1.0, 0.86, 0.66, a);
+            }
+        `,
+        transparent: true,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending
+    });
+    lampMotes = new THREE.Points(geom, mat);
+    lampMotes.frustumCulled = false;
+    lampMotes.visible = false;
+    scene.add(lampMotes);
+    sharedAssets._moteMat = mat;
+}
+
+// Moths. Every one is tied to a fixture and flies a lopsided orbit around its
+// bulb — the classic moth-to-a-lamp spiral, which is a circle that keeps changing
+// its mind about radius and tilt. All of the motion is in the vertex shader, so
+// this is one draw call and one uniform write per frame for the whole swarm.
+//
+// They are billboarded points rather than modelled wings: at the range you see
+// them (across a dark greenhouse, against a bright shade) a moth is a pale flake
+// with a fluttering silhouette, and the flutter is what identifies it. That is a
+// size wobble, which a point can do.
+let lampMoths = null;
+function buildLampMoths(slots) {
+    const PER_LAMP = 3;
+    const total = slots.length * PER_LAMP;
+    const centre = new Float32Array(total * 3);
+    const orbit = new Float32Array(total * 4);   // radius, height offset, speed, phase
+    let n = 0;
+    for (const slot of slots) {
+        for (let i = 0; i < PER_LAMP; i++) {
+            centre[n * 3 + 0] = slot.pos.x;
+            centre[n * 3 + 1] = slot.pos.y;
+            centre[n * 3 + 2] = slot.pos.z;
+            orbit[n * 4 + 0] = 0.18 + Math.random() * 0.36;
+            orbit[n * 4 + 1] = -0.16 + Math.random() * 0.3;
+            orbit[n * 4 + 2] = (0.6 + Math.random() * 1.1) * (Math.random() < 0.5 ? -1 : 1);
+            orbit[n * 4 + 3] = Math.random() * Math.PI * 2;
+            n++;
+        }
+    }
+    const geom = new THREE.BufferGeometry();
+    // `position` is unused by the shader — the orbit is computed from aCentre —
+    // but three needs the attribute to work out the draw count.
+    geom.setAttribute('position', new THREE.BufferAttribute(centre, 3));
+    geom.setAttribute('aCentre', new THREE.BufferAttribute(centre, 3));
+    geom.setAttribute('aOrbit', new THREE.BufferAttribute(orbit, 4));
+    const mat = new THREE.ShaderMaterial({
+        uniforms: { uTime: { value: 0 }, uLevel: { value: 0 } },
+        vertexShader: `
+            uniform float uTime;
+            attribute vec3 aCentre;
+            attribute vec4 aOrbit;
+            varying float vFlutter;
+            void main() {
+                float r = aOrbit.x, dy = aOrbit.y, sp = aOrbit.z, ph = aOrbit.w;
+                float a = uTime * sp + ph;
+                // Radius breathes and the orbit plane tilts, so the path is a
+                // wandering spiral rather than a clean ring.
+                float rr = r * (0.72 + 0.28 * sin(uTime * 0.61 + ph * 2.0));
+                vec3 p = aCentre + vec3(
+                    cos(a) * rr,
+                    dy + sin(uTime * 1.7 + ph) * 0.06 + sin(a * 2.0) * 0.03,
+                    sin(a) * rr
+                );
+                // Wingbeat. Fast, and slightly different for every moth.
+                vFlutter = 0.55 + 0.45 * sin(uTime * (24.0 + ph * 3.0));
+                vec4 mv = modelViewMatrix * vec4(p, 1.0);
+                gl_PointSize = clamp((3.4 + 2.6 * vFlutter) * (10.0 / max(0.4, -mv.z)), 1.0, 9.0);
+                gl_Position = projectionMatrix * mv;
+            }
+        `,
+        fragmentShader: `
+            uniform float uLevel;
+            varying float vFlutter;
+            void main() {
+                vec2 p = gl_PointCoord - vec2(0.5);
+                float a = smoothstep(0.5, 0.15, length(p));
+                a *= uLevel * (0.35 + 0.4 * vFlutter);
+                if (a < 0.01) discard;
+                // Dusty pale brown, not white — and lit warm by the bulb it is
+                // circling, which is the only light reaching it.
+                gl_FragColor = vec4(0.85, 0.74, 0.56, a);
+            }
+        `,
+        transparent: true,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending
+    });
+    lampMoths = new THREE.Points(geom, mat);
+    lampMoths.frustumCulled = false;
+    lampMoths.visible = false;
+    scene.add(lampMoths);
+    sharedAssets._mothMat = mat;
+}
+
+// Hand the shadow-casting lights to the fixtures nearest the camera. The lamps
+// are identical, so which light object sits in which fixture is unobservable —
+// what matters is that the pool's members never change their castShadow flag,
+// because that would alter numPointLightShadows and recompile every material.
+const _lampOrder = [];
+let lastLampAssign = 0;
+function assignLampLights(now) {
+    if (!bulbLights.length || !lampSlots.length) return;
+    if (now - lastLampAssign < 300) return;
+    lastLampAssign = now;
+    if (_lampOrder.length !== lampSlots.length) {
+        _lampOrder.length = 0;
+        for (let i = 0; i < lampSlots.length; i++) _lampOrder.push(i);
+    }
+    const cam = camera.position;
+    _lampOrder.sort((a, b) =>
+        lampSlots[a].pos.distanceToSquared(cam) - lampSlots[b].pos.distanceToSquared(cam));
+    lampState.flickerLight = -1;
+    for (let i = 0; i < bulbLights.length; i++) {
+        const light = bulbLights[i];
+        const slot = lampSlots[_lampOrder[i]];
+        // Only the lights that cast shadows care about having moved, and only if
+        // they actually did — walking a few metres usually leaves the nearest four
+        // fixtures the same four, and re-rendering six cube faces for a light that
+        // did not move is pure waste.
+        if (light.castShadow && !light.position.equals(slot.pos)) {
+            light.shadow.needsUpdate = true;
+        }
+        light.position.copy(slot.pos);
+        if (slot.flicker) lampState.flickerLight = i;
+    }
+}
+
+// Something that casts a shadow has appeared, moved or gone. Shadow maps here are
+// on-demand (see setupLighting), so they have to be told.
+function invalidateShadows() {
+    if (sunLight) sunLight.shadow.needsUpdate = true;
+    if (moonLight) moonLight.shadow.needsUpdate = true;
+    for (const light of bulbLights) {
+        if (light.castShadow) light.shadow.needsUpdate = true;
+    }
+}
+
+// Peak candela per bulb. Decay 2 is a true inverse square, so this is the value
+// at one metre — the bench sits 1.5 m under the bulb and gets about half of it.
+const LAMP_PEAK = 7.5;
+const _lampColor = new THREE.Color();
+const _lampWarm = new THREE.Color(0xffa957); // 2700 K
+
+// Filament ramp. A cold tungsten bulb does not snap on: it glows dull red, then
+// climbs to colour over a couple of seconds. `level` chases the switch state and
+// everything the lamps drive is derived from it.
+function updateLamps(now, delta) {
+    const target = lampState.on ? 1 : 0;
+    const rate = delta / (lampState.on ? LAMP_WARMUP : LAMP_COOLDOWN);
+    lampState.level = target > lampState.level
+        ? Math.min(target, lampState.level + rate)
+        : Math.max(target, lampState.level - rate);
+
+    const lvl = lampState.level;
+    const lit = lvl > 0.004;
+    // Radiant output climbs far faster than temperature, so the perceived
+    // brightness curve is steep while the colour is still crawling up from ember.
+    const glow = Math.pow(lvl, 2.2);
+    const t = now / 1000;
+
+    // The bad fixture. Two beat frequencies plus a rare deeper dip, so it reads
+    // as a loose connection rather than a sine wave.
+    const jitter = 0.5 + 0.5 * Math.sin(t * 11.3) * Math.sin(t * 4.7 + 1.3);
+    const dip = Math.max(0, Math.sin(t * 0.83) - 0.93) * 9; // ~0 most of the time
+    lampState.flicker = Math.max(0.35, 1 - 0.14 * jitter - 0.4 * dip);
+
+    // Colour: dull orange ember at the bottom of the ramp to 2700 K at the top.
+    _lampColor.setHex(0xff4a08).lerp(_lampWarm, THREE.MathUtils.smoothstep(lvl, 0.05, 0.75));
+
+    for (let i = 0; i < bulbLights.length; i++) {
+        const light = bulbLights[i];
+        light.visible = lit;
+        if (!lit) continue;
+        const f = i === lampState.flickerLight ? lampState.flicker : 1;
+        light.intensity = LAMP_PEAK * glow * f;
+        light.color.copy(_lampColor);
+    }
+
+    // 19 bulbs share one material, so this is a single write.
+    if (sharedAssets._bulbMat) sharedAssets._bulbMat.emissiveIntensity = glow * 1.8;
+    if (sharedAssets._soloBulbMat) {
+        sharedAssets._soloBulbMat.emissiveIntensity = glow * 1.8 * lampState.flicker;
+    }
+    // Haze cone density — alpha, i.e. how much of the background the beam hides,
+    // which is a separate dial from the radiance above. Over 1 because the
+    // shader's facing/along/near terms scale it well down everywhere except the
+    // core; the peak alpha this produces is a little over half, so the beam is
+    // genuinely translucent lit air. It used to be pinned high enough to occlude
+    // the woods completely, and a fully opaque beam is not a beam — it is a cone.
+    // The cone is DoubleSide, so a sightline through it crosses two faces and the
+    // alpha compounds as 1-(1-a)². 0.38 per face gives a peak around 0.6 — dense
+    // enough to soften what is behind the beam, translucent enough to still be
+    // lit air rather than a cone-shaped object.
+    if (sharedAssets._shaftMat) {
+        sharedAssets._shaftMat.uniforms.uIntensity.value = glow * 0.28;
+        sharedAssets._shaftMat.uniforms.uFlicker.value = lampState.flicker;
+    }
+    for (const mesh of shaftMeshes) mesh.visible = lit;
+    if (lampMotes) {
+        lampMotes.visible = lit;
+        const u = sharedAssets._moteMat.uniforms;
+        u.uTime.value = t;
+        u.uLevel.value = glow;
+        u.uFlicker.value = lampState.flicker;
+    }
+    // Moths only come to a lit lamp, and they take a moment to find it — hence
+    // the extra ramp rather than reusing `glow` directly.
+    if (lampMoths) {
+        lampMoths.visible = lit;
+        const u = sharedAssets._mothMat.uniforms;
+        u.uTime.value = t;
+        u.uLevel.value = THREE.MathUtils.smoothstep(lvl, 0.35, 1.0);
+    }
 }
 
 function createTable(x, z, material) {
@@ -4224,9 +5237,103 @@ function createTable(x, z, material) {
     scene.add(tableGroup);
 }
 
-function buildPotMeshes(group) {
-    const potMat = getPotMaterial();
+// --- Per-slot pot character ---
+//
+// 120 pots on identical 1 m centres is the single most artificial thing about a
+// room like this; a real bench has them shoved about, turned any which way, in
+// three sizes and four firings, with gaps where someone took one away. This table
+// gives every slot a fixed personality.
+//
+// It is hashed from the slot index rather than drawn from Math.random() on
+// purpose. Only positionIndex survives in localStorage, so a random table would
+// re-roll every reload and a pot you planted yesterday would be a different size
+// and colour today; a hash means slot 47 is the same slightly-large pinkish pot
+// leaning north-east forever.
+const POT_HUE_VARIANTS = 5;
+const potJitter = [];
+
+// Cheap integer hash → [0,1). Three decorrelated streams per slot from one seed.
+function slotRandom(index, stream) {
+    let h = (index * 374761393 + stream * 668265263) | 0;
+    h = (h ^ (h >>> 13)) * 1274126177 | 0;
+    h = h ^ (h >>> 16);
+    return ((h >>> 0) % 100000) / 100000;
+}
+
+function buildPotJitter(count) {
+    potJitter.length = 0;
+    for (let i = 0; i < count; i++) {
+        const r = (s) => slotRandom(i, s);
+        // Every 11th slot or so is bare bench — someone took that pot away. The
+        // gap is what makes the rest look placed rather than tiled.
+        const missing = r(6) < 0.085;
+        potJitter.push({
+            // ±10 % of the 1 m grid pitch.
+            dx: (r(1) - 0.5) * 0.2,
+            dz: (r(2) - 0.5) * 0.2,
+            ry: r(3) * Math.PI * 2,
+            // ±15 % on scale. Applied to the pot only, so a small pot does not
+            // also mean a small plant.
+            s: 1 + (r(4) - 0.5) * 0.3,
+            hue: Math.floor(r(5) * POT_HUE_VARIANTS),
+            missing,
+            // Exactly one pot has been knocked over and left there.
+            tipped: false
+        });
+    }
+    // Pick the tipped one from the slots that have a pot, near the front of the
+    // house where it will actually be seen. It is not plantable — a pot lying on
+    // its side is not a pot you put a seed in.
+    for (let i = 6; i < Math.min(count, 40); i++) {
+        if (!potJitter[i].missing) { potJitter[i].tipped = true; break; }
+    }
+    return potJitter;
+}
+
+// Terracotta comes out of the kiln a different colour every firing. Five tinted
+// clones of the one pot material, so the variation costs five materials rather
+// than 120 — and the instanced empty pots can reach the same five colours through
+// instanceColor, which keeps a planted pot the same colour as the empty one it
+// replaced.
+function getPotVariantColors() {
+    if (sharedAssets.potTints) return sharedAssets.potTints;
+    const tints = [];
+    for (let i = 0; i < POT_HUE_VARIANTS; i++) {
+        const c = new THREE.Color();
+        // Warm orange through dusty pink to pale buff, at slightly varied value.
+        c.setHSL(0.055 + (i / POT_HUE_VARIANTS) * 0.035, 0.30 - i * 0.035, 0.52 + i * 0.045);
+        tints.push(c);
+    }
+    sharedAssets.potTints = tints;
+    return tints;
+}
+
+function getPotVariantMaterial(hue) {
+    if (!sharedAssets.potVariants) {
+        const base = getPotMaterial();
+        sharedAssets.potVariants = getPotVariantColors().map(c => {
+            const m = base.clone();   // shares the textures, not the uniforms
+            m.color.copy(c);
+            return m;
+        });
+    }
+    return sharedAssets.potVariants[hue % POT_HUE_VARIANTS];
+}
+
+function buildPotMeshes(group, jitter) {
+    const potMat = jitter ? getPotVariantMaterial(jitter.hue) : getPotMaterial();
     const soilMat = getSoilMaterial();
+
+    // Sub-group so the pot can be scaled and turned without touching the plant
+    // growing out of it. gatherIntersectables looks inside groups flagged this way
+    // so the pot stays clickable.
+    const pot = new THREE.Group();
+    pot.userData.isPotGroup = true;
+    if (jitter) {
+        pot.rotation.y = jitter.ry;
+        pot.scale.setScalar(jitter.s);
+    }
+    group.add(pot);
 
     const body = new THREE.Mesh(
         new THREE.CylinderGeometry(0.155, 0.105, 0.2, 28, 1),
@@ -4235,7 +5342,7 @@ function buildPotMeshes(group) {
     body.position.y = 0.1;
     body.castShadow = true;
     body.receiveShadow = true;
-    group.add(body);
+    pot.add(body);
 
     const rim = new THREE.Mesh(
         new THREE.TorusGeometry(0.155, 0.012, 8, 28),
@@ -4245,7 +5352,7 @@ function buildPotMeshes(group) {
     rim.position.y = 0.205;
     rim.castShadow = true;
     rim.receiveShadow = true;
-    group.add(rim);
+    pot.add(rim);
 
     // Soil mound (slightly domed)
     const soil = new THREE.Mesh(
@@ -4256,13 +5363,15 @@ function buildPotMeshes(group) {
     soil.scale.y = 0.45;
     soil.receiveShadow = true;
     soil.castShadow = true;
-    group.add(soil);
+    pot.add(soil);
 }
 
 function createEmptyPotsInstanced() {
     const count = tablePositions.length;
     const potMat = getPotMaterial();
     const soilMat = getSoilMaterial();
+    const jitter = buildPotJitter(count);
+    const tints = getPotVariantColors();
 
     // Lower-poly geometries for the instanced empty pots — they're seen at distance
     const bodyGeom = new THREE.CylinderGeometry(0.155, 0.105, 0.2, 18, 1);
@@ -4279,70 +5388,135 @@ function createEmptyPotsInstanced() {
         m.userData.isEmptyPotMesh = true;
     });
 
-    const tmp = new THREE.Matrix4();
-    const noRot = new THREE.Quaternion();
-    const rimRot = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), Math.PI / 2);
-    const baseScale = new THREE.Vector3(1, 1, 1);
-    const soilScale = new THREE.Vector3(1, 0.45, 1);
-
     for (let i = 0; i < count; i++) {
-        const p = tablePositions[i];
         emptyPotOccupied.push(false);
-
-        tmp.compose(new THREE.Vector3(p.x, p.y + 0.1, p.z), noRot, baseScale);
-        bodies.setMatrixAt(i, tmp);
-
-        tmp.compose(new THREE.Vector3(p.x, p.y + 0.205, p.z), rimRot, baseScale);
-        rims.setMatrixAt(i, tmp);
-
-        tmp.compose(new THREE.Vector3(p.x, p.y + 0.18, p.z), noRot, soilScale);
-        soils.setMatrixAt(i, tmp);
+        writeEmptyPotMatrices(bodies, rims, soils, i);
+        // Firing colour. The clay itself is one texture; this is the per-pot tint
+        // the plant's own material will match when the slot gets planted.
+        const c = tints[jitter[i].hue];
+        bodies.setColorAt(i, c);
+        rims.setColorAt(i, c);
     }
     bodies.instanceMatrix.needsUpdate = true;
     rims.instanceMatrix.needsUpdate = true;
     soils.instanceMatrix.needsUpdate = true;
+    if (bodies.instanceColor) bodies.instanceColor.needsUpdate = true;
+    if (rims.instanceColor) rims.instanceColor.needsUpdate = true;
 
     scene.add(bodies);
     scene.add(rims);
     scene.add(soils);
 
     emptyPotInstances = { bodies, rims, soils };
+    buildTippedBenchPot();
 }
 
 const _potTmpMatrix = new THREE.Matrix4();
 const _potNoRot = new THREE.Quaternion();
-const _potRimRot = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), Math.PI / 2);
+const _potRimRot = new THREE.Quaternion();
+const _potJitRot = new THREE.Quaternion();
 const _potZeroScale = new THREE.Matrix4().makeScale(0, 0, 0);
-const _potBaseScale = new THREE.Vector3(1, 1, 1);
-const _potSoilScale = new THREE.Vector3(1, 0.45, 1);
-const _potTmpVec1 = new THREE.Vector3();
-const _potTmpVec2 = new THREE.Vector3();
-const _potTmpVec3 = new THREE.Vector3();
+const _potYAxis = new THREE.Vector3(0, 1, 0);
+const _potXAxis = new THREE.Vector3(1, 0, 0);
+const _potScale = new THREE.Vector3();
+const _potSoilScale = new THREE.Vector3();
+const _potTmpVec = new THREE.Vector3();
+
+// One place that knows where an unoccupied pot sits, so createEmptyPotsInstanced
+// and setEmptyPotOccupied cannot drift apart on the jitter.
+function writeEmptyPotMatrices(bodies, rims, soils, index) {
+    const j = potJitter[index];
+    // Missing and tipped slots have no upright instanced pot. The tipped one is a
+    // separate little group; the missing ones are bare bench. Both are excluded
+    // from planting for free, because a zero-scale instance cannot be hit by the
+    // raycast that opens the "plant a seed here" prompt.
+    if (j.missing || j.tipped) {
+        bodies.setMatrixAt(index, _potZeroScale);
+        rims.setMatrixAt(index, _potZeroScale);
+        soils.setMatrixAt(index, _potZeroScale);
+        return;
+    }
+    const p = tablePositions[index];
+    const x = p.x + j.dx;
+    const z = p.z + j.dz;
+    _potJitRot.setFromAxisAngle(_potYAxis, j.ry);
+    _potScale.setScalar(j.s);
+    _potSoilScale.set(j.s, j.s * 0.45, j.s);
+    // Scaling a pot about its own base, not its middle, or a big pot sinks into
+    // the bench and a small one floats above it.
+    _potTmpMatrix.compose(_potTmpVec.set(x, p.y + 0.1 * j.s, z), _potJitRot, _potScale);
+    bodies.setMatrixAt(index, _potTmpMatrix);
+    _potRimRot.setFromAxisAngle(_potXAxis, Math.PI / 2).premultiply(_potJitRot);
+    _potTmpMatrix.compose(_potTmpVec.set(x, p.y + 0.205 * j.s, z), _potRimRot, _potScale);
+    rims.setMatrixAt(index, _potTmpMatrix);
+    _potTmpMatrix.compose(_potTmpVec.set(x, p.y + 0.18 * j.s, z), _potJitRot, _potSoilScale);
+    soils.setMatrixAt(index, _potTmpMatrix);
+}
 
 function setEmptyPotOccupied(index, occupied) {
     if (!emptyPotInstances) return;
     emptyPotOccupied[index] = occupied;
 
+    const { bodies, rims, soils } = emptyPotInstances;
     if (occupied) {
         // Hide via zero-scale matrix
-        emptyPotInstances.bodies.setMatrixAt(index, _potZeroScale);
-        emptyPotInstances.rims.setMatrixAt(index, _potZeroScale);
-        emptyPotInstances.soils.setMatrixAt(index, _potZeroScale);
+        bodies.setMatrixAt(index, _potZeroScale);
+        rims.setMatrixAt(index, _potZeroScale);
+        soils.setMatrixAt(index, _potZeroScale);
     } else {
-        const p = tablePositions[index];
-        _potTmpVec1.set(p.x, p.y + 0.1, p.z);
-        _potTmpMatrix.compose(_potTmpVec1, _potNoRot, _potBaseScale);
-        emptyPotInstances.bodies.setMatrixAt(index, _potTmpMatrix);
-        _potTmpVec2.set(p.x, p.y + 0.205, p.z);
-        _potTmpMatrix.compose(_potTmpVec2, _potRimRot, _potBaseScale);
-        emptyPotInstances.rims.setMatrixAt(index, _potTmpMatrix);
-        _potTmpVec3.set(p.x, p.y + 0.18, p.z);
-        _potTmpMatrix.compose(_potTmpVec3, _potNoRot, _potSoilScale);
-        emptyPotInstances.soils.setMatrixAt(index, _potTmpMatrix);
+        writeEmptyPotMatrices(bodies, rims, soils, index);
     }
-    emptyPotInstances.bodies.instanceMatrix.needsUpdate = true;
-    emptyPotInstances.rims.instanceMatrix.needsUpdate = true;
-    emptyPotInstances.soils.instanceMatrix.needsUpdate = true;
+    // A saved to-do from before pots had personalities can land on the slot that
+    // now holds the tipped pot. The plant wins; the wreckage gets tidied away.
+    if (tippedPot && tippedPot.userData.slot === index) tippedPot.visible = !occupied;
+    bodies.instanceMatrix.needsUpdate = true;
+    rims.instanceMatrix.needsUpdate = true;
+    soils.instanceMatrix.needsUpdate = true;
+}
+
+// The one pot somebody knocked over and never picked up, lying on the bench in
+// its own slot with its soil tipped out beside it.
+let tippedPot = null;
+function buildTippedBenchPot() {
+    const index = potJitter.findIndex(j => j.tipped);
+    if (index < 0) return;
+    const p = tablePositions[index];
+    const j = potJitter[index];
+    const g = new THREE.Group();
+    g.userData.slot = index;
+    g.position.set(p.x + j.dx, p.y, p.z + j.dz);
+    g.rotation.y = j.ry;
+
+    const potMat = getPotVariantMaterial(j.hue);
+    const soilMat = getSoilMaterial();
+
+    // Open cylinder on its side, so you can see into it.
+    const body = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.155, 0.105, 0.2, 20, 1, true), potMat);
+    body.rotation.z = Math.PI / 2;
+    body.position.set(0, 0.155, 0);
+    body.castShadow = true;
+    body.receiveShadow = true;
+    g.add(body);
+    const rim = new THREE.Mesh(new THREE.TorusGeometry(0.155, 0.012, 6, 20), potMat);
+    rim.rotation.y = Math.PI / 2;
+    rim.position.set(0.1, 0.155, 0);
+    g.add(rim);
+
+    // The soil that came out of it, in a fan away from the mouth.
+    const spill = new THREE.Mesh(new THREE.CircleGeometry(0.15, 12), soilMat);
+    spill.rotation.x = -Math.PI / 2;
+    spill.position.set(0.22, 0.006, 0);
+    spill.scale.set(1.5, 1, 0.85);
+    g.add(spill);
+    for (let i = 0; i < 5; i++) {
+        const r = slotRandom(index, 20 + i);
+        const crumb = new THREE.Mesh(new THREE.SphereGeometry(0.012 + r * 0.014, 5, 4), soilMat);
+        crumb.position.set(0.18 + r * 0.3, 0.012, (slotRandom(index, 30 + i) - 0.5) * 0.28);
+        g.add(crumb);
+    }
+    scene.add(g);
+    tippedPot = g;
 }
 
 function createPlant(todoData, isLoad = false) {
@@ -4366,9 +5540,12 @@ function createPlant(todoData, isLoad = false) {
         objects.splice(existingObjIndex, 1);
     }
 
-    // Plant Group
+    // Plant Group. The slot's jitter moves the whole plant, so a planted pot sits
+    // exactly where the empty one it replaced was standing.
+    const jitter = potJitter[positionIndex];
     const plantGroup = new THREE.Group();
     plantGroup.position.copy(pos);
+    if (jitter) plantGroup.position.x += jitter.dx, plantGroup.position.z += jitter.dz;
     plantGroup.userData = {
         id: todoData.id,
         positionIndex: positionIndex,
@@ -4376,7 +5553,10 @@ function createPlant(todoData, isLoad = false) {
     };
 
     // 1. Pot + soil
-    buildPotMeshes(plantGroup);
+    buildPotMeshes(plantGroup, jitter);
+    // Soil surface rises and falls with the pot's scale, so the stem has to
+    // follow it or a big pot buries its seedling and a small one floats it.
+    const soilY = 0.2 * (jitter ? jitter.s : 1);
 
     if (todoData.completed) {
         // Short thin stem — flower is the star, not the stalk.
@@ -4385,7 +5565,7 @@ function createPlant(todoData, isLoad = false) {
         stemGeom.translate(0, stemHeight / 2, 0);
         const plantMat = makeStemMaterial();
         const stem = new THREE.Mesh(stemGeom, plantMat);
-        stem.position.y = 0.2;
+        stem.position.y = soilY;
         stem.castShadow = true;
         // Keep the age-based growth the plant had when it was completed — without
         // this, completing a mature plant would shrink it back to seedling size.
@@ -4413,7 +5593,7 @@ function createPlant(todoData, isLoad = false) {
         stemGeom.translate(0, stemHeight / 2, 0);
         const plantMat = makeStemMaterial();
         const stem = new THREE.Mesh(stemGeom, plantMat);
-        stem.position.y = 0.2; // Start at dirt level
+        stem.position.y = soilY; // Start at dirt level
         stem.castShadow = true;
         stem.name = "stem";
         plantGroup.add(stem);
@@ -4459,7 +5639,7 @@ function createPlant(todoData, isLoad = false) {
         for (let i = 0; i < 2; i++) {
             const dead = new THREE.Mesh(leafGeom, perPlantLeafMat);
             const a = Math.random() * Math.PI * 2;
-            dead.position.set(Math.cos(a) * 0.07, 0.24, Math.sin(a) * 0.07);
+            dead.position.set(Math.cos(a) * 0.07, soilY + 0.04, Math.sin(a) * 0.07);
             dead.rotation.set(-Math.PI / 2 + 0.18, Math.random() * Math.PI * 2, 0, 'YXZ');
             dead.scale.setScalar(0.55 + Math.random() * 0.15);
             dead.name = `fallenLeaf${i + 1}`;
@@ -4478,6 +5658,9 @@ function createPlant(todoData, isLoad = false) {
     if (!todoData.completed) {
         updatePlantVisual(todoData);
     }
+
+    // A new shadow caster on the bench — the on-demand shadow maps need to know.
+    invalidateShadows();
 
     return true;
 }
@@ -4976,7 +6159,7 @@ function updateNightSky(time) {
 function updateSunAndLighting() {
     if (!sky || !sunLight) return;
 
-    const now = new Date();
+    const now = sunClockNow();
     const sun = computeSunPosition(now, SUN_LOCATION.lat, SUN_LOCATION.lng);
     const elev = sun.altitude;
     const azim = sun.azimuth;
@@ -4993,23 +6176,69 @@ function updateSunAndLighting() {
     sunLight.position.copy(dir).multiplyScalar(40);
     sunDir.copy(dir); // read every frame by updateSunShafts
 
-    // dayness: 1 fully day, 0 fully night, smooth between altitude -6° → +5°
-    const dayness = THREE.MathUtils.clamp((altDeg + 6) / 11, 0, 1);
+    // Three bands, keyed off solar elevation:
+    //   day      >= +10°  full sun, hard frame shadows
+    //   twilight  -6°..+10°  sun ramps out, blue hour, lamps come up
+    //   night    <= -6°   civil twilight is over; ambient is near-black
+    // The ramp is deliberately wide. The old one finished at +5°, which put the
+    // whole of golden hour in "full day" and made sunset happen all at once.
+    const dayness = THREE.MathUtils.clamp((altDeg + 6) / 16, 0, 1);
     const nightness = 1 - dayness;
     currentDayness = dayness;
+    // Peaks at 1 in the middle of the twilight band, 0 at either end — the dial
+    // for anything that should only happen while the sun is on the horizon.
+    const twilight = 1 - Math.abs(dayness * 2 - 1);
 
     // Stronger key light + weaker ambient fill = harder shadows and more
     // contrast, which reads far more photographic than even flat lighting.
-    sunLight.intensity = 3.5 * dayness;
-    // At night the hemisphere becomes dim, cool moonlight — enough to read the
-    // floor, tables and walls so you can navigate, while the lamp pools stay
-    // the dominant light and the corners keep their deep shadows.
-    skyFill.intensity = 0.3 * dayness + 0.3 * nightness;
-    skyFill.color.setHex(0xb6dbff).lerp(new THREE.Color(0x55688f), nightness);
-    skyFill.groundColor.setHex(0x4a3a2a).lerp(new THREE.Color(0x131820), nightness);
-    // Warm bounce stays on low at night — light kicked off the wood and floor
-    // by the lamp row.
-    warmFill.intensity = 0.6 * dayness + 0.5 * nightness;
+    sunLight.intensity = 4 * dayness;
+    // Prune the sun entirely after dark. Left visible it costs a full 2048²
+    // shadow-map render per frame for a light contributing nothing, and it would
+    // be a second directional shadow alongside the moon's.
+    sunLight.visible = dayness > 0.004;
+    // Sunlight reddens as it goes through more atmosphere. This is the
+    // difference between "the sun got dimmer" and sunset.
+    sunLight.color.setHex(0xfff0d6).lerp(new THREE.Color(0xff9d52), twilight * 0.85);
+
+    // --- Moon: real position, brightness by phase ---
+    const moon = computeMoonPosition(now, SUN_LOCATION.lat, SUN_LOCATION.lng);
+    const moonLit = computeMoonIllumination(now);
+    if (moonLight) {
+        // Extinction near the horizon, same as the disc gets.
+        const moonLow = THREE.MathUtils.smoothstep(moon.altitude, 0.0, 0.22);
+        // Phase response is deliberately non-linear: a half moon is nowhere near
+        // half as bright as a full one (roughly a tenth), because at full phase
+        // the surface backscatters straight at you with no shadows on it.
+        const phase = Math.pow(moonLit.fraction, 2.4);
+        const moonStrength = nightness * moonLow * phase;
+        // Wildly exaggerated against reality — full moonlight is about a
+        // hundred-thousandth of sunlight — but the point of it here is that the
+        // tree line and the far end of the house stay readable after dark, and
+        // that a full moon throws a faint pattern of frame shadows on the floor.
+        moonLight.intensity = 1.15 * moonStrength;
+        moonLight.visible = moonStrength > 0.01;
+        // Shadows only from a moon bright enough to actually throw one. Below
+        // that it is a 1024² map rendered for a shadow nobody can see.
+        moonLight.castShadow = moonStrength > 0.22;
+        if (moonLight.visible) {
+            moonLight.position.set(
+                Math.sin(moon.azimuth) * Math.cos(moon.altitude),
+                Math.sin(moon.altitude),
+                -Math.cos(moon.azimuth) * Math.cos(moon.altitude)
+            ).multiplyScalar(40);
+        }
+    }
+
+    // Ambient. At night this goes almost to nothing — moonlight and the lamp row
+    // are the only real sources, which is what gives the room its shape after
+    // dark. A generous hemisphere here reads as a grey wash over everything.
+    skyFill.intensity = 0.3 * dayness + 0.035 * nightness;
+    skyFill.color.setHex(0xb6dbff).lerp(new THREE.Color(0x4c6088), nightness);
+    skyFill.groundColor.setHex(0x4a3a2a).lerp(new THREE.Color(0x0b0f14), nightness);
+    // Warm bounce — light kicked off the wood and floor. At night this is a
+    // stand-in for the lamp row's own bounce, so it follows the filament level
+    // rather than nightness, and stays low: the lamps light the room, not this.
+    warmFill.intensity = 0.6 * dayness + 0.22 * nightness * lampState.level;
 
     // Global IBL multiplier. scene.environmentIntensity only landed in three
     // r163, so on the r160 build this page pins it does nothing — the way to dim
@@ -5022,15 +6251,30 @@ function updateSunAndLighting() {
     // spots rather than by ambient, and those are already exposed correctly.
     // Exposure is the dial that actually lifts the shadows here, and ACES rolls
     // the highlights off, so the lamp pools do not blow out as it comes up.
-    renderer.toneMappingExposure = 1.02 * dayness + 0.8 * nightness;
+    // Ambient is near-black now, so exposure has to come up further than before
+    // to keep the room navigable — ACES rolls the highlights off, so the lamp
+    // pools do not blow out as it does.
+    renderer.toneMappingExposure = 1.02 * dayness + 0.95 * nightness;
 
-    // Atmosphere: collapse rayleigh/turbidity at night and hide the Sky mesh entirely
-    // when fully night — its pre-dawn glow was leaking through the windows. The
-    // stars and moon take over from it, so the roof is no longer a black void.
-    sky.material.uniforms.rayleigh.value = 1.4 * dayness + 0.04 * nightness;
-    sky.material.uniforms.turbidity.value = 6 * dayness + 0.6 * nightness;
-    sky.visible = dayness > 0.05;
+    // Atmosphere. Rayleigh is what makes the sky blue, so it goes *up* through
+    // twilight rather than straight down — that is the blue hour, a deep
+    // saturated blue overhead once the sun is a few degrees under. Turbidity
+    // (haze) peaks with it and holds the orange band low on the horizon.
+    // Then both collapse for true night and the Sky mesh is hidden outright: its
+    // residual pre-dawn glow used to leak through the windows, and the stars and
+    // moon take over from it, so the roof is not a black void.
+    sky.material.uniforms.rayleigh.value = 1.4 * dayness + 2.6 * twilight * (0.35 + 0.65 * dayness);
+    sky.material.uniforms.turbidity.value = 6 * dayness + 5 * twilight + 0.6 * nightness;
+    sky.visible = dayness > 0.02;
     placeNightSky(now, nightness);
+
+    // --- Lamp switch, with hysteresis ---
+    // A photocell has a dead band or it chatters. Below +2° they come on, and
+    // they do not go off again until +3.5°, so the flip happens once per dawn and
+    // once per dusk instead of oscillating around a single threshold. `level`
+    // (the filament warm-up) is chased per frame in updateLamps().
+    if (altDeg < LAMP_ON_ELEV) lampState.on = true;
+    else if (altDeg > LAMP_OFF_ELEV) lampState.on = false;
 
     // Rebuild the IBL from the sky in its current state (runs at the same 30 s
     // cadence as this function — a few ms of GPU work). Collapsing rayleigh and
@@ -5053,65 +6297,88 @@ function updateSunAndLighting() {
         if (old) old.dispose();
     }
 
-    // Edison bulbs glow at night. Setting visible=false prunes them from the
-    // PBR shader's light list entirely — big win during the day.
-    const bulbsOn = nightness > 0.01;
-    bulbLights.forEach(light => {
-        light.visible = bulbsOn;
-        light.intensity = nightness * 10;
-    });
-    // Bulbs share one material, so a single write handles all 20.
-    if (sharedAssets._bulbMat) {
-        sharedAssets._bulbMat.emissiveIntensity = nightness * 1.8;
-    }
-    // Light shafts: fade in at night, hide entirely during day. This is peak haze
-    // density and it deliberately exceeds 1 — the shader's facing/along/near terms
-    // scale it well down everywhere except the core, so overdriving it is what
-    // saturates the core to fully opaque while leaving the shoulder to fall off
-    // smoothly. Measured leak through the core at this value: 0.000.
-    if (sharedAssets._shaftMat) {
-        sharedAssets._shaftMat.uniforms.uIntensity.value = nightness * 1.8;
-    }
-    shaftMeshes.forEach(mesh => {
-        mesh.visible = bulbsOn;
-    });
+    // Lamp brightness, bulb emissive and the haze cones all follow lampState.level,
+    // which is ramped per frame — see updateLamps().
 
-    // The glass is lit now, so it darkens on its own after sunset — no tint hack
-    // needed. What it still needs is help seeing *out*: the transmission buffer
-    // is dim at night, and the grime tint on top of that hides the woods
-    // (fireflies, eyes, moonlit trees). Open the panes up toward clear glass and
-    // let the tint go neutral as it gets dark.
+    // The glass is lit, so it darkens on its own after sunset. It keeps its green
+    // tint after dark: the tint is old horticultural glass, and glass does not
+    // stop being green when the sun goes down. It used to be lerped 75% toward
+    // clear to help see the woods, which read as the panes turning into open air.
+    // A little of that is still worth having — the transmission buffer is dim at
+    // night and heavy grime on top of it hides the tree line entirely — so the
+    // panes open up slightly and no further.
     for (const mat of [sharedAssets.wallGlass, sharedAssets.roofGlass]) {
         if (!mat) continue;
-        mat.color.copy(mat.userData.dayTint).lerp(_WHITE, nightness * 0.75);
-        mat.transmission = THREE.MathUtils.lerp(1, mat.userData.dayTransmission, dayness);
+        // A little extra through twilight as well as at night. The blue hour is
+        // the one time the sky above the roof is worth looking at, and heavy green
+        // horticultural glass turns a deep blue sky into flat teal.
+        mat.color.copy(mat.userData.dayTint).lerp(_WHITE, nightness * 0.22 + twilight * 0.34);
+        mat.transmission = THREE.MathUtils.lerp(
+            mat.userData.dayTransmission, mat.userData.nightTransmission, nightness);
+        // Reflections of the lamp row in the panes. Two things make them appear:
+        // the panes get smoother (a rough pane scatters a bulb into nothing), and
+        // clearcoat adds a second, sharper specular lobe on top of the glass's
+        // own — which is what turns a soft sheen into a distinct bright bulb
+        // sitting in the glass. Both are dialled by nightness so daytime keeps
+        // the diffusing horticultural look.
+        mat.roughness = THREE.MathUtils.lerp(
+            mat.userData.dayRoughness, mat.userData.nightRoughness, nightness);
+        mat.clearcoat = 0.08 + 0.42 * nightness;
+        mat.clearcoatRoughness = 0.22 - 0.14 * nightness;
+        mat.specularIntensity = 1 + 0.5 * nightness;
     }
 
-    // Humid haze: thicker and colder at night, soft green-grey by day.
+    // Humid haze. Densest through twilight — cool air over a warm wet floor is
+    // exactly when a greenhouse fogs, and it is what puts the sunbeams and the
+    // lamp cones in visible air at the moment they overlap.
     if (scene.fog) {
-        // Lighter daytime haze so the forest keeps its depth and color instead
-        // of washing out into the pale sky; cold but still see-through after
-        // dark — the woods are part of the night view.
-        scene.fog.density = 0.003 + nightness * 0.006;
-        scene.fog.color.setHex(0xb6c9c2).lerp(new THREE.Color(0x070d12), nightness);
+        scene.fog.density = 0.003 + nightness * 0.005 + twilight * 0.004;
+        scene.fog.color
+            .setHex(0xb6c9c2)
+            .lerp(new THREE.Color(0x8a6f5e), twilight * 0.55)   // dusty gold on the horizon
+            .lerp(new THREE.Color(0x070d12), nightness * nightness);
     }
 
     // Painted forest wall darkens with the night but keeps a moonlit trace so
     // the tree line is still there when you look out through the glass.
     if (sharedAssets._backdropMat) {
-        sharedAssets._backdropMat.color.setScalar(0.11 + 0.89 * dayness);
+        sharedAssets._backdropMat.color.setScalar(0.17 + 0.83 * dayness);
     }
 
     // Fireflies only come out after dark; dust motes show best in daylight.
     if (fireflySystem) fireflySystem.material.uniforms.uNight.value = nightness;
     if (dustSystem) dustSystem.material.uniforms.uIntensity.value = 0.08 + 0.16 * dayness;
+
+    // Night garnish that only needs the slow tick.
+    for (const m of groundFogMats) m.uniforms.uNight.value = nightness;
+    if (sharedAssets._farLightMat) sharedAssets._farLightMat.uniforms.uNight.value = nightness;
+
+    // The sun and moon have moved, so their shadow maps are stale.
+    sunLight.shadow.needsUpdate = true;
+    if (moonLight) moonLight.shadow.needsUpdate = true;
+
+    // Snapshot for the diagnostics overlay.
+    skyState.altDeg = altDeg;
+    skyState.twilight = twilight;
+    skyState.moonAltDeg = moon.altitude * 180 / Math.PI;
+    skyState.moonPhase = moonLit.fraction;
 }
 
 // --- Raycasting helpers — handle both regular Plant Groups and InstancedMesh empty pots ---
 function gatherIntersectables() {
     const list = [];
     for (const group of objects) {
-        for (const child of group.children) list.push(child);
+        for (const child of group.children) {
+            // The pot sits in its own sub-group so per-slot rotation and scale can
+            // be applied to it without also turning the plant. Reach one level in
+            // for its meshes — deliberately not a full traverse, which would add
+            // every petal of every flower to the per-frame raycast.
+            if (child.userData && child.userData.isPotGroup) {
+                for (const piece of child.children) list.push(piece);
+            } else {
+                list.push(child);
+            }
+        }
     }
     if (emptyPotInstances) {
         list.push(emptyPotInstances.bodies);
@@ -5310,9 +6577,16 @@ function animate() {
         updateSunAndLighting();
     }
 
+    // Lamps run per frame, not on the 30 s sun tick: the filament warm-up is a
+    // few seconds long and the shadow-caster assignment follows the camera.
+    assignLampLights(time);
+    updateLamps(time, delta);
+
     // Atmosphere — wind sway (GPU-side, just a uniform write) + glowing eyes state
     updateTreeWind(time);
     updateHauntedEyes(time);
+    updateFarForestLight(time);
+    updateSwayingVine(time);
     updateParticles(time, delta);
     // Shafts re-aim at the camera every frame, so this can't ride the 30 s tick.
     updateSunShafts();
@@ -5354,7 +6628,7 @@ function updateDiagPanel(time) {
     const cam = controls.getObject().position;
     const activeCount = todos.filter(t => !t.completed).length;
     const completedCount = todos.length - activeCount;
-    const bulbsOn = bulbLights.length && bulbLights[0].visible ? 'ON' : 'off';
+    const bulbsOn = `${lampState.on ? 'ON' : 'off'} ${lampState.level.toFixed(2)}`;
     const eyesLit = eyePairs.filter(p => p.state !== 'off').length;
     const winds = treeMaterials[0] && treeMaterials[0].userData.shader
         ? treeMaterials[0].userData.shader.uniforms.uWindStrength.value.toFixed(3)
@@ -5374,11 +6648,16 @@ function updateDiagPanel(time) {
         `Spot         ${lights.spot}`,
         `Point        ${lights.point}`,
         `Hemisphere   ${lights.hemi}`,
-        `Bulbs        ${bulbsOn}`,
+        `Lamps        ${bulbsOn}`,
+        `Lamp shadows ${lampShadowCount}`,
         '',
         '── World ───────────',
         `Sun alt      ${sunAlt}°`,
         `Dayness      ${currentDayness.toFixed(2)}`,
+        `Twilight     ${skyState.twilight.toFixed(2)}`,
+        `Moon         ${skyState.moonAltDeg.toFixed(0)}° ${(skyState.moonPhase * 100).toFixed(0)}%`
+            + (moonLight && moonLight.visible ? ` ${moonLight.intensity.toFixed(2)}` : ' —'),
+        `Exposure     ${renderer.toneMappingExposure.toFixed(2)}`,
         `Wind         ${winds}`,
         `Eyes lit     ${eyesLit}`,
         `Pos          ${cam.x.toFixed(1)}, ${cam.y.toFixed(1)}, ${cam.z.toFixed(1)}`,
