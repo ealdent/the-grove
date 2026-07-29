@@ -164,118 +164,514 @@ body {
     font-size: 0.8rem;
 }
 
-#add-todo-form {
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
+/* ==========================================================================
+   To-do dialogs — "greenhouse after dark"
+   --------------------------------------------------------------------------
+   Deliberately NO backdrop-filter anywhere. These panels sit over a WebGL
+   canvas that repaints every frame, and a blur layer over a surface that
+   never stops changing has to be recomposited every one of those frames.
+   The panels are layered gradients over a near-opaque base instead, which
+   costs nothing and reads the same at these opacities.
+   ========================================================================== */
+
+:root {
+    --gh-ink:        #e4efdc;
+    --gh-ink-dim:    #9db393;
+    --gh-ink-faint:  #6d8168;
+    --gh-leaf:       #8fd96a;
+    --gh-leaf-deep:  #4c8f3c;
+    --gh-lamp:       #ffc98a;
+    --gh-clay:       #c9764a;
+    --gh-wilt:       #d8a13f;
+    --gh-dying:      #c9553a;
+    --gh-edge:       rgba(150, 206, 122, 0.20);
+    --gh-edge-lit:   rgba(196, 240, 168, 0.42);
+    --gh-well:       rgba(6, 12, 7, 0.55);
 }
 
-input, textarea, select {
-    padding: 8px;
-    border: 1px solid #ccc;
-    border-radius: 4px;
-    font-family: inherit;
-}
-
-button {
-    padding: 10px;
-    background-color: #2ecc71;
-    color: white;
-    border: none;
-    border-radius: 4px;
-    cursor: pointer;
-    font-weight: bold;
-    transition: background-color 0.2s;
-}
-
-button:hover {
-    background-color: #27ae60;
-}
-
-.secondary-btn {
-    background-color: #f39c12;
-    margin-top: 10px;
-    width: 100%;
-}
-
-.secondary-btn:hover {
-    background-color: #d68910;
-}
-
-#resume-btn {
-    background-color: #3498db;
-    margin-top: 10px;
-    width: 100%;
-}
-
-#resume-btn:hover {
-    background-color: #2980b9;
-}
-
-hr {
-    margin: 20px 0;
-    border: 0;
-    border-top: 1px solid #eee;
-}
-
-#todo-modal, #add-todo-modal {
+.gh-scrim {
     position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background-color: rgba(0, 0, 0, 0.5);
+    inset: 0;
     display: flex;
     justify-content: center;
     align-items: center;
+    padding: 24px;
+    box-sizing: border-box;
     z-index: 30;
+    /* Warmer and lighter at the centre, as though the dialog itself were the
+       thing under the lamp. */
+    background:
+        radial-gradient(120% 90% at 50% 45%, rgba(10, 18, 10, 0.42), rgba(2, 5, 3, 0.78));
+    animation: gh-scrim-in 220ms ease-out both;
 }
 
-.modal-content {
-    background-color: white;
-    padding: 30px;
-    border-radius: 8px;
-    width: 400px;
-    max-width: 90%;
+@keyframes gh-scrim-in { from { opacity: 0; } to { opacity: 1; } }
+
+.gh-panel {
     position: relative;
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+    width: 460px;
+    max-width: 100%;
+    max-height: 100%;
+    border-radius: 18px;
+    /* Old glass over dark soil: a cool sheen from the top left, a warm one from
+       the lamp above, over a deep green-black body. */
+    background:
+        linear-gradient(147deg, rgba(206, 232, 198, 0.10) 0%, rgba(206, 232, 198, 0) 38%),
+        radial-gradient(90% 60% at 50% -10%, rgba(255, 201, 138, 0.16), rgba(255, 201, 138, 0) 70%),
+        linear-gradient(180deg, #16200f 0%, #0c130a 62%, #080d07 100%);
+    border: 1px solid var(--gh-edge);
+    box-shadow:
+        0 40px 90px -20px rgba(0, 0, 0, 0.85),
+        0 0 0 1px rgba(0, 0, 0, 0.5),
+        inset 0 1px 0 var(--gh-edge-lit);
+    animation: gh-panel-in 300ms cubic-bezier(0.2, 0.9, 0.25, 1) both;
 }
 
-.close-btn {
+@keyframes gh-panel-in {
+    from { opacity: 0; transform: translateY(14px) scale(0.975); }
+    to   { opacity: 1; transform: none; }
+}
+
+/* The vine canvas. Sits above the panel body but below its contents' text — the
+   shader itself decides which strands read as in front of the glass and which
+   read as behind it, so a single canvas gives the weave. pointer-events off, or
+   it would eat every click in the dialog. */
+.gh-vines {
     position: absolute;
-    top: 10px;
-    right: 15px;
-    font-size: 24px;
+    display: block;
+    width: auto;
+    height: auto;
+    pointer-events: none;
+    z-index: 1;
+}
+
+.gh-panel-inner {
+    position: relative;
+    z-index: 2;
+    padding: 26px 28px 24px;
+    max-height: calc(100vh - 48px);
+    overflow-y: auto;
+    /* Scroll without a scrollbar gutter shifting the vine geometry. */
+    scrollbar-width: thin;
+    scrollbar-color: rgba(143, 217, 106, 0.35) transparent;
+}
+
+.gh-panel-inner::-webkit-scrollbar { width: 8px; }
+.gh-panel-inner::-webkit-scrollbar-thumb {
+    background: rgba(143, 217, 106, 0.3);
+    border-radius: 4px;
+}
+
+/* --- Heading --- */
+
+.gh-head { margin: 0 0 20px; }
+
+.gh-eyebrow {
+    margin: 0 0 6px;
+    font-size: 0.72rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--gh-ink-faint);
+}
+
+.gh-panel h2 {
+    margin: 0;
+    font-size: 1.5rem;
+    font-weight: 600;
+    letter-spacing: 0.005em;
+    color: var(--gh-ink);
+    text-shadow: 0 1px 12px rgba(0, 0, 0, 0.6);
+}
+
+.gh-sub {
+    margin: 7px 0 0;
+    font-size: 0.88rem;
+    line-height: 1.5;
+    color: var(--gh-ink-dim);
+}
+
+.gh-sub:empty { display: none; }
+
+/* --- Fields --- */
+
+#add-todo-form { display: block; }
+
+.gh-field {
+    margin: 0 0 18px;
+    border: 0;
+    padding: 0;
+    min-width: 0;   /* fieldset defaults to min-content, which breaks the grid */
+}
+
+.gh-label-row {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 7px;
+}
+
+/* Scoped to the label ROW, not to every label in the field — a .gh-choice is a
+   <label> too, and the uppercase was cascading into the card text. */
+.gh-label-row label,
+.gh-legend,
+.gh-field legend,
+.gh-vital-name {
+    font-size: 0.82rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--gh-ink-dim);
+    padding: 0;
+}
+
+.gh-legend { margin: 0 0 7px; }
+
+.gh-optional {
+    margin-left: 6px;
+    font-weight: 400;
+    text-transform: none;
+    letter-spacing: 0;
+    color: var(--gh-ink-faint);
+}
+
+.gh-count {
+    font-size: 0.72rem;
+    font-variant-numeric: tabular-nums;
+    color: var(--gh-ink-faint);
+    opacity: 0;
+    transition: opacity 160ms ease;
+}
+
+.gh-count.is-near { opacity: 1; color: var(--gh-wilt); }
+
+.gh-panel input[type="text"],
+.gh-panel textarea {
+    display: block;
+    width: 100%;
+    box-sizing: border-box;
+    padding: 11px 13px;
+    font-family: inherit;
+    font-size: 0.95rem;
+    line-height: 1.45;
+    color: var(--gh-ink);
+    background: var(--gh-well);
+    border: 1px solid var(--gh-edge);
+    border-radius: 9px;
+    resize: vertical;
+    transition: border-color 140ms ease, box-shadow 140ms ease, background 140ms ease;
+}
+
+.gh-panel input::placeholder,
+.gh-panel textarea::placeholder { color: var(--gh-ink-faint); }
+
+.gh-panel input[type="text"]:focus,
+.gh-panel textarea:focus {
+    outline: none;
+    border-color: rgba(143, 217, 106, 0.65);
+    background: rgba(9, 18, 10, 0.72);
+    box-shadow: 0 0 0 3px rgba(143, 217, 106, 0.16);
+}
+
+.gh-panel input[aria-invalid="true"] {
+    border-color: rgba(201, 85, 58, 0.8);
+    box-shadow: 0 0 0 3px rgba(201, 85, 58, 0.16);
+}
+
+.gh-error {
+    margin: 7px 0 0;
+    font-size: 0.8rem;
+    color: #eb9b83;
+    min-height: 0;
+}
+
+.gh-error:empty { display: none; }
+
+.gh-hint {
+    margin: 7px 0 0;
+    font-size: 0.78rem;
+    color: var(--gh-ink-faint);
+}
+
+/* --- Radio cards --- */
+
+.gh-choice-row {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+}
+
+.gh-choice-row--four { grid-template-columns: repeat(4, 1fr); }
+
+.gh-choice { position: relative; display: block; cursor: pointer; }
+
+/* Kept in the layout and focusable — only visually replaced by the card, so
+   arrow-key roving and the focus ring both still come from the real input. */
+.gh-choice input {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    opacity: 0;
     cursor: pointer;
-    color: #7f8c8d;
 }
 
-.close-btn:hover {
-    color: #2c3e50;
+.gh-choice-body {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    padding: 10px 10px 11px;
+    text-align: center;
+    border: 1px solid var(--gh-edge);
+    border-radius: 10px;
+    background: var(--gh-well);
+    transition: border-color 140ms ease, background 140ms ease, transform 140ms ease;
 }
 
-.modal-actions {
+.gh-choice-name {
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: var(--gh-ink);
+    line-height: 1.2;
+}
+
+.gh-choice-note {
+    font-size: 0.71rem;
+    line-height: 1.25;
+    color: var(--gh-ink-faint);
+}
+
+.gh-choice:hover .gh-choice-body { border-color: rgba(143, 217, 106, 0.4); }
+
+.gh-choice input:checked + .gh-choice-body {
+    border-color: rgba(143, 217, 106, 0.85);
+    background:
+        linear-gradient(180deg, rgba(143, 217, 106, 0.20), rgba(143, 217, 106, 0.07));
+    box-shadow: 0 0 18px -4px rgba(143, 217, 106, 0.45);
+}
+
+.gh-choice input:checked + .gh-choice-body .gh-choice-note { color: var(--gh-leaf); }
+
+.gh-choice input:focus-visible + .gh-choice-body {
+    outline: 2px solid rgba(196, 240, 168, 0.9);
+    outline-offset: 2px;
+}
+
+.gh-choice--hot input:checked + .gh-choice-body {
+    border-color: rgba(216, 161, 63, 0.85);
+    background: linear-gradient(180deg, rgba(216, 161, 63, 0.22), rgba(216, 161, 63, 0.07));
+    box-shadow: 0 0 18px -4px rgba(216, 161, 63, 0.5);
+}
+
+.gh-choice--hot input:checked + .gh-choice-body .gh-choice-note { color: var(--gh-wilt); }
+
+/* --- Status chips --- */
+
+.gh-chip-row { display: flex; flex-wrap: wrap; gap: 7px; }
+
+.gh-chip {
+    padding: 7px 11px;
+    font-family: inherit;
+    font-size: 0.8rem;
+    white-space: nowrap;
+    font-weight: 500;
+    color: var(--gh-ink-dim);
+    background: var(--gh-well);
+    border: 1px solid var(--gh-edge);
+    border-radius: 999px;
+    cursor: pointer;
+    transition: color 140ms ease, border-color 140ms ease, background 140ms ease;
+}
+
+.gh-chip:hover { color: var(--gh-ink); border-color: rgba(143, 217, 106, 0.4); }
+
+.gh-chip[aria-checked="true"] {
+    color: #0d1a09;
+    font-weight: 600;
+    background: linear-gradient(180deg, var(--gh-leaf), var(--gh-leaf-deep));
+    border-color: rgba(196, 240, 168, 0.7);
+    box-shadow: 0 0 18px -5px rgba(143, 217, 106, 0.65);
+}
+
+.gh-chip:focus-visible {
+    outline: 2px solid rgba(196, 240, 168, 0.9);
+    outline-offset: 2px;
+}
+
+/* --- Vitals meter --- */
+
+.gh-vitals {
+    margin: 0 0 20px;
+    padding: 14px 15px 12px;
+    border: 1px solid var(--gh-edge);
+    border-radius: 12px;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.035), rgba(0, 0, 0, 0.2));
+}
+
+.gh-vital-read {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    font-size: 0.9rem;
+}
+
+.gh-vital-read strong { color: var(--gh-ink); font-weight: 600; }
+
+#modal-health {
+    font-variant-numeric: tabular-nums;
+    color: var(--gh-ink-faint);
+    font-size: 0.82rem;
+}
+
+.gh-meter {
+    position: relative;
+    height: 8px;
+    border-radius: 999px;
+    background: rgba(0, 0, 0, 0.5);
+    box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.6);
+    overflow: hidden;
+}
+
+.gh-meter-fill,
+.gh-meter-ghost {
+    position: absolute;
+    inset: 0 auto 0 0;
+    border-radius: 999px;
+    width: 100%;
+}
+
+/* The ghost sits behind the fill and shows where the health *will* be after the
+   selected watering — a preview, not a promise. */
+.gh-meter-ghost {
+    background: repeating-linear-gradient(115deg,
+        rgba(143, 217, 106, 0.42) 0 5px, rgba(143, 217, 106, 0.1) 5px 10px);
+    transition: width 220ms ease;
+}
+
+.gh-meter-fill {
+    z-index: 1;
+    background: linear-gradient(90deg, var(--gh-leaf-deep), var(--gh-leaf));
+    box-shadow: 0 0 12px -2px rgba(143, 217, 106, 0.8);
+    transition: width 260ms ease, background 400ms ease, box-shadow 400ms ease;
+}
+
+.gh-meter-fill.is-wilting {
+    background: linear-gradient(90deg, #8a6a22, var(--gh-wilt));
+    box-shadow: 0 0 12px -2px rgba(216, 161, 63, 0.75);
+}
+
+.gh-meter-fill.is-dying {
+    background: linear-gradient(90deg, #6e2f21, var(--gh-dying));
+    box-shadow: 0 0 12px -2px rgba(201, 85, 58, 0.75);
+}
+
+/* --- Buttons --- */
+
+.gh-actions {
     display: flex;
     gap: 10px;
-    margin-top: 20px;
+    margin-top: 22px;
 }
 
-.action-btn {
+.gh-actions--split { justify-content: space-between; }
+
+.gh-btn {
     flex: 1;
-    background-color: #3498db;
+    padding: 12px 16px;
+    font-family: inherit;
+    font-size: 0.92rem;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+    border-radius: 10px;
+    border: 1px solid transparent;
+    cursor: pointer;
+    transition: transform 120ms ease, filter 140ms ease, background 140ms ease,
+                border-color 140ms ease, color 140ms ease;
 }
 
-.action-btn:hover {
-    background-color: #2980b9;
+.gh-btn:active:not(:disabled) { transform: translateY(1px); }
+
+.gh-btn:focus-visible {
+    outline: 2px solid rgba(196, 240, 168, 0.9);
+    outline-offset: 2px;
 }
 
-.success-btn {
-    flex: 1;
-    background-color: #2ecc71;
+.gh-btn--wide { width: 100%; margin-top: 12px; }
+
+.gh-btn--primary {
+    color: #0c1808;
+    background: linear-gradient(180deg, #a8e884, var(--gh-leaf-deep));
+    border-color: rgba(196, 240, 168, 0.55);
+    box-shadow: 0 6px 20px -8px rgba(143, 217, 106, 0.8);
 }
 
-.success-btn:hover {
-    background-color: #27ae60;
+.gh-btn--primary:hover:not(:disabled) { filter: brightness(1.09); }
+
+.gh-btn--primary:disabled {
+    color: var(--gh-ink-faint);
+    background: rgba(255, 255, 255, 0.05);
+    border-color: var(--gh-edge);
+    box-shadow: none;
+    cursor: not-allowed;
+}
+
+.gh-btn--ghost {
+    color: var(--gh-ink-dim);
+    background: transparent;
+    border-color: var(--gh-edge);
+}
+
+.gh-btn--ghost:hover { color: var(--gh-ink); border-color: var(--gh-edge-lit); }
+
+.gh-btn--bloom {
+    color: #1a0f06;
+    background: linear-gradient(180deg, #ffd9a0, var(--gh-clay));
+    border-color: rgba(255, 217, 160, 0.5);
+    box-shadow: 0 6px 20px -8px rgba(201, 118, 74, 0.8);
+}
+
+.gh-btn--bloom:hover { filter: brightness(1.08); }
+
+.gh-btn-note {
+    display: inline-block;
+    margin-left: 6px;
+    font-weight: 500;
+    font-variant-numeric: tabular-nums;
+    opacity: 0.72;
+}
+
+.gh-btn-note:empty { display: none; }
+
+.gh-water { margin-bottom: 4px; }
+
+/* --- Toast --- */
+
+.gh-toast {
+    position: fixed;
+    left: 50%;
+    bottom: 42px;
+    transform: translate(-50%, 14px);
+    z-index: 40;
+    max-width: min(90vw, 420px);
+    padding: 11px 18px;
+    font-size: 0.9rem;
+    color: var(--gh-ink);
+    background: linear-gradient(180deg, #1a2513, #0d140a);
+    border: 1px solid rgba(143, 217, 106, 0.4);
+    border-radius: 999px;
+    box-shadow: 0 14px 40px -12px rgba(0, 0, 0, 0.9),
+                inset 0 1px 0 var(--gh-edge-lit);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 200ms ease, transform 240ms cubic-bezier(0.2, 0.9, 0.25, 1);
+}
+
+.gh-toast.is-up { opacity: 1; transform: translate(-50%, 0); }
+
+@media (prefers-reduced-motion: reduce) {
+    .gh-scrim, .gh-panel { animation: none; }
+    .gh-toast, .gh-meter-fill, .gh-meter-ghost { transition-duration: 1ms; }
 }
 
 /* --- Mobile / touch device support --- */
@@ -382,23 +778,32 @@ body.touch #hover-tooltip { display: none !important; }
         box-sizing: border-box;
     }
 
-    .modal-content {
-        padding: 18px;
-        max-width: calc(100vw - 24px);
-        max-height: calc(100vh - 24px);
-        overflow-y: auto;
-        box-sizing: border-box;
+    .gh-scrim { padding: 10px; }
+
+    .gh-panel-inner {
+        padding: 18px 18px 16px;
+        max-height: calc(100vh - 20px);
     }
 
-    .modal-content h2 { font-size: 1.25rem; }
+    .gh-panel h2 { font-size: 1.25rem; }
 
-    button { min-height: 44px; }
+    /* Four watering cards do not fit across a phone; two rows of two do. */
+    .gh-choice-row--four { grid-template-columns: repeat(2, 1fr); }
 
-    .status-actions {
-        flex-direction: column;
+    /* 44 px minimum touch target, per every platform's guidance. */
+    .gh-btn, .gh-chip { min-height: 44px; }
+    .gh-choice-body { min-height: 44px; justify-content: center; }
+
+    .gh-actions { flex-direction: column-reverse; }
+
+    /* Top-centred on a phone. A dialog this tall reaches the bottom of the
+       viewport, and a toast down there lands on the action buttons — which is
+       exactly where the user's thumb is heading. */
+    .gh-toast {
+        bottom: auto;
+        top: max(14px, env(safe-area-inset-top, 0));
+        transform: translate(-50%, -14px);
     }
 
-    .modal-actions {
-        flex-direction: column;
-    }
+    .gh-toast.is-up { transform: translate(-50%, 0); }
 }

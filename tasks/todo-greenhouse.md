@@ -117,3 +117,106 @@ particles        520 beam motes, 60 moths
 - Toggling `sunLight.visible` and `moonLight.visible` changes the light counts,
   which recompiles every material. It happens about four times per real day
   (dawn, dusk, moonrise, moonset) and will show as a brief hitch.
+
+---
+
+# Part 2 — to-do UI, and in-world attention cues
+
+## Plan
+
+### I. Vine border shader (`ui-vines.js`)
+- [x] Raw-WebGL fullscreen-quad shader on a canvas inset **beyond** the dialog
+      bounds, so strands run off the edge.
+- [x] Parametrise by arc length around the panel rectangle, derived from the
+      **ray angle** from the panel centre — continuous everywhere except the exact
+      centre, so no corner seams (a nearest-edge parametrisation has a
+      discontinuity all along each corner diagonal).
+- [x] All wobble frequencies integer multiples of `2*pi/perimeter`, so the pattern
+      wraps without a seam at s=0.
+- [x] Back strands dim + desaturate inside the panel rect (seen through the
+      glass); front strands stay crisp and cross over the content. One canvas,
+      one context, real weaving.
+- [x] Leaves at seamless integer spacing along each strand, hashed side/angle.
+- [x] Premultiplied alpha so the halo adds as light — ethereal, not painted.
+- [x] Grows in along the perimeter on open; freezes under
+      `prefers-reduced-motion`.
+
+### II. To-do UX
+- [x] Add dialog: labelled fields, autofocus, char counters, urgency as three
+      radio cards that **state the decay rate** (the one thing the old opaque
+      `<select>` never told anyone), inline validation, disabled-until-valid.
+- [x] Manage dialog: health meter with a semantic label, "last tended" in
+      relative time, the decay rate spelled out, status as a segmented control
+      with a real selected state, effort as radio cards showing the resulting
+      health, distinct complete action.
+- [x] Dialog semantics: `role="dialog"`, `aria-modal`, labelled by its heading,
+      focus trap, focus restore, Esc to cancel, Cmd/Ctrl+Enter from the textarea.
+- [x] Toast confirmations via an `aria-live` region.
+- [x] No `backdrop-filter` — it composites against a canvas repainting every
+      frame (see lessons).
+
+### III. Idle cue toward the nearest free pot
+- [x] Six seconds without task interaction while exploring, then a soft pulsing
+      ring + motes rise over the nearest unoccupied slot.
+- [x] Re-targets by fading out, moving, fading in.
+
+### IV. Stale to-do attention
+- [x] Staleness from health; pooled additive halos on the worst offenders,
+      amber to red.
+- [x] Rattle on the stem (not the pot, and not `rotation.x`, which
+      `updatePlantVisual` owns), one plant at a time, amplitude boosted where the
+      plant sits in peripheral vision — motion at the edge of view is what
+      actually pulls the eye.
+
+## Proof
+- Headless renders of both dialogs, mid-reveal and settled.
+- Numeric dumps: focus trap order, staleness/rattle amplitude vs screen
+  position, idle timer.
+
+## Review (Part 2)
+
+### Measured
+
+```
+add dialog       role=dialog aria-modal=true labelledby=add-modal-title
+                 focus on open -> #todo-title
+                 tab stops: todo-title -> todo-desc -> urgency(checked) -> Cancel
+                 (Plant seed is absent while disabled, which is correct)
+                 empty submit -> refused, inline error, aria-invalid=true, 0 written
+keyboard-only    Cmd+Enter from the notes field planted at slot 60, health 100,
+                 dialog closed, toast announced through aria-live=polite
+escape / backdrop close; a mousedown on the panel itself does not
+status chips     role=radio, ArrowRight/ArrowLeft move and persist
+check-in         health 35 -> 65 for +30, written through to localStorage,
+                 and the wilting nag on that plant cleared
+vine border      one GL context per dialog, built lazily on first open
+                 canvas 642x685 for a 460 px panel = 96 px of overflow per side
+                 reveal ramps 0 -> 1 over 1.1 s; loop stops on close
+idle hint        level 0 -> 1 over ~0.9 s once 6 s idle, targets the nearest free
+                 slot, retires the moment a dialog opens or a pot is aimed at
+rattle           centred plant  edge=0.00  peak 1.54 deg
+                 peripheral     edge=0.95  peak 7.92 deg
+                 and the burst hands over to whichever stale plant is nearest
+                 the frame edge; only ever one plant at a time
+haloes           pooled, 2 visible for 2 stale plants, ranked worst-first
+```
+
+### Notes
+
+- The vine parametrisation is a ray from the panel centre, not a projection to
+  the nearest edge. The obvious version is discontinuous along every corner
+  diagonal — the "top edge" and "right edge" branches disagree by twice the
+  inset distance — which kinks every strand inside every corner.
+- The idle ring sits 0.30 pot-heights above the bench, not on the soil: level
+  with the soil its centre is buried under the mound, so the ripple only became
+  visible after it had already spread past the rim and faded.
+- Toast moves to the top of the viewport on phones. The tend dialog reaches the
+  bottom of a 390 px viewport, and a bottom-centred toast lands exactly where
+  the thumb is going.
+
+### Not verified
+
+- Real-GPU cost of the vine shader alongside the 3D scene. Both were measured
+  only under SwiftShader.
+- Screen-reader behaviour with an actual screen reader; only the ARIA wiring and
+  the live region were checked.

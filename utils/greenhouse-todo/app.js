@@ -9,6 +9,9 @@ import Stats from 'three/addons/libs/stats.module.js';
 // N8AO — screen-space ambient occlusion. It renders the beauty pass itself, so it
 // stands in for RenderPass rather than following one.
 import { N8AOPass } from 'n8ao';
+// The vine border on the to-do dialogs. Its own WebGL context on its own canvas,
+// created lazily the first time a dialog opens.
+import { VineFrame } from './ui-vines.js';
 
 THREE.Cache.enabled = true;
 
@@ -98,6 +101,10 @@ const STORAGE_KEY = 'greenhouse-todos-data';
 
 // Touch device detection (coarse pointer = primary input is touch)
 const isTouchDevice = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
+// Read once and honoured by every attention cue. Someone who has asked the OS to
+// stop animations has not asked for a plant to start shaking at them.
+const prefersReducedMotion = !!(window.matchMedia
+    && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
 let mobileActive = false; // True when exploring on a touch device
 
 function saveTodosToLocal() {
@@ -164,15 +171,132 @@ const menuBtn = document.getElementById('mobile-menu-btn');
 const modalTitle = document.getElementById('modal-title');
 const modalDesc = document.getElementById('modal-desc');
 const modalHealth = document.getElementById('modal-health');
-const modalStatus = document.getElementById('modal-status');
+const modalHealthLabel = document.getElementById('modal-health-label');
 const modalUrgency = document.getElementById('modal-urgency');
-const todoEffort = document.getElementById('todo-effort');
+const modalTended = document.getElementById('modal-tended');
+const modalDecay = document.getElementById('modal-decay');
+const modalMeter = document.getElementById('modal-meter');
+const modalMeterFill = document.getElementById('modal-meter-fill');
+const modalMeterGhost = document.getElementById('modal-meter-ghost');
+const statusChips = document.getElementById('status-chips');
+const checkinPreview = document.getElementById('checkin-preview');
+const ghToast = document.getElementById('gh-toast');
 
 // Form Elements
 const addTodoForm = document.getElementById('add-todo-form');
 const todoTitle = document.getElementById('todo-title');
 const todoDesc = document.getElementById('todo-desc');
-const todoUrgency = document.getElementById('todo-urgency');
+const titleCount = document.getElementById('title-count');
+const descCount = document.getElementById('desc-count');
+const titleError = document.getElementById('title-error');
+const btnPlant = document.getElementById('btn-plant');
+
+// What each urgency level actually means. This lived only in the decay function
+// before, which is why the old urgency dropdown could not explain itself.
+const URGENCY = {
+    1: { name: 'Patient', halfLifeDays: 4 },
+    2: { name: 'Steady', halfLifeDays: 2 },
+    3: { name: 'Thirsty', halfLifeDays: 1 }
+};
+
+// Health bands. Named, because "62%" tells you a number and "Wilting" tells you
+// what to do about it.
+const HEALTH_BANDS = [
+    { min: 85, label: 'Thriving', cls: '' },
+    { min: 60, label: 'Healthy', cls: '' },
+    { min: 35, label: 'Wilting', cls: 'is-wilting' },
+    { min: 15, label: 'Struggling', cls: 'is-wilting' },
+    { min: -1, label: 'Nearly gone', cls: 'is-dying' }
+];
+
+function healthBand(health) {
+    return HEALTH_BANDS.find(b => health >= b.min) || HEALTH_BANDS[HEALTH_BANDS.length - 1];
+}
+
+// Coarse relative time. Deliberately vague at the long end — "6 days ago" is
+// actionable, "5 days 14 hours ago" is noise.
+function relativeTime(then) {
+    const ms = getCurrentSimulatedTime() - then;
+    if (!Number.isFinite(ms) || ms < 0) return 'just now';
+    const mins = Math.floor(ms / 60000);
+    if (mins < 2) return 'just now';
+    if (mins < 60) return `${mins} min ago`;
+    const hours = Math.floor(mins / 60);
+    if (hours < 24) return hours === 1 ? 'an hour ago' : `${hours} hours ago`;
+    const days = Math.floor(hours / 24);
+    return days === 1 ? 'yesterday' : `${days} days ago`;
+}
+
+let toastTimer = 0;
+function showToast(message) {
+    if (!ghToast) return;
+    ghToast.textContent = message;
+    ghToast.classList.add('is-up');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => ghToast.classList.remove('is-up'), 2600);
+}
+
+// --- Dialog focus management ---
+//
+// A modal dialog has to keep the keyboard inside itself, or Tab walks out into
+// the page behind and the user is typing into something they cannot see. Focus is
+// also restored to nothing in particular on close, because the element that
+// opened these dialogs is the 3D canvas.
+const FOCUSABLE = 'button:not([disabled]), input:not([disabled]), textarea, select, [tabindex]:not([tabindex="-1"])';
+let trapPanel = null;
+
+function focusablesIn(panel) {
+    return Array.from(panel.querySelectorAll(FOCUSABLE))
+        .filter(el => el.offsetParent !== null || el.getClientRects().length);
+}
+
+function onTrapKeydown(event) {
+    if (event.key !== 'Tab' || !trapPanel) return;
+    const items = focusablesIn(trapPanel);
+    if (!items.length) return;
+    // A radio group is one tab stop, not four: Tab should land on whichever
+    // option is checked and then leave the group entirely.
+    const stops = items.filter(el => el.type !== 'radio' || el.checked
+        || !items.some(o => o.type === 'radio' && o.name === el.name && o.checked));
+    const first = stops[0];
+    const last = stops[stops.length - 1];
+    const active = document.activeElement;
+    if (event.shiftKey && (active === first || !trapPanel.contains(active))) {
+        event.preventDefault();
+        last.focus();
+    } else if (!event.shiftKey && active === last) {
+        event.preventDefault();
+        first.focus();
+    }
+}
+
+function trapFocus(panel, initial) {
+    trapPanel = panel;
+    document.addEventListener('keydown', onTrapKeydown, true);
+    // Deferred a frame: the panel is display:flex'd in the same tick, and focus()
+    // on an element whose ancestor is still display:none is a no-op.
+    requestAnimationFrame(() => {
+        const target = initial || focusablesIn(panel)[0];
+        if (target) target.focus();
+    });
+}
+
+function releaseFocus() {
+    document.removeEventListener('keydown', onTrapKeydown, true);
+    trapPanel = null;
+    if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
+}
+
+// Vine borders, built on first open so a session that never touches a to-do never
+// pays for a second GL context.
+const vineFrames = new WeakMap();
+function vinesFor(scrim) {
+    if (!scrim) return null;
+    const panel = scrim.querySelector('.gh-panel');
+    if (!panel) return null;
+    if (!vineFrames.has(panel)) vineFrames.set(panel, new VineFrame(panel));
+    return vineFrames.get(panel);
+}
 
 function setupScene() {
     scene = new THREE.Scene();
@@ -500,6 +624,137 @@ function setupDebugHooks() {
             }
             return rows;
         },
+        // Open either dialog without having to aim and click, which is not
+        // something a headless browser can do. Also the only way to inspect the
+        // tend dialog for a to-do in a specific state.
+        openAdd(slot = -1) {
+            activePotIndex = slot >= 0 ? slot : nearestFreeSlot();
+            openAddTodoModal();
+            return { slot: activePotIndex };
+        },
+        openTend(id) {
+            const todo = id === undefined
+                ? todos.find(t => !t.completed)
+                : todos.find(t => t.id === id);
+            if (!todo) return { error: 'no such to-do' };
+            openTodoModal(todo);
+            return { id: todo.id, health: Math.round(todo.health) };
+        },
+        // Force a to-do's health so the wilting cues can be inspected without
+        // waiting days for the decay to get there.
+        setHealth(id, health) {
+            const todo = todos.find(t => t.id === id);
+            if (!todo) return { error: 'no such to-do' };
+            todo.health = health;
+            todo.healthAtLastUpdate = health;
+            todo.lastUpdated = getCurrentSimulatedTime();
+            suppressedAttention.delete(id);
+            updatePlantVisual(todo);
+            return { id, health };
+        },
+        // Drive the attention cues by hand. Same reason as advanceLamps: both the
+        // idle hint's fade and the rattle envelope are integrated over elapsed
+        // time, and headless Chrome under a virtual-time budget hands
+        // requestAnimationFrame a delta of zero, so neither one ever advances.
+        // Returns one row per step rather than just the end state: the rattle is a
+        // burst with a decaying envelope, so sampling only after the fact reliably
+        // catches it at zero and reports "no rattle".
+        advanceCues(dt = 0.1, steps = 20) {
+            const rows = [];
+            // Same refresh as edgeOf: the rattle reads screen-space position, and a
+            // caller who moves the camera and steps immediately would otherwise be
+            // measuring against the previous frame's projection.
+            camera.updateMatrixWorld(true);
+            camera.matrixWorldInverse.copy(camera.matrixWorld).invert();
+            let clock = performance.now();
+            for (let i = 0; i < steps; i++) {
+                clock += dt * 1000;
+                updatePlantHint(clock, dt);
+                updateAttention(clock, dt);
+                const shaking = attentionRanked.find(e => e.todo.id === rattleState.id);
+                rows.push({
+                    t: +(i * dt).toFixed(2),
+                    hint: plantHint ? +plantHint.level.toFixed(3) : null,
+                    hintSlot: plantHint ? plantHint.slot : null,
+                    rattleId: rattleState.id,
+                    // The rattling plant's OWN screen position — the amplitude is
+                    // scaled by this, so reporting any other plant's is useless.
+                    rattleEdge: shaking ? +edgeProminence(shaking.todo.mesh).toFixed(3) : null,
+                    stemZ: shaking
+                        ? +(shaking.todo.mesh.getObjectByName('stem')?.rotation.z ?? 0).toFixed(4)
+                        : 0
+                });
+            }
+            return rows;
+        },
+        // Pretend the player is walking around. Pointer lock cannot be acquired in
+        // a headless browser, and the idle hint deliberately only shows while
+        // exploring — so without this it can never be observed.
+        setExploring(on = true) {
+            controls.isLocked = !!on;
+            return { isLocked: controls.isLocked };
+        },
+        // Where an object sits in the frame, 0 dead centre and 1 in the periphery.
+        // The rattle amplitude is scaled by this, so it is the thing to verify.
+        // The camera matrices are refreshed first: normally the renderer does that
+        // once a frame, but a caller who moves the camera and measures immediately
+        // would otherwise read the previous frame's projection.
+        edgeOf(id) {
+            camera.updateMatrixWorld(true);
+            camera.matrixWorldInverse.copy(camera.matrixWorld).invert();
+            const todo = todos.find(t => t.id === id);
+            return todo && todo.mesh ? +edgeProminence(todo.mesh).toFixed(3) : null;
+        },
+        // Clear the rattle cooldown so a burst starts on the next step. Without it
+        // the wait between bursts is up to 5 s, which a short trace just misses.
+        armRattle() {
+            rattleState.id = null;
+            rattleState.next = 0;
+            return true;
+        },
+        // Vine border state, and a way to hold the grow-in animation at a given
+        // point. The reveal takes about a second, which a capture at the end of a
+        // headless run has always missed — and "the vines didn't appear" is
+        // otherwise a hard thing to tell apart from a CSS stacking problem.
+        vines(pin) {
+            const report = [];
+            for (const scrim of [addTodoModal, todoModal]) {
+                const panel = scrim.querySelector('.gh-panel');
+                const frame = panel && vineFrames.get(panel);
+                if (!frame) { report.push({ dialog: scrim.id, built: false }); continue; }
+                if (pin !== undefined) frame.pin(pin);
+                report.push({
+                    dialog: scrim.id, built: true, glOk: frame.ok,
+                    reveal: +frame.reveal.toFixed(3),
+                    canvas: [frame.canvas.width, frame.canvas.height],
+                    overflowPx: frame.overflow,
+                    running: !!frame.raf,
+                    reducedMotion: frame.reduced
+                });
+            }
+            return report;
+        },
+        // What the attention system currently thinks, for verifying the cues.
+        attention() {
+            return {
+                idleMs: Math.round(performance.now() - lastTaskActivity),
+                hint: plantHint
+                    ? { slot: plantHint.slot, level: +plantHint.level.toFixed(3),
+                        visible: plantHint.group.visible,
+                        at: plantHint.group.position.toArray().map(v => +v.toFixed(2)) }
+                    : null,
+                ranked: attentionRanked.map(e => ({
+                    id: e.todo.id,
+                    title: e.todo.title,
+                    health: Math.round(e.todo.health),
+                    stale: +e.stale.toFixed(3),
+                    edge: +edgeProminence(e.todo.mesh).toFixed(3),
+                    rattling: e.todo.id === rattleState.id,
+                    stemZ: +(e.todo.mesh.getObjectByName('stem')?.rotation.z ?? 0).toFixed(4)
+                })),
+                halosVisible: attentionPool.filter(h => h.visible).length
+            };
+        },
         // Live handles. Worth exposing: "which mesh is that pale blob on the
         // floor" is otherwise unanswerable without rebuilding the page, and
         // toggling a candidate's visibility answers it in one render.
@@ -620,6 +875,12 @@ function init() {
 
     // 8e. Stars + moon, so the roof isn't a black void after dark
     buildNightSky();
+
+    // 8f. Attention cues — the idle nudge toward an empty pot, and the haloes
+    // that wilting plants wear.
+    buildPlantHint();
+    buildAttentionHalos();
+    lastTaskActivity = performance.now();
 
     // 8f. Debug hooks — a settable astro clock, so any hour of the day can be
     // inspected without waiting for it.
@@ -6379,6 +6640,359 @@ function updateSunAndLighting() {
     skyState.moonPhase = moonLit.fraction;
 }
 
+// --- Attention: an idle nudge toward an empty pot, and a nag from a wilting one ---
+//
+// Both of these exist because the room is big and quiet. A greenhouse with a
+// hundred identical pots gives you no idea where to start, and a plant dying
+// twenty metres behind you is a thing you find out about a week later.
+
+let lastTaskActivity = 0;          // performance.now() of the last deliberate act
+const IDLE_HINT_DELAY = 6000;      // ms of not gardening before the nudge appears
+const HINT_RANGE = 16;             // m — beyond this, pointing at a pot is noise
+
+let plantHint = null;              // { group, ring, motes, slot, level, target }
+
+// A ring of light spreading out across the soil, plus a few motes lifting off it.
+// Deliberately on the pot rather than in the HUD: the thing being pointed at is a
+// place in the room, and an arrow on the screen would make you translate between
+// the two.
+function buildPlantHint() {
+    const group = new THREE.Group();
+    group.visible = false;
+
+    // Sized to stay inside its own slot — the pots are on a 1 m grid, and a wider
+    // ring reaches over its neighbours and stops reading as "this one".
+    const geom = new THREE.PlaneGeometry(0.82, 0.82);
+    geom.rotateX(-Math.PI / 2);
+    const ringMat = new THREE.ShaderMaterial({
+        uniforms: { uTime: { value: 0 }, uLevel: { value: 0 } },
+        vertexShader: `
+            varying vec2 vUv;
+            void main() {
+                vUv = uv;
+                gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+            }
+        `,
+        fragmentShader: `
+            uniform float uTime;
+            uniform float uLevel;
+            varying vec2 vUv;
+            void main() {
+                float r = length(vUv - 0.5) * 2.0;
+                if (r > 1.0) discard;
+                // Two rings, half a cycle apart, so there is always one arriving.
+                // They start out past the pot rim rather than at the centre: the
+                // middle of this plane sits inside the pot, where the soil mound
+                // hides it, so a ring born at r=0 spends its brightest moments
+                // invisible.
+                float a = 0.0;
+                for (int i = 0; i < 2; i++) {
+                    float phase = fract(uTime * 0.5 + float(i) * 0.5);
+                    float rad = 0.34 + phase * 0.62;
+                    // Thins as it spreads — a ripple, not a hoop. Fades linearly
+                    // rather than quadratically, or it is faint for most of its life.
+                    float w = 0.055 * (1.0 - phase * 0.45);
+                    a += (1.0 - smoothstep(0.0, w, abs(r - rad))) * (1.0 - phase);
+                }
+                // A steady hairline at the rim, so there is always an outline even
+                // between ripples, plus a soft bloom under it.
+                a += (1.0 - smoothstep(0.02, 0.07, abs(r - 0.36))) * 0.30;
+                a += (1.0 - smoothstep(0.30, 0.85, r)) * 0.16;
+                a *= uLevel;
+                if (a < 0.004) discard;
+                gl_FragColor = vec4(vec3(0.62, 1.0, 0.55) * a * 1.6, a);
+            }
+        `,
+        transparent: true,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending,
+        side: THREE.DoubleSide
+    });
+    const ring = new THREE.Mesh(geom, ringMat);
+    group.add(ring);
+
+    const COUNT = 10;
+    const pos = new Float32Array(COUNT * 3);
+    const seed = new Float32Array(COUNT);
+    for (let i = 0; i < COUNT; i++) {
+        const a = Math.random() * Math.PI * 2;
+        const r = 0.05 + Math.random() * 0.14;
+        pos[i * 3] = Math.cos(a) * r;
+        pos[i * 3 + 1] = 0;
+        pos[i * 3 + 2] = Math.sin(a) * r;
+        seed[i] = Math.random();
+    }
+    const mGeom = new THREE.BufferGeometry();
+    mGeom.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    mGeom.setAttribute('aSeed', new THREE.BufferAttribute(seed, 1));
+    const moteMat = new THREE.ShaderMaterial({
+        uniforms: { uTime: { value: 0 }, uLevel: { value: 0 } },
+        vertexShader: `
+            uniform float uTime;
+            attribute float aSeed;
+            varying float vFade;
+            void main() {
+                // Each mote drifts up on its own loop and restarts at the soil.
+                float k = fract(uTime * (0.22 + aSeed * 0.16) + aSeed);
+                vec3 p = position;
+                p.y += k * 0.55;
+                p.x += sin(uTime * 0.9 + aSeed * 6.28) * 0.035;
+                p.z += cos(uTime * 0.8 + aSeed * 6.28) * 0.035;
+                vFade = sin(k * 3.14159);          // fades in and out over the rise
+                vec4 mv = modelViewMatrix * vec4(p, 1.0);
+                gl_PointSize = clamp(3.2 * (12.0 / max(0.4, -mv.z)), 1.0, 7.0);
+                gl_Position = projectionMatrix * mv;
+            }
+        `,
+        fragmentShader: `
+            uniform float uLevel;
+            varying float vFade;
+            void main() {
+                float d = length(gl_PointCoord - vec2(0.5));
+                float a = smoothstep(0.5, 0.05, d) * vFade * uLevel;
+                if (a < 0.004) discard;
+                gl_FragColor = vec4(0.72, 1.0, 0.62, a);
+            }
+        `,
+        transparent: true,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending
+    });
+    const motes = new THREE.Points(mGeom, moteMat);
+    motes.frustumCulled = false;
+    group.add(motes);
+
+    scene.add(group);
+    plantHint = { group, ringMat, moteMat, slot: -1, level: 0, target: 0 };
+}
+
+// Nearest slot that has a pot in it and nothing planted. Missing and tipped slots
+// are excluded for the same reason they are unclickable: you cannot plant there.
+function nearestFreeSlot() {
+    let best = -1, bestD = HINT_RANGE * HINT_RANGE;
+    const cam = camera.position;
+    for (let i = 0; i < tablePositions.length; i++) {
+        if (emptyPotOccupied[i]) continue;
+        const j = potJitter[i];
+        if (!j || j.missing || j.tipped) continue;
+        const p = tablePositions[i];
+        const dx = p.x + j.dx - cam.x, dy = p.y - cam.y, dz = p.z + j.dz - cam.z;
+        const d = dx * dx + dy * dy + dz * dz;
+        if (d < bestD) { bestD = d; best = i; }
+    }
+    return best;
+}
+
+function updatePlantHint(now, delta) {
+    if (!plantHint) return;
+    const exploring = controls.isLocked || mobileActive;
+    const idle = now - lastTaskActivity;
+    const wants = exploring && idle > IDLE_HINT_DELAY && !prefersReducedMotion;
+
+    const h = plantHint;
+    // Re-target only while faded out, so the ring never appears to teleport
+    // between benches as you walk.
+    if (wants && h.level < 0.02) {
+        const slot = nearestFreeSlot();
+        if (slot >= 0) {
+            h.slot = slot;
+            const p = tablePositions[slot];
+            const j = potJitter[slot];
+            // Just clear of the soil mound, whose top sits about 0.24 of a pot
+            // height above the bench. Level with the soil, the plane's centre is
+            // buried and the ring only appears once it has spread past the rim.
+            h.group.position.set(p.x + j.dx, p.y + 0.30 * j.s + 0.02, p.z + j.dz);
+        } else {
+            h.slot = -1;
+        }
+    }
+    // Drop the hint if the pot it is pointing at just got planted, or if the
+    // player has wandered out of range of it.
+    if (h.slot >= 0 && (emptyPotOccupied[h.slot]
+        || h.group.position.distanceToSquared(camera.position) > HINT_RANGE * HINT_RANGE * 1.5)) {
+        h.target = 0;
+    } else {
+        h.target = wants && h.slot >= 0 ? 1 : 0;
+    }
+    // Fades in over ~0.9 s and out over ~0.35 s: an invitation should arrive
+    // gently and get out of the way promptly.
+    const rate = h.target > h.level ? delta / 0.9 : delta / 0.35;
+    h.level = h.target > h.level
+        ? Math.min(h.target, h.level + rate)
+        : Math.max(h.target, h.level - rate);
+
+    h.group.visible = h.level > 0.005;
+    if (!h.group.visible) return;
+    const t = now / 1000;
+    h.ringMat.uniforms.uTime.value = t;
+    h.ringMat.uniforms.uLevel.value = h.level;
+    h.moteMat.uniforms.uTime.value = t;
+    h.moteMat.uniforms.uLevel.value = h.level;
+}
+
+// --- Wilting plants asking to be noticed ---
+
+const ATTENTION_SLOTS = 6;         // how many plants can glow at once
+const attentionPool = [];          // pooled halo meshes, reassigned every second
+const rattleState = { id: null, until: 0, next: 0 };
+const suppressedAttention = new Set();  // ids tended this session; nag cleared
+let attentionRanked = [];               // cache of the sweep below
+let attentionSweep = 0;
+
+// How badly a to-do needs looking at. Health is the right input rather than
+// elapsed time, because health is the thing the player can already see: the cue
+// and the plant are telling the same story.
+function stalenessOf(todo) {
+    if (todo.completed) return 0;
+    if (suppressedAttention.has(todo.id)) return 0;
+    return THREE.MathUtils.clamp((72 - todo.health) / 46, 0, 1);
+}
+
+function clearAttention(id) {
+    suppressedAttention.add(id);
+    if (rattleState.id === id) rattleState.id = null;
+}
+
+function buildAttentionHalos() {
+    const geom = new THREE.PlaneGeometry(1, 1);
+    const mat = new THREE.ShaderMaterial({
+        uniforms: {
+            uTime: { value: 0 },
+            uLevel: { value: 0 },
+            uHue: { value: 0 }      // 0 amber .. 1 red
+        },
+        vertexShader: `
+            varying vec2 vUv;
+            void main() {
+                vUv = uv;
+                gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+            }
+        `,
+        fragmentShader: `
+            uniform float uTime;
+            uniform float uLevel;
+            uniform float uHue;
+            varying vec2 vUv;
+            void main() {
+                float r = length(vUv - 0.5) * 2.0;
+                if (r > 1.0) discard;
+                // A soft body with a brighter shell, breathing about once a second
+                // — slow enough to read as a glow, quick enough to catch the eye.
+                float pulse = 0.62 + 0.38 * sin(uTime * 6.0);
+                float body = pow(1.0 - smoothstep(0.0, 0.85, r), 2.2) * 0.5;
+                float shell = (1.0 - smoothstep(0.06, 0.30, abs(r - 0.62))) * 0.5 * pulse;
+                float a = (body + shell) * uLevel;
+                if (a < 0.004) discard;
+                vec3 col = mix(vec3(1.0, 0.72, 0.26), vec3(1.0, 0.34, 0.22), uHue);
+                gl_FragColor = vec4(col * a * 1.5, a);
+            }
+        `,
+        transparent: true,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending
+    });
+    for (let i = 0; i < ATTENTION_SLOTS; i++) {
+        const m = new THREE.Mesh(geom, mat.clone());
+        m.visible = false;
+        m.frustumCulled = false;
+        m.renderOrder = 3;
+        scene.add(m);
+        attentionPool.push(m);
+    }
+}
+
+const _attnPos = new THREE.Vector3();
+
+function updateAttention(now, delta) {
+    if (!attentionPool.length) return;
+
+    // Rank the active to-dos by how much they need attention. Cheap enough at
+    // this scale to do every second; there are at most 120 of them.
+    let ranked = null;
+    if (now - attentionSweep > 1000) {
+        attentionSweep = now;
+        ranked = todos
+            .filter(t => !t.completed && t.mesh)
+            .map(t => ({ todo: t, stale: stalenessOf(t) }))
+            .filter(e => e.stale > 0.02)
+            .sort((a, b) => b.stale - a.stale)
+            .slice(0, ATTENTION_SLOTS);
+        attentionRanked = ranked;
+    }
+    ranked = attentionRanked;
+
+    for (let i = 0; i < attentionPool.length; i++) {
+        const halo = attentionPool[i];
+        const entry = ranked[i];
+        if (!entry) { halo.visible = false; continue; }
+        const mesh = entry.todo.mesh;
+        halo.visible = true;
+        // Centred on the plant, a little above the rim, and sized so it reads as
+        // light around the plant rather than a disc behind it.
+        halo.position.set(mesh.position.x, mesh.position.y + 0.24, mesh.position.z);
+        const s = 0.62 + entry.stale * 0.22;
+        halo.scale.set(s, s, s);
+        halo.quaternion.copy(camera.quaternion);
+        const u = halo.material.uniforms;
+        u.uTime.value = now / 1000 + i * 1.7;   // out of step with each other
+        u.uLevel.value = prefersReducedMotion ? entry.stale * 0.5 : entry.stale;
+        u.uHue.value = THREE.MathUtils.smoothstep(entry.stale, 0.45, 1.0);
+    }
+
+    if (prefersReducedMotion) return;
+
+    // --- Rattle ---
+    // One plant at a time. Two plants shaking at once reads as a physics glitch;
+    // one reads as something moving over there.
+    if (!rattleState.id && now > rattleState.next && ranked.length) {
+        // Prefer whichever candidate is closest to the edge of the frame. Motion
+        // in peripheral vision is what actually turns a head — a plant rattling
+        // dead centre is just a plant you were already looking at.
+        let bestId = null, bestScore = -1;
+        for (const e of ranked) {
+            const edge = edgeProminence(e.todo.mesh);
+            const score = e.stale * (0.35 + edge);
+            if (score > bestScore) { bestScore = score; bestId = e.todo.id; }
+        }
+        rattleState.id = bestId;
+        rattleState.until = now + 850;
+    }
+
+    for (const e of ranked) {
+        const stem = e.todo.mesh.getObjectByName('stem');
+        if (!stem) continue;
+        if (e.todo.id !== rattleState.id) { stem.rotation.z = 0; continue; }
+        if (now > rattleState.until) {
+            stem.rotation.z = 0;
+            rattleState.id = null;
+            // A gap long enough that the next one is a fresh event rather than a
+            // continuous twitch. Randomised so it never becomes a rhythm.
+            rattleState.next = now + 2600 + Math.random() * 2600;
+            continue;
+        }
+        const k = (rattleState.until - now) / 850;        // 1 → 0 over the burst
+        const envelope = Math.sin(Math.PI * k) * k;        // quick attack, long tail
+        // Centred, this is about a degree — a twitch you notice only if you happen
+        // to be looking. Out at the edge of the frame it reaches nearly seven,
+        // which is what actually turns a head.
+        const amp = 0.07 * (0.5 + e.stale) * (0.5 + edgeProminence(e.todo.mesh) * 2.2);
+        stem.rotation.z = Math.sin(now * 0.055) * envelope * amp;
+    }
+}
+
+// How close to the edge of the frame this object sits, 0 in the middle and 1 in
+// the periphery, falling back to 0 once it is off screen entirely (nothing is
+// gained by shaking something nobody can see).
+function edgeProminence(mesh) {
+    _attnPos.copy(mesh.position);
+    _attnPos.y += 0.3;
+    _attnPos.project(camera);
+    if (_attnPos.z > 1) return 0;                       // behind the camera
+    const m = Math.max(Math.abs(_attnPos.x), Math.abs(_attnPos.y));
+    return THREE.MathUtils.smoothstep(m, 0.35, 0.92)
+         * (1 - THREE.MathUtils.smoothstep(m, 0.95, 1.25));
+}
+
 // --- Raycasting helpers — handle both regular Plant Groups and InstancedMesh empty pots ---
 function gatherIntersectables() {
     const list = [];
@@ -6472,9 +7086,14 @@ function disposeHierarchy(node) {
 addTodoForm.addEventListener('submit', function(e) {
     e.preventDefault();
 
-    const title = todoTitle.value;
-    const desc = todoDesc.value;
-    const urgency = parseInt(todoUrgency.value);
+    // Validated here rather than by the `required` attribute: the native bubble
+    // is positioned by the browser and lands over the 3D canvas outside the
+    // dialog, where it looks like a rendering fault.
+    if (!validateTitle(true)) return;
+
+    const title = todoTitle.value.trim();
+    const desc = todoDesc.value.trim();
+    const urgency = currentUrgency();
 
     if (activePotIndex === null) {
         console.error("No pot selected to plant seed.");
@@ -6498,6 +7117,7 @@ addTodoForm.addEventListener('submit', function(e) {
     if (createPlant(newTodo)) {
         todos.push(newTodo);
         saveTodosToLocal();
+        showToast(`“${title}” planted.`);
         this.reset();
         closeAddTodoModal();
     }
@@ -6567,6 +7187,10 @@ function animate() {
         raycaster.setFromCamera(mouse, camera);
         const intersects = raycaster.intersectObjects(gatherIntersectables(), false);
         const hit = classifyHit(intersects[0]);
+        // Aiming at something interactable counts as engagement: the nudge exists
+        // to help you find a pot, so it has nothing left to do once you are
+        // looking at one.
+        if (hit.kind) markTaskActivity();
         if (hit.kind === 'empty') {
             hoverTooltip.textContent = "Click to plant a new to-do";
             hoverTooltip.style.display = 'block';
@@ -6596,6 +7220,11 @@ function animate() {
     // few seconds long and the shadow-caster assignment follows the camera.
     assignLampLights(time);
     updateLamps(time, delta);
+
+    // Attention cues. Both are per-frame: one is a timer against the player's
+    // idleness, the other reads screen-space position every frame.
+    updatePlantHint(time, delta);
+    updateAttention(time, delta);
 
     // Atmosphere — wind sway (GPU-side, just a uniform write) + glowing eyes state
     updateTreeWind(time);
@@ -6825,72 +7454,217 @@ document.addEventListener('click', function() {
     }
 });
 
+// Any deliberate act of gardening. Resets the idle timer that eventually points
+// out an empty pot — see updatePlantHint.
+function markTaskActivity() {
+    lastTaskActivity = performance.now();
+}
+
 function openAddTodoModal() {
+    markTaskActivity();
     // Display the modal BEFORE releasing pointer-lock so the unlock-event handler
     // sees a modal is open and doesn't briefly flash the pause overlay underneath.
     addTodoModal.style.display = 'flex';
     uiContainer.style.display = 'none';
     pauseForModal();
+
+    addTodoForm.reset();
+    setUrgency(2);
+    titleError.textContent = '';
+    todoTitle.removeAttribute('aria-invalid');
+    syncCounts();
+    validateTitle(false);
+    const frame = vinesFor(addTodoModal);
+    if (frame) frame.open();
+    trapFocus(addTodoModal.querySelector('.gh-panel'), todoTitle);
 }
 
 function closeAddTodoModal() {
     addTodoModal.style.display = 'none';
     activePotIndex = null;
     uiContainer.style.display = 'none'; // paranoid: ensure pause overlay isn't lingering
+    const frame = vinesFor(addTodoModal);
+    if (frame) frame.close();
+    releaseFocus();
+    markTaskActivity();
     startExploring();
 }
 
 closeAddModal.addEventListener('click', closeAddTodoModal);
 
+function setUrgency(level) {
+    const el = addTodoModal.querySelector(`input[name="urgency"][value="${level}"]`);
+    if (el) el.checked = true;
+}
+
+function currentUrgency() {
+    const el = addTodoModal.querySelector('input[name="urgency"]:checked');
+    return el ? parseInt(el.value, 10) : 2;
+}
+
+function currentEffort() {
+    const el = todoModal.querySelector('input[name="effort"]:checked');
+    return el ? parseInt(el.value, 10) : 0;
+}
+
+// Character counters stay invisible until they matter. A counter that is always
+// on reads as a limit you are being warned about; one that appears at 80 % reads
+// as help.
+function syncCounts() {
+    const pairs = [[todoTitle, titleCount, 70], [todoDesc, descCount, 280]];
+    for (const [input, out, max] of pairs) {
+        if (!input || !out) continue;
+        const left = max - input.value.length;
+        out.textContent = `${left} left`;
+        out.classList.toggle('is-near', input.value.length > max * 0.8);
+    }
+}
+
+// `announce` is false while typing — nagging on every keystroke before the user
+// has finished is the classic inline-validation mistake. The message only appears
+// once they try to submit.
+function validateTitle(announce) {
+    const ok = todoTitle.value.trim().length > 0;
+    btnPlant.disabled = !ok;
+    if (announce && !ok) {
+        titleError.textContent = 'Give it a name and it can be planted.';
+        todoTitle.setAttribute('aria-invalid', 'true');
+        todoTitle.focus();
+    } else if (ok) {
+        titleError.textContent = '';
+        todoTitle.removeAttribute('aria-invalid');
+    }
+    return ok;
+}
+
+todoTitle.addEventListener('input', () => { syncCounts(); validateTitle(false); });
+todoDesc.addEventListener('input', syncCounts);
+// Cmd/Ctrl+Enter submits from the notes field, where a bare Enter has to stay a
+// newline.
+todoDesc.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+        e.preventDefault();
+        addTodoForm.requestSubmit ? addTodoForm.requestSubmit() : btnPlant.click();
+    }
+});
+
 function openTodoModal(todo) {
     activeTodo = todo;
+    markTaskActivity();
     // Show the modal BEFORE releasing pointer-lock; see openAddTodoModal for why.
     todoModal.style.display = 'flex';
     uiContainer.style.display = 'none';
     pauseForModal();
 
     modalTitle.textContent = todo.title;
-    modalDesc.textContent = todo.desc;
-    modalHealth.textContent = Math.round(todo.health) + '%';
-    modalStatus.textContent = todo.status || "Not Started";
+    modalDesc.textContent = todo.desc || '';
 
-    let urgencyText = "Medium";
-    if (todo.urgency === 1) urgencyText = "Low";
-    if (todo.urgency === 3) urgencyText = "High";
-    modalUrgency.textContent = urgencyText;
+    const urgency = URGENCY[todo.urgency] || URGENCY[2];
+    modalUrgency.textContent = urgency.name;
+    modalTended.textContent = todo.lastUpdated
+        ? `tended ${relativeTime(todo.lastUpdated)}`
+        : 'just planted';
+    const days = urgency.halfLifeDays;
+    modalDecay.textContent = days === 1
+        ? 'Loses half its health every day it goes untended.'
+        : `Loses half its health every ${days} days it goes untended.`;
 
-    todoEffort.value = "0";
+    setStatusChip(todo.status || 'Not Started');
+    const zero = todoModal.querySelector('input[name="effort"][value="0"]');
+    if (zero) zero.checked = true;
+    renderVitals(todo.health);
+    syncCheckinPreview();
+
+    const frame = vinesFor(todoModal);
+    if (frame) frame.open();
+    trapFocus(todoModal.querySelector('.gh-panel'), btnCheckin);
 }
 
 function closeTodoModal() {
     todoModal.style.display = 'none';
     activeTodo = null;
     uiContainer.style.display = 'none'; // paranoid: ensure pause overlay isn't lingering
+    const frame = vinesFor(todoModal);
+    if (frame) frame.close();
+    releaseFocus();
+    markTaskActivity();
     startExploring();
 }
 
 closeModal.addEventListener('click', closeTodoModal);
 
-// Status buttons
-const statusButtons = [
-    { id: 'btn-status-procrastinating', text: 'Procrastinating' },
-    { id: 'btn-status-inprogress', text: 'In Progress' },
-    { id: 'btn-status-almostdone', text: 'Almost Done' }
-];
-
-statusButtons.forEach(btnInfo => {
-    document.getElementById(btnInfo.id).addEventListener('click', () => {
-        if (activeTodo) {
-            activeTodo.status = btnInfo.text;
-            modalStatus.textContent = btnInfo.text;
-            saveTodosToLocal();
-        }
+// Clicking the backdrop dismisses. Guarded on the target being the scrim itself,
+// so a drag that starts inside the panel and ends outside it does not close.
+for (const scrim of [addTodoModal, todoModal]) {
+    scrim.addEventListener('mousedown', (e) => {
+        if (e.target !== scrim) return;
+        (scrim === todoModal ? closeTodoModal : closeAddTodoModal)();
     });
+}
+
+function renderVitals(health) {
+    const h = Math.max(0, Math.min(100, health));
+    const band = healthBand(h);
+    modalHealth.textContent = Math.round(h) + '%';
+    modalHealthLabel.textContent = band.label;
+    modalMeterFill.style.width = h + '%';
+    modalMeterFill.classList.remove('is-wilting', 'is-dying');
+    if (band.cls) modalMeterFill.classList.add(band.cls);
+    modalMeter.setAttribute('aria-valuenow', String(Math.round(h)));
+    modalMeter.setAttribute('aria-valuetext', `${Math.round(h)} percent, ${band.label}`);
+}
+
+// The ghost bar and the button's suffix both show where this watering lands, so
+// the choice is made against its outcome rather than against a label.
+function syncCheckinPreview() {
+    if (!activeTodo) return;
+    const boost = currentEffort();
+    const target = Math.min(100, activeTodo.health + boost);
+    modalMeterGhost.style.width = target + '%';
+    checkinPreview.textContent = boost > 0
+        ? `${Math.round(activeTodo.health)}% → ${Math.round(target)}%`
+        : '';
+}
+
+todoModal.querySelectorAll('input[name="effort"]').forEach(el => {
+    el.addEventListener('change', syncCheckinPreview);
+});
+
+// --- Status chips ---
+function setStatusChip(status) {
+    for (const chip of statusChips.querySelectorAll('.gh-chip')) {
+        const on = chip.dataset.status === status;
+        chip.setAttribute('aria-checked', on ? 'true' : 'false');
+        chip.setAttribute('role', 'radio');
+        chip.tabIndex = on ? 0 : -1;
+    }
+}
+
+statusChips.addEventListener('click', (e) => {
+    const chip = e.target.closest('.gh-chip');
+    if (!chip || !activeTodo) return;
+    activeTodo.status = chip.dataset.status;
+    setStatusChip(activeTodo.status);
+    saveTodosToLocal();
+    markTaskActivity();
+});
+
+// Arrow keys move through a radio group; that is what a radiogroup promises.
+statusChips.addEventListener('keydown', (e) => {
+    const keys = ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'];
+    if (!keys.includes(e.key)) return;
+    e.preventDefault();
+    const chips = Array.from(statusChips.querySelectorAll('.gh-chip'));
+    const at = chips.findIndex(c => c.getAttribute('aria-checked') === 'true');
+    const step = (e.key === 'ArrowLeft' || e.key === 'ArrowUp') ? -1 : 1;
+    const next = chips[(at + step + chips.length) % chips.length];
+    next.click();
+    next.focus();
 });
 
 btnCheckin.addEventListener('click', function() {
     if (!activeTodo) return;
-    const effortBoost = parseInt(todoEffort.value);
+    const effortBoost = currentEffort();
     const oldHealth = activeTodo.health;
     const newHealth = Math.min(100, activeTodo.health + effortBoost);
 
@@ -6900,26 +7674,34 @@ btnCheckin.addEventListener('click', function() {
     activeTodo.lastUpdated = getCurrentSimulatedTime();
     updatePlantVisual(activeTodo);
     saveTodosToLocal();
+    markTaskActivity();
+    // Tending it is the whole point of the nagging, so stop nagging.
+    clearAttention(activeTodo.id);
 
-    // Count-up animation on the health display (~1s), then auto-close at 2s.
-    const healthEl = modalHealth;
     const checkinBtn = this;
     checkinBtn.disabled = true;
-    const ANIM_MS = 1000;
+    modalTended.textContent = 'tended just now';
+    modalMeterGhost.style.width = '0%';
+    checkinPreview.textContent = '';
+    showToast(effortBoost > 0
+        ? `Watered. ${healthBand(newHealth).label.toLowerCase()} at ${Math.round(newHealth)}%.`
+        : 'Noted. It will keep for now.');
+
+    // Count the meter up rather than snapping it — the number moving is the
+    // feedback that the check-in registered.
+    const ANIM_MS = 900;
     const t0 = performance.now();
-    function tickHealth(now) {
+    (function tickHealth(now) {
         const t = Math.min((now - t0) / ANIM_MS, 1);
         const eased = 1 - Math.pow(1 - t, 3); // ease-out cubic
-        const v = oldHealth + (newHealth - oldHealth) * eased;
-        healthEl.textContent = Math.round(v) + '%';
+        renderVitals(oldHealth + (newHealth - oldHealth) * eased);
         if (t < 1) requestAnimationFrame(tickHealth);
-    }
-    requestAnimationFrame(tickHealth);
+    })(performance.now());
 
     setTimeout(() => {
         checkinBtn.disabled = false;
         closeTodoModal();
-    }, 2000);
+    }, 1700);
 });
 
 // Only initialize if not in test environment
@@ -6931,22 +7713,24 @@ if (typeof window === 'undefined' || !window.__TEST_ENV__) {
 }
 
 btnComplete.addEventListener('click', function() {
-    if (activeTodo) {
-        activeTodo.completed = true;
-        activeTodo.health = 100;
-        activeTodo.status = "Completed";
-        // Lock in a random flower variant — saved with the todo so it's permanent.
-        if (typeof activeTodo.flowerVariant !== 'number') {
-            activeTodo.flowerVariant = Math.floor(Math.random() * NUM_FLOWER_VARIANTS);
-        }
-
-        saveTodosToLocal();
-
-        // Recreate the plant visually to show the flower
-        createPlant(activeTodo);
-
-        closeTodoModal();
+    if (!activeTodo) return;
+    const title = activeTodo.title;
+    activeTodo.completed = true;
+    activeTodo.health = 100;
+    activeTodo.status = "Completed";
+    // Lock in a random flower variant — saved with the todo so it's permanent.
+    if (typeof activeTodo.flowerVariant !== 'number') {
+        activeTodo.flowerVariant = Math.floor(Math.random() * NUM_FLOWER_VARIANTS);
     }
+
+    saveTodosToLocal();
+    clearAttention(activeTodo.id);
+
+    // Recreate the plant visually to show the flower
+    createPlant(activeTodo);
+
+    showToast(`“${title}” is flowering.`);
+    closeTodoModal();
 });
 
 // --- Mobile / touch helpers ---
