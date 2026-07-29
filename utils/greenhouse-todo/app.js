@@ -2517,7 +2517,7 @@ function buildForestAtmosphere() {
 // that buffer; on a near-black night wood, "replace" and "add" look the same.
 let farLight = null;
 function buildFarForestLight() {
-    const geom = new THREE.PlaneGeometry(1.7, 1.7);
+    const geom = new THREE.PlaneGeometry(2.2, 2.2);
     const mat = new THREE.ShaderMaterial({
         uniforms: { uNight: { value: 0 }, uPulse: { value: 1 } },
         vertexShader: `
@@ -2543,7 +2543,7 @@ function buildFarForestLight() {
                 if (b < 0.004) discard;
                 // Mercury-vapour blue-white, and brighter than 1 so the core
                 // tone-maps to a hard point rather than a pale smudge.
-                gl_FragColor = vec4(vec3(0.62, 0.80, 1.0) * b * 2.6, 1.0);
+                gl_FragColor = vec4(vec3(0.62, 0.80, 1.0) * b * 4.2, 1.0);
             }
         `,
         transparent: false,
@@ -2551,9 +2551,14 @@ function buildFarForestLight() {
         fog: false
     });
     farLight = new THREE.Mesh(geom, mat);
-    // Deep in the woods off the north-west corner, well beyond the far tree band
-    // (which reaches ~46 m) so there is a lot of forest between you and it.
-    farLight.position.set(-41, 2.6, -63);
+    // Deep in the woods off the north-west corner: 56 m out, just past the far
+    // tree band (which reaches ~46 m) so there is a lot of forest between you and
+    // it — but INSIDE the painted backdrop wall, which is an opaque cylinder at
+    // 64 m and hid this completely at its first position of 75 m.
+    // Up at 5 m — well above the undergrowth and most of the trunk clutter. At
+    // eye height it spent nearly the whole time behind a tree; the trees here are
+    // 10 m, so this is still inside the canopy, just up where a window would be.
+    farLight.position.set(-33, 5.0, -45);
     farLight.renderOrder = 1;
     farLight.visible = false;
     scene.add(farLight);
@@ -2561,10 +2566,7 @@ function buildFarForestLight() {
 }
 
 function updateFarForestLight(now) {
-    if (!farLight) return;
-    const night = farLight.material.uniforms.uNight.value;
-    farLight.visible = night > 0.02;
-    if (!farLight.visible) return;
+    if (!farLight || !farLight.visible) return;
     farLight.quaternion.copy(camera.quaternion);
     // Slow unsteadiness, and every so often it drops out for a second or two.
     const t = now / 1000;
@@ -2741,14 +2743,19 @@ function buildPuddles() {
     }
     const merged = mergeGeometries(puddleGeoms);
     const mat = new THREE.MeshPhysicalMaterial({
-        color: 0x12181a,
-        roughness: 0.04,
+        color: 0x0c1012,
+        // Standing water is close to a mirror, but the only thing there is to
+        // mirror in here is a bright sky directly overhead — so at an environment
+        // strength of 1.5 these came back as flat white cut-outs lying on the
+        // floor, brighter than anything else in the room. Water reads as water
+        // because it is *dark* with a sharp highlight, not because it is bright.
+        roughness: 0.09,
         metalness: 0,
-        envMapIntensity: 1.5,
-        clearcoat: 0.6,
-        clearcoatRoughness: 0.1,
+        envMapIntensity: 0.5,
+        clearcoat: 0.7,
+        clearcoatRoughness: 0.08,
         transparent: true,
-        opacity: 0.92
+        opacity: 0.9
     });
     const puddles = new THREE.Mesh(merged, mat);
     puddles.position.y = 0.012;
@@ -5300,8 +5307,10 @@ function getPotVariantColors() {
     const tints = [];
     for (let i = 0; i < POT_HUE_VARIANTS; i++) {
         const c = new THREE.Color();
-        // Warm orange through dusty pink to pale buff, at slightly varied value.
-        c.setHSL(0.055 + (i / POT_HUE_VARIANTS) * 0.035, 0.30 - i * 0.035, 0.52 + i * 0.045);
+        // Warm orange through dusty pink to pale buff, at varied value. These
+        // multiply an already strongly orange clay texture, so the spread has to
+        // be wider than it looks here to be legible on the bench at all.
+        c.setHSL(0.05 + (i / POT_HUE_VARIANTS) * 0.045, 0.34 - i * 0.055, 0.44 + i * 0.07);
         tints.push(c);
     }
     sharedAssets.potTints = tints;
@@ -6351,7 +6360,13 @@ function updateSunAndLighting() {
 
     // Night garnish that only needs the slow tick.
     for (const m of groundFogMats) m.uniforms.uNight.value = nightness;
-    if (sharedAssets._farLightMat) sharedAssets._farLightMat.uniforms.uNight.value = nightness;
+    if (farLight) {
+        // Visibility belongs on this tick, not the per-frame updater: it is purely
+        // a function of nightness, and setting it here means it is already correct
+        // on the first rendered frame rather than one frame later.
+        farLight.material.uniforms.uNight.value = nightness;
+        farLight.visible = nightness > 0.02;
+    }
 
     // The sun and moon have moved, so their shadow maps are stale.
     sunLight.shadow.needsUpdate = true;
