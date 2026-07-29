@@ -86,9 +86,36 @@ const roofShape = { wallTopY: 0, ridgeY: 0, halfWidth: 0, zMin: 0, zMax: 0 };
 let stats = null;
 let diagPanel = null;
 let diagLastUpdate = 0;
-// Chrome enforces a ~1.25 s cooldown after Escape releases pointer-lock during
-// which requestPointerLock is silently refused. We retry once when that happens.
-let lockRetryScheduled = false;
+// Getting back into pointer lock after an Escape keypress. Chrome refuses
+// requestPointerLock for ~1.25 s after Escape, and — worse — sometimes grants it
+// and then immediately releases it again, which fires 'unlock' and used to put the
+// pause overlay up. So resuming is a short campaign rather than a single call:
+// `resumeUntil` is a deadline, during which the pause overlay stays suppressed and
+// the lock is retried; if the deadline passes without success the overlay comes up
+// so the player has something to click rather than being stranded unlocked.
+let resumeUntil = 0;
+let resumeTimer = 0;
+// When Escape was last pressed. Chrome refuses requestPointerLock for ~1.25 s
+// afterwards, and PointerLockControls logs an error on every refusal — so rather
+// than hammering it and filling the console, we simply don't ask until the
+// cooldown has passed.
+let lastEscapeAt = -Infinity;
+const ESCAPE_COOLDOWN = 1350;
+
+// True while either to-do dialog is on screen.
+function anyModalOpen() {
+    return todoModal.style.display !== 'none' || addTodoModal.style.display !== 'none';
+}
+
+// Does this element take typed text? Used to keep world hotkeys out of the way:
+// typing "Fix the shed" should not toggle the FPS overlay on the f and walk the
+// player forward on the w.
+function isTextEntry(el) {
+    if (!el) return false;
+    if (el.isContentEditable) return true;
+    const tag = el.tagName;
+    return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
+}
 
 const objects = []; // Interactable objects (plants)
 let todos = []; // Data for todos
@@ -430,23 +457,35 @@ function setupControls() {
     uiContainer.addEventListener('click', startExploring);
 
     controls.addEventListener('lock', function () {
+        // Deliberately does NOT cancel the resume window. If it did, a lock that
+        // Chrome immediately takes back would fall straight through to the unlock
+        // handler below and raise the pause screen — the exact bug this replaced.
+        // attemptLock stops itself once the window expires.
         blocker.style.display = 'none';
         uiContainer.style.display = 'none';
     });
 
     controls.addEventListener('unlock', function () {
-        const todoModalOpen = todoModal.style.display !== 'none';
-        const addTodoModalOpen = addTodoModal.style.display !== 'none';
-        if (!todoModalOpen && !addTodoModalOpen) {
-            uiContainer.style.display = 'flex';
-            blocker.style.display = 'none';
-        }
+        // Mid-resume, an unlock means "Chrome took it back", not "the player wants
+        // to pause". Say nothing and let attemptLock have another go.
+        if (performance.now() < resumeUntil) return;
+        if (anyModalOpen()) return;
+        uiContainer.style.display = 'flex';
+        blocker.style.display = 'none';
     });
 
     scene.add(controls.getObject());
 
     // 6. Movement Event Listeners
     const onKeyDown = function (event) {
+        // World hotkeys are inert while a dialog is up or a field has focus.
+        // Without this, naming a to-do "Fix the shed" toggles the FPS overlay on
+        // the f and walks the player forward on the w, and the arrow keys move the
+        // player instead of the caret. Escape is handled by its own listener below,
+        // so it still gets through.
+        if (anyModalOpen() || isTextEntry(event.target)) return;
+        // A modifier means the key belongs to the browser or the OS, not to us.
+        if (event.metaKey || event.ctrlKey || event.altKey) return;
         switch (event.code) {
             case 'ArrowUp':
             case 'KeyW':
@@ -475,6 +514,10 @@ function setupControls() {
         }
     };
 
+    // Deliberately NOT guarded the way onKeyDown is. This only ever clears
+    // movement flags, and a "stop moving" event must never be swallowed — hold W,
+    // open a dialog, release W, and a guarded keyup would leave the player walking
+    // into a wall forever once the dialog closed.
     const onKeyUp = function (event) {
         switch (event.code) {
             case 'ArrowUp':
@@ -500,12 +543,17 @@ function setupControls() {
     document.addEventListener('keyup', onKeyUp);
 
     // Global Escape behaviour:
-    //   - If a modal is open, close it AND resume walking.
+    //   - If a dialog is open, close it and go straight back to walking. Escape on
+    //     a to-do means "I'm done here", not "pause the game" — anything already
+    //     changed stays changed.
     //   - If pointer-lock is engaged (walking), let the browser release it; the
     //     'unlock' event shows the pause overlay.
     //   - If pause overlay or home blocker is showing, resume walking.
     document.addEventListener('keydown', (event) => {
         if (event.code !== 'Escape') return;
+        // Note it before anything else reacts: everything downstream that wants
+        // pointer lock back has to wait out Chrome's cooldown from this moment.
+        lastEscapeAt = performance.now();
         if (todoModal.style.display !== 'none') {
             closeTodoModal();
             return;
@@ -523,24 +571,11 @@ function setupControls() {
     raycaster = new THREE.Raycaster();
     mouse = new THREE.Vector2(0, 0); // Always center for crosshair
 
-    // Auto-retry requestPointerLock when Chrome rejects it during the
-    // ~1.25s post-Escape cooldown. Without this the first ESC press on the
-    // pause overlay silently fails and the user has to press multiple times.
-    document.addEventListener('pointerlockerror', () => {
-        if (lockRetryScheduled) return;
-        if (isTouchDevice) return;
-        lockRetryScheduled = true;
-        setTimeout(() => {
-            lockRetryScheduled = false;
-            if (controls.isLocked) return;
-            const todoOpen = todoModal.style.display !== 'none';
-            const addOpen = addTodoModal.style.display !== 'none';
-            if (todoOpen || addOpen) return; // user is reading a modal
-            const wantsWalking = uiContainer.style.display === 'flex'
-                || blocker.style.display !== 'none';
-            if (wantsWalking) controls.lock();
-        }, 1350);
-    });
+    // Refusals need no handling of their own — attemptLock is already on a timer
+    // and keeps trying until its deadline. (PointerLockControls registers its own
+    // 'pointerlockerror' listener in its constructor, before this one, so its
+    // console.error cannot be suppressed from here. Not asking during the cooldown
+    // is what actually keeps the console quiet; see attemptLock.)
 }
 
 function setupDiagnostics() {
@@ -694,6 +729,11 @@ function setupDebugHooks() {
             controls.isLocked = !!on;
             return { isLocked: controls.isLocked };
         },
+        // Movement flags, for checking that a keystroke meant for a text field did
+        // not also walk the player forward.
+        movement() {
+            return { fwd: moveForward, back: moveBackward, left: moveLeft, right: moveRight };
+        },
         // Where an object sits in the frame, 0 dead centre and 1 in the periphery.
         // The rattle amplitude is scaled by this, so it is the thing to verify.
         // The camera matrices are refreshed first: normally the renderer does that
@@ -761,6 +801,10 @@ function setupDebugHooks() {
         get scene() { return scene; },
         get camera() { return camera; },
         get renderer() { return renderer; },
+        get controls() { return controls; },
+        // Is a resume campaign in flight? Nothing else can tell you whether an
+        // unlock is about to raise the pause screen or be swallowed and retried.
+        get resuming() { return performance.now() < resumeUntil; },
         get lights() { return { sunLight, moonLight, skyFill, warmFill, bulbLights }; },
         state() {
             return {
@@ -7581,6 +7625,10 @@ function openTodoModal(todo) {
 }
 
 function closeTodoModal() {
+    // Flush before dropping the reference. Status changes already save on click, so
+    // this is belt-and-braces — but "close the dialog and keep my changes" should
+    // not depend on every individual control having remembered to save itself.
+    if (activeTodo) saveTodosToLocal();
     todoModal.style.display = 'none';
     activeTodo = null;
     uiContainer.style.display = 'none'; // paranoid: ensure pause overlay isn't lingering
@@ -7749,14 +7797,51 @@ function startExploring() {
         uiContainer.style.display = 'none';
         mobileControls.classList.add('active');
     } else {
-        controls.lock();
+        requestResume();
     }
 }
 
+// Keep asking for pointer lock until we get it or three seconds run out. A single
+// controls.lock() is enough when it follows a click, but not when it follows
+// Escape — see the note on resumeUntil.
+function requestResume() {
+    resumeUntil = performance.now() + 3000;
+    attemptLock();
+}
+
+function attemptLock() {
+    clearTimeout(resumeTimer);
+    if (anyModalOpen()) { resumeUntil = 0; return; }
+    const now = performance.now();
+    if (now > resumeUntil) {
+        resumeUntil = 0;
+        // Gave up. Show the pause overlay rather than leaving the player unlocked
+        // with nothing to click.
+        if (!controls.isLocked) uiContainer.style.display = 'flex';
+        return;
+    }
+    // Wait out Chrome's post-Escape cooldown instead of asking and being refused;
+    // every refusal is a console error from PointerLockControls.
+    const cooling = ESCAPE_COOLDOWN - (now - lastEscapeAt);
+    if (cooling <= 0 && !controls.isLocked) controls.lock();
+    // The timer keeps running for the rest of the window even once we are locked,
+    // because Chrome will sometimes grant the lock and take it straight back — and
+    // then this is what re-acquires it instead of the player getting a pause screen.
+    resumeTimer = setTimeout(attemptLock, cooling > 0 ? cooling + 40 : 400);
+}
+
+function cancelResume() {
+    resumeUntil = 0;
+    clearTimeout(resumeTimer);
+}
+
 function pauseForModal() {
+    cancelResume();
+    // Always, not just on touch: a key held down when the dialog opened would
+    // otherwise stay held, because onKeyDown is suppressed while a dialog is up.
+    resetMovement();
     if (isTouchDevice) {
         mobileActive = false;
-        resetMovement();
         mobileControls.classList.remove('active');
     } else {
         controls.unlock();
