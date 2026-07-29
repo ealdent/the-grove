@@ -233,7 +233,16 @@ export class VineFrame {
         this.canvas = document.createElement('canvas');
         this.canvas.className = 'gh-vines';
         this.canvas.setAttribute('aria-hidden', 'true');
-        this.canvas.style.inset = `${-overflow}px`;
+        // Anchored by left/top only, with the CSS size written explicitly in
+        // #resize. `inset: -96px` with `width: auto` looks equivalent and is not:
+        // a canvas is a *replaced* element, so an auto width resolves to its
+        // intrinsic size — the drawing-buffer width in CSS pixels — and the `right`
+        // offset is then dropped as over-constrained. At devicePixelRatio 2 that
+        // makes the CSS box twice the size it should be, and the vines sprawl
+        // across the viewport at double scale. It only looked right at DPR 1,
+        // where buffer size and CSS size happen to coincide.
+        this.canvas.style.left = `${-overflow}px`;
+        this.canvas.style.top = `${-overflow}px`;
         panel.appendChild(this.canvas);
 
         this.gl = this.canvas.getContext('webgl', {
@@ -297,29 +306,44 @@ export class VineFrame {
     }
 
     #resize() {
-        const panelRect = this.panel.getBoundingClientRect();
-        if (panelRect.width < 1) return false;
+        // offsetWidth/offsetHeight, NOT getBoundingClientRect(). The bounding rect
+        // includes transforms, and the panel opens with a `scale(0.975)` keyframe —
+        // so a resize during that animation bakes in a canvas 2.5 % too small, and
+        // nothing ever corrects it because ResizeObserver reports the layout box,
+        // which the transform never changed. These are the panel's own untransformed
+        // coordinates, which is the right space anyway: the canvas is a child of the
+        // panel and inherits the same transform.
+        //
+        // The padding box specifically (client*, not offset*), because `left`/`top`
+        // on an absolutely positioned child are resolved against the padding box.
+        // That makes the canvas exactly centred on it, which is what the shader
+        // assumes when it puts the panel at the canvas centre.
+        const panelW = this.panel.clientWidth;
+        const panelH = this.panel.clientHeight;
+        if (panelW < 1) return false;
         // A shader this cheap does not need 3x; capping keeps a large dialog on a
         // retina phone from allocating a needlessly big drawing buffer.
         const px = Math.min(window.devicePixelRatio || 1, 2);
-        const cssW = panelRect.width + this.overflow * 2;
-        const cssH = panelRect.height + this.overflow * 2;
+        const cssW = panelW + this.overflow * 2;
+        const cssH = panelH + this.overflow * 2;
         const w = Math.max(1, Math.round(cssW * px));
         const h = Math.max(1, Math.round(cssH * px));
         if (this.canvas.width !== w || this.canvas.height !== h) {
             this.canvas.width = w;
             this.canvas.height = h;
         }
+        // The CSS size has to be stated, not inferred. See the constructor: an auto
+        // width on a canvas resolves to the drawing-buffer size, which is `px`
+        // times too large on a retina display.
+        this.canvas.style.width = `${cssW}px`;
+        this.canvas.style.height = `${cssH}px`;
         this.gl.viewport(0, 0, w, h);
         this.px = px;
         this.size = [w, h];
         // gl_FragCoord has its origin at the bottom left, the DOM at the top left,
         // and the panel is centred in the canvas either way — so only the half
         // extents and the pixel ratio actually matter here.
-        this.panelUniform = [
-            w * 0.5, h * 0.5,
-            panelRect.width * 0.5 * px, panelRect.height * 0.5 * px
-        ];
+        this.panelUniform = [w * 0.5, h * 0.5, panelW * 0.5 * px, panelH * 0.5 * px];
         this.dirty = false;
         return true;
     }
