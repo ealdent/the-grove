@@ -200,6 +200,13 @@ function setupLighting() {
     sky.scale.setScalar(1500);
     sky.material.uniforms.mieCoefficient.value = 0.005;
     sky.material.uniforms.mieDirectionalG.value = 0.85;
+    // Everything celestial is ordered explicitly rather than by distance. Three
+    // sorts the opaque list by the object's origin, and the Sky box and the star
+    // dome are both centred on the viewer, so their sort keys are both ~0 and the
+    // order between them would be arbitrary. Drawing them first, with depthWrite
+    // off, makes them a true background: the forest and the greenhouse paint over
+    // them afterwards, which is also what gives correct occlusion.
+    sky.renderOrder = -3;
     scene.add(sky);
 
     // 6. Lighting — sun (directional) + soft fill from sky
@@ -468,6 +475,9 @@ function init() {
 
     // 8d. Sun shafts through the roof glass (needs roofShape from buildGreenhouse)
     buildSunShafts();
+
+    // 8e. Stars + moon, so the roof isn't a black void after dark
+    buildNightSky();
 
     // 9. Initial sun + lighting (uses real Eastern Time)
     updateSunAndLighting();
@@ -1908,13 +1918,13 @@ function buildForestBackdrop() {
     canvas.width = W;
     canvas.height = H;
     const ctx = canvas.getContext('2d');
-    // Hazy sky strip above the canopy line
-    const skyGrad = ctx.createLinearGradient(0, 0, 0, H * 0.45);
-    skyGrad.addColorStop(0, '#cdd9d2');
-    skyGrad.addColorStop(1, '#b4c4ba');
-    ctx.fillStyle = skyGrad;
-    ctx.fillRect(0, 0, W, H);
-
+    // Deliberately NOT filled with a sky gradient. It used to paint its own hazy
+    // sky above the canopy, which made this an opaque dome rather than a tree
+    // line: it swallowed every sightline below ~33° elevation and, because the
+    // whole material dims with nightness, that band of sky went pitch black after
+    // dark. Leaving it transparent above the treetops lets the real sky show —
+    // the Sky shader by day, stars and the moon by night — and the ragged canopy
+    // silhouette becomes the horizon, which is what it should have been.
     const layers = [
         { top: 58, color: '#7c8a7c', trunkColor: '#6a7a6c' },
         { top: 86, color: '#525f4b', trunkColor: '#414e3c' },
@@ -1946,7 +1956,14 @@ function buildForestBackdrop() {
     tex.wrapS = THREE.RepeatWrapping;
     tex.repeat.set(7, 1);
 
-    const mat = new THREE.MeshBasicMaterial({ map: tex, side: THREE.BackSide, fog: true });
+    // alphaTest with transparent:false keeps this in the OPAQUE draw list, which
+    // matters twice over: it still writes depth where there are trees, and the
+    // renderer builds its transmission buffer from the opaque list, so the glass
+    // would not show the tree line at all if this were a transparent material.
+    const mat = new THREE.MeshBasicMaterial({
+        map: tex, side: THREE.BackSide, fog: true,
+        transparent: false, alphaTest: 0.5
+    });
     const wall = new THREE.Mesh(new THREE.CylinderGeometry(64, 64, 44, 48, 1, true), mat);
     wall.position.set(0, 22, -20); // centered on the greenhouse footprint
     scene.add(wall);
@@ -4645,16 +4662,18 @@ function updateSunShafts() {
     sunShafts.instanceMatrix.needsUpdate = true;
 }
 
-// --- Sun position (SunCalc algorithm) and day/night lighting ---
-
-function computeSunPosition(date, lat, lng) {
+// --- Sky positions (SunCalc algorithms) and day/night lighting ---
+//
+// Shared celestial plumbing. These were local to computeSunPosition until the moon
+// needed the same right-ascension/declination/sidereal-time chain; keeping one copy
+// means the sun and the moon can never drift out of the same coordinate frame.
+const ASTRO = (() => {
     const rad = Math.PI / 180;
     const J1970 = 2440588;
     const J2000 = 2451545;
     const e = rad * 23.4397; // obliquity of the Earth
 
-    const toJulian = (d) => d.getTime() / 86400000 - 0.5 + J1970;
-    const toDays = (d) => toJulian(d) - J2000;
+    const toDays = (d) => (d.getTime() / 86400000 - 0.5 + J1970) - J2000;
 
     const rightAsc = (l, b) => Math.atan2(Math.sin(l) * Math.cos(e) - Math.tan(b) * Math.sin(e), Math.cos(l));
     const decl = (l, b) => Math.asin(Math.sin(b) * Math.cos(e) + Math.cos(b) * Math.sin(e) * Math.sin(l));
@@ -4662,33 +4681,303 @@ function computeSunPosition(date, lat, lng) {
     const altitudeFn = (H, phi, dec) => Math.asin(Math.sin(phi) * Math.sin(dec) + Math.cos(phi) * Math.cos(dec) * Math.cos(H));
     const sidereal = (d, lw) => rad * (280.16 + 360.9856235 * d) - lw;
 
-    const sunMeanAnomaly = (d) => rad * (357.5291 + 0.98560028 * d);
-    const eclipticLong = (M) => {
-        const C = rad * (1.9148 * Math.sin(M) + 0.02 * Math.sin(2 * M) + 0.0003 * Math.sin(3 * M));
-        const P = rad * 102.9372;
-        return M + C + P + Math.PI;
+    // Geocentric ecliptic coordinates of the sun.
+    const sunCoords = (d) => {
+        const M = rad * (357.5291 + 0.98560028 * d);                       // mean anomaly
+        const C = rad * (1.9148 * Math.sin(M) + 0.02 * Math.sin(2 * M)
+                       + 0.0003 * Math.sin(3 * M));                        // equation of the centre
+        const L = M + C + rad * 102.9372 + Math.PI;                        // ecliptic longitude
+        return { ra: rightAsc(L, 0), dec: decl(L, 0) };
     };
 
-    const d = toDays(date);
-    const M = sunMeanAnomaly(d);
-    const L = eclipticLong(M);
-    const ra = rightAsc(L, 0);
-    const dec = decl(L, 0);
+    // Geocentric ecliptic coordinates of the moon, plus its distance in km.
+    const moonCoords = (d) => {
+        const L = rad * (218.316 + 13.176396 * d);                         // ecliptic longitude
+        const M = rad * (134.963 + 13.064993 * d);                         // mean anomaly
+        const F = rad * (93.272 + 13.229350 * d);                          // mean distance
+        const l = L + rad * 6.289 * Math.sin(M);
+        const b = rad * 5.128 * Math.sin(F);
+        return { ra: rightAsc(l, b), dec: decl(l, b), dist: 385001 - 20905 * Math.cos(M) };
+    };
 
+    return { rad, toDays, azimuthFn, altitudeFn, sidereal, sunCoords, moonCoords };
+})();
+
+function computeSunPosition(date, lat, lng) {
+    const { rad, toDays, sidereal, sunCoords, azimuthFn, altitudeFn } = ASTRO;
+    const d = toDays(date);
+    const c = sunCoords(d);
     const lw = rad * -lng;
     const phi = rad * lat;
-    const H = sidereal(d, lw) - ra;
+    const H = sidereal(d, lw) - c.ra;
 
     return {
-        altitude: altitudeFn(H, phi, dec),     // radians; >0 means above horizon
-        azimuth: azimuthFn(H, phi, dec) + Math.PI // radians from north (0=N, π/2=E, π=S, 3π/2=W)
+        altitude: altitudeFn(H, phi, c.dec),      // radians; >0 means above horizon
+        azimuth: azimuthFn(H, phi, c.dec) + Math.PI // radians from north (0=N, π/2=E, π=S, 3π/2=W)
     };
+}
+
+function computeMoonPosition(date, lat, lng) {
+    const { rad, toDays, sidereal, moonCoords, azimuthFn, altitudeFn } = ASTRO;
+    const d = toDays(date);
+    const c = moonCoords(d);
+    const lw = rad * -lng;
+    const phi = rad * lat;
+    const H = sidereal(d, lw) - c.ra;
+    return {
+        altitude: altitudeFn(H, phi, c.dec),
+        azimuth: azimuthFn(H, phi, c.dec) + Math.PI,
+        distance: c.dist
+    };
+}
+
+// Illuminated fraction, and the roll angle of the bright limb on screen. Without
+// the angle a gibbous moon looks wrong — the terminator has to tilt with the
+// sun's direction relative to the moon, not sit vertically.
+function computeMoonIllumination(date) {
+    const { toDays, sunCoords, moonCoords } = ASTRO;
+    const d = toDays(date);
+    const s = sunCoords(d);
+    const m = moonCoords(d);
+    const SUN_DIST = 149598000; // km
+    const phi = Math.acos(Math.sin(s.dec) * Math.sin(m.dec)
+              + Math.cos(s.dec) * Math.cos(m.dec) * Math.cos(s.ra - m.ra));
+    const inc = Math.atan2(SUN_DIST * Math.sin(phi), m.dist - SUN_DIST * Math.cos(phi));
+    const angle = Math.atan2(
+        Math.cos(s.dec) * Math.sin(s.ra - m.ra),
+        Math.sin(s.dec) * Math.cos(m.dec) - Math.cos(s.dec) * Math.sin(m.dec) * Math.cos(s.ra - m.ra)
+    );
+    return { fraction: (1 + Math.cos(inc)) / 2, angle };
+}
+
+// --- Night sky: stars and the moon, seen through the roof glass ---
+//
+// The Sky mesh is hidden after dark (its pre-dawn glow used to leak through the
+// windows), which left the roof a black void — so this supplies what should
+// actually be up there.
+//
+// Both materials are deliberately OPAQUE. The renderer builds its transmission
+// buffer from the opaque draw list, and the roof glass reads what you see through
+// it out of that buffer, so a transparent star would simply not exist as far as
+// the glass is concerned. Being opaque costs nothing here: on a night sky the
+// background is essentially black, so "replace" and "add" look identical.
+//
+// Both also set fog:false. Fog is exponential-squared and at 1.4 km these would be
+// swallowed whole.
+const STAR_COUNT = 1600;
+const STAR_RADIUS = 1400;
+let nightSky = null, starField = null, starRig = null, moonDisc = null;
+
+function buildNightSky() {
+    nightSky = new THREE.Group();
+    nightSky.userData.detail = true;
+
+    // ---- Stars ----
+    // A random catalogue, not a real one, so absolute orientation is meaningless;
+    // what matters is that it turns about the true celestial pole at the true rate.
+    const pos = new Float32Array(STAR_COUNT * 3);
+    const mag = new Float32Array(STAR_COUNT);
+    const phase = new Float32Array(STAR_COUNT);
+    const tint = new Float32Array(STAR_COUNT * 3);
+    const c = new THREE.Color();
+    for (let i = 0; i < STAR_COUNT; i++) {
+        // Uniform on the sphere, but skip most of the lower hemisphere — it is
+        // under the floor and behind the tree line either way.
+        const y = Math.pow(Math.random(), 0.75) * 1.1 - 0.1;
+        const r = Math.sqrt(Math.max(0, 1 - y * y));
+        const a = Math.random() * Math.PI * 2;
+        pos[i * 3] = Math.cos(a) * r * STAR_RADIUS;
+        pos[i * 3 + 1] = y * STAR_RADIUS;
+        pos[i * 3 + 2] = Math.sin(a) * r * STAR_RADIUS;
+        // Magnitude distribution: a great many faint ones, a handful of bright.
+        mag[i] = Math.pow(Math.random(), 2.6);
+        phase[i] = Math.random();
+        // Mostly blue-white, a minority warm — real star colours are subtle.
+        const t = Math.random();
+        if (t < 0.7) c.setHSL(0.58, 0.18, 0.94);
+        else if (t < 0.9) c.setHSL(0.11, 0.30, 0.92);
+        else c.setHSL(0.05, 0.45, 0.88);
+        tint[i * 3] = c.r; tint[i * 3 + 1] = c.g; tint[i * 3 + 2] = c.b;
+    }
+    const starGeom = new THREE.BufferGeometry();
+    starGeom.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    starGeom.setAttribute('aMag', new THREE.BufferAttribute(mag, 1));
+    starGeom.setAttribute('aPhase', new THREE.BufferAttribute(phase, 1));
+    starGeom.setAttribute('aTint', new THREE.BufferAttribute(tint, 3));
+
+    const starMat = new THREE.ShaderMaterial({
+        uniforms: {
+            uTime: { value: 0 },
+            uNight: { value: 0 },
+            uPixelRatio: { value: 1 }
+        },
+        vertexShader: `
+            attribute float aMag;
+            attribute float aPhase;
+            attribute vec3 aTint;
+            uniform float uTime;
+            uniform float uNight;
+            uniform float uPixelRatio;
+            varying float vBright;
+            varying vec3 vTint;
+            void main() {
+                gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+                // Brighter stars scintillate faster; the phase offset stops the
+                // whole sky pulsing in unison.
+                float twinkle = 0.78 + 0.22 * sin(uTime * (0.7 + aMag * 2.2) + aPhase * 6.2832);
+                vBright = (0.12 + aMag) * twinkle * uNight;
+                vTint = aTint;
+                // Fixed screen size — these are at infinity, so no attenuation —
+                // and hard-clamped: an unclamped point that drifts near the camera
+                // rasterises as a screen-filling quad on ANGLE/Metal.
+                gl_PointSize = clamp((0.85 + aMag * 2.4) * uPixelRatio, 1.0, 6.0);
+            }
+        `,
+        fragmentShader: `
+            varying float vBright;
+            varying vec3 vTint;
+            void main() {
+                vec2 p = gl_PointCoord - 0.5;
+                float r2 = dot(p, p);
+                if (r2 > 0.25) discard;
+                // Soft core so the bigger stars don't read as flat discs.
+                float core = 1.0 - smoothstep(0.01, 0.25, r2);
+                float b = vBright * core;
+                if (b < 0.004) discard;   // never paint a dark dot on the sky
+                gl_FragColor = vec4(vTint * b, 1.0);
+            }
+        `,
+        transparent: false,
+        depthWrite: false,
+        fog: false
+    });
+
+    starField = new THREE.Points(starGeom, starMat);
+    starField.frustumCulled = false;
+    starField.renderOrder = -2; // just after the Sky, before all real geometry
+    // Own group so the sidereal rotation applies to the stars only, not the moon.
+    starRig = new THREE.Group();
+    starRig.add(starField);
+    nightSky.add(starRig);
+
+    // ---- Moon ----
+    // The real disc is 0.52° across. At true scale it renders about 8 px here and
+    // vanishes among the stars, so this is 40/1344 rad ≈ 1.7°, a bit over 3x life
+    // size. Games routinely exaggerate the moon for exactly this reason, and it
+    // needs the help more than usual seen through algae-covered glass.
+    const moonGeom = new THREE.PlaneGeometry(40, 40);
+    const moonMat = new THREE.ShaderMaterial({
+        uniforms: {
+            uFraction: { value: 1 },     // illuminated fraction, 0 new .. 1 full
+            uLimbAngle: { value: 0 },    // roll of the bright limb, radians
+            uNight: { value: 0 },
+            uColor: { value: new THREE.Color(0xfff6e2).multiplyScalar(3.1) }
+        },
+        vertexShader: `
+            varying vec2 vUv;
+            void main() {
+                vUv = uv;
+                gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+            }
+        `,
+        fragmentShader: `
+            uniform float uFraction;
+            uniform float uLimbAngle;
+            uniform float uNight;
+            uniform vec3 uColor;
+            varying vec2 vUv;
+            float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+            void main() {
+                vec2 p = (vUv - 0.5) * 2.0;
+                float r2 = dot(p, p);
+                if (r2 > 1.0) discard;
+                // Rotate so the bright limb lies on +x, then cut the terminator.
+                float ca = cos(-uLimbAngle), sa = sin(-uLimbAngle);
+                vec2 q = vec2(p.x * ca - p.y * sa, p.x * sa + p.y * ca);
+                // Terminator is an ellipse: at full it sits off the left edge, at
+                // half it runs down the middle, at new it clears the right edge.
+                float halfW = sqrt(max(0.0, 1.0 - q.y * q.y));
+                float term = (1.0 - 2.0 * uFraction) * halfW;
+                float lit = smoothstep(term - 0.07, term + 0.07, q.x);
+                // Earthshine: the dark limb is never truly black, and it shows most
+                // when there is least sunlit disc to overpower it.
+                lit = max(lit, 0.045 * (1.0 - uFraction));
+                float limb = sqrt(max(0.0, 1.0 - r2));
+                float shade = mix(0.70, 1.0, pow(limb, 0.45));         // limb darkening
+                float mare = 0.87 + 0.13 * hash(floor(p * 6.0));       // hint of maria
+                float b = lit * shade * mare * uNight;
+                if (b < 0.002) discard;
+                gl_FragColor = vec4(uColor * b, 1.0);
+            }
+        `,
+        transparent: false,
+        depthWrite: false,
+        fog: false
+    });
+    moonDisc = new THREE.Mesh(moonGeom, moonMat);
+    moonDisc.frustumCulled = false;
+    moonDisc.renderOrder = -1; // last of the background, still before the world
+    nightSky.add(moonDisc);
+
+    nightSky.visible = false;
+    scene.add(nightSky);
+}
+
+const _polarAxis = new THREE.Vector3();
+const _moonDir = new THREE.Vector3();
+
+// Positions the sky. Cheap enough for the 30 s sun tick — stars move 0.125° in
+// that time — so this rides along with updateSunAndLighting.
+function placeNightSky(date, nightness) {
+    if (!nightSky) return;
+    nightSky.visible = nightness > 0.01;
+    if (!nightSky.visible) return;
+
+    starField.material.uniforms.uNight.value = nightness;
+    starField.material.uniforms.uPixelRatio.value = renderer.getPixelRatio();
+
+    // Turn the catalogue about the true north celestial pole, which sits due
+    // north at an altitude equal to the latitude, at the true sidereal rate.
+    const lat = SUN_LOCATION.lat * Math.PI / 180;
+    _polarAxis.set(0, Math.sin(lat), -Math.cos(lat)).normalize();
+    const lst = ASTRO.sidereal(ASTRO.toDays(date), ASTRO.rad * -SUN_LOCATION.lng);
+    starRig.quaternion.setFromAxisAngle(_polarAxis, -lst);
+
+    const moon = computeMoonPosition(date, SUN_LOCATION.lat, SUN_LOCATION.lng);
+    const lit = computeMoonIllumination(date);
+    // Below the horizon it is simply not there.
+    const up = moon.altitude > 0;
+    moonDisc.visible = up;
+    if (up) {
+        _moonDir.set(
+            Math.sin(moon.azimuth) * Math.cos(moon.altitude),
+            Math.sin(moon.altitude),
+            -Math.cos(moon.azimuth) * Math.cos(moon.altitude)
+        );
+        moonDisc.position.copy(_moonDir).multiplyScalar(STAR_RADIUS * 0.96);
+        moonDisc.lookAt(nightSky.position); // the group sits on the camera
+        moonDisc.material.uniforms.uFraction.value = lit.fraction;
+        moonDisc.material.uniforms.uLimbAngle.value = lit.angle;
+        // Fade out through dawn along with the stars, and dim it near the horizon
+        // the way real extinction does.
+        const lowFade = THREE.MathUtils.smoothstep(moon.altitude, 0.0, 0.22);
+        moonDisc.material.uniforms.uNight.value = nightness * lowFade;
+    }
+}
+
+// Per-frame: keep the dome centred on the camera so the stars sit at infinity
+// instead of parallaxing across a 50 m greenhouse, and advance the twinkle.
+function updateNightSky(time) {
+    if (!nightSky || !nightSky.visible) return;
+    nightSky.position.copy(camera.position);
+    starField.material.uniforms.uTime.value = time * 0.001;
 }
 
 function updateSunAndLighting() {
     if (!sky || !sunLight) return;
 
-    const sun = computeSunPosition(new Date(), SUN_LOCATION.lat, SUN_LOCATION.lng);
+    const now = new Date();
+    const sun = computeSunPosition(now, SUN_LOCATION.lat, SUN_LOCATION.lng);
     const elev = sun.altitude;
     const azim = sun.azimuth;
     const altDeg = elev * 180 / Math.PI;
@@ -4736,10 +5025,12 @@ function updateSunAndLighting() {
     renderer.toneMappingExposure = 1.02 * dayness + 0.8 * nightness;
 
     // Atmosphere: collapse rayleigh/turbidity at night and hide the Sky mesh entirely
-    // when fully night — its pre-dawn glow was leaking through the windows.
+    // when fully night — its pre-dawn glow was leaking through the windows. The
+    // stars and moon take over from it, so the roof is no longer a black void.
     sky.material.uniforms.rayleigh.value = 1.4 * dayness + 0.04 * nightness;
     sky.material.uniforms.turbidity.value = 6 * dayness + 0.6 * nightness;
     sky.visible = dayness > 0.05;
+    placeNightSky(now, nightness);
 
     // Rebuild the IBL from the sky in its current state (runs at the same 30 s
     // cadence as this function — a few ms of GPU work). Collapsing rayleigh and
@@ -5025,6 +5316,8 @@ function animate() {
     updateParticles(time, delta);
     // Shafts re-aim at the camera every frame, so this can't ride the 30 s tick.
     updateSunShafts();
+    // Star dome tracks the camera; twinkle needs a per-frame clock.
+    updateNightSky(time);
 
     prevTime = time;
 
