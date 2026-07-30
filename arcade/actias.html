@@ -395,6 +395,9 @@ function layout() {
   cv.width = Math.round(W * RES); cv.height = Math.round(H * RES);
   cv.style.width = W + 'px'; cv.style.height = H + 'px';
   K = H * 1.02; HOR = H * 0.37;
+  // horizontal flight range: 46% of the half-width, in world units at the moth's depth,
+  // under the 0.46 camera x-follow — keeps her on-screen at any aspect ratio
+  XLIM = clamp((W * 0.46) / (0.54 * K / PZ), 3.2, 7.4);
   const u = H / 100;
   FONT = {
     hud: `600 ${(2.1 * u).toFixed(1)}px "Avenir Next","Segoe UI",Helvetica,sans-serif`,
@@ -492,7 +495,8 @@ function buildLogo() {
 
 /* ============================================================ GAME STATE */
 const PZ = 5;                          // the moth's fixed depth
-const XLIM = 7.4, YMIN = 0.35, YMAX = 7.4;
+let XLIM = 7.4;                        // recomputed per layout so the moth can never leave the screen
+const YMIN = 0.35, YMAX = 6.2;
 const STAGE_NAMES = ['THE MEADOW', 'THE POWERLINE ROAD', 'THE LIGHTHOUSE SHORE'];
 const ROMAN = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X', 'XI', 'XII'];
 const romanN = n => ROMAN[n - 1] || ('' + n);
@@ -514,7 +518,7 @@ const G = {
 const P = {
   x: 0, y: 2.6, vx: 0, vy: 0, bank: 0, flap: 0, mouseT: -9, tatter: 0,
 };
-const CAM = { x: 0, y: 2.55 };
+const CAM = { x: 0, y: 3.7 };
 let PAL_FROM = palVariant(PAL_BASE[0], 1), PAL_TO = PAL_FROM, PALC = {};
 function setPal(stage, night, instant) {
   PAL_FROM = mixedPal(); PAL_TO = palVariant(PAL_BASE[stage], night);
@@ -529,12 +533,13 @@ function mixedPal() {
 try { G.best = +localStorage.getItem('actias_best') || 0; } catch (e) {}
 try { G.muted = localStorage.getItem('actias_mute') === '1'; } catch (e) {}
 
-/* ------------------------------------------------------------ projection */
-const PRJ = { x: 0, y: 0, s: 0 };
+/* ------------------------------------------------------------ projection
+   Returns a FRESH object every call. A shared scratch object here silently
+   corrupts any draw that projects twice before using the first result —
+   which displaced the moth and half the bestiary onto their own shadows. */
 function prj(x, y, z) {
   const s = K / z;
-  PRJ.x = W / 2 + (x - CAM.x) * s; PRJ.y = HOR - (y - CAM.y) * s; PRJ.s = s;
-  return PRJ;
+  return { x: W / 2 + (x - CAM.x) * s, y: HOR - (y - CAM.y) * s, s };
 }
 const groundY = z => HOR + CAM.y * K / z;
 const fogT = z => sat((z - 12) / 92);
@@ -613,7 +618,7 @@ function spRock(x, z) {
 
 /* ---- enemy spawners (the Glare's servants — snuff them) */
 function spCinderChain(n, straight) {
-  const id = 'c' + (OBJID + 1), x0 = rand(-5.5, 5.5), y0 = rand(1.4, 5),
+  const id = 'c' + (OBJID + 1), x0 = rand(-5.5, 5.5), y0 = rand(1.2, 4.4),
     A = straight ? 0 : rand(2, 4.2), w = rand(0.9, 1.6), B = straight ? 0 : rand(0.7, 1.6);
   n = n || 6;
   G.chainReg[id] = { total: n, killed: 0 };
@@ -625,7 +630,7 @@ function spPyralid(n, fromBoss, bx, by, bz) {
   for (let i = 0; i < n; i++) {
     const side = randSign();
     spawn({
-      k: 'pyr', x: fromBoss ? bx : side * rand(8, 12), y: fromBoss ? by : rand(4.5, 7),
+      k: 'pyr', x: fromBoss ? bx : side * rand(8, 12), y: fromBoss ? by : rand(3.4, 5.6),
       z: fromBoss ? bz : rand(70, 92) + i * 8,
       tx: P.x + rand(-1.5, 1.5), ty: P.y + rand(-1, 1), swirl: rand(TAU), r: 0.72, hp: 1, hz: 1, en: 1, del: i * 0.35,
     });
@@ -633,7 +638,7 @@ function spPyralid(n, fromBoss, bx, by, bz) {
 }
 function spBat() {
   const side = randSign();
-  spawn({ k: 'bat', x: side * 13, y: clamp(P.y + rand(-0.6, 0.6), 1.2, 6.5), z: rand(9, 13), side, st: 0, stT: 0, r: 0.7, hp: 1, hz: 1, en: 1, ring: 0, lockx: 0 });
+  spawn({ k: 'bat', x: side * 13, y: clamp(P.y + rand(-0.6, 0.6), 1.0, 5.6), z: rand(9, 13), side, st: 0, stT: 0, r: 0.7, hp: 1, hz: 1, en: 1, ring: 0, lockx: 0 });
 }
 function spZapper(x) {
   spawn({ k: 'zap', x: x !== undefined ? x : rand(-6, 6), y: rand(2.2, 5.4), z: 112, st: 0, stT: 0, volley: 0, r: 0.95, hp: 2, hz: 1, en: 1, bob: rand(TAU) });
@@ -1018,7 +1023,7 @@ function controlVector() {
 }
 function updatePlayer(dt) {
   if (G.mode === 'title') { // attract drift
-    P.x = Math.sin(G.t * 0.5) * 2.2; P.y = 3.5 + Math.sin(G.t * 0.83) * 0.6;
+    P.x = Math.sin(G.t * 0.5) * 2.2; P.y = 2.2 + Math.sin(G.t * 0.83) * 0.5;
     P.vx = Math.cos(G.t * 0.5) * 1.1; P.vy = Math.cos(G.t * 0.83) * 0.5;
   } else if (G.mode === 'play') {
     const c = controlVector();
@@ -1041,7 +1046,8 @@ function updatePlayer(dt) {
     if (P.y < YMIN) { P.y = YMIN; P.vy *= -0.25; }
     if (P.y > YMAX) { P.y = YMAX; P.vy *= -0.25; }
   } else if (G.mode === 'dying') {
-    P.x += P.vx * dt; P.vy -= 9 * dt; P.y = Math.max(0.1, P.y + P.vy * dt);
+    P.x += P.vx * dt; P.vy -= 9 * dt;
+    P.y = Math.max(0.6, P.y + P.vy * dt); // she falls, but her burning stays in frame
     P.bank += dt * 9;
   }
   if (G.mode !== 'dying') {
@@ -1049,17 +1055,19 @@ function updatePlayer(dt) {
     P.bank += (targetBank - P.bank) * Math.min(1, dt * 8);
   }
   P.flap += dt * (8.5 + Math.max(0, P.vy) * 1.1 + (G.mode === 'dying' ? -5 : 0));
-  // dust wake — she sheds moonlight as she flies
-  if (G.mode !== 'over' && srand() < 0.75) {
+  // dust wake — she sheds moonlight as she flies (emission scales with real
+  // sim time so hitstop/slow-mo don't bury her in her own dust)
+  if (G.mode !== 'over' && srand() < Math.min(0.9, dt * 45)) {
     part('dust', P.x + rand(-0.5, 0.5), P.y + rand(-0.3, 0.3), PZ + rand(-0.1, 0.1),
       rand(-0.5, 0.5) - P.vx * 0.14, rand(-0.3, 0.5), rand(-3.5, -2),
       rand(0.5, 1.1), rand(1.6, 3.4), PLAYER_TINT);
   }
-  if (Math.abs(P.vx) > 7 && srand() < 0.5)
+  if (Math.abs(P.vx) > 7 && srand() < dt * 30)
     part('dust', P.x - Math.sign(P.vx) * 0.9, P.y, PZ, -P.vx * 0.22, rand(-0.5, 0.8), -2.5, 0.7, 2.5, PLAYER_TINT);
-  // camera follows with a lean
-  CAM.x += (P.x * 0.46 - CAM.x) * Math.min(1, dt * 5);
-  CAM.y += ((2.55 + (P.y - 2.55) * 0.42) - CAM.y) * Math.min(1, dt * 5);
+  // camera follows with a lean; the y band is tuned so her whole travel,
+  // ground to ceiling, maps to roughly 87%..16% of screen height
+  CAM.x += (P.x * 0.46 - CAM.x) * Math.min(1, dt * 6);
+  CAM.y += ((3.7 + (P.y - 2.55) * 0.41) - CAM.y) * Math.min(1, dt * 7);
 }
 
 function fire() {
@@ -1071,7 +1079,30 @@ function fire() {
 }
 function updateShots(dt) {
   for (const s of G.shots) {
-    s.t += dt; s.z += 92 * dt;
+    s.t += dt;
+    // her dust seeks the lying lights: gentle homing toward the nearest
+    // enemy ahead, so aiming "at" something on screen actually connects
+    let bx = 0, by = 0, bd = 2.8, found = false;
+    for (const o of G.objects) {
+      const isLamp = o.k === 'lamp' && o.lit;
+      if ((!o.en && !isLamp) || o.dead) continue;
+      const dz = o.z - s.z;
+      if (dz < 0.5 || dz > 42) continue;
+      const oy = isLamp ? o.h - 0.35 : o.y === undefined ? (o.h || 1) * 0.7 : o.y;
+      const d = Math.hypot(o.x - s.x, oy - s.y) + dz * 0.015;
+      if (d < bd) { bd = d; bx = o.x; by = oy; found = true; }
+    }
+    const B = G.bossRef;
+    if (B && B.st !== 'dying' && B.z - s.z > 0.5) {
+      const d = Math.hypot(B.x - s.x, B.y - s.y);
+      if (d < Math.max(bd, 4)) { bx = B.x; by = B.y; found = true; }
+    }
+    if (found) {
+      const rate = 13 * dt;
+      s.x += clamp(bx - s.x, -rate, rate);
+      s.y += clamp(by - s.y, -rate, rate);
+    }
+    s.z += 92 * dt;
     if (s.z > 118) s.dead = true;
   }
   for (const b of G.bolts) {
@@ -1097,7 +1128,7 @@ function updateObjects(dt) {
     switch (o.k) {
       case 'cinder':
         o.x = o.x0 + Math.sin(o.t * o.w + o.ph) * o.A;
-        o.y = clamp(o.y0 + Math.sin(o.t * o.w * 0.7 + o.ph * 1.3) * o.B, 0.6, 7);
+        o.y = clamp(o.y0 + Math.sin(o.t * o.w * 0.7 + o.ph * 1.3) * o.B, 0.6, 5.6);
         break;
       case 'pyr': {
         if (o.del > 0) { o.del -= dt; break; }
@@ -1201,7 +1232,7 @@ function collide(dt) {
       if (dz < -1.6 || dz > 2.6) continue;
       if (o.en) {
         const oy = o.y === undefined ? (o.h || 1) * 0.7 : o.y;
-        const dx = o.x - s.x, dy = oy - s.y, rr = o.r + 0.55;
+        const dx = o.x - s.x, dy = oy - s.y, rr = o.r + 0.75;
         if (dx * dx + dy * dy < rr * rr) {
           s.dead = true;
           o.hp--;
@@ -1215,7 +1246,9 @@ function collide(dt) {
           if (o.hp <= 0) killObj(o); else { sfxTink(); burst('spark', o.x, o.h - 0.35, o.z, 4, 4, 0.3, 3, SODIUM); }
           break;
         }
-      } else { // written world: dust splashes harmlessly off it
+      } else { // written world: dust splashes harmlessly off it —
+        // but only off obstacles the player can actually see through the haze
+        if (fogT(o.z) > 0.7) continue;
         let hit = false;
         if (o.k === 'stalk' || o.k === 'fox' || o.k === 'pole' || o.k === 'piling' || o.k === 'mast')
           hit = Math.abs(o.x - s.x) < o.w + 0.35 && s.y < o.h;
@@ -1330,7 +1363,7 @@ function updateParticles(dt) {
   for (const p of PARTS) {
     if (!p.on) continue;
     p.t += dt;
-    if (p.t >= p.life) { p.on = false; continue; }
+    if (p.t >= p.life || p.z < 0.4) { p.on = false; continue; }
     p.x += p.vx * dt; p.y += p.vy * dt; p.z += (p.vz - (p.kind === 'dust' ? 0 : 0)) * dt;
     if (p.kind === 'glass' || p.kind === 'pop') p.vy -= 7 * dt;
     if (p.kind === 'smoke') { p.vy += 2 * dt; p.size += dt * 5; }
@@ -2480,7 +2513,7 @@ window.addEventListener('keydown', e => {
     return;
   }
   if (code === 'KeyR' && (G.paused || G.mode === 'over')) { G.paused = false; begin(); return; }
-  if (anyKeyGate()) return;
+  anyKeyGate(); // starting the run must not swallow the same press as input
   if (KEYMAP[code]) keys[KEYMAP[code]] = true;
   if (code === 'Space' || code === 'KeyZ' || code === 'KeyX' || code === 'KeyJ') kbFire = true;
 });
@@ -2491,7 +2524,7 @@ window.addEventListener('keyup', e => {
 cv.addEventListener('mousemove', e => { mouse.x = e.clientX; mouse.y = e.clientY; mouse.t = G.t; });
 cv.addEventListener('mousedown', e => {
   e.preventDefault();
-  if (anyKeyGate()) return;
+  anyKeyGate(); // the starting click is also a live input
   mouseFire = true; mouse.t = G.t;
 });
 window.addEventListener('mouseup', () => { mouseFire = false; });
