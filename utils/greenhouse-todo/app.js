@@ -802,6 +802,9 @@ function setupDebugHooks() {
         get camera() { return camera; },
         get renderer() { return renderer; },
         get controls() { return controls; },
+        // The AO pass answers "is that mottling occlusion or geometry" in one
+        // toggle: aoPass.configuration.intensity = 0 and re-render.
+        get aoPass() { return aoPass; },
         // Is a resume campaign in flight? Nothing else can tell you whether an
         // unlock is about to raise the pause screen or be swallowed and retried.
         get resuming() { return performance.now() < resumeUntil; },
@@ -856,15 +859,21 @@ function setupPostProcessing() {
     // conversion; N8AO must hand its result on in linear space or the bloom
     // threshold and the tone curve both get applied to already-encoded colour.
     aoPass.configuration.gammaCorrection = false;
-    // Transparency-aware mode costs two extra full scene renders and four scene
-    // traversals per frame, and it exists to keep AO off transparent surfaces.
-    // The glass is already handled — depthWrite: false keeps it out of the depth
-    // buffer the AO samples — and the only other transparent things here are
-    // drips, mist, dust and fireflies, which are too small and too dim to show
-    // the difference. Turning autodetect off is what keeps it from switching
-    // itself back on when it walks the scene.
+    // Transparency-aware mode costs two extra renders per frame, but they draw
+    // only the transparent objects, and it earns its keep here: without it the
+    // AO is multiplied over the whole composited frame, so the forest's own
+    // occlusion — every crevice in the canopy, every trunk against the sky —
+    // stamps itself across the lamps' haze cones as a ghostly negative of the
+    // trees. (This used to be off on the grounds that the transparent things
+    // were all small and dim; the haze cones are neither.) With it on, n8ao
+    // renders the transparent surfaces' accumulated alpha to a side buffer and
+    // masks the AO by it, so a beam at 60% density suppresses 60% of the tree
+    // AO behind it — and the glass panes (alpha 1) mask the outdoors entirely,
+    // which is fine: outdoors, the sun and moon shadow maps do the real work.
+    // Setting transparencyAware explicitly also clears autoDetectTransparency,
+    // but keep the intent legible and pinned:
     aoPass.autoDetectTransparency = false;
-    aoPass.configuration.transparencyAware = false;
+    aoPass.configuration.transparencyAware = true;
     composer.addPass(aoPass);
 
     const bloom = new UnrealBloomPass(
@@ -1233,8 +1242,10 @@ function makeWoodMaterial({ repeat = [1, 1], roughness = 0.85, color = 0xffffff 
 //   • height    — a gentle normal map, i.e. the waviness of old rolled glass
 //
 // depthWrite stays off. The panes are drawn after the opaque scene, and leaving
-// depth alone means the screen-space AO pass reads the geometry *behind* the
-// glass rather than painting occlusion onto the panes themselves.
+// depth alone keeps the panes out of the depth buffer the screen-space AO pass
+// samples. (With transparency-aware AO on — see setupPostProcessing — the panes'
+// alpha also masks AO off everything *behind* them, which is what keeps the
+// forest's occlusion from stamping itself onto glass and haze cones alike.)
 function makeGlassMaterial({ base, streaks, algae, spots, tint, roughness, transmission, thickness, envMapIntensity }) {
     const SIZE = 256;
     const canvas = document.createElement('canvas');
