@@ -1,0 +1,1406 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Paradox Vault</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:        #0a0c14;
+    --panel:     #121623;
+    --panel-2:   #182036;
+    --line:      #263050;
+    --ink:       #d8def0;
+    --dim:       #7d87a8;
+    --live:      #47d7ff;
+    --gold:      #f0b429;
+    --good:      #4de0a0;
+    --bad:       #ff5a72;
+    --g1:        #ff7ab6;
+    --g2:        #c88cff;
+    --g3:        #ffca6b;
+    --g4:        #7cf0a8;
+  }
+
+  body {
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+    background: var(--bg);
+    color: var(--ink);
+    min-height: 100vh;
+    font-size: 14px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* faint vault-grid backdrop */
+  body::before {
+    content: '';
+    position: fixed; inset: 0; z-index: 0; pointer-events: none;
+    background:
+      linear-gradient(rgba(60,80,140,0.045) 1px, transparent 1px) 0 0 / 100% 28px,
+      linear-gradient(90deg, rgba(60,80,140,0.045) 1px, transparent 1px) 0 0 / 28px 100%,
+      radial-gradient(ellipse at 50% 0%, rgba(60,90,170,0.18), transparent 60%);
+  }
+
+  .wrap {
+    position: relative; z-index: 1;
+    max-width: 1120px;
+    margin: 0 auto;
+    padding: clamp(1rem, 3vw, 2rem);
+  }
+
+  header { margin-bottom: 1.1rem; }
+
+  .back-link {
+    display: inline-block;
+    color: rgba(255,255,255,0.35);
+    text-decoration: none;
+    font-size: 0.8rem;
+    margin-bottom: 0.9rem;
+  }
+  .back-link:hover { color: var(--live); }
+
+  h1 {
+    font-size: clamp(1.5rem, 4vw, 2.2rem);
+    font-weight: 700;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    background: linear-gradient(90deg, var(--live), var(--g2) 45%, var(--gold));
+    -webkit-background-clip: text; background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+  .sub { color: var(--dim); font-size: 0.8rem; letter-spacing: 0.06em; }
+
+  .toolbar {
+    display: flex; flex-wrap: wrap; gap: 0.4rem; align-items: center;
+    margin: 0.9rem 0 0.2rem;
+  }
+
+  button {
+    font: inherit;
+    font-size: 0.78rem;
+    letter-spacing: 0.05em;
+    color: var(--ink);
+    background: var(--panel-2);
+    border: 1px solid var(--line);
+    border-radius: 5px;
+    padding: 0.34rem 0.7rem;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s, color 0.15s;
+  }
+  button:hover { background: #222c48; border-color: #3a4870; }
+  button.on { background: rgba(71,215,255,0.14); border-color: var(--live); color: var(--live); }
+  button.primary { background: rgba(77,224,160,0.14); border-color: var(--good); color: var(--good); }
+  button.danger  { background: rgba(255,90,114,0.12); border-color: var(--bad);  color: var(--bad); }
+  .spacer { flex: 1 1 auto; }
+
+  .layout {
+    display: grid;
+    grid-template-columns: minmax(0, 520px) minmax(280px, 1fr);
+    gap: clamp(0.8rem, 2vw, 1.4rem);
+    align-items: start;
+    margin-top: 1rem;
+  }
+  @media (max-width: 900px) { .layout { grid-template-columns: 1fr; } }
+
+  .stage { position: relative; }
+  canvas {
+    display: block;
+    width: 100%;
+    height: auto;
+    background: #0d1020;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    touch-action: none;
+  }
+
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 0.8rem 0.9rem;
+    margin-bottom: 0.8rem;
+  }
+  .panel h2 {
+    font-size: 0.7rem; letter-spacing: 0.16em; text-transform: uppercase;
+    color: var(--dim); font-weight: 600; margin-bottom: 0.55rem;
+  }
+
+  .stats { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 0.35rem 0.8rem; }
+  .stat { display: flex; justify-content: space-between; gap: 0.5rem; font-size: 0.8rem; }
+  .stat b { font-weight: 700; color: #fff; }
+  .stat .lbl { color: var(--dim); }
+
+  .tickbar {
+    position: relative; height: 8px; border-radius: 4px; overflow: hidden;
+    background: #0b0f1c; border: 1px solid var(--line); margin-top: 0.6rem;
+  }
+  .tickbar i { position: absolute; inset: 0 auto 0 0; background: linear-gradient(90deg, var(--live), var(--g2)); }
+
+  /* --- timeline --- */
+  .tl-row { display: flex; align-items: center; gap: 0.45rem; margin-bottom: 0.32rem; }
+  .tl-tag {
+    flex: 0 0 auto; width: 62px; font-size: 0.68rem; letter-spacing: 0.05em;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .tl-cells { display: flex; gap: 1px; flex: 1 1 auto; min-width: 0; }
+  .tl-cells span {
+    flex: 1 1 0; min-width: 0; height: 15px; border-radius: 1px;
+    background: #1b2440;
+    box-shadow: inset 0 0 0 1px rgba(120,150,220,0.10);
+    font-size: 8px; line-height: 15px; text-align: center; color: rgba(255,255,255,0.72);
+    overflow: hidden;
+  }
+  .tl-cells span.now { outline: 1px solid var(--live); outline-offset: 0px; }
+  .tl-cells span.pass { opacity: 0.42; }
+  .tl-cells span.bad  { background: var(--bad) !important; color: #fff; }
+  .tl-legend { font-size: 0.68rem; color: var(--dim); margin-top: 0.4rem; }
+
+  .keys { display: grid; grid-template-columns: auto 1fr; gap: 0.2rem 0.6rem; font-size: 0.76rem; }
+  .keys kbd {
+    background: var(--panel-2); border: 1px solid var(--line); border-bottom-width: 2px;
+    border-radius: 4px; padding: 0 0.35rem; font: inherit; font-size: 0.72rem; white-space: nowrap;
+  }
+  .keys span { color: var(--dim); }
+
+  .legend { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 0.28rem 0.7rem; font-size: 0.74rem; }
+  .legend div { display: flex; align-items: center; gap: 0.4rem; color: var(--dim); }
+  .swatch { width: 12px; height: 12px; border-radius: 3px; flex: 0 0 auto; border: 1px solid rgba(255,255,255,0.18); }
+
+  .hint { font-size: 0.78rem; color: var(--dim); }
+  .hint b { color: var(--ink); font-weight: 600; }
+
+  /* --- overlays --- */
+  .overlay {
+    position: absolute; inset: 0; display: none;
+    align-items: center; justify-content: center; padding: 1rem;
+    background: rgba(6,8,16,0.86);
+    border-radius: 8px;
+  }
+  .overlay.show { display: flex; }
+  /* The paradox panel docks to the bottom over a soft gradient so the pulsing
+     highlight on the offending echo and tile stays readable behind it. */
+  .overlay.dock {
+    align-items: flex-end;
+    background: linear-gradient(to bottom, rgba(6,8,16,0.10), rgba(6,8,16,0.55) 42%, rgba(6,8,16,0.92));
+  }
+  .card {
+    max-width: 420px; width: 100%;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 1.1rem 1.2rem;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.6);
+  }
+  .card h3 {
+    font-size: 1rem; letter-spacing: 0.14em; text-transform: uppercase; margin-bottom: 0.5rem;
+  }
+  .card p { font-size: 0.82rem; color: var(--dim); margin-bottom: 0.5rem; }
+  .card .why {
+    font-size: 0.82rem; color: var(--ink); background: #0c1120;
+    border-left: 2px solid var(--bad); border-radius: 0 5px 5px 0;
+    padding: 0.5rem 0.6rem; margin: 0.6rem 0 0.8rem;
+  }
+  .card .btns { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+  #paradoxCard h3 { color: var(--bad); }
+  #winCard h3 { color: var(--good); }
+  #winCard .why { border-left-color: var(--good); }
+
+  #report {
+    display: none; white-space: pre-wrap; font-size: 0.74rem; line-height: 1.6;
+    background: #0b0f1c; border: 1px solid var(--line); border-radius: 8px;
+    padding: 0.8rem 0.9rem; margin-top: 0.8rem; max-height: 340px; overflow: auto;
+  }
+  #report.show { display: block; }
+  #report .ok { color: var(--good); }
+  #report .no { color: var(--bad); }
+  #report .hd { color: var(--live); }
+
+  footer { margin-top: 1.6rem; font-size: 0.72rem; color: rgba(255,255,255,0.22); text-align: center; }
+  footer a { color: rgba(255,255,255,0.35); text-decoration: none; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <a href="index.html" class="back-link">&larr; back to arcade</a>
+    <h1>Paradox Vault</h1>
+    <p class="sub">Rob the vault by cooperating with your past selves. Do not contradict them.</p>
+
+    <div class="toolbar">
+      <span style="color:var(--dim);font-size:0.72rem;letter-spacing:0.12em;">LEVEL</span>
+      <span id="levelBtns" style="display:flex;gap:0.35rem;"></span>
+      <span class="spacer"></span>
+      <button id="btnPreview">SPACE · forecast</button>
+      <button id="btnUndo">Z · undo tick</button>
+      <button id="btnLoop">R · end loop</button>
+      <button id="btnRestart" class="danger">restart level</button>
+      <button id="btnVerify">verify solutions</button>
+    </div>
+  </header>
+
+  <div class="layout">
+    <div>
+      <div class="stage">
+        <canvas id="cv" width="504" height="504"></canvas>
+
+        <div class="overlay dock" id="paradoxOv">
+          <div class="card" id="paradoxCard">
+            <h3>⚠ Paradox</h3>
+            <p id="pdxWhere"></p>
+            <div class="why" id="pdxWhy"></div>
+            <div class="btns">
+              <button id="pdxUndoLoop" class="primary">undo last loop</button>
+              <button id="pdxUndoTick">undo one tick (Z)</button>
+              <button id="pdxRestart" class="danger">restart level</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="overlay" id="winOv">
+          <div class="card" id="winCard">
+            <h3>✓ Vault Cracked</h3>
+            <p id="winStats"></p>
+            <div class="why" id="winFlavor"></div>
+            <div class="btns">
+              <button id="winNext" class="primary">next level</button>
+              <button id="winReplay">replay level</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel" style="margin-top:0.8rem;">
+        <h2>Legend</h2>
+        <div class="legend">
+          <div><i class="swatch" style="background:#47d7ff"></i>you (live)</div>
+          <div><i class="swatch" style="background:#ff7ab6"></i>echo of a past loop</div>
+          <div><i class="swatch" style="background:#a8763e"></i>box (pushable)</div>
+          <div><i class="swatch" style="background:#f0b429"></i>plate — holds its door</div>
+          <div><i class="swatch" style="background:#ff5a72"></i>door (closed)</div>
+          <div><i class="swatch" style="background:#4de0a0"></i>door (open) / vault</div>
+          <div><i class="swatch" style="background:#ffd76a"></i>key</div>
+          <div><i class="swatch" style="background:#2a3150"></i>wall</div>
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <div class="panel">
+        <h2 id="lvlName">Level</h2>
+        <p class="hint" id="lvlHint"></p>
+        <div class="stats" style="margin-top:0.7rem;">
+          <div class="stat"><span class="lbl">tick</span><b id="sTick">0 / 40</b></div>
+          <div class="stat"><span class="lbl">loop</span><b id="sLoop">1</b></div>
+          <div class="stat"><span class="lbl">echoes</span><b id="sGhosts">0</b></div>
+          <div class="stat"><span class="lbl">key</span><b id="sKey">—</b></div>
+        </div>
+        <div class="tickbar"><i id="tickFill" style="width:0%"></i></div>
+      </div>
+
+      <div class="panel">
+        <h2>Timeline</h2>
+        <div id="timeline"></div>
+        <div class="tl-legend">▲▼◀▶ = step · · = wait · ✱ = bump/no-op · bar shows all 40 ticks</div>
+      </div>
+
+      <div class="panel">
+        <h2>Doors</h2>
+        <div id="doorList" class="hint">—</div>
+      </div>
+
+      <div class="panel">
+        <h2>Controls</h2>
+        <div class="keys">
+          <kbd>↑↓←→</kbd><span>/ <b style="color:var(--ink)">WASD</b> — step one tick</span>
+          <kbd>. / Enter</kbd><span>wait one tick</span>
+          <kbd>R</kbd><span>end loop early (your echo freezes in place)</span>
+          <kbd>Z</kbd><span>undo one tick — crosses loop boundaries</span>
+          <kbd>Space</kbd><span>forecast: next 5 ticks of every echo</span>
+          <kbd>1 2 3</kbd><span>level select</span>
+        </div>
+      </div>
+
+      <div id="report"></div>
+    </div>
+  </div>
+
+  <footer>Part of <a href="../">Fun with AI</a> · everything runs locally, no network calls</footer>
+</div>
+
+<script>
+'use strict';
+/* ==========================================================================
+   PARADOX VAULT
+   A top-down grid puzzle about time loops. Vanilla JS + Canvas, no deps.
+
+   --------------------------------------------------------------------------
+   ARCHITECTURE / DETERMINISM
+   --------------------------------------------------------------------------
+   The whole simulation is `simulate(level, tokens)` — a PURE function of the
+   level's initial state plus a flat array of input tokens. Nothing in the
+   logic reads the clock, the frame rate, Math.random, or any mutable module
+   state. The live game keeps exactly one piece of authoritative data — the
+   token log — and recomputes the world from scratch after every keypress.
+   That makes undo trivial (`log.pop()`) and makes "undo then replay yields an
+   identical state" true by construction rather than by careful bookkeeping.
+   Rendering interpolates positions over wall-clock time; logic never does.
+
+   Token alphabet (also the format of the commented solutions below):
+     'U' 'D' 'L' 'R'  step one tile         (a blocked step is a "bump" and
+     '.'              wait one tile          still consumes its tick)
+     '*'              end the loop early (R key). Consumes NO tick.
+
+   --------------------------------------------------------------------------
+   DOCUMENTED RULE RESOLUTIONS (every ambiguity in the spec, resolved once)
+   --------------------------------------------------------------------------
+   R1. TICK ORDER / SAME-TILE CONTENTION.
+       Within one tick, entities resolve in a fixed order: echoes oldest loop
+       first (loop 1, then 2, ...), then the live player LAST. Each entity's
+       move is applied in full (box shove included) before the next entity is
+       considered, so an entity sees earlier movers at their NEW positions and
+       later movers at their OLD positions.
+       => If two entities want the same tile on the same tick, the earlier one
+          in that order gets it and the later one BUMPS (loses its move, still
+          burns the tick).
+       => A straight swap (A steps right into B while B steps left into A)
+          blocks both: when A resolves, B has not moved yet, so B's tile is
+          occupied; when B resolves, A never moved either. Both bump.
+       The past resolves before the present: an echo is never displaced by the
+       live player. The live player is the one who bumps — and if the live
+       player is standing where an echo must go, that is a PARADOX (R5).
+
+   R2. STACKED SPAWN. Every entity (live player + all echoes) starts the loop
+       on the same start tile, so they begin stacked. Occupancy is only ever
+       tested on ENTRY into a tile, so the initial stack is legal; once two
+       entities separate they can never re-stack.
+
+   R3. DOOR TIMING. A door is open exactly while at least one of its linked
+       plates is occupied by an entity or a box. Door states are recomputed
+       once per tick, AFTER every entity has moved, and are then held frozen
+       for the whole of the next tick's movement resolution. So stepping onto
+       a plate opens its door starting NEXT tick. A closed door blocks entry;
+       anything already standing on the tile may still walk off it (doors do
+       not crush).
+
+   R4. BOXES. Sokoban rules: one box per shove, the tile beyond must be empty
+       floor / an open door / a plate — never a wall, a closed door, another
+       box, an entity, or the vault. A blocked shove is a bump. Boxes may sit
+       on plates (that is how you hold a door with nobody standing there).
+
+   R5. PARADOX = OUTCOME DIVERGENCE. Echoes replay INPUTS, not positions. For
+       every tick of every loop the recorder also stores the OUTCOME of that
+       input: did it move, to where, did it shove a box and from/to where, did
+       it pick up the key. On replay the outcome is recomputed and compared.
+       Any difference freezes the simulation and reports loop, tick and cause.
+       The comparison covers exactly the observable results:
+           moved / destination / box shove (from,to) / key pickup
+       It deliberately does NOT compare *why* a bump happened — an echo that
+       bumped into a box and now bumps into the live player standing on that
+       same tile experienced the identical outcome, so history is intact.
+
+   R6. WHY THIS IS STABLE. In loop N the entities are echo₁…echo₍N₋₁₎ plus the
+       live player, resolved in that order. Echo_k replays what the loop-k
+       player did while echoes₁…₍k₋₁₎ ran ahead of it in the same order — an
+       identical prefix — so echoes can never break each other. Only the live
+       player, who resolves last and did not exist in any recording, can
+       diverge history. Every paradox is therefore your fault.
+
+   R7. ECHO BUDGET. At most 4 echoes run at once (the last 4 loops). Taking a
+       fifth loop retires loop 1's echo. If a later loop's recording depended
+       on that retired echo, replaying it now diverges — a legitimate paradox,
+       reported like any other. All three levels are solvable well inside the
+       budget.
+
+   R8. EARLY RESET. 'R' ends the loop where it stands; the recording is padded
+       to 40 ticks with waits, so that echo FREEZES on its final tile for the
+       rest of every future loop. That is the intended way to pin a plate.
+
+   R9. THE KEY. Any entity that steps onto the key tile picks it up, echoes
+       included — an echo that took the key in its own loop must be able to
+       take it again, or that is a paradox. Only the LIVE player can win.
+
+   R10. WINNING. The vault tile can only be entered while its door is open;
+        entering it while carrying the key wins immediately. Entering it
+        without the key does nothing (you can stand in an empty vault).
+
+   R11. TURN-BASED. Logic advances only when you press a key, so the game is
+        always logically paused — there is no wall-clock timer to race. SPACE
+        therefore toggles the planning forecast described in the spec: the
+        next 5 ticks of every echo, read straight off its recording.
+   ========================================================================== */
+
+const LOOP_LEN   = 40;   // ticks per loop
+const MAX_ECHOES = 4;    // R7
+const GRID       = 12;
+
+const DIRS = {
+  U: [0, -1], D: [0, 1], L: [-1, 0], R: [1, 0], '.': [0, 0],
+};
+const GLYPH = { U: '▲', D: '▼', L: '◀', R: '▶', '.': '·' };
+
+/* ==========================================================================
+   LEVELS
+   Tile chars:  # wall   . floor   S start   V vault
+                a b c  pressure plate linked to door A B C
+                A B C  door
+                $ box    k key
+   ========================================================================== */
+
+const LEVEL_SRC = [
+  {
+    name: 'I · Understudy',
+    hint: 'Door <b>A</b> and the vault are both held by plate <b>a</b>. You cannot be in two places at once — but you can be in one place twice. Walk to the plate, press <b>R</b> to end the loop early so your echo freezes there, then rob the place.',
+    vaultDoor: 'A',
+    rows: [
+      '############',
+      '#S....#....#',
+      '#.....#....#',
+      '#.###.#....#',
+      '#.#a#.#..k.#',
+      '#.#.#.#....#',
+      '#.....A....#',
+      '#.....#....#',
+      '#.....#....#',
+      '#.....#..V.#',
+      '#.....#....#',
+      '############',
+    ],
+    // Loop 1: walk down and into the alcove, stand on plate a, end the loop
+    //         early so the echo is pinned there for every future loop.
+    // Loop 2: sprint the right-hand corridor, grab the key, drop into the vault.
+    solution: 'DDDDDRRUU*' + 'RRRRDDDDDRRRRUUDDDDD',
+  },
+  {
+    name: 'II · Relay',
+    hint: 'Plate <b>a</b> opens door <b>A</b>; plate <b>b</b> (behind A) opens door <b>B</b>. Two echoes hold the doors, and the vault needs plate <b>c</b> — with all three of you busy, only a <b>box</b> can hold that one down.',
+    vaultDoor: 'C',
+    rows: [
+      '############',
+      '#S..#...#..#',
+      '#...A...#..#',
+      '#...#...#..#',
+      '#.a.#...#$.#',
+      '#...#...#..#',
+      '#...#.b.#..#',
+      '#...#..k#..#',
+      '#...#...B..#',
+      '#...#...#c.#',
+      '#...#...#.V#',
+      '############',
+    ],
+    // Loop 1: pin plate a  -> door A stays open.
+    // Loop 2: follow echo 1 through A, pin plate b -> door B stays open.
+    // Loop 3: trail two ticks behind echo 2 so you never crowd it, take the
+    //         key, cross B, loop around the box, shove it five south onto
+    //         plate c, then walk into the vault.
+    solution: 'DDDR*'
+            + 'RRD.RRRDDDD*'
+            + '..RRDRRRRDDDDDDRRRUUUUULDDDDDRDD',
+  },
+  {
+    name: 'III · Inheritance',
+    hint: 'Nothing here holds itself open: door <b>A</b> and the vault depend on a <b>box</b> that your first echo shoves onto plate <b>a</b> — every single loop, from the same starting tile. The short way to the key runs straight through that box. Take the long way.',
+    vaultDoor: 'A',
+    rows: [
+      '############',
+      '#S...a#...k#',
+      '#.###.#.##.#',
+      '#....$.....#',
+      '#.###.#.##.#',
+      '#..........#',
+      '#####A######',
+      '#..........#',
+      '#....#.....#',
+      '#....#.....#',
+      '#....#V....#',
+      '############',
+    ],
+    // Loop 1: down the left wall, east along row 5, then shove the box two
+    //         north onto plate a. End early; the box now pins door A open
+    //         from tick 11 of every loop.
+    // Loop 2: wait one tick, follow one step behind echo 1 (never overtaking
+    //         it, never touching row 3 where the box lives), climb column 7
+    //         to the key, come back down column 10, and drop through door A
+    //         into the vault.
+    solution: 'DDDDRRRRUUU*'
+            + '.DDDDRRRRRRUUUURRRDDDDLLLLLDDRDDD',
+    // Two ways to break history, both used by the self-test:
+    //  a) shove the box off (5,3) before echo 1 gets there;
+    //  b) stand on plate a so the box has nowhere to land.
+    probes: [
+      { tokens: 'DDDDRRRRUUU*' + '.DDRRRRRRR', loop: 0, tick: 9,  match: /no box/i,
+        label: 'shove the inherited box away before your echo needs it' },
+      { tokens: 'DDDDRRRRUUU*' + 'RRRR..........', loop: 0, tick: 10, match: /cannot move/i,
+        label: 'squat on plate a so the box has nowhere to land' },
+    ],
+  },
+];
+
+/** Parse the ASCII rows into an immutable level record. */
+function buildLevel(src) {
+  const grid = src.rows.map(r => r.split(''));
+  if (grid.length !== GRID || grid.some(r => r.length !== GRID)) {
+    throw new Error('level ' + src.name + ' is not ' + GRID + 'x' + GRID);
+  }
+  const lvl = {
+    name: src.name, hint: src.hint, vaultDoor: src.vaultDoor,
+    solution: src.solution, probes: src.probes || [],
+    tiles: [], start: null, vault: null, key: null,
+    boxes: [], plates: [], doorIds: [],
+  };
+  for (let y = 0; y < GRID; y++) {
+    const row = [];
+    for (let x = 0; x < GRID; x++) {
+      const c = grid[y][x];
+      let tile = c;
+      if (c === 'S') { lvl.start = [x, y]; tile = '.'; }
+      else if (c === '$') { lvl.boxes.push([x, y]); tile = '.'; }
+      else if (c === 'k') { lvl.key = [x, y]; tile = '.'; }
+      else if (c === 'V') { lvl.vault = [x, y]; }
+      else if ('abc'.includes(c)) { lvl.plates.push({ x, y, door: c.toUpperCase() }); }
+      else if ('ABC'.includes(c)) { if (!lvl.doorIds.includes(c)) lvl.doorIds.push(c); }
+      row.push(tile);
+    }
+    lvl.tiles.push(row);
+  }
+  for (const p of lvl.plates) if (!lvl.doorIds.includes(p.door)) lvl.doorIds.push(p.door);
+  lvl.doorIds.sort();
+  return lvl;
+}
+
+const LEVELS = LEVEL_SRC.map(buildLevel);
+
+/* ==========================================================================
+   SIMULATION CORE — pure, DOM-free
+   ========================================================================== */
+
+const isDoor  = (lvl, c) => lvl.doorIds.includes(c);
+const tileAt  = (lvl, x, y) =>
+  (x < 0 || y < 0 || x >= GRID || y >= GRID) ? '#' : lvl.tiles[y][x];
+
+/** Entities in resolution order (R1): echoes oldest-first, live player last. */
+function order(S) {
+  const list = [];
+  for (const k of Object.keys(S.echoes).map(Number).sort((a, b) => a - b)) list.push(S.echoes[k]);
+  list.push(S.player);
+  return list;
+}
+
+function boxIndexAt(S, x, y) {
+  for (let i = 0; i < S.boxes.length; i++) if (S.boxes[i][0] === x && S.boxes[i][1] === y) return i;
+  return -1;
+}
+function entityAt(S, x, y, except) {
+  for (const e of order(S)) if (e !== except && e.x === x && e.y === y) return e;
+  return null;
+}
+const entityName = e => e.kind === 'player' ? 'the live player' : ('the loop ' + (e.loop + 1) + ' echo');
+
+/** Can an entity (or a box, when forBox) legally occupy this tile right now? */
+function tileOpen(S, x, y, forBox) {
+  const t = tileAt(S.level, x, y);
+  if (t === '#') return false;
+  if (isDoor(S.level, t)) return !!S.doors[t];
+  if (t === 'V') return forBox ? false : !!S.doors[S.level.vaultDoor];  // R4 / R10
+  return true;
+}
+
+/** Human-readable reason a tile cannot be entered — messages only, never compared (R5). */
+function blockReason(S, x, y, mover, forBox) {
+  const t = tileAt(S.level, x, y);
+  if (t === '#') return 'the wall';
+  if (isDoor(S.level, t) && !S.doors[t]) return 'the closed door ' + t;
+  if (t === 'V' && forBox) return 'the vault';
+  if (t === 'V' && !S.doors[S.level.vaultDoor]) return 'the sealed vault';
+  if (boxIndexAt(S, x, y) >= 0) return 'a box';
+  const e = entityAt(S, x, y, mover);
+  if (e) return entityName(e);
+  return 'something';
+}
+
+/**
+ * Compute (without applying) the outcome of `ent` playing `mv` right now.
+ * The returned record is exactly what gets stored in a loop's recording and
+ * exactly what a replay is checked against.
+ */
+function resolve(S, ent, mv) {
+  const out = {
+    mv, moved: false, x: ent.x, y: ent.y,
+    push: null, tookKey: false, sawBox: false, why: null,
+  };
+  const d = DIRS[mv];
+  if (!d || (d[0] === 0 && d[1] === 0)) return out;               // wait
+
+  const nx = ent.x + d[0], ny = ent.y + d[1];
+
+  if (tileAt(S.level, nx, ny) === '#') { out.why = 'the wall'; return out; }
+
+  const bi = boxIndexAt(S, nx, ny);
+  if (bi >= 0) {                                                   // R4
+    out.sawBox = true;
+    const bx = nx + d[0], by = ny + d[1];
+    if (!tileOpen(S, bx, by, true) || boxIndexAt(S, bx, by) >= 0 || entityAt(S, bx, by, ent)) {
+      out.why = blockReason(S, bx, by, ent, true);
+      return out;                                                  // blocked shove = bump
+    }
+    out.push = { fx: nx, fy: ny, tx: bx, ty: by };
+  }
+
+  // The box (if any) is guaranteed to vacate, so only the tile itself and
+  // other entities can still block us.
+  if (!tileOpen(S, nx, ny, false) || entityAt(S, nx, ny, ent)) {
+    out.why = blockReason(S, nx, ny, ent, false);
+    out.push = null;
+    return out;
+  }
+
+  out.moved = true; out.x = nx; out.y = ny;
+  if (S.keyPos && S.keyPos[0] === nx && S.keyPos[1] === ny) out.tookKey = true;   // R9
+  return out;
+}
+
+function apply(S, ent, out) {
+  if (out.push) {
+    const i = boxIndexAt(S, out.push.fx, out.push.fy);
+    if (i >= 0) S.boxes[i] = [out.push.tx, out.push.ty];
+  }
+  if (out.moved) { ent.x = out.x; ent.y = out.y; }
+  if (out.tookKey) { S.keyPos = null; ent.hasKey = true; }
+}
+
+/** R5 — compare a replayed outcome against its recording. Returns a message or null. */
+function divergence(exp, got) {
+  const at = (x, y) => '(' + x + ',' + y + ')';
+
+  if (exp.push && !got.push) {
+    if (!got.sawBox) {
+      return 'expected to shove the box out of ' + at(exp.push.fx, exp.push.fy) +
+             ' toward ' + at(exp.push.tx, exp.push.ty) + ', but there is no box there any more';
+    }
+    return 'expected to shove the box from ' + at(exp.push.fx, exp.push.fy) + ' to ' +
+           at(exp.push.tx, exp.push.ty) + ', but the box cannot move — ' + (got.why || 'blocked');
+  }
+  if (!exp.push && got.push) {
+    return 'never disturbed ' + at(got.push.fx, got.push.fy) + ' in the original loop, ' +
+           'but a box sits there now and would be shoved to ' + at(got.push.tx, got.push.ty);
+  }
+  if (exp.push && got.push && (exp.push.tx !== got.push.tx || exp.push.ty !== got.push.ty)) {
+    return 'expected to land the box on ' + at(exp.push.tx, exp.push.ty) +
+           ', but it would end up on ' + at(got.push.tx, got.push.ty);
+  }
+  if (exp.moved && !got.moved) {
+    return 'expected to step onto ' + at(exp.x, exp.y) + ', but the way is blocked by ' +
+           (got.why || 'something');
+  }
+  if (!exp.moved && got.moved) {
+    return 'expected to bump into ' + (exp.why || 'an obstacle') + ' and hold ' + at(exp.x, exp.y) +
+           ', but that tile is clear now, so it would move to ' + at(got.x, got.y);
+  }
+  if (exp.x !== got.x || exp.y !== got.y) {
+    return 'expected to end the tick on ' + at(exp.x, exp.y) + ', but ends on ' + at(got.x, got.y);
+  }
+  if (exp.tookKey && !got.tookKey) {
+    return 'expected to pick up the key on ' + at(exp.x, exp.y) + ', but the key is already gone';
+  }
+  if (!exp.tookKey && got.tookKey) {
+    return 'never touched the key on ' + at(exp.x, exp.y) + ', but would pick it up now';
+  }
+  return null;
+}
+
+/** R3 — recompute every door from current occupancy. */
+function recomputeDoors(S) {
+  const occ = new Set();
+  for (const e of order(S)) occ.add(e.x + ',' + e.y);
+  for (const b of S.boxes) occ.add(b[0] + ',' + b[1]);
+  for (const id of S.level.doorIds) {
+    S.doors[id] = S.level.plates.some(p => p.door === id && occ.has(p.x + ',' + p.y));
+  }
+}
+
+/** Reset the world for a fresh loop; recordings are untouched. */
+function beginLoop(S) {
+  const L = S.level;
+  S.boxes  = L.boxes.map(b => b.slice());
+  S.keyPos = L.key ? L.key.slice() : null;
+  S.player = { kind: 'player', loop: S.loops.length, x: L.start[0], y: L.start[1], hasKey: false };
+  S.echoes = {};
+  const first = Math.max(0, S.loops.length - MAX_ECHOES);                  // R7
+  for (let i = first; i < S.loops.length; i++) {
+    S.echoes[i] = { kind: 'echo', loop: i, x: L.start[0], y: L.start[1], hasKey: false };  // R2
+  }
+  S.tick = 0;
+  S.rec  = { inputs: [], outcomes: [] };
+  S.doors = {};
+  recomputeDoors(S);
+}
+
+function initState(level) {
+  const S = {
+    level, loops: [], rec: null, tick: 0,
+    boxes: [], keyPos: null, player: null, echoes: {}, doors: {},
+    paradox: null, won: false, winLoop: 0, winTick: 0, consumed: 0,
+  };
+  beginLoop(S);
+  return S;
+}
+
+/** R8 — close the current recording, padding to 40 ticks of waiting. */
+function endLoop(S) {
+  while (S.rec.inputs.length < LOOP_LEN) {
+    S.rec.inputs.push('.');
+    S.rec.outcomes.push({
+      mv: '.', moved: false, x: S.player.x, y: S.player.y,
+      push: null, tookKey: false, sawBox: false, why: null,
+    });
+  }
+  S.loops.push(S.rec);
+  beginLoop(S);
+}
+
+/** Advance the world exactly one tick. */
+function stepTick(S, input) {
+  for (const ent of order(S)) {
+    const isEcho = ent.kind === 'echo';
+    const mv  = isEcho ? S.loops[ent.loop].inputs[S.tick] : input;
+    const got = resolve(S, ent, mv);
+
+    if (isEcho) {
+      const exp  = S.loops[ent.loop].outcomes[S.tick];
+      const diff = divergence(exp, got);
+      if (diff) {                                                          // R5
+        S.paradox = {
+          loop: ent.loop, tick: S.tick, msg: diff,
+          echo: { x: ent.x, y: ent.y },
+          tile: exp.push ? { x: exp.push.fx, y: exp.push.fy }
+                         : { x: exp.moved ? exp.x : got.x, y: exp.moved ? exp.y : got.y },
+        };
+        return;
+      }
+    } else {
+      S.rec.inputs.push(mv);
+      S.rec.outcomes.push(got);
+    }
+    apply(S, ent, got);
+  }
+
+  recomputeDoors(S);                                                       // R3
+
+  const V = S.level.vault;                                                 // R10
+  if (S.player.hasKey && S.player.x === V[0] && S.player.y === V[1]) {
+    S.won = true; S.winLoop = S.loops.length; S.winTick = S.tick;
+  }
+  S.tick++;
+}
+
+/**
+ * THE pure entry point. Everything else in the game is a view of this.
+ * Trailing tokens after a paradox or a win are ignored (never consumed).
+ */
+function simulate(level, tokens) {
+  const S = initState(level);
+  const list = typeof tokens === 'string' ? tokens.split('') : tokens;
+  for (let i = 0; i < list.length; i++) {
+    if (S.paradox || S.won) break;
+    const tok = list[i];
+    if (tok === '*') { endLoop(S); S.consumed = i + 1; continue; }
+    if (!(tok in DIRS)) continue;                     // ignore junk tokens
+    stepTick(S, tok);
+    S.consumed = i + 1;
+    if (S.paradox || S.won) break;
+    if (S.tick >= LOOP_LEN) endLoop(S);
+  }
+  return S;
+}
+
+/** Stable fingerprint of everything that logically matters. */
+function hashState(S) {
+  const e = order(S).map(x => x.kind + x.loop + ':' + x.x + ',' + x.y + ',' + (x.hasKey ? 1 : 0));
+  return JSON.stringify({
+    loops: S.loops.map(l => l.inputs.join('')),
+    tick: S.tick,
+    rec: S.rec.inputs.join(''),
+    boxes: S.boxes,
+    key: S.keyPos,
+    doors: S.level.doorIds.map(d => d + (S.doors[d] ? 1 : 0)).join(''),
+    ents: e,
+    won: S.won,
+    pdx: S.paradox ? [S.paradox.loop, S.paradox.tick, S.paradox.msg] : null,
+  });
+}
+
+/* ==========================================================================
+   SELF-TEST — the "verify solutions" button
+   ========================================================================== */
+
+function verifyAll() {
+  const out = [];
+  const push = (cls, s) => out.push({ cls, s });
+  let pass = 0, fail = 0;
+  const check = (ok, label, detail) => {
+    if (ok) { pass++; push('ok', '  ✓ ' + label); }
+    else    { fail++; push('no', '  ✗ ' + label + (detail ? '\n      ' + detail : '')); }
+    return ok;
+  };
+
+  for (let i = 0; i < LEVELS.length; i++) {
+    const lvl = LEVELS[i];
+    const pristine = JSON.stringify([lvl.tiles, lvl.boxes, lvl.key, lvl.start, lvl.vault]);
+    push('hd', 'LEVEL ' + (i + 1) + ' — ' + lvl.name);
+
+    // 1. the commented solution actually solves it
+    const S = simulate(lvl, lvl.solution);
+    check(S.won && !S.paradox, 'intended solution wins',
+      S.paradox ? ('paradox @ loop ' + (S.paradox.loop + 1) + ' tick ' + S.paradox.tick + ': ' + S.paradox.msg)
+                : ('ended loop ' + (S.loops.length + 1) + ' tick ' + S.tick + ' without reaching the vault'));
+    if (S.won) {
+      push('', '      won on loop ' + (S.winLoop + 1) + ', tick ' + S.winTick +
+               ' · ' + lvl.solution.length + ' tokens · ' + S.loops.length + ' echo(es)');
+    }
+
+    // 2. determinism: same input, same state, twice
+    check(hashState(simulate(lvl, lvl.solution)) === hashState(simulate(lvl, lvl.solution)),
+      'deterministic (two independent runs agree)');
+
+    // 3. no hidden mutation of the level definition
+    check(JSON.stringify([lvl.tiles, lvl.boxes, lvl.key, lvl.start, lvl.vault]) === pristine,
+      'simulation does not mutate the level definition');
+
+    // 4. undo/redo consistency — walk the log forward hashing every prefix,
+    //    unwind it token by token back to empty, then replay it and require
+    //    the identical hash sequence at every step.
+    const toks = lvl.solution.split('');
+    const fwd = [];
+    for (let k = 0; k <= toks.length; k++) fwd.push(hashState(simulate(lvl, toks.slice(0, k))));
+    const log = toks.slice();
+    const back = [];
+    while (log.length) { back.push(hashState(simulate(lvl, log))); log.pop(); }
+    back.push(hashState(simulate(lvl, log)));
+    back.reverse();
+    let mismatch = -1;
+    for (let k = 0; k <= toks.length; k++) if (fwd[k] !== back[k]) { mismatch = k; break; }
+    check(mismatch === -1, 'undo to tick 0 then replay reaches an identical state',
+      mismatch >= 0 ? ('first divergence after ' + mismatch + ' token(s)') : '');
+
+    // 5. every prefix of the solution stays paradox-free
+    let dirty = -1;
+    for (let k = 0; k <= toks.length; k++) {
+      if (simulate(lvl, toks.slice(0, k)).paradox) { dirty = k; break; }
+    }
+    check(dirty === -1, 'no paradox at any point along the intended route',
+      dirty >= 0 ? ('paradox appears at token ' + dirty) : '');
+
+    // 6. paradox probes, where the level ships one
+    for (const p of lvl.probes) {
+      const P = simulate(lvl, p.tokens);
+      const ok = !!P.paradox && P.paradox.loop === p.loop && P.paradox.tick === p.tick &&
+                 p.match.test(P.paradox.msg);
+      check(ok, 'paradox probe — ' + p.label,
+        P.paradox ? ('got loop ' + (P.paradox.loop + 1) + ' tick ' + P.paradox.tick + ': ' + P.paradox.msg)
+                  : 'no paradox was raised at all');
+      if (ok) push('', '      → "Loop ' + (P.paradox.loop + 1) + ', tick ' + P.paradox.tick +
+                       ': ' + P.paradox.msg + '"');
+    }
+    push('', '');
+  }
+
+  push('hd', fail === 0 ? ('ALL CHECKS PASSED — ' + pass + '/' + (pass + fail))
+                        : ('FAILURES: ' + fail + ' of ' + (pass + fail)));
+  return { lines: out, pass, fail };
+}
+
+// Exposed so the suite can also be run headlessly (node / console).
+globalThis.PARADOX_VAULT = { LEVELS, simulate, hashState, verifyAll, LOOP_LEN, MAX_ECHOES };
+
+/* ==========================================================================
+   VIEW — everything below is presentation only
+   ========================================================================== */
+
+if (typeof document !== 'undefined') boot();
+
+function boot() {
+
+const cv  = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+const TS  = 42;                       // tile size in canvas px
+const ECHO_COLORS = ['#ff7ab6', '#c88cff', '#ffca6b', '#7cf0a8'];
+
+const ui = {
+  levelBtns: document.getElementById('levelBtns'),
+  lvlName: document.getElementById('lvlName'),
+  lvlHint: document.getElementById('lvlHint'),
+  sTick: document.getElementById('sTick'),
+  sLoop: document.getElementById('sLoop'),
+  sGhosts: document.getElementById('sGhosts'),
+  sKey: document.getElementById('sKey'),
+  tickFill: document.getElementById('tickFill'),
+  timeline: document.getElementById('timeline'),
+  doorList: document.getElementById('doorList'),
+  report: document.getElementById('report'),
+  paradoxOv: document.getElementById('paradoxOv'),
+  pdxWhere: document.getElementById('pdxWhere'),
+  pdxWhy: document.getElementById('pdxWhy'),
+  winOv: document.getElementById('winOv'),
+  winStats: document.getElementById('winStats'),
+  winFlavor: document.getElementById('winFlavor'),
+  btnPreview: document.getElementById('btnPreview'),
+};
+
+// ---- app state: the log is the ONLY authority ----------------------------
+let levelIdx = 0;
+let log = [];
+let S = simulate(LEVELS[0], log);
+let forecast = false;
+
+// cosmetic interpolation (never feeds back into logic)
+let anim = { from: new Map(), t0: 0, dur: 110 };
+const ANIM_KEY = e => e.kind + ':' + e.loop;
+
+function snapshotPositions() {
+  const m = new Map();
+  for (const e of order(S)) m.set(ANIM_KEY(e), drawPos(e));
+  return m;
+}
+function drawPos(e) {
+  const k = ANIM_KEY(e);
+  const from = anim.from.get(k);
+  const p = Math.min(1, (performance.now() - anim.t0) / anim.dur);
+  if (!from || p >= 1) return { x: e.x, y: e.y };
+  const s = p * p * (3 - 2 * p);
+  return { x: from.x + (e.x - from.x) * s, y: from.y + (e.y - from.y) * s };
+}
+
+function recompute(keepAnim) {
+  const before = keepAnim ? snapshotPositions() : null;
+  S = simulate(LEVELS[levelIdx], log);
+  anim.from = before || new Map();
+  anim.t0 = performance.now();
+  syncUI();
+}
+
+function loadLevel(i) {
+  levelIdx = i;
+  log = [];
+  anim.from = new Map();
+  S = simulate(LEVELS[i], log);
+  forecast = false;
+  ui.btnPreview.classList.remove('on');
+  ui.report.classList.remove('show');
+  syncUI();
+}
+
+// ---- input ---------------------------------------------------------------
+function push(tok) {
+  if (S.paradox || S.won) return;
+  log.push(tok);
+  recompute(true);
+}
+function undo() {
+  if (!log.length) return;
+  log.pop();
+  recompute(true);
+}
+function undoLoop() {
+  // Rewind to the first token of the loop that is currently in progress. If
+  // we are already at its tick 0, step back into the previous loop instead.
+  const startOf = () => {
+    let n = 0;
+    for (let i = 0; i < log.length; i++) if (log[i] === '*') n = i + 1;
+    return n;
+  };
+  let n = startOf();
+  if (n === log.length && n > 0) { log.length = n - 1; n = startOf(); }
+  log.length = n;
+  recompute(false);
+}
+
+const KEYMAP = {
+  ArrowUp: 'U', ArrowDown: 'D', ArrowLeft: 'L', ArrowRight: 'R',
+  w: 'U', s: 'D', a: 'L', d: 'R',
+  W: 'U', S: 'D', A: 'L', D: 'R',
+  '.': '.', Enter: '.',
+};
+
+window.addEventListener('keydown', ev => {
+  const t = ev.target;
+  if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+  if (ev.metaKey || ev.ctrlKey || ev.altKey) return;
+
+  const k = ev.key;
+  if (k in KEYMAP)                  { ev.preventDefault(); push(KEYMAP[k]); return; }
+  if (k === 'r' || k === 'R')       { ev.preventDefault(); if (!S.paradox && !S.won) { log.push('*'); recompute(false); } return; }
+  if (k === 'z' || k === 'Z')       { ev.preventDefault(); undo(); return; }
+  if (k === ' ')                    { ev.preventDefault(); forecast = !forecast; ui.btnPreview.classList.toggle('on', forecast); return; }
+  if (k === '1' || k === '2' || k === '3') {
+    const i = +k - 1;
+    if (i < LEVELS.length) { ev.preventDefault(); loadLevel(i); }
+  }
+});
+
+// swipe support on the canvas
+let touch = null;
+cv.addEventListener('pointerdown', e => { touch = { x: e.clientX, y: e.clientY }; });
+cv.addEventListener('pointerup', e => {
+  if (!touch) return;
+  const dx = e.clientX - touch.x, dy = e.clientY - touch.y;
+  touch = null;
+  if (Math.abs(dx) < 18 && Math.abs(dy) < 18) { push('.'); return; }
+  push(Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'R' : 'L') : (dy > 0 ? 'D' : 'U'));
+});
+
+// ---- buttons -------------------------------------------------------------
+document.getElementById('btnUndo').onclick    = undo;
+document.getElementById('btnLoop').onclick    = () => { if (!S.paradox && !S.won) { log.push('*'); recompute(false); } };
+document.getElementById('btnRestart').onclick = () => loadLevel(levelIdx);
+document.getElementById('btnPreview').onclick = () => { forecast = !forecast; ui.btnPreview.classList.toggle('on', forecast); };
+document.getElementById('pdxUndoLoop').onclick = undoLoop;
+document.getElementById('pdxUndoTick').onclick = undo;
+document.getElementById('pdxRestart').onclick  = () => loadLevel(levelIdx);
+document.getElementById('winReplay').onclick   = () => loadLevel(levelIdx);
+document.getElementById('winNext').onclick     = () => loadLevel((levelIdx + 1) % LEVELS.length);
+
+document.getElementById('btnVerify').onclick = () => {
+  const r = verifyAll();
+  ui.report.innerHTML = r.lines
+    .map(l => '<span class="' + l.cls + '">' + escapeHTML(l.s) + '</span>')
+    .join('\n');
+  ui.report.classList.add('show');
+  ui.report.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+};
+
+const escapeHTML = s => s.replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+
+LEVELS.forEach((lv, i) => {
+  const b = document.createElement('button');
+  b.textContent = String(i + 1);
+  b.onclick = () => loadLevel(i);
+  b.dataset.idx = i;
+  ui.levelBtns.appendChild(b);
+});
+
+// ---- HUD -----------------------------------------------------------------
+function syncUI() {
+  const L = LEVELS[levelIdx];
+  ui.lvlName.textContent = L.name;
+  ui.lvlHint.innerHTML = L.hint;
+  [...ui.levelBtns.children].forEach(b => b.classList.toggle('on', +b.dataset.idx === levelIdx));
+
+  ui.sTick.textContent   = S.tick + ' / ' + LOOP_LEN;
+  ui.sLoop.textContent   = (S.loops.length + 1);
+  ui.sGhosts.textContent = Object.keys(S.echoes).length + (S.loops.length > MAX_ECHOES ? ' (max)' : '');
+  ui.sKey.textContent    = S.player.hasKey ? 'in hand'
+                         : (S.keyPos ? 'on the floor' : 'held by an echo');
+  ui.tickFill.style.width = (100 * S.tick / LOOP_LEN) + '%';
+
+  ui.doorList.innerHTML = L.doorIds.map(id => {
+    const open = S.doors[id];
+    return '<b style="color:' + (open ? 'var(--good)' : 'var(--bad)') + '">' + id + '</b> ' +
+           (open ? 'open' : 'closed') +
+           (id === L.vaultDoor ? ' <span style="color:var(--dim)">· seals the vault</span>' : '');
+  }).join('<br>') || '—';
+
+  // timeline
+  const rows = [];
+  const activeLoops = Object.keys(S.echoes).map(Number).sort((a, b) => a - b);
+  for (const li of activeLoops) {
+    rows.push(tlRow('loop ' + (li + 1), ECHO_COLORS[li % ECHO_COLORS.length],
+      S.loops[li].inputs, S.tick, li));
+  }
+  rows.push(tlRow('live', '#47d7ff', S.rec.inputs, S.tick, null));
+  ui.timeline.innerHTML = rows.join('');
+
+  ui.paradoxOv.classList.toggle('show', !!S.paradox);
+  if (S.paradox) {
+    ui.pdxWhere.textContent = 'History will not hold. Loop ' + (S.paradox.loop + 1) +
+      "'s echo cannot do what it did.";
+    ui.pdxWhy.textContent = 'Loop ' + (S.paradox.loop + 1) + ', tick ' + S.paradox.tick + ': ' +
+      S.paradox.msg + '.';
+  }
+
+  ui.winOv.classList.toggle('show', !!S.won);
+  if (S.won) {
+    ui.winStats.textContent = 'Cleared on loop ' + (S.winLoop + 1) + ', tick ' + S.winTick +
+      ' — with ' + S.loops.length + ' echo' + (S.loops.length === 1 ? '' : 'es') +
+      ' running and history perfectly intact.';
+    ui.winFlavor.textContent = LEVELS[levelIdx].name.split('·').slice(1).join('·').trim() +
+      ' is closed. Every version of you walked out.';
+  }
+}
+
+function tlRow(tag, color, inputs, now, li) {
+  const bad = S.paradox && li !== null && S.paradox.loop === li ? S.paradox.tick : -1;
+  let cells = '';
+  for (let t = 0; t < LOOP_LEN; t++) {
+    const mv = inputs[t];
+    const cls = [];
+    if (t === now) cls.push('now');
+    if (t < now) cls.push('pass');
+    if (t === bad) cls.push('bad');
+    const bg = mv === undefined ? '' : (mv === '.' ? 'background:#1a2136;'
+             : 'background:' + hexA(color, t <= now ? 0.85 : 0.4) + ';');
+    cells += '<span class="' + cls.join(' ') + '" style="' + bg + '">' +
+             (mv === undefined ? '' : GLYPH[mv]) + '</span>';
+  }
+  return '<div class="tl-row"><span class="tl-tag" style="color:' + color + '">' + tag +
+         '</span><span class="tl-cells">' + cells + '</span></div>';
+}
+
+function hexA(hex, a) {
+  const n = parseInt(hex.slice(1), 16);
+  return 'rgba(' + ((n >> 16) & 255) + ',' + ((n >> 8) & 255) + ',' + (n & 255) + ',' + a + ')';
+}
+
+// ---- rendering -----------------------------------------------------------
+function px(v) { return v * TS; }
+
+function roundRect(x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+
+function draw(now) {
+  const L = LEVELS[levelIdx];
+  ctx.clearRect(0, 0, cv.width, cv.height);
+  ctx.fillStyle = '#0d1020';
+  ctx.fillRect(0, 0, cv.width, cv.height);
+
+  // --- floor + walls ---
+  for (let y = 0; y < GRID; y++) {
+    for (let x = 0; x < GRID; x++) {
+      const t = L.tiles[y][x];
+      const X = px(x), Y = px(y);
+      if (t === '#') {
+        ctx.fillStyle = '#3b4674';
+        ctx.fillRect(X, Y, TS, TS);
+        ctx.fillStyle = '#4d5b93';                       // lit top bevel
+        ctx.fillRect(X, Y, TS, 4);
+        ctx.fillStyle = 'rgba(0,0,0,0.30)';              // shadowed bottom bevel
+        ctx.fillRect(X, Y + TS - 4, TS, 4);
+        ctx.strokeStyle = 'rgba(10,12,22,0.55)';         // mortar
+        ctx.lineWidth = 1;
+        ctx.strokeRect(X + 0.5, Y + 0.5, TS - 1, TS - 1);
+      } else {
+        ctx.fillStyle = ((x + y) & 1) ? '#0f1424' : '#0c111f';
+        ctx.fillRect(X, Y, TS, TS);
+        ctx.strokeStyle = 'rgba(90,120,190,0.06)';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(X + 0.5, Y + 0.5, TS - 1, TS - 1);
+      }
+    }
+  }
+
+  // --- start tile marker ---
+  ctx.strokeStyle = 'rgba(71,215,255,0.30)';
+  ctx.lineWidth = 1.5;
+  ctx.setLineDash([4, 4]);
+  ctx.strokeRect(px(L.start[0]) + 5.5, px(L.start[1]) + 5.5, TS - 11, TS - 11);
+  ctx.setLineDash([]);
+
+  // --- plates ---
+  const occ = new Set();
+  for (const e of order(S)) occ.add(e.x + ',' + e.y);
+  for (const b of S.boxes) occ.add(b[0] + ',' + b[1]);
+  for (const p of L.plates) {
+    const X = px(p.x) + TS / 2, Y = px(p.y) + TS / 2;
+    const live = occ.has(p.x + ',' + p.y);
+    ctx.beginPath(); ctx.arc(X, Y, TS * 0.33, 0, Math.PI * 2);
+    ctx.fillStyle = live ? 'rgba(240,180,41,0.30)' : 'rgba(240,180,41,0.08)';
+    ctx.fill();
+    ctx.lineWidth = live ? 3 : 2;
+    ctx.strokeStyle = live ? '#f0b429' : 'rgba(240,180,41,0.45)';
+    ctx.stroke();
+    ctx.fillStyle = live ? '#ffdf8a' : 'rgba(240,180,41,0.6)';
+    ctx.font = '600 11px ui-monospace, monospace';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(p.door.toLowerCase(), X, Y + 0.5);
+  }
+
+  // --- doors ---
+  for (let y = 0; y < GRID; y++) for (let x = 0; x < GRID; x++) {
+    const t = L.tiles[y][x];
+    if (!isDoor(L, t)) continue;
+    const X = px(x), Y = px(y), open = S.doors[t];
+    if (open) {
+      ctx.strokeStyle = 'rgba(77,224,160,0.55)';
+      ctx.lineWidth = 2; ctx.setLineDash([5, 5]);
+      ctx.strokeRect(X + 3, Y + 3, TS - 6, TS - 6);
+      ctx.setLineDash([]);
+      ctx.fillStyle = 'rgba(77,224,160,0.10)';
+      ctx.fillRect(X + 3, Y + 3, TS - 6, TS - 6);
+    } else {
+      ctx.fillStyle = '#5a2333';
+      ctx.fillRect(X + 2, Y + 2, TS - 4, TS - 4);
+      ctx.strokeStyle = '#ff5a72'; ctx.lineWidth = 2;
+      ctx.strokeRect(X + 2.5, Y + 2.5, TS - 5, TS - 5);
+      for (let i = 0; i < 3; i++) {
+        ctx.fillStyle = 'rgba(255,90,114,0.55)';
+        ctx.fillRect(X + 7, Y + 10 + i * 8, TS - 14, 3);
+      }
+    }
+    ctx.fillStyle = open ? 'rgba(77,224,160,0.9)' : 'rgba(255,180,190,0.95)';
+    ctx.font = '700 10px ui-monospace, monospace';
+    ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+    ctx.fillText(t, X + 4, Y + 3);
+  }
+
+  // --- vault ---
+  {
+    const [vx, vy] = L.vault;
+    const X = px(vx), Y = px(vy), open = !!S.doors[L.vaultDoor];
+    const c = open ? '#4de0a0' : '#6a7398';
+    ctx.fillStyle = open ? 'rgba(77,224,160,0.13)' : 'rgba(120,132,175,0.10)';
+    roundRect(X + 3, Y + 3, TS - 6, TS - 6, 5); ctx.fill();
+    ctx.strokeStyle = c; ctx.lineWidth = 2;
+    roundRect(X + 3, Y + 3, TS - 6, TS - 6, 5); ctx.stroke();
+    ctx.beginPath(); ctx.arc(X + TS / 2, Y + TS / 2, TS * 0.20, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.beginPath();
+    for (let i = 0; i < 4; i++) {
+      const a = i * Math.PI / 2 + (open ? 0.6 : 0.2);
+      ctx.moveTo(X + TS / 2 + Math.cos(a) * TS * 0.20, Y + TS / 2 + Math.sin(a) * TS * 0.20);
+      ctx.lineTo(X + TS / 2 + Math.cos(a) * TS * 0.31, Y + TS / 2 + Math.sin(a) * TS * 0.31);
+    }
+    ctx.stroke();
+  }
+
+  // --- key ---
+  if (S.keyPos) {
+    const X = px(S.keyPos[0]) + TS / 2, Y = px(S.keyPos[1]) + TS / 2;
+    const bob = Math.sin(now / 420) * 1.6;
+    ctx.strokeStyle = '#ffd76a'; ctx.fillStyle = '#ffd76a'; ctx.lineWidth = 2.4;
+    ctx.beginPath(); ctx.arc(X - 4, Y + bob, 5, 0, Math.PI * 2); ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(X + 0.5, Y + bob); ctx.lineTo(X + 11, Y + bob);
+    ctx.moveTo(X + 8, Y + bob); ctx.lineTo(X + 8, Y + bob + 5);
+    ctx.moveTo(X + 11, Y + bob); ctx.lineTo(X + 11, Y + bob + 4);
+    ctx.stroke();
+  }
+
+  // --- boxes ---
+  for (const b of S.boxes) {
+    const X = px(b[0]) + 4, Y = px(b[1]) + 4, w = TS - 8;
+    ctx.fillStyle = '#8a5f33';
+    roundRect(X, Y, w, w, 4); ctx.fill();
+    ctx.fillStyle = '#a8763e';
+    roundRect(X + 2, Y + 2, w - 4, w - 4, 3); ctx.fill();
+    ctx.strokeStyle = 'rgba(0,0,0,0.30)'; ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(X + 3, Y + 3); ctx.lineTo(X + w - 3, Y + w - 3);
+    ctx.moveTo(X + w - 3, Y + 3); ctx.lineTo(X + 3, Y + w - 3);
+    ctx.stroke();
+  }
+
+  // --- entities: echoes first (drawn under), live player on top ---
+  for (const e of order(S)) {
+    const p = drawPos(e);
+    const X = px(p.x), Y = px(p.y);
+    const isP = e.kind === 'player';
+    const col = isP ? '#47d7ff' : ECHO_COLORS[e.loop % ECHO_COLORS.length];
+
+    ctx.globalAlpha = isP ? 1 : 0.62;
+    ctx.fillStyle = col;
+    roundRect(X + 6, Y + 6, TS - 12, TS - 12, 6); ctx.fill();
+
+    ctx.globalAlpha = isP ? 1 : 0.85;
+    ctx.fillStyle = 'rgba(8,10,18,0.75)';
+    ctx.fillRect(X + 11, Y + 14, TS - 22, 5);           // visor
+    ctx.globalAlpha = 1;
+
+    if (!isP) {
+      ctx.fillStyle = 'rgba(10,12,20,0.9)';
+      ctx.font = '700 11px ui-monospace, monospace';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(String(e.loop + 1), X + TS / 2, Y + TS * 0.68);
+    } else {
+      ctx.strokeStyle = 'rgba(71,215,255,0.55)'; ctx.lineWidth = 1.5;
+      roundRect(X + 3.5, Y + 3.5, TS - 7, TS - 7, 7); ctx.stroke();
+    }
+
+    if (e.hasKey) {
+      ctx.fillStyle = '#ffd76a';
+      ctx.beginPath(); ctx.arc(X + TS - 10, Y + 10, 4, 0, Math.PI * 2); ctx.fill();
+    }
+  }
+
+  // --- forecast (R11): where each echo's recording says it will be for the
+  //     next 5 ticks. Drawn ON TOP of the entities, because the interesting
+  //     case is an echo about to walk into you. Positions the echo simply
+  //     holds are skipped — a frozen echo would otherwise stack five markers
+  //     on its own tile and tell you nothing.
+  if (forecast && !S.won) {
+    for (const li of Object.keys(S.echoes).map(Number)) {
+      const rec = S.loops[li].outcomes;
+      const col = ECHO_COLORS[li % ECHO_COLORS.length];
+      let last = S.echoes[li].x + ',' + S.echoes[li].y;
+      for (let k = 0; k < 5; k++) {
+        const t = S.tick + k;
+        if (t >= LOOP_LEN) break;
+        const o = rec[t];
+        const at = o.x + ',' + o.y;
+        if (at === last) continue;                    // standing still: no marker
+        last = at;
+        const X = px(o.x) + TS / 2, Y = px(o.y) + TS / 2;
+        ctx.globalAlpha = 0.5 - k * 0.055;
+        ctx.fillStyle = col;
+        roundRect(X - TS * 0.27, Y - TS * 0.27, TS * 0.54, TS * 0.54, 4); ctx.fill();
+        ctx.globalAlpha = 0.9;
+        ctx.strokeStyle = col; ctx.lineWidth = 1;
+        roundRect(X - TS * 0.27, Y - TS * 0.27, TS * 0.54, TS * 0.54, 4); ctx.stroke();
+        ctx.globalAlpha = 1;
+        ctx.fillStyle = 'rgba(8,10,18,0.95)';
+        ctx.font = '700 10px ui-monospace, monospace';
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText('+' + (k + 1), X, Y + 0.5);
+      }
+    }
+  }
+
+  // --- paradox highlight ---
+  if (S.paradox) {
+    const pulse = 0.5 + 0.5 * Math.sin(now / 220);
+    const ring = (gx, gy, col, label) => {
+      ctx.globalAlpha = 0.18 + pulse * 0.20;
+      ctx.fillStyle = col;
+      roundRect(px(gx) + 2, px(gy) + 2, TS - 4, TS - 4, 6); ctx.fill();
+      ctx.strokeStyle = col;
+      ctx.lineWidth = 2.5 + pulse * 2.5;
+      ctx.globalAlpha = 0.65 + pulse * 0.35;
+      roundRect(px(gx) + 2, px(gy) + 2, TS - 4, TS - 4, 6); ctx.stroke();
+      ctx.globalAlpha = 1;
+      ctx.font = '700 9px ui-monospace, monospace';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      const w = ctx.measureText(label).width + 8;
+      ctx.fillStyle = 'rgba(6,8,16,0.92)';
+      roundRect(px(gx) + TS / 2 - w / 2, px(gy) + TS - 15, w, 12, 3); ctx.fill();
+      ctx.fillStyle = col;
+      ctx.fillText(label, px(gx) + TS / 2, px(gy) + TS - 8.5);
+    };
+    ring(S.paradox.tile.x, S.paradox.tile.y, '#ffb020', 'HERE');
+    ring(S.paradox.echo.x, S.paradox.echo.y, '#ff5a72', 'LOOP ' + (S.paradox.loop + 1));
+    ctx.setLineDash([3, 4]);
+    ctx.strokeStyle = 'rgba(255,90,114,0.7)'; ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(px(S.paradox.echo.x) + TS / 2, px(S.paradox.echo.y) + TS / 2);
+    ctx.lineTo(px(S.paradox.tile.x) + TS / 2, px(S.paradox.tile.y) + TS / 2);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+}
+
+function frame(now) { draw(now); requestAnimationFrame(frame); }
+
+loadLevel(0);
+requestAnimationFrame(frame);
+
+} /* boot */
+</script>
+</body>
+</html>
