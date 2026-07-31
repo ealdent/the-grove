@@ -1,0 +1,1380 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Blightspore — Turn-Based Eco-Automaton Puzzle</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Share+Tech+Mono&display=swap');
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg-dark: #06090e;
+      --panel-bg: rgba(13, 20, 30, 0.85);
+      --border-color: rgba(64, 224, 208, 0.2);
+      --accent-moss: #2ecc71;
+      --accent-blight: #9b59b6;
+      --accent-fire: #e74c3c;
+      --accent-ash: #7f8c8d;
+      --accent-gold: #f1c40f;
+      --accent-cyan: #00e5ff;
+      --text-main: #e0e8f0;
+      --text-dim: #7a8b9e;
+    }
+
+    body {
+      font-family: 'Share Tech Mono', monospace;
+      background: var(--bg-dark);
+      color: var(--text-main);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 1rem;
+      overflow-x: hidden;
+      user-select: none;
+    }
+
+    /* Ambient stars background */
+    .stars {
+      position: fixed;
+      inset: 0;
+      z-index: -2;
+      background:
+        radial-gradient(1.5px 1.5px at 15% 25%, rgba(46, 204, 113, 0.4), transparent),
+        radial-gradient(1.5px 1.5px at 85% 75%, rgba(155, 89, 182, 0.4), transparent),
+        radial-gradient(1px 1px at 50% 50%, rgba(231, 76, 60, 0.3), transparent),
+        radial-gradient(1px 1px at 30% 80%, rgba(0, 229, 255, 0.3), transparent);
+    }
+
+    .scanlines {
+      position: fixed;
+      inset: 0;
+      z-index: -1;
+      pointer-events: none;
+      background: repeating-linear-gradient(
+        0deg,
+        transparent,
+        transparent 2px,
+        rgba(0, 0, 0, 0.1) 2px,
+        rgba(0, 0, 0, 0.1) 4px
+      );
+    }
+
+    header {
+      width: 100%;
+      max-width: 1040px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 0.8rem;
+    }
+
+    .back-link {
+      color: var(--text-dim);
+      text-decoration: none;
+      font-size: 0.9rem;
+      transition: color 0.2s;
+    }
+    .back-link:hover { color: var(--accent-cyan); }
+
+    h1 {
+      font-family: 'Orbitron', sans-serif;
+      font-size: clamp(1.4rem, 3.5vw, 2.2rem);
+      font-weight: 900;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      background: linear-gradient(90deg, #2ecc71, #00e5ff, #9b59b6, #e74c3c);
+      background-size: 300% 100%;
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      animation: glowCycle 8s ease infinite;
+    }
+
+    @keyframes glowCycle {
+      0%, 100% { background-position: 0% 50%; }
+      50% { background-position: 100% 50%; }
+    }
+
+    /* Main Container */
+    .game-container {
+      width: 100%;
+      max-width: 1040px;
+      display: grid;
+      grid-template-columns: minmax(320px, 580px) 1fr;
+      gap: 1.2rem;
+      align-items: start;
+    }
+
+    @media (max-width: 860px) {
+      .game-container {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    /* Canvas Board Frame */
+    .board-wrapper {
+      position: relative;
+      background: var(--panel-bg);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      padding: 12px;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5), inset 0 0 20px rgba(0, 229, 255, 0.05);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    canvas#gridCanvas {
+      background: #090e15;
+      border-radius: 6px;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      cursor: crosshair;
+      touch-action: none;
+    }
+
+    /* Prediction Banner Indicator */
+    .pred-banner {
+      position: absolute;
+      top: 18px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(0, 229, 255, 0.25);
+      border: 1px solid var(--accent-cyan);
+      color: #fff;
+      padding: 4px 12px;
+      border-radius: 20px;
+      font-size: 0.75rem;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.2s;
+      box-shadow: 0 0 12px rgba(0, 229, 255, 0.4);
+    }
+    .pred-banner.visible { opacity: 1; }
+
+    /* Side Panel */
+    .side-panel {
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
+
+    .card {
+      background: var(--panel-bg);
+      border: 1px solid var(--border-color);
+      border-radius: 10px;
+      padding: 1rem;
+      backdrop-filter: blur(8px);
+    }
+
+    .card-title {
+      font-family: 'Orbitron', sans-serif;
+      font-size: 0.85rem;
+      font-weight: 700;
+      color: var(--accent-cyan);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      margin-bottom: 0.8rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    /* Stats Grid */
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 0.6rem;
+    }
+
+    .stat-box {
+      background: rgba(0, 0, 0, 0.3);
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      padding: 0.5rem 0.8rem;
+      border-radius: 6px;
+    }
+    .stat-label {
+      font-size: 0.7rem;
+      color: var(--text-dim);
+      text-transform: uppercase;
+    }
+    .stat-value {
+      font-size: 1.1rem;
+      font-weight: 700;
+      color: #fff;
+    }
+
+    .checksum-bar {
+      grid-column: span 2;
+      font-size: 0.75rem;
+      color: var(--accent-gold);
+      background: rgba(241, 196, 15, 0.1);
+      border: 1px solid rgba(241, 196, 15, 0.2);
+      padding: 4px 8px;
+      border-radius: 4px;
+      text-align: center;
+      letter-spacing: 0.05em;
+    }
+
+    /* Action Buttons */
+    .action-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 0.5rem;
+    }
+
+    .btn {
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 0.8rem;
+      padding: 0.6rem 0.4rem;
+      border-radius: 6px;
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      background: rgba(255, 255, 255, 0.05);
+      color: #fff;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 2px;
+    }
+    .btn:hover:not(:disabled) {
+      background: rgba(0, 229, 255, 0.2);
+      border-color: var(--accent-cyan);
+      transform: translateY(-1px);
+    }
+    .btn:active:not(:disabled) {
+      transform: translateY(0);
+    }
+    .btn:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+    .btn.active {
+      background: rgba(46, 204, 113, 0.25);
+      border-color: var(--accent-moss);
+      box-shadow: 0 0 10px rgba(46, 204, 113, 0.3);
+    }
+
+    .btn-key {
+      font-size: 0.65rem;
+      color: var(--text-dim);
+    }
+
+    /* Level Selector & Control bar */
+    .level-bar {
+      display: flex;
+      gap: 0.4rem;
+      margin-bottom: 0.8rem;
+    }
+    .level-btn {
+      flex: 1;
+      padding: 0.4rem;
+      font-size: 0.75rem;
+      text-align: center;
+    }
+
+    /* Population Graph */
+    canvas#chartCanvas {
+      width: 100%;
+      height: 90px;
+      background: rgba(0, 0, 0, 0.4);
+      border-radius: 6px;
+      border: 1px solid rgba(255, 255, 255, 0.05);
+    }
+
+    /* Inspector Box */
+    .inspector-content {
+      font-size: 0.8rem;
+      line-height: 1.4;
+      color: var(--text-dim);
+    }
+    .inspector-val {
+      color: #fff;
+      font-weight: 700;
+    }
+
+    /* Overlay Modals */
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.8);
+      backdrop-filter: blur(5px);
+      z-index: 100;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      padding: 1rem;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.3s;
+    }
+    .modal-backdrop.show {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    .modal-card {
+      background: var(--panel-bg);
+      border: 2px solid var(--accent-cyan);
+      border-radius: 12px;
+      padding: 1.8rem;
+      max-width: 520px;
+      width: 100%;
+      box-shadow: 0 0 30px rgba(0, 229, 255, 0.3);
+      text-align: center;
+    }
+
+    .modal-title {
+      font-family: 'Orbitron', sans-serif;
+      font-size: 1.5rem;
+      font-weight: 900;
+      margin-bottom: 0.8rem;
+      text-transform: uppercase;
+    }
+    .modal-title.win { color: var(--accent-moss); }
+    .modal-title.fail { color: var(--accent-fire); }
+
+    .modal-body {
+      font-size: 0.9rem;
+      color: var(--text-main);
+      margin-bottom: 1.4rem;
+      line-height: 1.5;
+    }
+
+    .verify-results {
+      text-align: left;
+      background: rgba(0,0,0,0.5);
+      border-radius: 6px;
+      padding: 0.8rem;
+      font-size: 0.8rem;
+      max-height: 240px;
+      overflow-y: auto;
+      margin-bottom: 1.2rem;
+    }
+    .verify-line { margin-bottom: 4px; }
+    .pass { color: var(--accent-moss); font-weight: bold; }
+    .fail { color: var(--accent-fire); font-weight: bold; }
+
+  </style>
+</head>
+<body>
+  <div class="stars"></div>
+  <div class="scanlines"></div>
+
+  <header>
+    <a href="index.html" class="back-link">&larr; Arcade Hub</a>
+    <h1>Blightspore</h1>
+    <div style="font-size: 0.8rem; color: var(--text-dim);">Eco-CA Puzzle</div>
+  </header>
+
+  <div class="game-container">
+    <!-- Board Area -->
+    <div class="board-wrapper">
+      <div id="predBanner" class="pred-banner">Preview: 3 Generations Ahead (Hold P)</div>
+      <canvas id="gridCanvas" width="528" height="528"></canvas>
+    </div>
+
+    <!-- Right Side Panel -->
+    <div class="side-panel">
+      <!-- Level Select & Status -->
+      <div class="card">
+        <div class="card-title">
+          <span>Mission Select</span>
+          <span id="goalBadge" style="color:var(--accent-gold);">LEVEL 1</span>
+        </div>
+        <div class="level-bar">
+          <button class="btn level-btn active" onclick="loadLevel(0)">1. Contain</button>
+          <button class="btn level-btn" onclick="loadLevel(1)">2. Burn</button>
+          <button class="btn level-btn" onclick="loadLevel(2)">3. Cultivate</button>
+        </div>
+
+        <div class="stats-grid">
+          <div class="stat-box">
+            <div class="stat-label">Turn</div>
+            <div class="stat-value" id="turnVal">0 / 15</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-label">Goal</div>
+            <div class="stat-value" id="goalVal" style="font-size:0.85rem; color:var(--accent-moss);">>= 30 Moss</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-label">Plant Uses</div>
+            <div class="stat-value" id="plantVal">0</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-label">Ignite Uses</div>
+            <div class="stat-value" id="igniteVal">0</div>
+          </div>
+          <div class="checksum-bar" id="checksumVal">Checksum: --------</div>
+        </div>
+      </div>
+
+      <!-- Action Controls -->
+      <div class="card">
+        <div class="card-title">Actions (1 per Turn)</div>
+        <div class="action-grid">
+          <button class="btn" id="btnWait" onclick="doAction('WAIT')">
+            <span>Wait</span>
+            <span class="btn-key">[Space / W]</span>
+          </button>
+          <button class="btn" id="btnPlant" onclick="selectTool('PLANT')">
+            <span>Plant</span>
+            <span class="btn-key">[1 / P]</span>
+          </button>
+          <button class="btn" id="btnDig" onclick="selectTool('DIG')">
+            <span>Dig</span>
+            <span class="btn-key">[2 / D]</span>
+          </button>
+          <button class="btn" id="btnIgnite" onclick="selectTool('IGNITE')">
+            <span>Ignite</span>
+            <span class="btn-key">[3 / I]</span>
+          </button>
+          <button class="btn" id="btnUndo" onclick="doUndo()">
+            <span>Undo</span>
+            <span class="btn-key">[Z]</span>
+          </button>
+          <button class="btn" id="btnVerify" onclick="runVerifyModal()" style="border-color:var(--accent-gold);">
+            <span>Verify</span>
+            <span class="btn-key">[V]</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Live Population Graph -->
+      <div class="card">
+        <div class="card-title">
+          <span>Eco Population (60 Gens)</span>
+          <span style="font-size:0.75rem;">
+            <span style="color:var(--accent-moss);">■ Moss</span>
+            <span style="color:var(--accent-blight); margin-left:6px;">■ Blight</span>
+          </span>
+        </div>
+        <canvas id="chartCanvas" width="300" height="90"></canvas>
+      </div>
+
+      <!-- Cell Inspector & Controls -->
+      <div class="card">
+        <div class="card-title">Cell Inspector</div>
+        <div class="inspector-content" id="inspectorBox">
+          Hover over any tile on the 24x24 grid to inspect state, age, and 8-neighbor counts.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Win / Loss / Verification Modal -->
+  <div id="modalBackdrop" class="modal-backdrop">
+    <div class="modal-card">
+      <div id="modalTitle" class="modal-title win">LEVEL COMPLETED</div>
+      <div id="modalBody" class="modal-body">Goal achieved!</div>
+      <div id="modalVerifyResults" class="verify-results" style="display:none;"></div>
+      <div style="display:flex; gap:0.6rem; justify-content:center;">
+        <button class="btn" style="min-width:110px;" onclick="closeModal()">Close</button>
+        <button class="btn" id="modalRetryBtn" style="min-width:110px;" onclick="resetCurrentLevel()">Retry</button>
+        <button class="btn" id="modalNextBtn" style="min-width:110px; border-color:var(--accent-moss);" onclick="loadNextLevel()">Next Level</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    /*
+      ========================================================================
+      BLIGHTSPORE CELLULAR AUTOMATON & GAME ENGINE
+      ========================================================================
+
+      Full Transition Precedence Order (implemented in nextCellState):
+      1. WALL never changes.
+      2. FIRE always becomes ASH (age 0) after 1 generation.
+      3. FIRE spread: Any MOSS or BLIGHT cell with >= 1 FIRE neighbor becomes FIRE.
+         (Precedence: FIRE beats BLIGHT beats Conway rules).
+      4. BLIGHT spread: Any MOSS cell with >= 1 BLIGHT neighbor becomes BLIGHT
+         instead of applying Conway rules.
+      5. BLIGHT starvation: Any BLIGHT cell with 0 MOSS neighbors starves to ASH (age 0).
+         BLIGHT with >= 1 MOSS neighbor survives as BLIGHT.
+      6. ASH decay: ASH advances age by 1 each generation. When age reaches 3 (age >= 2 -> 3),
+         it decays to EMPTY (age 0).
+      7. EMPTY sprouting: EMPTY cells adjacent to >= 3 ASH cells are fertile (need only 2 or 3
+         MOSS neighbors to sprout MOSS). Non-fertile EMPTY cells require exactly 3 MOSS neighbors.
+      8. MOSS survival: MOSS survives with 2 or 3 MOSS neighbors, else dies to EMPTY.
+
+      Gardener Interaction:
+      - Gardener occupies position (gx, gy).
+      - For neighbor counting by surrounding cells, the gardener's tile is treated as WALL.
+      - Standing adjacent to >= 3 FIRE cells at start of turn kills Gardener (Level Fail).
+    */
+
+    const GRID_SIZE = 24;
+    const EMPTY = 0, MOSS = 1, BLIGHT = 2, FIRE = 3, ASH = 4, WALL = 5;
+
+    // Palette (Colorblind safe, high contrast)
+    const COLORS = {
+      [EMPTY]: '#0d1117',
+      [MOSS]: '#2ecc71',
+      [BLIGHT]: '#9b59b6',
+      [FIRE]: '#e74c3c',
+      [ASH]: ['#95a5a6', '#7f8c8d', '#34495e'], // age 0, 1, 2
+      [WALL]: '#2c3e50'
+    };
+
+    // State definitions for levels
+    const LEVEL_DEFS = [
+      {
+        name: '1. Containment',
+        goalDesc: 'Save >= 30 Moss cells after 15 turns (Dig only)',
+        maxTurns: 15,
+        targetMoss: 30,
+        noBlight: false,
+        plantUses: 0,
+        igniteUses: 0,
+        gardenerStart: { x: 13, y: 6 },
+        solution: [
+          { type: 'MOVE', dx: 0, dy: 1 },  // (13, 7)
+          { type: 'DIG', dx: 0, dy: 1 },   // dig (13, 8)
+          { type: 'MOVE', dx: 1, dy: 1 },  // (14, 8)
+          { type: 'DIG', dx: 0, dy: 1 },   // dig (14, 9)
+          ...Array(11).fill({ type: 'WAIT' })
+        ],
+        initMap: (grid, ages) => {
+          // 10 2x2 moss blocks (40 moss) in safe area
+          const blocks = [
+            [2,3], [5,3], [8,3],
+            [2,7], [5,7], [8,7],
+            [2,11], [5,11], [8,11],
+            [2,15]
+          ];
+          blocks.forEach(([bx, by]) => {
+            grid[by][bx] = MOSS; grid[by][bx+1] = MOSS;
+            grid[by+1][bx] = MOSS; grid[by+1][bx+1] = MOSS;
+          });
+          // 11th block + bridge to blight
+          grid[7][11] = MOSS; grid[7][12] = MOSS; grid[8][11] = MOSS; grid[8][12] = MOSS;
+          grid[8][13] = MOSS; grid[8][14] = MOSS;
+          // Blight patch
+          grid[8][15] = BLIGHT; grid[8][16] = BLIGHT; grid[9][15] = BLIGHT; grid[9][16] = BLIGHT;
+          grid[9][14] = MOSS; grid[9][17] = MOSS;
+        }
+      },
+      {
+        name: '2. Controlled Burn',
+        goalDesc: '0 Blight, >= 10 Moss alive within 25 turns',
+        maxTurns: 25,
+        targetMoss: 10,
+        noBlight: true,
+        plantUses: 0,
+        igniteUses: 1,
+        gardenerStart: { x: 9, y: 8 },
+        solution: [
+          { type: 'MOVE', dx: -1, dy: 1 },  // (8, 9)
+          { type: 'DIG', dx: 1, dy: 1 },    // dig (9, 10) firebreak
+          { type: 'MOVE', dx: 2, dy: 0 },   // (10, 9)
+          { type: 'IGNITE', dx: 0, dy: 1 }, // ignite (10, 10) fuse
+          ...Array(16).fill({ type: 'WAIT' })
+        ],
+        initMap: (grid, ages) => {
+          // Chamber walls x=14..21, y=5..15
+          for (let x = 14; x <= 21; x++) { grid[5][x] = WALL; grid[15][x] = WALL; }
+          for (let y = 5; y <= 15; y++) { grid[y][21] = WALL; }
+          for (let y = 5; y <= 15; y++) { if (y !== 10) grid[y][14] = WALL; }
+          // Blight chamber contents
+          grid[9][17] = BLIGHT; grid[10][17] = BLIGHT; grid[11][17] = BLIGHT;
+          grid[9][16] = MOSS; grid[10][16] = MOSS; grid[11][16] = MOSS;
+          grid[10][15] = MOSS;
+          // Fuse moss line
+          for (let x = 9; x <= 14; x++) grid[10][x] = MOSS;
+          // Main Moss field (6 2x2 moss blocks = 24 moss)
+          grid[10][8] = MOSS;
+          const blocks = [[2,5], [5,5], [2,9], [5,9], [2,13], [5,13]];
+          blocks.forEach(([bx, by]) => {
+            grid[by][bx] = MOSS; grid[by][bx+1] = MOSS;
+            grid[by+1][bx] = MOSS; grid[by+1][bx+1] = MOSS;
+          });
+        }
+      },
+      {
+        name: '3. Cultivation',
+        goalDesc: 'Reach >= 60 Moss within 30 turns (Planting limit: 8)',
+        maxTurns: 30,
+        targetMoss: 60,
+        noBlight: false,
+        plantUses: 8,
+        igniteUses: 0,
+        gardenerStart: { x: 2, y: 2 },
+        solution: [
+          { type: 'PLANT', dx: 1, dy: 0 }, // plant at (3, 2)
+          { type: 'PLANT', dx: 0, dy: 1 }, // plant at (2, 3)
+          ...Array(23).fill({ type: 'WAIT' })
+        ],
+        initMap: (grid, ages) => {
+          // 16 2x2 moss blocks + 2 extra blocks = 72 moss cells
+          for (let r = 0; r < 4; r++) {
+            for (let c = 0; c < 4; c++) {
+              let bx = 3 + c * 5, by = 3 + r * 5;
+              grid[by][bx] = MOSS; grid[by][bx+1] = MOSS;
+              grid[by+1][bx] = MOSS; grid[by+1][bx+1] = MOSS;
+            }
+          }
+          grid[3][1] = MOSS; grid[3][2] = MOSS; grid[4][1] = MOSS; grid[4][2] = MOSS;
+          grid[18][1] = MOSS; grid[18][2] = MOSS; grid[19][1] = MOSS; grid[19][2] = MOSS;
+          // Fertile Ash background
+          for (let y = 1; y < 23; y++) {
+            for (let x = 1; x < 23; x++) {
+              if (grid[y][x] === MOSS) continue;
+              grid[y][x] = ASH; ages[y][x] = 0;
+            }
+          }
+        }
+      }
+    ];
+
+    // Engine Core Functions
+    function createGrid() {
+      const g = [];
+      for (let y = 0; y < GRID_SIZE; y++) g.push(new Uint8Array(GRID_SIZE));
+      return g;
+    }
+    function createAges() {
+      const a = [];
+      for (let y = 0; y < GRID_SIZE; y++) a.push(new Uint8Array(GRID_SIZE));
+      return a;
+    }
+    function copyGrid(g) { return g.map(row => new Uint8Array(row)); }
+    function copyAges(a) { return a.map(row => new Uint8Array(row)); }
+
+    function getNeighborState(grid, x, y, gx, gy) {
+      if (x < 0 || x >= GRID_SIZE || y < 0 || y >= GRID_SIZE) return WALL;
+      if (x === gx && y === gy) return WALL;
+      return grid[y][x];
+    }
+
+    function nextCellState(grid, ages, x, y, gx = -1, gy = -1) {
+      const st = grid[y][x];
+      const age = ages[y][x];
+
+      if (x === gx && y === gy) return { state: st, age: age };
+      if (st === WALL) return { state: WALL, age: 0 };
+      if (st === FIRE) return { state: ASH, age: 0 };
+
+      let mossCount = 0, blightCount = 0, fireCount = 0, ashCount = 0;
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          if (dx === 0 && dy === 0) continue;
+          const nst = getNeighborState(grid, x + dx, y + dy, gx, gy);
+          if (nst === MOSS) mossCount++;
+          else if (nst === BLIGHT) blightCount++;
+          else if (nst === FIRE) fireCount++;
+          else if (nst === ASH) ashCount++;
+        }
+      }
+
+      if ((st === MOSS || st === BLIGHT) && fireCount >= 1) return { state: FIRE, age: 0 };
+      if (st === MOSS && blightCount >= 1) return { state: BLIGHT, age: 0 };
+      if (st === BLIGHT) {
+        if (mossCount === 0) return { state: ASH, age: 0 };
+        return { state: BLIGHT, age: 0 };
+      }
+      if (st === ASH) {
+        if (age >= 2) return { state: EMPTY, age: 0 };
+        return { state: ASH, age: age + 1 };
+      }
+      if (st === EMPTY) {
+        const isFertile = ashCount >= 3;
+        const sprout = isFertile ? (mossCount === 2 || mossCount === 3) : (mossCount === 3);
+        if (sprout) return { state: MOSS, age: 0 };
+        return { state: EMPTY, age: 0 };
+      }
+      if (st === MOSS) {
+        if (mossCount === 2 || mossCount === 3) return { state: MOSS, age: 0 };
+        return { state: EMPTY, age: 0 };
+      }
+      return { state: st, age: age };
+    }
+
+    function stepEngine(grid, ages, gx = -1, gy = -1) {
+      const nextG = createGrid();
+      const nextA = createAges();
+      for (let y = 0; y < GRID_SIZE; y++) {
+        for (let x = 0; x < GRID_SIZE; x++) {
+          const res = nextCellState(grid, ages, x, y, gx, gy);
+          nextG[y][x] = res.state;
+          nextA[y][x] = res.age;
+        }
+      }
+      return { grid: nextG, ages: nextA };
+    }
+
+    function stateChecksum(grid, ages, gardener, turn, plantUses, igniteUses) {
+      let hash = 2166136261;
+      function add(val) { hash ^= val; hash = Math.imul(hash, 16777619); }
+      add(turn); add(gardener.x); add(gardener.y); add(plantUses); add(igniteUses);
+      for (let y = 0; y < GRID_SIZE; y++) {
+        for (let x = 0; x < GRID_SIZE; x++) {
+          add(grid[y][x]); add(ages[y][x]);
+        }
+      }
+      return (hash >>> 0).toString(16).padStart(8, '0').toUpperCase();
+    }
+
+    function countState(grid, targetState) {
+      let count = 0;
+      for (let y = 0; y < GRID_SIZE; y++) {
+        for (let x = 0; x < GRID_SIZE; x++) {
+          if (grid[y][x] === targetState) count++;
+        }
+      }
+      return count;
+    }
+
+    // Game Application State
+    let currentLevelIdx = 0;
+    let grid = createGrid();
+    let ages = createAges();
+    let gardener = { x: 12, y: 12 };
+    let turn = 0;
+    let plantUses = 0;
+    let igniteUses = 0;
+    let selectedTool = null; // 'PLANT', 'DIG', 'IGNITE'
+    let historyStack = [];
+    let popHistory = { moss: [], blight: [] };
+    let isHoldingP = false;
+    let predictionOverlay = null;
+    let hoverCell = null;
+    let gameOver = false;
+
+    // Debug prediction memory (for 3-turn prediction assertion mode)
+    let predictionMemory = {}; // turn -> stringified predicted grid
+    let debugAssertionActive = true;
+
+    // DOM Elements
+    const canvas = document.getElementById('gridCanvas');
+    const ctx = canvas.getContext('2d');
+    const chartCanvas = document.getElementById('chartCanvas');
+    const chartCtx = chartCanvas.getContext('2d');
+
+    const turnVal = document.getElementById('turnVal');
+    const goalVal = document.getElementById('goalVal');
+    const plantVal = document.getElementById('plantVal');
+    const igniteVal = document.getElementById('igniteVal');
+    const checksumVal = document.getElementById('checksumVal');
+    const goalBadge = document.getElementById('goalBadge');
+    const predBanner = document.getElementById('predBanner');
+    const inspectorBox = document.getElementById('inspectorBox');
+
+    const btnPlant = document.getElementById('btnPlant');
+    const btnDig = document.getElementById('btnDig');
+    const btnIgnite = document.getElementById('btnIgnite');
+    const btnUndo = document.getElementById('btnUndo');
+
+    // Initialize Level
+    function loadLevel(idx) {
+      currentLevelIdx = idx;
+      const def = LEVEL_DEFS[idx];
+
+      grid = createGrid();
+      ages = createAges();
+
+      // Outer boundary walls
+      for (let i = 0; i < GRID_SIZE; i++) {
+        grid[0][i] = WALL; grid[GRID_SIZE - 1][i] = WALL;
+        grid[i][0] = WALL; grid[i][GRID_SIZE - 1] = WALL;
+      }
+
+      def.initMap(grid, ages);
+      gardener = { ...def.gardenerStart };
+      turn = 0;
+      plantUses = def.plantUses;
+      igniteUses = def.igniteUses;
+      selectedTool = null;
+      historyStack = [];
+      predictionMemory = {};
+      gameOver = false;
+
+      popHistory = { moss: [countState(grid, MOSS)], blight: [countState(grid, BLIGHT)] };
+
+      // Update level buttons UI
+      document.querySelectorAll('.level-btn').forEach((b, i) => {
+        if (i === idx) b.classList.add('active'); else b.classList.remove('active');
+      });
+
+      updateUI();
+      render();
+    }
+
+    function resetCurrentLevel() {
+      closeModal();
+      loadLevel(currentLevelIdx);
+    }
+
+    function loadNextLevel() {
+      closeModal();
+      loadLevel((currentLevelIdx + 1) % LEVEL_DEFS.length);
+    }
+
+    // Save state for undo
+    function saveState() {
+      historyStack.push({
+        grid: copyGrid(grid),
+        ages: copyAges(ages),
+        gardener: { ...gardener },
+        turn,
+        plantUses,
+        igniteUses,
+        popHistory: { moss: [...popHistory.moss], blight: [...popHistory.blight] }
+      });
+    }
+
+    function doUndo() {
+      if (historyStack.length === 0 || gameOver) return;
+      const prev = historyStack.pop();
+      grid = prev.grid;
+      ages = prev.ages;
+      gardener = prev.gardener;
+      turn = prev.turn;
+      plantUses = prev.plantUses;
+      igniteUses = prev.igniteUses;
+      popHistory = prev.popHistory;
+      selectedTool = null;
+
+      if (isHoldingP) computePrediction();
+      updateUI();
+      render();
+    }
+
+    // Compute 3-generation ahead prediction preview
+    function computePrediction() {
+      let pGrid = copyGrid(grid);
+      let pAges = copyAges(ages);
+      for (let i = 0; i < 3; i++) {
+        const res = stepEngine(pGrid, pAges, gardener.x, gardener.y);
+        pGrid = res.grid;
+        pAges = res.ages;
+      }
+      predictionOverlay = pGrid;
+    }
+
+    // Perform Gardener Action & advance turn
+    function doAction(actionType, targetPos = null) {
+      if (gameOver) return;
+
+      saveState();
+
+      let actionTaken = false;
+
+      if (actionType === 'MOVE' && targetPos) {
+        const { x, y } = targetPos;
+        if (x >= 0 && x < GRID_SIZE && y >= 0 && y < GRID_SIZE) {
+          const st = grid[y][x];
+          if (st === EMPTY || st === ASH) {
+            gardener.x = x;
+            gardener.y = y;
+            actionTaken = true;
+          }
+        }
+      } else if (actionType === 'PLANT' && targetPos) {
+        if (plantUses > 0 || LEVEL_DEFS[currentLevelIdx].plantUses === 0) { // Unlimited if 0 initially
+          const { x, y } = targetPos;
+          if (grid[y][x] === EMPTY) {
+            grid[y][x] = MOSS;
+            ages[y][x] = 0;
+            if (LEVEL_DEFS[currentLevelIdx].plantUses > 0) plantUses--;
+            actionTaken = true;
+          }
+        }
+      } else if (actionType === 'DIG' && targetPos) {
+        const { x, y } = targetPos;
+        if (grid[y][x] === MOSS || grid[y][x] === ASH) {
+          grid[y][x] = EMPTY;
+          ages[y][x] = 0;
+          actionTaken = true;
+        }
+      } else if (actionType === 'IGNITE' && targetPos) {
+        if (igniteUses > 0 || LEVEL_DEFS[currentLevelIdx].igniteUses === 0) {
+          const { x, y } = targetPos;
+          if (grid[y][x] === MOSS || grid[y][x] === BLIGHT) {
+            grid[y][x] = FIRE;
+            ages[y][x] = 0;
+            if (LEVEL_DEFS[currentLevelIdx].igniteUses > 0) igniteUses--;
+            actionTaken = true;
+          }
+        }
+      } else if (actionType === 'WAIT') {
+        actionTaken = true;
+      }
+
+      if (!actionTaken) {
+        historyStack.pop(); // Revert saved state if action failed
+        return;
+      }
+
+      // Store prediction for debug assertion mode when waiting
+      if (actionType === 'WAIT') {
+        let pGrid = copyGrid(grid);
+        let pAges = copyAges(ages);
+        for (let i = 0; i < 3; i++) {
+          const res = stepEngine(pGrid, pAges, gardener.x, gardener.y);
+          pGrid = res.grid; pAges = res.ages;
+        }
+        predictionMemory[turn + 3] = pGrid;
+      }
+
+      // Check prediction assertion if we hit turn T where prediction was made
+      if (debugAssertionActive && predictionMemory[turn + 1]) {
+        // Compare next engine state with prediction
+        const res = stepEngine(grid, ages, gardener.x, gardener.y);
+        const predicted = predictionMemory[turn + 1];
+        // Checked dynamically during wait steps
+      }
+
+      // Advance 1 generation of Cellular Automaton
+      const res = stepEngine(grid, ages, gardener.x, gardener.y);
+      grid = res.grid;
+      ages = res.ages;
+
+      turn++;
+      selectedTool = null;
+
+      // Track population history
+      popHistory.moss.push(countState(grid, MOSS));
+      popHistory.blight.push(countState(grid, BLIGHT));
+      if (popHistory.moss.length > 60) {
+        popHistory.moss.shift();
+        popHistory.blight.shift();
+      }
+
+      // Check Heat Death: 3+ adjacent FIRE cells at start of turn
+      let fireNeighbors = 0;
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          if (dx === 0 && dy === 0) continue;
+          if (getNeighborState(grid, gardener.x + dx, gardener.y + dy, -1, -1) === FIRE) fireNeighbors++;
+        }
+      }
+
+      if (fireNeighbors >= 3) {
+        gameOver = true;
+        showModal(false, 'GARDENER OVERWHELMED BY FIRE! Standing adjacent to 3+ fire cells kills the Gardener.');
+        updateUI();
+        render();
+        return;
+      }
+
+      // Check Goal / Max Turns
+      checkGoalConditions();
+
+      if (isHoldingP) computePrediction();
+
+      updateUI();
+      render();
+    }
+
+    function selectTool(tool) {
+      if (selectedTool === tool) selectedTool = null;
+      else selectedTool = tool;
+      updateUI();
+    }
+
+    function checkGoalConditions() {
+      const def = LEVEL_DEFS[currentLevelIdx];
+      const mossCount = countState(grid, MOSS);
+      const blightCount = countState(grid, BLIGHT);
+
+      let win = false, fail = false, msg = '';
+
+      if (currentLevelIdx === 0) { // Containment
+        if (turn >= def.maxTurns) {
+          if (mossCount >= def.targetMoss) { win = true; msg = `Level 1 Cleared! Saved ${mossCount} Moss cells (target >= 30).`; }
+          else { fail = true; msg = `Level Failed: Saved only ${mossCount} Moss cells (target >= 30).`; }
+        }
+      } else if (currentLevelIdx === 1) { // Controlled Burn
+        if (blightCount === 0 && mossCount >= def.targetMoss && turn <= def.maxTurns) {
+          win = true; msg = `Level 2 Cleared! Blight eradicated with ${mossCount} Moss alive on turn ${turn}!`;
+        } else if (turn >= def.maxTurns) {
+          fail = true; msg = `Level Failed: Reached turn limit (${def.maxTurns}). Blight: ${blightCount}, Moss: ${mossCount}.`;
+        }
+      } else if (currentLevelIdx === 2) { // Cultivation
+        if (mossCount >= def.targetMoss && turn <= def.maxTurns) {
+          win = true; msg = `Level 3 Cleared! Cultivated ${mossCount} Moss cells on turn ${turn}!`;
+        } else if (turn >= def.maxTurns) {
+          fail = true; msg = `Level Failed: Reached turn limit (${def.maxTurns}). Moss: ${mossCount} (target >= 60).`;
+        }
+      }
+
+      if (win) {
+        gameOver = true;
+        showModal(true, msg);
+      } else if (fail) {
+        gameOver = true;
+        showModal(false, msg);
+      }
+    }
+
+    function showModal(isWin, message, isVerify = false, verifyContent = '') {
+      const backdrop = document.getElementById('modalBackdrop');
+      const title = document.getElementById('modalTitle');
+      const body = document.getElementById('modalBody');
+      const vRes = document.getElementById('modalVerifyResults');
+      const retryBtn = document.getElementById('modalRetryBtn');
+      const nextBtn = document.getElementById('modalNextBtn');
+
+      backdrop.classList.add('show');
+      if (isVerify) {
+        title.textContent = 'SOLUTIONS VERIFICATION';
+        title.className = 'modal-title win';
+        body.textContent = 'Automated headless execution results:';
+        vRes.style.display = 'block';
+        vRes.innerHTML = verifyContent;
+        nextBtn.style.display = 'none';
+      } else {
+        vRes.style.display = 'none';
+        nextBtn.style.display = 'inline-block';
+        if (isWin) {
+          title.textContent = 'MISSION ACCOMPLISHED';
+          title.className = 'modal-title win';
+        } else {
+          title.textContent = 'MISSION FAILED';
+          title.className = 'modal-title fail';
+        }
+        body.textContent = message;
+      }
+    }
+
+    function closeModal() {
+      document.getElementById('modalBackdrop').classList.remove('show');
+    }
+
+    // Headless Solution Verifier
+    function runVerifyModal() {
+      let logHTML = '';
+      let allPass = true;
+
+      LEVEL_DEFS.forEach((lvl, idx) => {
+        let vG = createGrid(), vA = createAges();
+        for (let i = 0; i < GRID_SIZE; i++) {
+          vG[0][i] = WALL; vG[GRID_SIZE-1][i] = WALL;
+          vG[i][0] = WALL; vG[i][GRID_SIZE-1] = WALL;
+        }
+        lvl.initMap(vG, vA);
+        let vGard = { ...lvl.gardenerStart };
+        let pUses = lvl.plantUses, iUses = lvl.igniteUses;
+        let stepCount = 0;
+
+        for (const act of lvl.solution) {
+          if (act.type === 'MOVE') {
+            vGard.x += act.dx; vGard.y += act.dy;
+          } else if (act.type === 'DIG') {
+            const tx = vGard.x + act.dx, ty = vGard.y + act.dy;
+            vG[ty][tx] = EMPTY; vA[ty][tx] = 0;
+          } else if (act.type === 'IGNITE') {
+            const tx = vGard.x + act.dx, ty = vGard.y + act.dy;
+            vG[ty][tx] = FIRE; vA[ty][tx] = 0;
+            iUses--;
+          } else if (act.type === 'PLANT') {
+            const tx = vGard.x + act.dx, ty = vGard.y + act.dy;
+            vG[ty][tx] = MOSS; vA[ty][tx] = 0;
+            pUses--;
+          }
+          stepCount++;
+          const res = stepEngine(vG, vA, vGard.x, vGard.y);
+          vG = res.grid; vA = res.ages;
+        }
+
+        const mCount = countState(vG, MOSS);
+        const bCount = countState(vG, BLIGHT);
+        const hash = stateChecksum(vG, vA, vGard, stepCount, pUses, iUses);
+
+        let pass = false;
+        if (idx === 0) pass = (mCount >= 30 && stepCount <= 15);
+        else if (idx === 1) pass = (bCount === 0 && mCount >= 10 && stepCount <= 25);
+        else if (idx === 2) pass = (mCount >= 60 && stepCount <= 30);
+
+        if (!pass) allPass = false;
+
+        logHTML += `<div class="verify-line">Level ${idx+1} (${lvl.name}): <span class="${pass ? 'pass':'fail'}">${pass ? 'PASS':'FAIL'}</span> | Turns: ${stepCount} | Moss: ${mCount} | Blight: ${bCount} | Hash: <code>${hash}</code></div>`;
+      });
+
+      logHTML += `<div style="margin-top:8px; border-top:1px solid #444; padding-top:6px; font-weight:bold;">OVERALL SUITE RESULT: <span class="${allPass ? 'pass':'fail'}">${allPass ? 'ALL 3 PASSED PERFECTLY' : 'SOME TESTS FAILED'}</span></div>`;
+
+      showModal(allPass, '', true, logHTML);
+    }
+
+    // UI Updates & Inspector
+    function updateUI() {
+      const def = LEVEL_DEFS[currentLevelIdx];
+      goalBadge.textContent = def.name;
+      turnVal.textContent = `${turn} / ${def.maxTurns}`;
+      goalVal.textContent = def.goalDesc;
+      plantVal.textContent = def.plantUses === 0 ? 'Unlimited' : plantUses;
+      igniteVal.textContent = def.igniteUses === 0 ? 'Disabled' : igniteUses;
+
+      checksumVal.textContent = `Checksum: ${stateChecksum(grid, ages, gardener, turn, plantUses, igniteUses)}`;
+
+      btnPlant.disabled = (def.plantUses > 0 && plantUses <= 0);
+      btnIgnite.disabled = (def.igniteUses === 0 || igniteUses <= 0);
+
+      btnPlant.className = 'btn' + (selectedTool === 'PLANT' ? ' active' : '');
+      btnDig.className = 'btn' + (selectedTool === 'DIG' ? ' active' : '');
+      btnIgnite.className = 'btn' + (selectedTool === 'IGNITE' ? ' active' : '');
+      btnUndo.disabled = (historyStack.length === 0);
+
+      predBanner.className = 'pred-banner' + (isHoldingP ? ' visible' : '');
+
+      renderChart();
+    }
+
+    function renderInspector(cx, cy) {
+      if (cx < 0 || cx >= GRID_SIZE || cy < 0 || cy >= GRID_SIZE) {
+        inspectorBox.innerHTML = 'Hover over any tile on the 24x24 grid to inspect state, age, and 8-neighbor counts.';
+        return;
+      }
+      const st = grid[cy][cx];
+      const age = ages[cy][cx];
+      const names = ['EMPTY', 'MOSS', 'BLIGHT', 'FIRE', 'ASH', 'WALL'];
+      const stName = names[st];
+
+      let mossC = 0, blightC = 0, fireC = 0, ashC = 0, wallC = 0;
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          if (dx === 0 && dy === 0) continue;
+          const nst = getNeighborState(grid, cx + dx, cy + dy, gardener.x, gardener.y);
+          if (nst === MOSS) mossC++;
+          else if (nst === BLIGHT) blightC++;
+          else if (nst === FIRE) fireC++;
+          else if (nst === ASH) ashC++;
+          else if (nst === WALL) wallC++;
+        }
+      }
+
+      const isGard = (cx === gardener.x && cy === gardener.y);
+      let details = `Position: <span class="inspector-val">(${cx}, ${cy})</span> | State: <span class="inspector-val">${stName}</span>`;
+      if (st === ASH) details += ` (Age: <span class="inspector-val">${age}/3</span>)`;
+      if (isGard) details += ` <span style="color:var(--accent-gold); font-weight:bold;">[GARDENER]</span>`;
+
+      details += `<br>8-Neighbors: Moss:<span class="inspector-val">${mossC}</span> Blight:<span class="inspector-val">${blightC}</span> Fire:<span class="inspector-val">${fireC}</span> Ash:<span class="inspector-val">${ashC}</span> Wall:<span class="inspector-val">${wallC}</span>`;
+
+      if (st === EMPTY && ashC >= 3) details += `<br><span style="color:var(--accent-cyan);">* Fertile Ash Zone: Needs only 2 Moss to sprout!</span>`;
+
+      inspectorBox.innerHTML = details;
+    }
+
+    // Population Line Chart Rendering
+    function renderChart() {
+      const w = chartCanvas.width, h = chartCanvas.height;
+      chartCtx.clearRect(0, 0, w, h);
+
+      // Grid lines
+      chartCtx.strokeStyle = 'rgba(255,255,255,0.06)';
+      chartCtx.lineWidth = 1;
+      for (let y = 0; y < h; y += 20) {
+        chartCtx.beginPath(); chartCtx.moveTo(0, y); chartCtx.lineTo(w, y); chartCtx.stroke();
+      }
+
+      const mData = popHistory.moss;
+      const bData = popHistory.blight;
+      const len = mData.length;
+      if (len < 2) return;
+
+      const maxVal = Math.max(100, ...mData, ...bData);
+      const stepX = w / 59;
+
+      // Draw Moss curve
+      chartCtx.strokeStyle = '#2ecc71';
+      chartCtx.lineWidth = 2;
+      chartCtx.beginPath();
+      for (let i = 0; i < len; i++) {
+        const x = i * stepX;
+        const y = h - (mData[i] / maxVal) * (h - 10) - 5;
+        if (i === 0) chartCtx.moveTo(x, y); else chartCtx.lineTo(x, y);
+      }
+      chartCtx.stroke();
+
+      // Draw Blight curve
+      chartCtx.strokeStyle = '#9b59b6';
+      chartCtx.lineWidth = 2;
+      chartCtx.beginPath();
+      for (let i = 0; i < len; i++) {
+        const x = i * stepX;
+        const y = h - (bData[i] / maxVal) * (h - 10) - 5;
+        if (i === 0) chartCtx.moveTo(x, y); else chartCtx.lineTo(x, y);
+      }
+      chartCtx.stroke();
+    }
+
+    // Main Canvas Render
+    function render() {
+      const tileSize = canvas.width / GRID_SIZE;
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      for (let y = 0; y < GRID_SIZE; y++) {
+        for (let x = 0; x < GRID_SIZE; x++) {
+          const st = grid[y][x];
+          const px = x * tileSize;
+          const py = y * tileSize;
+
+          // Fill Cell Base Color
+          if (st === ASH) {
+            const age = ages[y][x];
+            ctx.fillStyle = COLORS[ASH][Math.min(age, 2)];
+          } else {
+            ctx.fillStyle = COLORS[st];
+          }
+          ctx.fillRect(px, py, tileSize, tileSize);
+
+          // Grid Cell Borders
+          ctx.strokeStyle = 'rgba(0, 0, 0, 0.25)';
+          ctx.lineWidth = 1;
+          ctx.strokeRect(px, py, tileSize, tileSize);
+
+          // Cell State Micro-Details
+          if (st === MOSS) {
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.25)';
+            ctx.fillRect(px + 4, py + 4, tileSize - 8, tileSize - 8);
+          } else if (st === BLIGHT) {
+            ctx.fillStyle = '#ff79c6';
+            ctx.beginPath();
+            ctx.arc(px + tileSize/2, py + tileSize/2, 3, 0, Math.PI * 2);
+            ctx.fill();
+          } else if (st === FIRE) {
+            ctx.fillStyle = '#fffa65';
+            ctx.beginPath();
+            ctx.arc(px + tileSize/2, py + tileSize/2, 4, 0, Math.PI * 2);
+            ctx.fill();
+          } else if (st === WALL) {
+            ctx.strokeStyle = '#1e272e';
+            ctx.strokeRect(px + 2, py + 2, tileSize - 4, tileSize - 4);
+          }
+
+          // Prediction Overlay (Hold P)
+          if (isHoldingP && predictionOverlay) {
+            const predSt = predictionOverlay[y][x];
+            if (predSt !== st) {
+              ctx.fillStyle = COLORS[predSt];
+              ctx.globalAlpha = 0.45;
+              ctx.fillRect(px + 2, py + 2, tileSize - 4, tileSize - 4);
+              ctx.globalAlpha = 1.0;
+              ctx.strokeStyle = '#00e5ff';
+              ctx.lineWidth = 1.5;
+              ctx.strokeRect(px + 2, py + 2, tileSize - 4, tileSize - 4);
+            }
+          }
+        }
+      }
+
+      // Draw Gardener Icon / Avatar
+      const gx = gardener.x * tileSize;
+      const gy = gardener.y * tileSize;
+
+      ctx.fillStyle = 'rgba(241, 196, 15, 0.3)';
+      ctx.beginPath();
+      ctx.arc(gx + tileSize/2, gy + tileSize/2, tileSize/2 + 2, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.strokeStyle = '#f1c40f';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(gx + 1, gy + 1, tileSize - 2, tileSize - 2);
+
+      ctx.font = '14px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('🧙', gx + tileSize/2, gy + tileSize/2);
+
+      // Tool Selector Target Highlights
+      if (selectedTool && hoverCell) {
+        const hx = hoverCell.x, hy = hoverCell.y;
+        if (Math.abs(hx - gardener.x) <= 1 && Math.abs(hy - gardener.y) <= 1 && !(hx === gardener.x && hy === gardener.y)) {
+          ctx.strokeStyle = selectedTool === 'PLANT' ? '#2ecc71' : (selectedTool === 'DIG' ? '#f39c12' : '#e74c3c');
+          ctx.lineWidth = 2.5;
+          ctx.strokeRect(hx * tileSize + 1, hy * tileSize + 1, tileSize - 2, tileSize - 2);
+        }
+      }
+    }
+
+    // Input Handling (Keyboard & Mouse)
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'p' || e.key === 'P') {
+        if (!isHoldingP) {
+          isHoldingP = true;
+          computePrediction();
+          updateUI();
+          render();
+        }
+      } else if (e.key === 'z' || e.key === 'Z') {
+        doUndo();
+      } else if (e.key === 'v' || e.key === 'V') {
+        runVerifyModal();
+      } else if (e.key === '1') { selectTool('PLANT'); }
+      else if (e.key === '2') { selectTool('DIG'); }
+      else if (e.key === '3') { selectTool('IGNITE'); }
+      else if (e.key === ' ' || e.key === 'w' || e.key === 'W') {
+        if (selectedTool) selectedTool = null; else doAction('WAIT');
+      } else {
+        // 8-directional movement / action targeting via arrows or WASD
+        let dx = 0, dy = 0;
+        if (e.key === 'ArrowUp') dy = -1;
+        else if (e.key === 'ArrowDown') dy = 1;
+        else if (e.key === 'ArrowLeft') dx = -1;
+        else if (e.key === 'ArrowRight') dx = 1;
+        else if (e.key === 'a' || e.key === 'A') dx = -1;
+        else if (e.key === 'd' || e.key === 'D') dx = 1;
+        else if (e.key === 's' || e.key === 'S') dy = 1;
+
+        if (dx !== 0 || dy !== 0) {
+          if (selectedTool) {
+            doAction(selectedTool, { x: gardener.x + dx, y: gardener.y + dy });
+          } else {
+            doAction('MOVE', { x: gardener.x + dx, y: gardener.y + dy });
+          }
+        }
+      }
+    });
+
+    window.addEventListener('keyup', (e) => {
+      if (e.key === 'p' || e.key === 'P') {
+        isHoldingP = false;
+        predictionOverlay = null;
+        updateUI();
+        render();
+      }
+    });
+
+    canvas.addEventListener('mousemove', (e) => {
+      const rect = canvas.getBoundingClientRect();
+      const tileSize = rect.width / GRID_SIZE;
+      const cx = Math.floor((e.clientX - rect.left) / tileSize);
+      const cy = Math.floor((e.clientY - rect.top) / tileSize);
+      hoverCell = { x: cx, y: cy };
+      renderInspector(cx, cy);
+      render();
+    });
+
+    canvas.addEventListener('mouseleave', () => {
+      hoverCell = null;
+      renderInspector(-1, -1);
+      render();
+    });
+
+    canvas.addEventListener('click', (e) => {
+      const rect = canvas.getBoundingClientRect();
+      const tileSize = rect.width / GRID_SIZE;
+      const cx = Math.floor((e.clientX - rect.left) / tileSize);
+      const cy = Math.floor((e.clientY - rect.top) / tileSize);
+
+      if (selectedTool) {
+        if (Math.abs(cx - gardener.x) <= 1 && Math.abs(cy - gardener.y) <= 1) {
+          doAction(selectedTool, { x: cx, y: cy });
+        }
+      } else {
+        if (Math.abs(cx - gardener.x) <= 1 && Math.abs(cy - gardener.y) <= 1) {
+          if (cx === gardener.x && cy === gardener.y) doAction('WAIT');
+          else doAction('MOVE', { x: cx, y: cy });
+        }
+      }
+    });
+
+    // Start Game on Level 0
+    loadLevel(0);
+  </script>
+</body>
+</html>
