@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>China · Population Density Explorer</title>
+<script src="https://cdn.jsdelivr.net/npm/echarts@5.5.1/dist/echarts.min.js"></script>
+<script>
+/* Strip the South China Sea inset box (and any non-province features) from the bundled map data */
+(function(){
+  var KEEP={'北京':1,'天津':1,'河北':1,'山西':1,'内蒙古':1,'辽宁':1,'吉林':1,'黑龙江':1,'上海':1,'江苏':1,
+            '浙江':1,'安徽':1,'福建':1,'江西':1,'山东':1,'河南':1,'湖北':1,'湖南':1,'广东':1,'广西':1,
+            '海南':1,'重庆':1,'四川':1,'贵州':1,'云南':1,'西藏':1,'陕西':1,'甘肃':1,'青海':1,'宁夏':1,
+            '新疆':1,'台湾':1,'香港':1,'澳门':1};
+  var orig=echarts.registerMap.bind(echarts);
+  echarts.registerMap=function(name,geo){
+    try{
+      if(name==='china'&&geo&&geo.features)
+        geo.features=geo.features.filter(function(f){return f&&f.properties&&KEEP[f.properties.name];});
+    }catch(e){}
+    return orig(name,geo);
+  };
+})();
+</script>
+<script src="https://cdn.jsdelivr.net/npm/echarts@4.9.0/map/js/china.js"></script>
+<style>
+  :root{
+    --bg:#0b1020; --bg2:#111a30; --panel:#141d33; --panel2:#1a2542;
+    --line:#26345c; --txt:#e8ecf6; --dim:#93a0c2; --accent:#ffd166; --accent2:#25a18e;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{
+    background:radial-gradient(1200px 700px at 70% -10%, #182649 0%, var(--bg) 55%) fixed;
+    color:var(--txt);
+    font-family:"Segoe UI",system-ui,-apple-system,Roboto,"Helvetica Neue",Arial,sans-serif;
+    display:flex;flex-direction:column;min-height:100vh;
+  }
+  header{padding:22px 28px 10px;display:flex;flex-wrap:wrap;align-items:baseline;gap:14px}
+  header h1{font-size:clamp(20px,2.6vw,30px);font-weight:700;letter-spacing:.5px}
+  header h1 .dot{color:var(--accent)}
+  header p.sub{color:var(--dim);font-size:13px}
+  .kpis{display:flex;flex-wrap:wrap;gap:12px;padding:8px 28px 14px}
+  .kpi{background:linear-gradient(160deg,var(--panel),var(--panel2));border:1px solid var(--line);
+       border-radius:12px;padding:10px 16px;min-width:150px;flex:1 1 150px;max-width:230px}
+  .kpi .v{font-size:22px;font-weight:700;color:var(--accent)}
+  .kpi .l{font-size:11px;color:var(--dim);text-transform:uppercase;letter-spacing:.8px;margin-top:2px}
+  main{flex:1;display:flex;gap:16px;padding:0 28px 22px;min-height:0}
+  #mapWrap{flex:1 1 auto;position:relative;background:rgba(20,29,51,.55);border:1px solid var(--line);
+           border-radius:16px;overflow:hidden;min-height:480px}
+  #map{position:absolute;inset:0}
+  #toolbar{position:absolute;top:12px;left:12px;z-index:5;display:flex;gap:8px;flex-wrap:wrap}
+  .tbtn{background:rgba(11,16,32,.85);border:1px solid var(--line);color:var(--dim);border-radius:9px;
+        padding:6px 12px;font-size:12px;cursor:pointer;transition:.15s;user-select:none}
+  .tbtn:hover{color:var(--txt);border-color:#3d5086}
+  .tbtn.on{background:var(--accent);color:#1a1305;border-color:var(--accent);font-weight:600}
+  #legend{position:absolute;left:14px;bottom:14px;z-index:5;background:rgba(11,16,32,.85);
+          border:1px solid var(--line);border-radius:10px;padding:10px 14px;width:210px}
+  #legend .t{font-size:11px;color:var(--dim);text-transform:uppercase;letter-spacing:.8px;margin-bottom:6px}
+  #legendBar{height:10px;border-radius:5px}
+  #legendTicks{display:flex;justify-content:space-between;font-size:10px;color:var(--dim);margin-top:4px}
+  #hint{position:absolute;right:14px;bottom:14px;z-index:5;font-size:11px;color:var(--dim);
+        background:rgba(11,16,32,.75);padding:6px 10px;border-radius:8px;border:1px solid var(--line)}
+  #panel{flex:0 0 360px;background:linear-gradient(170deg,var(--panel),var(--panel2));
+         border:1px solid var(--line);border-radius:16px;padding:20px;overflow-y:auto;max-height:calc(100vh - 210px)}
+  #panel::-webkit-scrollbar{width:8px}
+  #panel::-webkit-scrollbar-thumb{background:#2b3a63;border-radius:4px}
+  #panel h2{font-size:22px;margin-bottom:2px}
+  #panel .cn{color:var(--dim);font-size:13px;margin-bottom:12px}
+  #panel .blurb{font-size:13px;color:#c3cdea;line-height:1.5;margin-bottom:14px;font-style:italic}
+  .statGrid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px}
+  .stat{background:rgba(11,16,32,.55);border:1px solid var(--line);border-radius:10px;padding:9px 12px}
+  .stat .v{font-size:17px;font-weight:700;color:var(--accent)}
+  .stat .l{font-size:10px;color:var(--dim);text-transform:uppercase;letter-spacing:.7px;margin-top:2px}
+  #panel h3{font-size:12px;color:var(--dim);text-transform:uppercase;letter-spacing:1px;
+            margin:6px 0 10px;border-bottom:1px solid var(--line);padding-bottom:6px}
+  .cityRow,.rankRow{display:flex;align-items:center;gap:10px;padding:7px 8px;border-radius:8px;font-size:13px}
+  .rankRow{cursor:pointer}
+  .rankRow:hover{background:rgba(255,209,102,.08)}
+  .rankRow .rk{width:20px;color:var(--dim);font-size:11px;text-align:right;flex:none}
+  .rankRow .nm{flex:0 0 92px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .rankRow .barWrap{display:block;flex:1;height:8px;background:rgba(11,16,32,.6);border-radius:4px;overflow:hidden}
+  .rankRow .bar{display:block;height:100%;border-radius:4px;min-width:4px}
+  .rankRow .val{flex:0 0 78px;text-align:right;color:var(--dim);font-size:11px}
+  .cityRow .cname{flex:1}
+  .cityRow .cpop{color:var(--dim);font-size:12px}
+  .cityRow .dotM{width:9px;height:9px;border-radius:50%;background:var(--accent);flex:none;
+                 box-shadow:0 0 6px rgba(255,209,102,.8)}
+  .backBtn{background:none;border:1px solid var(--line);color:var(--dim);border-radius:8px;
+           padding:5px 12px;font-size:12px;cursor:pointer;margin-bottom:12px}
+  .backBtn:hover{color:var(--txt);border-color:#3d5086}
+  footer{padding:0 28px 16px;color:#5d6a8f;font-size:11px;line-height:1.5}
+  #fallback{position:absolute;inset:0;display:none;align-items:center;justify-content:center;
+            color:var(--dim);font-size:14px;text-align:center;padding:30px}
+  .grad{background:linear-gradient(90deg,#ffd166,#f4845f,#e63946);
+        -webkit-background-clip:text;background-clip:text;color:transparent}
+  .kpi{transition:transform .2s,border-color .2s}
+  .kpi:hover{transform:translateY(-3px);border-color:#3d5086}
+  @keyframes fadeUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+  #panel>*{animation:fadeUp .35s ease both}
+  .stat.wide{grid-column:1/-1}
+  .shareBar{display:block;height:6px;background:rgba(11,16,32,.6);border-radius:3px;overflow:hidden;margin-top:8px}
+  .shareBar span{display:block;height:100%;background:linear-gradient(90deg,#25a18e,#e9c46a,#e63946);border-radius:3px}
+  .cityRow .cbar{display:block;width:64px;height:6px;background:rgba(11,16,32,.6);border-radius:3px;overflow:hidden;flex:none}
+  .cityRow .cbar span{display:block;height:100%;background:linear-gradient(90deg,#1c5d8c,#ffd166);border-radius:3px}
+  .rankRow{transition:background .15s}
+  @media (max-width:900px){
+    main{flex-direction:column}
+    #panel{flex:none;max-height:none}
+    #mapWrap{min-height:60vh}
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1><span class="grad">China</span> <span class="dot">·</span> Population Density Explorer</h1>
+  <p class="sub">34 province-level divisions · major cities · people per km² (2020 census)</p>
+</header>
+
+<div class="kpis">
+  <div class="kpi"><div class="v">1.44 B</div><div class="l">Total population (incl. HK, Macau, Taiwan)</div></div>
+  <div class="kpi"><div class="v">34</div><div class="l">Province-level divisions</div></div>
+  <div class="kpi"><div class="v">≈20,600/km²</div><div class="l">Densest — Macau</div></div>
+  <div class="kpi"><div class="v">≈3/km²</div><div class="l">Sparsest — Tibet</div></div>
+</div>
+
+<main>
+  <div id="mapWrap">
+    <div id="toolbar">
+      <div class="tbtn on" id="btnDensity">Color: Density</div>
+      <div class="tbtn" id="btnPop">Color: Population</div>
+      <div class="tbtn on" id="btnCities">City markers</div>
+      <div class="tbtn" id="btnReset">Reset zoom</div>
+    </div>
+    <div id="map"></div>
+    <div id="fallback">Map could not be loaded.<br/>Please check your internet connection and reload.</div>
+    <div id="legend">
+      <div class="t" id="legendTitle">People per km² (log scale)</div>
+      <div id="legendBar"></div>
+      <div id="legendTicks"></div>
+    </div>
+    <div id="hint">🖱 Drag to pan · scroll to zoom · click a province · Esc resets</div>
+  </div>
+  <div id="panel"></div>
+</main>
+
+<footer>
+  Population figures: Seventh National Population Census (2020) for mainland provinces; official estimates for Hong Kong, Macau and Taiwan.
+  Density = total population ÷ land area. City markers show prefecture-level administrative populations. Province outline: standard map of the PRC.
+</footer>
+
+<script>
+/* ---------------- Data (population in millions, area in km²) ---------------- */
+const DATA = {
+"北京":{en:"Beijing",pop:21.89,area:16410,capital:"Municipality (national capital)",blurb:"Imperial capital for 700+ years — seat of the Forbidden City.",cities:[["Beijing",21.9,[116.40,39.90]]]},
+"天津":{en:"Tianjin",pop:13.87,area:11920,capital:"Direct-administered municipality",blurb:"Northern port hub at the mouth of the Hai River.",cities:[["Tianjin",13.9,[117.20,39.08]]]},
+"河北":{en:"Hebei",pop:74.61,area:188800,capital:"Shijiazhuang",blurb:"Steel belt ringing Beijing; home of the Chengde summer palace.",cities:[["Shijiazhuang",11.24,[114.51,38.04]],["Handan",9.41,[114.54,36.62]],["Baoding",9.24,[115.46,38.87]],["Tangshan",7.72,[118.18,39.63]],["Cangzhou",7.30,[116.84,38.31]],["Xingtai",7.11,[114.50,37.07]]]},
+"山西":{en:"Shanxi",pop:34.92,area:156800,capital:"Taiyuan",blurb:"Coal country — walled Pingyao and the Yungang Grottoes.",cities:[["Taiyuan",5.31,[112.55,37.87]],["Linfen",3.98,[111.52,36.09]],["Datong",3.11,[113.30,40.08]]]},
+"内蒙古":{en:"Inner Mongolia",pop:24.05,area:1183000,capital:"Hohhot",blurb:"Grasslands and the Gobi — China's dairy heartland.",cities:[["Chifeng",4.04,[118.89,42.26]],["Hohhot",3.45,[111.75,40.84]],["Baotou",2.71,[109.83,40.65]]]},
+"辽宁":{en:"Liaoning",pop:42.59,area:148000,capital:"Shenyang",blurb:"Rustbelt-turned-port economy on the Bohai rim.",cities:[["Shenyang",9.07,[123.43,41.80]],["Dalian",7.45,[121.62,38.92]],["Anshan",3.33,[122.99,41.11]]]},
+"吉林":{en:"Jilin",pop:24.07,area:187400,capital:"Changchun",blurb:"Auto-making Changchun and the Korean-border highlands.",cities:[["Changchun",9.07,[125.32,43.89]],["Jilin City",3.62,[126.55,43.84]]]},
+"黑龙江":{en:"Heilongjiang",pop:31.85,area:454800,capital:"Harbin",blurb:"China's northernmost province — Harbin's ice festival.",cities:[["Harbin",10.01,[126.63,45.75]],["Qiqihar",4.07,[123.95,47.34]],["Daqing",2.78,[125.10,46.59]]]},
+"上海":{en:"Shanghai",pop:24.87,area:6340,capital:"Direct-administered municipality",blurb:"Global finance on the Bund — China's largest city.",cities:[["Shanghai",24.9,[121.47,31.23]]]},
+"江苏":{en:"Jiangsu",pop:84.75,area:102600,capital:"Nanjing",blurb:"Dense canal-and-lake economy of ancient Nanjing and Suzhou.",cities:[["Suzhou",12.75,[120.58,31.30]],["Nanjing",9.31,[118.78,32.06]],["Xuzhou",9.08,[117.28,34.26]],["Nantong",7.73,[120.86,31.98]],["Wuxi",7.46,[120.31,31.49]],["Changzhou",5.28,[119.97,31.78]]]},
+"浙江":{en:"Zhejiang",pop:64.57,area:105500,capital:"Hangzhou",blurb:"E-commerce capital Hangzhou; private-business engine.",cities:[["Hangzhou",12.20,[120.16,30.29]],["Wenzhou",9.57,[120.70,27.99]],["Ningbo",9.54,[121.55,29.88]]]},
+"安徽":{en:"Anhui",pop:61.03,area:140100,capital:"Hefei",blurb:"Yellow Mountain country; fast-rising Hefei tech hub.",cities:[["Hefei",9.37,[117.28,31.86]],["Fuyang",8.20,[115.81,32.89]],["Wuhu",3.64,[118.38,31.33]]]},
+"福建":{en:"Fujian",pop:41.54,area:124000,capital:"Fuzhou",blurb:"Tea, tulou roundhouses and Taiwan-facing ports.",cities:[["Quanzhou",8.78,[118.68,24.93]],["Fuzhou",8.29,[119.30,26.08]],["Xiamen",5.16,[118.09,24.48]]]},
+"江西":{en:"Jiangxi",pop:45.19,area:166900,capital:"Nanchang",blurb:"Porcelain town Jingdezhen and the Poyang wetlands.",cities:[["Ganzhou",8.97,[114.93,25.83]],["Shangrao",6.49,[117.97,28.45]],["Nanchang",6.26,[115.86,28.68]]]},
+"山东":{en:"Shandong",pop:101.53,area:157100,capital:"Jinan",blurb:"Confucius's homeland — beer, ports and 100 million people.",cities:[["Linyi",11.02,[118.35,35.10]],["Qingdao",10.08,[120.38,36.07]],["Weifang",9.39,[119.10,36.62]],["Jinan",9.20,[117.00,36.65]],["Heze",8.80,[115.48,35.23]],["Yantai",7.10,[121.45,37.46]]]},
+"河南":{en:"Henan",pop:99.37,area:167000,capital:"Zhengzhou",blurb:"Cradle of Chinese civilization on the Yellow River.",cities:[["Zhengzhou",12.60,[113.63,34.75]],["Nanyang",9.71,[112.53,32.99]],["Zhoukou",9.03,[114.70,33.63]],["Luoyang",7.06,[112.45,34.62]]]},
+"湖北":{en:"Hubei",pop:57.75,area:185900,capital:"Wuhan",blurb:"Wuhan, the 'Chicago of China', where the Han meets the Yangtze.",cities:[["Wuhan",12.45,[114.30,30.60]],["Xiangyang",5.26,[112.12,32.01]],["Yichang",4.02,[111.29,30.70]]]},
+"湖南":{en:"Hunan",pop:66.44,area:211800,capital:"Changsha",blurb:"Spicy cuisine, Mao's birthplace and Avatar's mountains.",cities:[["Changsha",10.05,[112.94,28.23]],["Hengyang",6.65,[112.57,26.90]],["Shaoyang",6.56,[111.47,27.24]],["Zhuzhou",3.90,[113.13,27.83]]]},
+"广东":{en:"Guangdong",pop:126.01,area:179700,capital:"Guangzhou",blurb:"Factory of the world — the Greater Bay Area megaregion.",cities:[["Guangzhou",18.68,[113.26,23.13]],["Shenzhen",17.56,[114.06,22.55]],["Dongguan",10.47,[113.75,23.02]],["Foshan",9.50,[113.12,23.02]],["Huizhou",6.04,[114.42,23.11]],["Zhongshan",4.42,[113.39,22.52]]]},
+"广西":{en:"Guangxi",pop:50.13,area:237600,capital:"Nanning",blurb:"Karst peaks of Guilin; ASEAN-facing coast.",cities:[["Nanning",8.74,[108.32,22.82]],["Yulin",5.80,[110.18,22.63]],["Guilin",4.93,[110.29,25.27]],["Liuzhou",4.16,[109.42,24.33]]]},
+"海南":{en:"Hainan",pop:10.08,area:35400,capital:"Haikou",blurb:"Tropical island resort — China's Hawaii.",cities:[["Haikou",2.87,[110.20,20.04]],["Sanya",1.03,[109.51,18.25]]]},
+"重庆":{en:"Chongqing",pop:32.05,area:82400,capital:"Direct-administered municipality",blurb:"Mountain megacity of 30M+ stacked above the Yangtze.",cities:[["Chongqing",32.1,[106.55,29.56]]]},
+"四川":{en:"Sichuan",pop:83.67,area:486000,capital:"Chengdu",blurb:"Pandas, hotpot and Chengdu's 20-million metro sprawl.",cities:[["Chengdu",20.94,[104.07,30.67]],["Nanchong",5.61,[106.08,30.78]],["Mianyang",4.87,[104.68,31.47]]]},
+"贵州":{en:"Guizhou",pop:38.56,area:176000,capital:"Guiyang",blurb:"Karst plateaus — home of the giant FAST radio telescope.",cities:[["Bijie",6.90,[105.29,27.30]],["Zunyi",6.61,[106.93,27.73]],["Guiyang",5.99,[106.63,26.65]]]},
+"云南":{en:"Yunnan",pop:47.21,area:394000,capital:"Kunming",blurb:"China's most ethnically diverse province, bordering SE Asia.",cities:[["Kunming",8.46,[102.83,24.88]],["Qujing",5.77,[103.80,25.49]],["Zhaotong",5.09,[103.72,27.34]]]},
+"西藏":{en:"Tibet",pop:3.65,area:1228400,capital:"Lhasa",blurb:"Roof of the world — average elevation above 4,000 m.",cities:[["Lhasa",0.87,[91.11,29.97]]]},
+"陕西":{en:"Shaanxi",pop:39.53,area:205800,capital:"Xi'an",blurb:"Terracotta Army and the eastern start of the Silk Road.",cities:[["Xi'an",12.95,[108.94,34.34]],["Xianyang",3.96,[108.71,34.33]],["Baoji",3.32,[107.14,34.36]]]},
+"甘肃":{en:"Gansu",pop:25.02,area:425800,capital:"Lanzhou",blurb:"Hexi Corridor deserts and the Mogao Caves.",cities:[["Lanzhou",4.36,[103.82,36.06]],["Tianshui",2.98,[105.72,34.58]]]},
+"青海":{en:"Qinghai",pop:5.92,area:722300,capital:"Xining",blurb:"Source of the Yellow, Yangtze and Mekong rivers.",cities:[["Xining",2.47,[101.77,36.64]]]},
+"宁夏":{en:"Ningxia",pop:7.20,area:66400,capital:"Yinchuan",blurb:"Hui heartland of goji fields between desert and loess.",cities:[["Yinchuan",2.86,[106.23,38.49]]]},
+"新疆":{en:"Xinjiang",pop:25.85,area:1664900,capital:"Ürümqi",blurb:"Vast, resource-rich crossroads of the ancient Silk Road.",cities:[["Kashgar",4.50,[75.99,39.47]],["Ürümqi",4.05,[87.62,43.82]],["Ili",2.78,[81.32,43.92]]]},
+"台湾":{en:"Taiwan",pop:23.60,area:36000,capital:"Taipei",blurb:"Semiconductor powerhouse across the strait.",cities:[["Taipei metro",7.00,[121.56,25.03]],["Taichung",2.82,[120.68,24.15]],["Kaohsiung",2.77,[120.30,22.62]]]},
+"香港":{en:"Hong Kong",pop:7.41,area:1106,capital:"Special Administrative Region",blurb:"Vertical harbour city — the densest great skyline on Earth.",cities:[["Hong Kong",7.41,[114.17,22.32]]]},
+"澳门":{en:"Macau",pop:0.68,area:33,capital:"Special Administrative Region",blurb:"A casino economy packed into 33 km² — the densest division.",cities:[["Macau",0.68,[113.54,22.19]]]}
+};
+
+const density = d => d.pop * 1e6 / d.area;
+const fmt = n => Math.round(n).toLocaleString('en-US');
+
+/* ---------------- Color scale (log) ---------------- */
+const STOPS = [[0,'#1a2b52'],[0.22,'#1c5d8c'],[0.45,'#25a18e'],[0.68,'#e9c46a'],[0.86,'#f4845f'],[1,'#e63946']];
+function lerpColor(a,b,t){
+  const pa=[1,3,5].map(i=>parseInt(a.substr(i,2),16)), pb=[1,3,5].map(i=>parseInt(b.substr(i,2),16));
+  return '#'+pa.map((v,i)=>Math.round(v+(pb[i]-v)*t).toString(16).padStart(2,'0')).join('');
+}
+function scaleColor(t){
+  t=Math.max(0,Math.min(1,t));
+  for(let i=1;i<STOPS.length;i++){
+    if(t<=STOPS[i][0]) return lerpColor(STOPS[i-1][1],STOPS[i][1],(t-STOPS[i-1][0])/(STOPS[i][0]-STOPS[i-1][0]));
+  }
+  return STOPS[STOPS.length-1][1];
+}
+/* Quantile color scale — each color band spans an equal share of provinces,
+   so the full palette is always in use regardless of outliers */
+function quantileT(vals){
+  const s=[...vals].sort((a,b)=>a-b), n=s.length;
+  return v=>{let lo=0;while(lo<n&&s[lo]<v)lo++;let hi=lo;while(hi<n&&s[hi]===v)hi++;return ((lo+hi-1)/2)/(n-1);};
+}
+const densT = quantileT(Object.keys(DATA).map(cn=>density(DATA[cn])));
+const popT  = quantileT(Object.keys(DATA).map(cn=>DATA[cn].pop));
+
+let metric='density', showCities=true, selected=null, hovered=null;
+
+/* ---------------- Chart ---------------- */
+const chart = echarts.init(document.getElementById('map'));
+
+function citySeriesData(){
+  const out=[];
+  for(const cn in DATA) DATA[cn].cities.forEach(c=>out.push({name:c[0], value:[c[2][0],c[2][1],c[1]], pop:c[1], prov:cn}));
+  return out;
+}
+
+function capitalPoint(cn){
+  const d=DATA[cn];
+  const hit=d.cities.find(c=>c[0]===d.capital)||d.cities[0];
+  return {name:d.en, value:[hit[2][0],hit[2][1],hit[1]], pop:hit[1], prov:cn};
+}
+
+function buildOption(){
+  const regions = Object.keys(DATA).map(cn=>{
+    const d=DATA[cn], t = metric==='density' ? densT(density(d)) : popT(d.pop);
+    const isSel=selected===cn, isHov=hovered===cn;
+    return {
+      name:cn,
+      label:{show:isSel,color:'#fff',fontSize:13,fontWeight:700,
+             textBorderColor:'#000',textBorderWidth:3,formatter:d.en},
+      itemStyle:{
+        areaColor: isSel ? lerpColor(scaleColor(t),'#ffffff',0.28) : scaleColor(t),
+        borderColor: isSel ? '#ffd166' : (isHov ? '#ffffff' : '#3a4a6b'),
+        borderWidth: isSel ? 2.5 : (isHov ? 1.6 : 0.8),
+        shadowBlur: isSel ? 24 : (isHov ? 14 : 0),
+        shadowColor: isSel ? 'rgba(255,209,102,.85)' : 'rgba(255,255,255,.55)'
+      }
+    };
+  });
+  const smallCities = showCities ? citySeriesData().filter(c=>c.pop<10) : [];
+  const megaCities  = showCities ? citySeriesData().filter(c=>c.pop>=10) : [];
+  const cityTip = p=>`<b>${p.data.name}</b><br/>Population: ${p.data.pop.toFixed(2)} M (prefecture)<br/><i style="color:#93a0c2">${DATA[p.data.prov].en}</i>`;
+  const series=[
+    { type:'scatter', coordinateSystem:'geo', zlevel:2,
+      data: smallCities,
+      symbolSize:v=>3+Math.sqrt(v[2])*2.2,
+      itemStyle:{color:'#ffd166',borderColor:'#7a5a00',borderWidth:.6,
+                 shadowBlur:7,shadowColor:'rgba(255,209,102,.8)'},
+      emphasis:{scale:1.5},
+      tooltip:{formatter:cityTip} },
+    { type:'effectScatter', coordinateSystem:'geo', zlevel:3,
+      data: megaCities,
+      rippleEffect:{period:4,scale:2.6,brushType:'stroke'},
+      symbolSize:v=>5+Math.sqrt(v[2])*2.3,
+      itemStyle:{color:'#ffb703',borderColor:'#fff3d6',borderWidth:1,
+                 shadowBlur:10,shadowColor:'rgba(255,183,3,.9)'},
+      label:{show:true,position:'right',color:'#fff',fontSize:10,fontWeight:600,
+             textBorderColor:'#000',textBorderWidth:2,formatter:p=>p.data.name},
+      emphasis:{scale:1.4},
+      tooltip:{formatter:cityTip} }
+  ];
+  if(selected){
+    series.push({ type:'effectScatter', coordinateSystem:'geo', zlevel:4, silent:true,
+      data:[capitalPoint(selected)],
+      rippleEffect:{period:2.8,scale:5,brushType:'stroke'},
+      symbolSize:14,
+      itemStyle:{color:'#ffd166',borderColor:'#fff',borderWidth:2,
+                 shadowBlur:14,shadowColor:'rgba(255,209,102,1)'} });
+  }
+  return {
+    backgroundColor:'transparent',
+    tooltip:{
+      trigger:'item', backgroundColor:'rgba(11,16,32,.92)', borderColor:'#3a4a6b',
+      textStyle:{color:'#e8ecf6',fontSize:12}
+    },
+    geo:{
+      map:'china', roam:true, zoom:1.05, scaleLimit:{min:0.7,max:8},
+      label:{show:false},
+      itemStyle:{areaColor:'#16233f',borderColor:'#3a4a6b',borderWidth:0.8},
+      emphasis:{
+        label:{show:true,color:'#fff',fontSize:11,fontWeight:600,
+               textBorderColor:'#000',textBorderWidth:2,
+               formatter:p=>DATA[p.name]?DATA[p.name].en:p.name},
+        itemStyle:{areaColor:'#f4845f',borderColor:'#ffd166',borderWidth:1.4,
+                   shadowBlur:16,shadowColor:'rgba(244,132,95,.55)'}
+      },
+      regions,
+      tooltip:{show:true, formatter:p=>{
+        const d=DATA[p.name]; if(!d) return p.name;
+        return `<b>${d.en}</b><br/>Population: ${d.pop.toFixed(2)} M · Density: ${fmt(density(d))}/km²<br/><i style="color:#93a0c2">Click for details</i>`;
+      }}
+    },
+    series
+  };
+}
+chart.setOption(buildOption());
+
+chart.on('click', p=>{
+  if(p.componentType==='series' && p.data && p.data.prov){ selectProvince(p.data.prov); return; }
+  if(p.name && DATA[p.name]) selectProvince(p.name);
+});
+
+/* ---------------- Panel ---------------- */
+const panel = document.getElementById('panel');
+
+function showNational(){
+  selected=null; hovered=null; chart.setOption(buildOption());
+  const ranked=Object.keys(DATA).map(cn=>({cn,d:DATA[cn],dens:density(DATA[cn])}))
+    .sort((a,b)=>b.dens-a.dens);
+  const rows=ranked.map((r,i)=>{
+    const w=Math.max(4,Math.round(densT(r.dens)*100));
+    return `<div class="rankRow" data-cn="${r.cn}">
+      <span class="rk">${i+1}</span><span class="nm">${r.d.en}</span>
+      <span class="barWrap"><span class="bar" style="width:${w}%;background:${scaleColor(densT(r.dens))}"></span></span>
+      <span class="val">${fmt(r.dens)}/km²</span></div>`;
+  }).join('');
+  const topCities=[];
+  for(const cn in DATA) DATA[cn].cities.forEach(c=>topCities.push({name:c[0],pop:c[1],cn}));
+  topCities.sort((a,b)=>b.pop-a.pop);
+  const cityRows=topCities.slice(0,10).map(c=>
+    `<div class="cityRow"><span class="dotM"></span><span class="cname">${c.name}
+      <span style="color:#5d6a8f"> · ${DATA[c.cn].en}</span></span>
+      <span class="cpop">${c.pop.toFixed(1)} M</span></div>`).join('');
+  panel.innerHTML=`
+    <h2>China at a Glance</h2>
+    <div class="cn">People's Republic of China · 9.6 M km²</div>
+    <div class="blurb">From Macau's 20,000 people per km² to Tibet's 3 — a country of staggering contrasts.</div>
+    <h3>Population density ranking (all 34 divisions)</h3>
+    ${rows}
+    <h3 style="margin-top:16px">Largest urban areas (prefecture-level)</h3>
+    ${cityRows}`;
+  panel.querySelectorAll('.rankRow').forEach(el=>{
+    el.addEventListener('click',()=>selectProvince(el.dataset.cn));
+    el.addEventListener('mouseenter',()=>{hovered=el.dataset.cn;chart.setOption(buildOption());});
+    el.addEventListener('mouseleave',()=>{hovered=null;chart.setOption(buildOption());});
+  });
+}
+
+function selectProvince(cn){
+  selected=cn; chart.setOption(buildOption());
+  const d=DATA[cn];
+  const sortedCities=[...d.cities].sort((a,b)=>b[1]-a[1]);
+  const maxPop=sortedCities[0][1];
+  const cities=sortedCities.map(c=>
+    `<div class="cityRow"><span class="dotM"></span><span class="cname">${c[0]}</span>
+     <span class="cbar"><span style="width:${Math.max(5,Math.round(c[1]/maxPop*100))}%"></span></span>
+     <span class="cpop">${c[1].toFixed(2)} M</span></div>`).join('');
+  panel.innerHTML=`
+    <button class="backBtn" id="backBtn">← National overview</button>
+    <h2>${d.en}</h2>
+    <div class="cn">${cn} · Capital: ${d.capital}</div>
+    <div class="blurb">${d.blurb}</div>
+    <div class="statGrid">
+      <div class="stat"><div class="v">${d.pop.toFixed(2)} M</div><div class="l">Population (2020)</div></div>
+      <div class="stat"><div class="v">${fmt(density(d))}/km²</div><div class="l">Density</div></div>
+      <div class="stat"><div class="v">${fmt(d.area)} km²</div><div class="l">Land area</div></div>
+      <div class="stat"><div class="v">#${Object.keys(DATA).map(k=>density(DATA[k])).sort((a,b)=>b-a).indexOf(density(d))+1}</div><div class="l">Density rank of 34</div></div>
+      <div class="stat wide"><div class="v">${(d.pop/1443.5*100).toFixed(1)}%</div><div class="l">Share of China's population</div>
+        <div class="shareBar"><span style="width:${Math.min(100,Math.round(d.pop/1443.5*100/9*100))}%"></span></div></div>
+    </div>
+    <h3>Major cities (prefecture population)</h3>
+    ${cities}`;
+  document.getElementById('backBtn').addEventListener('click',showNational);
+  panel.scrollTop=0;
+}
+
+/* ---------------- Legend ---------------- */
+function renderLegend(){
+  const isD = metric==='density';
+  const vals=Object.keys(DATA).map(cn=>isD?density(DATA[cn]):DATA[cn].pop).sort((a,b)=>a-b);
+  const n=vals.length;
+  const fmtT=v=>isD ? (v>=1000?(v/1000).toFixed(v>=10000?0:1)+'k':Math.round(v))
+                    : v.toFixed(v<10?1:0)+'M';
+  document.getElementById('legendTitle').textContent=isD?'People per km² · quantile scale':'Population · quantile scale';
+  document.getElementById('legendTicks').innerHTML=[0,.25,.5,.75,1]
+    .map(t=>`<span>${fmtT(vals[Math.round(t*(n-1))])}</span>`).join('');
+  document.getElementById('legendBar').style.background=
+    `linear-gradient(90deg, ${STOPS.map(s=>`${s[1]} ${s[0]*100}%`).join(',')})`;
+}
+renderLegend();
+
+/* ---------------- Toolbar ---------------- */
+const btnD=document.getElementById('btnDensity'), btnP=document.getElementById('btnPop'),
+      btnC=document.getElementById('btnCities'), btnR=document.getElementById('btnReset');
+btnD.onclick=()=>{metric='density';btnD.classList.add('on');btnP.classList.remove('on');chart.setOption(buildOption());renderLegend();};
+btnP.onclick=()=>{metric='pop';btnP.classList.add('on');btnD.classList.remove('on');chart.setOption(buildOption());renderLegend();};
+btnC.onclick=()=>{showCities=!showCities;btnC.classList.toggle('on',showCities);chart.setOption(buildOption());};
+btnR.onclick=()=>chart.dispatchAction({type:'restore'});
+
+window.addEventListener('resize',()=>chart.resize());
+document.addEventListener('keydown',e=>{if(e.key==='Escape')showNational();});
+
+/* ---------------- Fallback if CDN blocked ---------------- */
+setTimeout(()=>{
+  if(!document.querySelector('#map canvas')) document.getElementById('fallback').style.display='flex';
+},4000);
+
+showNational();
+</script>
+</body>
+</html>
