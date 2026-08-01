@@ -12,6 +12,9 @@ import { N8AOPass } from 'n8ao';
 // The vine border on the to-do dialogs. Its own WebGL context on its own canvas,
 // created lazily the first time a dialog opens.
 import { VineFrame } from './ui-vines.js';
+// Ambient beds, creature one-shots and the solo-violin soundtrack. Created on
+// the first "enter" gesture; fed dayness every frame from animate().
+import { greenhouseAudio } from './audio.js';
 
 THREE.Cache.enabled = true;
 
@@ -511,6 +514,12 @@ function setupControls() {
                 if (diagPanel) diagPanel.style.display = next;
                 break;
             }
+            case 'KeyM': {
+                const on = greenhouseAudio.toggle();
+                syncAudioControls();
+                showToast(on ? 'Sound on.' : 'Sound off.');
+                break;
+            }
         }
     };
 
@@ -612,6 +621,45 @@ function setupDiagnostics() {
         'min-width: 220px'
     ].join('; ');
     document.body.appendChild(diagPanel);
+}
+
+// Sound settings on the pause card: an on/off toggle and independent volume
+// sliders for the violin soundtrack and the forest ambience. The pause overlay
+// is click-to-resume everywhere else, so this section swallows its own clicks.
+function setupAudioControls() {
+    const panel = document.getElementById('pause-audio');
+    const toggle = document.getElementById('audio-toggle');
+    const musicVol = document.getElementById('audio-music-vol');
+    const ambienceVol = document.getElementById('audio-ambience-vol');
+    if (!panel) return;
+
+    // A click on a slider or the toggle means "adjust the sound", never
+    // "resume walking" — stop it before uiContainer's click handler sees it.
+    panel.addEventListener('click', (e) => e.stopPropagation());
+
+    toggle.addEventListener('click', () => {
+        greenhouseAudio.toggle();
+        syncAudioControls();
+    });
+    musicVol.addEventListener('input', () => greenhouseAudio.setMusicVolume(musicVol.value / 100));
+    ambienceVol.addEventListener('input', () => greenhouseAudio.setAmbienceVolume(ambienceVol.value / 100));
+
+    syncAudioControls();
+}
+
+// Push the engine's (persisted) settings into the controls — on load, and after
+// the M hotkey changes state behind the pause card's back.
+function syncAudioControls() {
+    const toggle = document.getElementById('audio-toggle');
+    const musicVol = document.getElementById('audio-music-vol');
+    const ambienceVol = document.getElementById('audio-ambience-vol');
+    if (!toggle) return;
+    const s = greenhouseAudio.settings;
+    toggle.textContent = s.enabled ? 'On' : 'Off';
+    toggle.setAttribute('aria-pressed', String(s.enabled));
+    toggle.classList.toggle('is-off', !s.enabled);
+    musicVol.value = Math.round(s.music * 100);
+    ambienceVol.value = Math.round(s.ambience * 100);
 }
 
 // Everything in this scene is driven by the real position of the sun, which makes
@@ -808,6 +856,9 @@ function setupDebugHooks() {
         // Is a resume campaign in flight? Nothing else can tell you whether an
         // unlock is about to raise the pause screen or be swallowed and retried.
         get resuming() { return performance.now() < resumeUntil; },
+        // The audio engine — .state() for a snapshot, or poke the schedulers
+        // and volumes directly. init() must still come from a real gesture.
+        get audio() { return greenhouseAudio; },
         get lights() { return { sunLight, moonLight, skyFill, warmFill, bulbLights }; },
         state() {
             return {
@@ -904,6 +955,9 @@ function init() {
 
     // 6. Diagnostics
     setupDiagnostics();
+
+    // 6b. Sound settings on the pause card
+    setupAudioControls();
 
     // 8. Build Greenhouse Environment
     buildGreenhouse();
@@ -7292,6 +7346,10 @@ function animate() {
     // Star dome tracks the camera; twinkle needs a per-frame clock.
     updateNightSky(time);
 
+    // Ambient beds follow the same dayness as the lighting; the creature and
+    // violin schedulers ride along. Cheap no-op until the player has entered.
+    greenhouseAudio.update(currentDayness);
+
     prevTime = time;
 
     if (composer) {
@@ -7802,6 +7860,9 @@ function resetMovement() {
 }
 
 function startExploring() {
+    // Every route into the greenhouse is a user gesture, which is exactly when
+    // the browser will allow an AudioContext to start.
+    greenhouseAudio.init();
     if (isTouchDevice) {
         mobileActive = true;
         blocker.style.display = 'none';
