@@ -79,14 +79,21 @@ DESIGN DECISIONS (documented, implemented consistently)
   * A flat that is "in" (closed) only blocks entry to its tile; it never
     lands on a body or the piano. Standing bodies may always step out.
   * The piano weighs enough to hold a counterweight pedal down. It will
-    not roll onto the prop table (the practical's tile) or onto the spike
-    mark — the deck downstage stays clear. Sokoban rules otherwise: one
-    push per count, no pulling, blocked push = blocked move = a count.
+    not roll onto the prop table (the practical's tile), onto the spike
+    mark, into the wings, or into any flat's lane (open or not — that is
+    how a flat is guaranteed never to land on it). Sokoban rules
+    otherwise: one push per count, no pulling, blocked push = blocked
+    move = a count.
   * The practical (a brass lantern, a real working prop light) is picked
     up automatically by whoever steps on its table, live or remembered.
     It cannot be put down — Wren does not abandon props on the deck.
   * Ending a pass early (X): the house remembers you standing at your
-    final position through the remaining counts, to count 40.
+    final position through the remaining counts, to count 40. Before it
+    agrees to remember, it runs that remainder in full — if a memory
+    would tear anywhere in it, the pass is REFUSED at the X, with the
+    tear named, so history is never committed already broken. (Committed
+    passes are likewise always simulated to count 40, never just to
+    their last input.)
   * Divergence is checked the moment it happens, per memory, per count,
     by comparing the replay's outcome (position, carry, push, pickup)
     against the trajectory recorded when that pass was live. The HOLD
@@ -112,9 +119,10 @@ X = that's the pass; passes separated by | ; also run in the self-test)
 
 SELF-TEST (hidden/debug)
   Press T on the title screen, or load with ?selftest in the URL.
-  Runs every intended solution headlessly, an undo-determinism check, and
-  a scripted history-tear (expects a HOLD at Pass 1, count 7 of Cue 47).
-  Reports pass/fail on screen and in the console.
+  Runs every intended solution headlessly, an undo-determinism check, a
+  scripted history-tear (expects a HOLD at Pass 1, count 7 of Cue 47),
+  and a proof that an early-ended pass cannot bury a tear in its
+  remainder. Reports pass/fail on screen and in the console.
 ================================================================================
 -->
 <style>
@@ -401,7 +409,7 @@ function applyMove(L, world, recs, k, input) {
     const px = tx + dx, py = ty + dy;
     const pOK =
       px >= 0 && py >= 0 && px < L.cols && py < L.rows && !L.wall[py][px] &&
-      !(L.flatGrid[py][px] && !flatOpen(L, world, recs, L.flatGrid[py][px])) &&
+      !L.flatGrid[py][px] &&      // never parked in a flat's lane, open or not
       pianoAt(world, px, py) < 0 &&
       !bodyAt(L, world, recs, px, py, k) &&
       !(px === L.start.x && py === L.start.y) &&               // never into the wings
@@ -501,8 +509,14 @@ function simulate(L, iters) {
     const world = freshWorld(L);
     for (const r of recs) { r.pos = { x: L.start.x, y: L.start.y }; r.carry = false; r.facing = 'R'; }
     const traj = [];
+    const last = i === iters.length - 1;
+    // A committed pass is remembered through the whole count: past its
+    // final input the body stands where it stopped, and the memories
+    // around it are still tear-checked, count by count, to forty. Only
+    // the live (last) pass stops at what has actually been played.
+    const limit = last ? it.moves.length : N_COUNTS;
     let hold = null, won = false, t = 0;
-    for (; t < it.moves.length && !hold && !won; t++) {
+    for (; t < limit && !hold && !won; t++) {
       for (let k = 0; k < recs.length; k++) {
         const act = applyMove(L, world, recs, k, recMoveAt(recs[k], t));
         hold = checkTear(L, k, t, recs[k].traj[t] ||
@@ -511,12 +525,12 @@ function simulate(L, iters) {
         if (hold) break;
       }
       if (hold) break;
-      const act = applyMove(L, world, recs, -1, it.moves[t]);
+      const act = applyMove(L, world, recs, -1,
+        t < it.moves.length ? it.moves[t] : 'W');
       traj.push(act);
       if (world.live.carry && world.live.x === L.mark.x && world.live.y === L.mark.y)
         won = true;
     }
-    const last = i === iters.length - 1;
     if (last || hold || won) {
       return { L, world, recs, liveTraj: traj, iter: i, tick: hold ? hold.t : t,
                hold, won };
@@ -1166,7 +1180,8 @@ function drawHoldOverlay(snap) {
     'Tonight it finds:  ' + h.found + '.',
   ], x + 26, y + 116, 26, 'italic 15.5px Georgia, serif', '#4d3f2e', 'left');
   drawLines([
-    'History holds, or the curtain never rises.',
+    h.refused ? 'The house will not take this pass — run out to count forty, it tears.'
+              : 'History holds, or the curtain never rises.',
   ], x + 26, y + 176, 0, 'italic 15px Georgia, serif', '#4d3f2e', 'left', 0.85);
   drawLines([
     'Z — walk it back a count      B — strike this pass      R — top of the cue',
@@ -1334,6 +1349,19 @@ function commitPass(early) {
   const cur = game.iters[game.iters.length - 1];
   if (early) {
     if (cur.moves.length === 0) return;
+    // Before the house agrees to remember an early pass, it runs the
+    // rest of the count with you standing where you stopped. If any
+    // memory tears in that remainder, the pass is refused on the spot —
+    // history is never committed already broken.
+    const probe = simulate(game.L,
+      game.iters.slice(0, -1).concat([{ moves: cur.moves.slice(), early: true },
+                                      { moves: [], early: false }]));
+    if (probe.hold) {
+      probe.hold.refused = true;
+      game.snap = probe;
+      sfx('hold');
+      return;
+    }
     cur.early = true;
   }
   if (committedCount() >= MAX_PASSES) { game.passfull = true; sfx('hold'); return; }
@@ -1381,6 +1409,9 @@ window.addEventListener('keydown', e => {
     e.preventDefault();
   initAudio();
   const k = e.key;
+  // Modifier and function keys are nobody's cue — they advance nothing.
+  if (['Shift', 'Control', 'Alt', 'Meta', 'CapsLock', 'Tab', 'Escape', 'Dead'].includes(k) ||
+      /^F\d+$/.test(k)) return;
   if (game.selftest) { game.selftest = null; return; }
   if (game.screen === 'title') {
     if (k === 't' || k === 'T') { game.selftest = runSelfTest(); return; }
@@ -1498,6 +1529,19 @@ function runSelfTest() {
     check('a deliberate tear holds correctly', ok,
       h ? 'HOLD, pass ' + (h.k + 1) + ', count ' + (h.t + 1) + ', at ' + tileName(h.tile.x, h.tile.y)
         : 'no hold was called');
+  }
+  // 4. an early-ended pass cannot bury a tear in its unplayed remainder:
+  //    pass 2 freezes at E-7, where pass 1 walks on count 7
+  {
+    const L = parseLevel(LEVELS[0]);
+    const iters = parseSolutionIters(['WWWWWRRRRX', 'RRX'])
+      .concat([{ moves: [], early: false }]);
+    const snap = simulate(L, iters);
+    const h = snap.hold;
+    const ok = !!h && h.k === 0 && h.t === 6 && h.tile.x === 4 && h.tile.y === 6;
+    check('an early pass cannot bury a tear', ok,
+      h ? 'HOLD, pass ' + (h.k + 1) + ', count ' + (h.t + 1) + ', at ' + tileName(h.tile.x, h.tile.y)
+        : 'the tear went unnoticed');
   }
   return { rows, allOK };
 }
