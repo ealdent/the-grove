@@ -20,7 +20,10 @@
 const SETTINGS_KEY = 'greenhouse-audio-settings';
 
 const BED_FILES = { day: 'audio/bed-day.mp3', night: 'audio/bed-night.mp3' };
-const VIOLIN_FILES = ['audio/violin-1.mp3', 'audio/violin-2.mp3', 'audio/violin-3.mp3'];
+const VIOLIN_FILES = [
+    'audio/violin-1.mp3', 'audio/violin-2.mp3', 'audio/violin-3.mp3',
+    'audio/violin-4.mp3', 'audio/violin-5.mp3'
+];
 const ONESHOT_FILES = {
     owl: 'audio/owl-hoot.mp3',
     nightbird: 'audio/nightbird.mp3',
@@ -31,9 +34,10 @@ const ONESHOT_FILES = {
     woodpecker: 'audio/woodpecker.mp3'
 };
 
-// Bed levels are deliberately unequal: crickets sit closer to the ear than
-// daytime birdsong, which is how a still night actually feels.
-const BED_LEVEL = { day: 0.32, night: 0.42 };
+// Both bed files are normalised to the same integrated loudness (-32.5 LUFS,
+// ffmpeg loudnorm-measured), so these are the actual mix: crickets a touch
+// closer to the ear than daytime birdsong, which is how a still night feels.
+const BED_LEVEL = { day: 0.32, night: 0.38 };
 
 // Where along dayness the beds trade places. Matches the lighting's own idea
 // of dusk (isNight flips at 0.4 elsewhere), with enough width that the swap
@@ -134,9 +138,9 @@ class GreenhouseAudio {
 
         this._startBeds();
         this._scheduleEvents();
-        // First violin phrase comes fairly soon after entering, so the player
-        // learns the soundtrack exists; after that the long gaps take over.
-        this.music.nextAt = this.ctx.currentTime + rand(6, 15);
+        // First violin phrase comes soon after entering, so the player learns
+        // the soundtrack exists; after that the between-phrase gaps take over.
+        this.music.nextAt = this.ctx.currentTime + rand(4, 10);
         this.ready = true;
     }
 
@@ -220,8 +224,11 @@ class GreenhouseAudio {
         });
     }
 
-    // Solo violin, played sparsely: one phrase, then 25–70 s of forest before
-    // the next. Phrases never repeat back-to-back.
+    // Solo violin, played sparsely: one phrase, then a stretch of forest
+    // before the next. Phrases never repeat back-to-back. The clips cap out
+    // around 14 s (the generator's limit), so "soundtrack" here means a
+    // recurring presence rather than a continuous piece — but the gap is kept
+    // short enough that it reads as intentional, not as the music dying.
     _updateMusic(now) {
         const m = this.music;
         if (now < m.nextAt || now < m.playingUntil) return;
@@ -245,7 +252,7 @@ class GreenhouseAudio {
         src.onended = () => { try { env.disconnect(); } catch (e) { /* already gone */ } };
 
         m.playingUntil = now + buf.duration;
-        m.nextAt = m.playingUntil + rand(25, 70);
+        m.nextAt = m.playingUntil + rand(14, 35);
     }
 
     // Called every frame from animate() with the lighting's dayness (1 = noon,
