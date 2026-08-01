@@ -1,15 +1,15 @@
-# Task: Build "The Organist's Ledger" Time-Loop Puzzle Game
+# Task: Update README.md with complete listing of tiled pages by directory
 
-- [x] Design game identity, brief & story in implementation plan <!-- id: 0 -->
-- [x] Implement deterministic grid game engine core (ticks, inputs, recording replay, collision, Sokoban pushing, gates/valves, items/goals) <!-- id: 1 -->
-- [x] Implement causal divergence detection & catastrophe reporting in-voice <!-- id: 2 -->
-- [x] Implement full multi-iteration state history & infinite undo/redo across loop boundaries <!-- id: 3 -->
-- [x] Design 3 hand-authored puzzle levels with verified solution logs <!-- id: 4 -->
-- [x] Build headless self-test suite embedded in JS <!-- id: 5 -->
-- [x] Implement HTML5 Canvas renderer with custom entity drawing, ambient dust/candlelight, and diegetic ledger UI <!-- id: 6 -->
-- [x] Implement title screen, narrative transitions, and story ending screen <!-- id: 7 -->
-- [x] Implement WebAudio sound effects for ticks, pushes, valves, and ruptures <!-- id: 8 -->
-- [x] Save standalone file `arcade/gemini-3.6-flash-high-time-loop-puzzle.html` <!-- id: 9 -->
-- [x] Update `arcade/index.html` with new tile & model tag <!-- id: 10 -->
-- [x] Verify self-test and end-to-end functionality <!-- id: 11 -->
-- [x] Commit and push changes to `origin/main` <!-- id: 12 -->
+- [x] Analyze repository structure and inspect all `index.html` files across directories <!-- id: 0 -->
+- [x] Create detailed implementation plan and list of tiled pages for `README.md` <!-- id: 1 -->
+- [x] Update `README.md` with structured listing of pages organized by directory <!-- id: 2 -->
+- [x] Verify all markdown links, titles, descriptions, and file existence <!-- id: 3 -->
+- [x] Commit and push changes to `main` <!-- id: 4 -->
+- [x] Document results in `tasks/todo.md` <!-- id: 5 -->
+
+## Results Summary
+- Scanned all directories in the repository (`arcade`, `tower-def`, `rail-shooter`, `svg-forest`, `depths`, `utils`, `learn`, `vector-defense`).
+- Extracted all page entries for which tiles exist in their corresponding `index.html` hub files.
+- Formatted `README.md` with markdown links, descriptions, and model/category tags.
+- Verified 100% of the 101 links in `README.md` point to existing files on disk.
+- Committed and pushed to `main`.

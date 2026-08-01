@@ -1,0 +1,1574 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CHANGEOVER</title>
+<!--
+================================================================================
+  CHANGEOVER
+  a changeover in forty counts
+================================================================================
+
+TITLE
+  CHANGEOVER — the timed scene change between acts, done in a blackout,
+  counted aloud by the stage manager. The whole game is one changeover,
+  rehearsed until it holds.
+
+PREMISE (the fiction)
+  The Garland is an old hemp house — ropes, sandbags, canvas — and tonight
+  is its last performance. The scene change between Act One and Act Two
+  takes four stagehands, and Wren is the only one left; the rest of the
+  crew took their final bow years ago. But old houses remember. Leave the
+  ghost lamp burning, run your pass, and when the stage manager calls
+  places, the Garland will run every earlier pass alongside you: pale
+  figures in work clothes, doing exactly what you did, count for count.
+  They are not spirits. They are the building's memory of your own work —
+  and memory is exact. It does not improvise. If a remembered pass reaches
+  for a piano you have since moved, or walks a lane you now stand in, the
+  memory tears, the work lights snap on, and the stage manager calls a
+  hold. Nothing runs until the past is put right. So Wren works the
+  changeover in forty counts, over and over, laying down passes like
+  tracks — hold the counterweight, roll the piano, carry the practical to
+  its spike — and above all, works around what has already happened.
+  Because in this house, what you did is history. And the show only opens
+  if history holds.
+
+ART DIRECTION
+  Backstage at the Garland, close to midnight, lit by one ghost lamp.
+  Palette (warm darkness, no blue-black, no neon):
+    #241b13 house black (warm umber)      #3a2d20 / #443627 deck boards
+    #59493a deck seams   #6b5a47 board highlights
+    #efe3c8 spike-tape cream              #f2b356 lamp amber / #ffd98f core
+    #c47b54 rose-copper gel accents       #8a8f7a pass grey-green (memory)
+    #5d7387 Wren's faded denim jacket     #b3502e Wren's rust beanie
+    #d8c49a canvas apron                  #17100b piano black
+    #caa24c practical brass / #ffe9ac flame
+    #7a8062 flat sage canvas / #a56f5b flat rose canvas
+    #55452f pin-rail wood   #d9cba8 cue-sheet paper   #8a7a5e pencil graphite
+    #f4e9d0 work-light flood (HOLD)       #c4472c gaffer-tape red (HOLD)
+  Light source: a single warm practical overhead — the ghost lamp — radial
+  falloff into house black, soft vignette at the edges. Shadows pool under
+  bodies and set pieces, directly beneath (light from above).
+  Shape language: hand-set rectangles with a little wobble, rounded
+  corners, wood grain and canvas weave suggested with sparse strokes.
+  Nothing glossy, nothing glowing except flame and filament.
+  Era/texture: a 1930s hemp house — manila rope, canvas flats, chalk on
+  slate, brass fittings, gaffer tape, sawdust.
+  Typography: playbill serif (Georgia / Palatino stack). The stage
+  manager's lines are set in italic serif, like margin notes in a prompt
+  book. No monospace anywhere — nobody backstage owns a typewriter worth
+  imitating.
+
+VOICE
+  Every word in the game is the stage manager on headset — calm, precise,
+  counting; ten thousand nights in and still in love with the work.
+
+DESIGN DECISIONS (documented, implemented consistently)
+  * The changeover is exactly N = 40 counts. The house holds at most 4
+    remembered passes; Wren makes the fifth body on stage.
+  * Movement resolves one body at a time, every count, in this order:
+    Pass 1 (oldest memory) first, then Pass 2, 3, 4, then Wren last.
+    "Right-of-way belongs to the oldest memory." Each mover checks the
+    world as it currently stands mid-count. This is the documented
+    deterministic rule for simultaneous same-tile conflicts: the later
+    mover in the order is simply blocked. A blocked *memory* that
+    originally moved is a torn memory — a HOLD.
+  * The wings (entrance tile) hold any number of crew; the deck holds one
+    body per tile. Everyone starts each pass in the wings, overlapping.
+  * A flat that is "in" (closed) only blocks entry to its tile; it never
+    lands on a body or the piano. Standing bodies may always step out.
+  * The piano weighs enough to hold a counterweight pedal down. It will
+    not roll onto the prop table (the practical's tile) or onto the spike
+    mark — the deck downstage stays clear. Sokoban rules otherwise: one
+    push per count, no pulling, blocked push = blocked move = a count.
+  * The practical (a brass lantern, a real working prop light) is picked
+    up automatically by whoever steps on its table, live or remembered.
+    It cannot be put down — Wren does not abandon props on the deck.
+  * Ending a pass early (X): the house remembers you standing at your
+    final position through the remaining counts, to count 40.
+  * Divergence is checked the moment it happens, per memory, per count,
+    by comparing the replay's outcome (position, carry, push, pickup)
+    against the trajectory recorded when that pass was live. The HOLD
+    names the pass, the count, the tile, and expected-versus-found.
+  * Undo (Z) removes exactly one count from the master input log and the
+    whole state is recomputed from scratch — game state is a pure
+    function of (level, input log). Undo crosses pass boundaries: at the
+    top of a pass it dissolves the newest memory and resumes the prior
+    pass mid-recording. Undo, then replaying identical inputs, reproduces
+    identical state (asserted in the self-test).
+  * Winning: Wren (the live body, not a memory) steps on the spike mark
+    while carrying the practical.
+  * A fifth pass ending without the change complete is a hold of its own:
+    the house cannot hold a fifth memory. Strike or top of the cue.
+
+LEVELS & INTENDED SOLUTIONS (input alphabet: U D L R = walk, W = stand,
+X = that's the pass; passes separated by | ; also run in the self-test)
+  Cue 9 — The Parlor      : UUUUX | RRRRRRRRR
+  Cue 23 — The Piano      : RRRRRRRUUX | UUUUUUUURX |
+                            WRURRRUUUUUUUDDDRRRRRRDDDDD
+  Cue 47 — The Bow        : RRRRRRUUUUUUUX | URRRRWWRRRRRX |
+                            WRRRRRRWWUUUUULLLLLUUDDRRRRRRRRUURR
+
+SELF-TEST (hidden/debug)
+  Press T on the title screen, or load with ?selftest in the URL.
+  Runs every intended solution headlessly, an undo-determinism check, and
+  a scripted history-tear (expects a HOLD at Pass 1, count 7 of Cue 47).
+  Reports pass/fail on screen and in the console.
+================================================================================
+-->
+<style>
+  :root { color-scheme: dark; }
+  html, body {
+    margin: 0; padding: 0; background: #191209; height: 100%;
+    font-family: Georgia, 'Iowan Old Style', 'Palatino Linotype', Palatino, serif;
+  }
+  body { display: flex; align-items: center; justify-content: center; }
+  #stage {
+    max-width: 100vw; max-height: 100vh;
+    aspect-ratio: 980 / 780;
+    image-rendering: auto;
+  }
+</style>
+</head>
+<body>
+<canvas id="stage" width="980" height="780"></canvas>
+<script>
+'use strict';
+
+/* ------------------------------------------------------------------ */
+/*  Palette & constants                                                */
+/* ------------------------------------------------------------------ */
+const PAL = {
+  house:   '#241b13', houseDeep: '#191209',
+  board1:  '#3a2d20', board2:  '#443627', seam: '#59493a', boardHi: '#6b5a47',
+  tape:    '#efe3c8',
+  amber:   '#f2b356', amberCore: '#ffd98f',
+  copper:  '#c47b54',
+  pass:    '#8a8f7a',
+  denim:   '#5d7387', denimDark: '#49596c', beanie: '#b3502e',
+  apron:   '#d8c49a', skin: '#e8c39a', boots: '#2e241a', trouser: '#3d3428',
+  piano:   '#17100b', pianoHi: '#2c2117',
+  brass:   '#caa24c', flame: '#ffe9ac',
+  sage:    '#7a8062', sageDark: '#5f6650', rose: '#a56f5b', roseDark: '#8a5a48',
+  rail:    '#55452f', railHi: '#6d5a3e',
+  paper:   '#d9cba8', paperDark: '#c4b48f', pencil: '#5a4f3d', graphite: '#8a7a5e',
+  chalk:   '#e6ddc8', slate: '#33302a',
+  flood:   '#f4e9d0', gaffer: '#c4472c',
+  rope:    '#a98d5f', ropeDark: '#7d6844',
+  ink:     '#2b2118',
+};
+
+const N_COUNTS  = 40;   // the changeover is forty counts, always
+const MAX_PASSES = 4;   // the house holds four memories, no more
+const TILE = 46;
+const BOARD_X = 36, BOARD_Y = 96;
+const CANVAS_W = 980, CANVAS_H = 780;
+
+const DIRS = { U: [0, -1], D: [0, 1], L: [-1, 0], R: [1, 0] };
+const GLYPH = { U: '↑', D: '↓', L: '←', R: '→', W: '·', X: '✕' };
+
+// Stage-position name for a tile: columns lettered, rows numbered,
+// the way the deck is spiked. (3,6) -> "D-7".
+function tileName(x, y) {
+  return String.fromCharCode(65 + x) + '-' + (y + 1);
+}
+
+// Tiny deterministic hash for texture jitter (never Math.random in logic).
+function jitter(x, y, k) {
+  let h = (x * 374761393 + y * 668265263 + k * 2246822519) | 0;
+  h = Math.imul(h ^ (h >>> 13), 1274126177);
+  return (((h ^ (h >>> 16)) >>> 0) % 1000) / 1000;
+}
+
+/* ------------------------------------------------------------------ */
+/*  Levels                                                             */
+/*  # wall  . deck  s wings  l practical  m spike  p piano             */
+/*  A/B flats (canvas walls, fly out when their pedal is weighted)     */
+/*  a/b counterweight pedals                                           */
+/* ------------------------------------------------------------------ */
+const LEVELS = [
+  {
+    cue: 'Cue 9',
+    name: 'The Parlor',
+    // Intended solution: pass 1 walks to the counterweight pedal and
+    // stands (UUUUX); pass 2 takes the practical straight across through
+    // the flown parlor flat to the spike (RRRRRRRRR).
+    solution: ['UUUUX', 'RRRRRRRRR'],
+    brief: [
+      'Half hour, love. It’s just us.',
+      'One flat between the practical and its spike. The counterweight',
+      'pedal holds it out — while somebody is standing on it.',
+      'You can’t stand two places at once. But you’ve rehearsed before.',
+      'Run a pass. Then run another one alongside it.',
+    ],
+    map: [
+      '##############',
+      '#.......#....#',
+      '#.a.....#....#',
+      '#.......#....#',
+      '#.......#....#',
+      '#.......#....#',
+      '#.s..l..A..m.#',
+      '#.......#....#',
+      '#.......#....#',
+      '#.......#....#',
+      '#.......#....#',
+      '##############',
+    ],
+  },
+  {
+    cue: 'Cue 23',
+    name: 'The Piano',
+    // Intended solution:
+    //   pass 1 rolls the piano up onto the pedal (it weighs enough) and
+    //   stops: RRRRRRRUUX
+    //   pass 2 climbs to the far pedal and stands: UUUUUUUURX
+    //   pass 3 threads behind both, takes the practical, crosses to the
+    //   spike: WRURRRUUUUUUUDDDRRRRRRDDDDD
+    solution: ['RRRRRRRUUX', 'UUUUUUUURX', 'WRURRRUUUUUUUDDDRRRRRRDDDDD'],
+    brief: [
+      'Good. The parlor held. Now the big shift.',
+      'The piano rolls — push it, don’t pull it, you know the rule.',
+      'It’s heavy enough to keep a pedal down all on its own.',
+      'Mind where the crew walks. They’ll do exactly what you did,',
+      'count for count. The house doesn’t improvise.',
+    ],
+    map: [
+      '##############',
+      '#...#.#......#',
+      '#.b.#l#......#',
+      '#...#.#......#',
+      '#....A.......#',
+      '#............#',
+      '#............#',
+      '#.......a....#',
+      '#............#',
+      '#.......p.#B##',
+      '#s........#m##',
+      '##############',
+    ],
+  },
+  {
+    cue: 'Cue 47',
+    name: 'The Bow',
+    // Intended solution:
+    //   pass 1 crosses the deck and takes the centre aisle up to the
+    //   pedal, counts 1..13, and stands: RRRRRRUUUUUUUX
+    //   pass 2 rolls the piano along the back wall to the far pedal —
+    //   and WAITS two counts mid-push so the piano is never parked in
+    //   the aisle mouth while pass 1 walks it: URRRRWWRRRRRX
+    //   (push it straight through without waiting and you will put the
+    //   piano in H-9 on count 6; pass 1 remembers stepping into H-9 on
+    //   count 7; the memory tears — that is the lesson of this cue)
+    //   pass 3 follows everyone through, takes the practical behind the
+    //   rose flat, and carries it the long way round to the spike:
+    //   WRRRRRRWWUUUUULLLLLUUDDRRRRRRRRUURR
+    solution: ['RRRRRRUUUUUUUX', 'URRRRWWRRRRRX', 'WRRRRRRWWUUUUULLLLLUUDDRRRRRRRRUURR'],
+    brief: [
+      'Last cue. The bow. Everything downstage has to move at once,',
+      'and the aisle only fits one body — or one piano.',
+      'You already know the fastest way. Look at the plot first.',
+      'Look at where you’ve already walked, and when.',
+      'The quickest change in the world is worth nothing',
+      'if it runs over your own crew. Protect the pass, love.',
+      'Standby.',
+    ],
+    map: [
+      '##############',
+      '#..#.......#.#',
+      '#.l#...a...Am#',
+      '##B#.......#.#',
+      '#...........##',
+      '#............#',
+      '#######.######',
+      '#............#',
+      '#...p......b.#',
+      '#s...........#',
+      '#............#',
+      '##############',
+    ],
+  },
+];
+
+// Named flats, so the stage manager can call them what they are.
+LEVELS[0].flatNames = { A: 'parlor' };
+LEVELS[1].flatNames = { A: 'garden', B: 'study' };
+LEVELS[2].flatNames = { A: 'arbor', B: 'rose' };
+
+/* ------------------------------------------------------------------ */
+/*  Level parsing                                                      */
+/* ------------------------------------------------------------------ */
+function parseLevel(def) {
+  const rows = def.map.length, cols = def.map[0].length;
+  const wall = [], flatGrid = [], pedalGrid = [];
+  const flats = {}, pedals = {}, pianoStarts = [];
+  let start = null, lantern = null, mark = null;
+  for (let y = 0; y < rows; y++) {
+    wall.push([]); flatGrid.push([]); pedalGrid.push([]);
+    for (let x = 0; x < cols; x++) {
+      const ch = def.map[y][x];
+      wall[y][x] = ch === '#';
+      flatGrid[y][x] = null; pedalGrid[y][x] = null;
+      if (ch === 's') start = { x, y };
+      else if (ch === 'l') lantern = { x, y };
+      else if (ch === 'm') mark = { x, y };
+      else if (ch === 'p') pianoStarts.push({ x, y });
+      else if (ch >= 'A' && ch <= 'Z') {
+        (flats[ch] = flats[ch] || { tiles: [] }).tiles.push({ x, y });
+        flatGrid[y][x] = ch;
+      } else if (ch >= 'a' && ch <= 'z' && ch !== 's' && ch !== 'l' && ch !== 'm' && ch !== 'p') {
+        pedals[ch] = { x, y };
+        pedalGrid[y][x] = ch;
+      }
+    }
+  }
+  return { def, rows, cols, wall, flats, pedals, flatGrid, pedalGrid,
+           pianoStarts, start, lantern, mark,
+           flatNames: def.flatNames || {} };
+}
+
+/* ------------------------------------------------------------------ */
+/*  Pure simulation                                                    */
+/*  State is a pure function of (level, input log). The log is an      */
+/*  array of passes: { moves: ['U','D','L','R','W'...], early: bool }. */
+/* ------------------------------------------------------------------ */
+function freshWorld(L) {
+  return {
+    pianos: L.pianoStarts.map(p => ({ x: p.x, y: p.y })),
+    lanternTaken: false,
+    live: { x: L.start.x, y: L.start.y, carry: false, facing: 'R' },
+  };
+}
+
+function recMoveAt(rec, t) {
+  // Past the end of an early pass, the house remembers you standing.
+  return t < rec.moves.length ? rec.moves[t] : 'W';
+}
+
+function bodyAt(L, world, recs, x, y, skipK) {
+  // skipK: index of the mover itself (-1 for Wren). Wings may overlap.
+  if (x === L.start.x && y === L.start.y) return null;
+  if (skipK !== -1 && world.live.x === x && world.live.y === y)
+    return { kind: 'wren' };
+  for (let k = 0; k < recs.length; k++) {
+    if (k === skipK || !recs[k].pos) continue;
+    if (recs[k].pos.x === x && recs[k].pos.y === y) return { kind: 'pass', k };
+  }
+  return null;
+}
+
+function pianoAt(world, x, y) {
+  for (let i = 0; i < world.pianos.length; i++)
+    if (world.pianos[i].x === x && world.pianos[i].y === y) return i;
+  return -1;
+}
+
+function pedalWeighted(L, world, recs, letter) {
+  const p = L.pedals[letter];
+  if (!p) return false;
+  if (world.live.x === p.x && world.live.y === p.y) return true;
+  for (const r of recs)
+    if (r.pos && r.pos.x === p.x && r.pos.y === p.y) return true;
+  return pianoAt(world, p.x, p.y) >= 0;
+}
+
+function flatOpen(L, world, recs, letter) {
+  return pedalWeighted(L, world, recs, letter.toLowerCase());
+}
+
+// One body attempts one input against the world as it currently stands.
+// k = -1 for Wren, else index into recs. Returns the outcome record used
+// both for trajectory capture and tear detection.
+function applyMove(L, world, recs, k, input) {
+  const mover = k === -1 ? world.live : recs[k];
+  const out = { moved: false, x: mover.pos ? mover.pos.x : mover.x,
+                y: mover.pos ? mover.pos.y : mover.y,
+                carry: k === -1 ? world.live.carry : recs[k].carry,
+                push: null, pickup: false, dir: input, blockedBy: null };
+  const cur = k === -1 ? world.live : recs[k].pos;
+  if (input === 'W' || !DIRS[input]) { out.x = cur.x; out.y = cur.y; return out; }
+  const [dx, dy] = DIRS[input];
+  const tx = cur.x + dx, ty = cur.y + dy;
+  const blocked = why => { out.blockedBy = why; out.x = cur.x; out.y = cur.y; return out; };
+  if (tx < 0 || ty < 0 || tx >= L.cols || ty >= L.rows || L.wall[ty][tx])
+    return blocked({ kind: 'wall', x: tx, y: ty });
+  const fl = L.flatGrid[ty][tx];
+  if (fl && !flatOpen(L, world, recs, fl))
+    return blocked({ kind: 'flat', x: tx, y: ty, letter: fl });
+  const pi = pianoAt(world, tx, ty);
+  if (pi >= 0) {
+    const px = tx + dx, py = ty + dy;
+    const pOK =
+      px >= 0 && py >= 0 && px < L.cols && py < L.rows && !L.wall[py][px] &&
+      !(L.flatGrid[py][px] && !flatOpen(L, world, recs, L.flatGrid[py][px])) &&
+      pianoAt(world, px, py) < 0 &&
+      !bodyAt(L, world, recs, px, py, k) &&
+      !(px === L.start.x && py === L.start.y) &&               // never into the wings
+      !(px === L.lantern.x && py === L.lantern.y) &&           // never onto the prop table
+      !(px === L.mark.x && py === L.mark.y);                   // never onto the spike
+    if (!pOK) return blocked({ kind: 'piano', x: tx, y: ty });
+    world.pianos[pi].x = px; world.pianos[pi].y = py;
+    out.push = { fx: tx, fy: ty, tx: px, ty: py };
+  } else {
+    const b = bodyAt(L, world, recs, tx, ty, k);
+    if (b) return blocked({ kind: b.kind, x: tx, y: ty, k: b.k });
+  }
+  // The step lands.
+  if (k === -1) { world.live.x = tx; world.live.y = ty; world.live.facing = input; }
+  else { recs[k].pos = { x: tx, y: ty }; recs[k].facing = input; }
+  out.moved = true; out.x = tx; out.y = ty;
+  const carrier = k === -1 ? world.live : recs[k];
+  if (!world.lanternTaken && tx === L.lantern.x && ty === L.lantern.y && !carrier.carry) {
+    world.lanternTaken = true; carrier.carry = true; out.pickup = true;
+  }
+  out.carry = carrier.carry;
+  return out;
+}
+
+/* Divergence: compare a memory's replay outcome to what it lived. */
+function dirWord(d) {
+  return { U: 'upstage', D: 'downstage', L: 'stage left', R: 'stage right' }[d] || 'in place';
+}
+function blockerPhrase(L, why) {
+  if (!why) return 'nothing at all';
+  const at = tileName(why.x, why.y);
+  if (why.kind === 'piano') return 'the piano parked at ' + at;
+  if (why.kind === 'flat')
+    return 'the ' + (L.flatNames[why.letter] || 'canvas') + ' flat, in, at ' + at;
+  if (why.kind === 'wren') return 'Wren, standing on ' + at;
+  if (why.kind === 'pass') return 'pass ' + (why.k + 1) + ', standing on ' + at;
+  return 'the wall at ' + at;
+}
+function checkTear(L, k, t, exp, act) {
+  if (!exp) return null; // should not happen; safety
+  const tear = (tile, headline, expected, found) =>
+    ({ k, t, tile, headline, expected, found });
+  const expTile = { x: exp.x, y: exp.y };
+  if (act.x !== exp.x || act.y !== exp.y) {
+    if (exp.moved && !act.moved) {
+      return tear({ x: exp.x, y: exp.y },
+        'the crew remembers the lane clear; it is not.',
+        'walking ' + dirWord(exp.dir) + ' into ' + tileName(exp.x, exp.y),
+        blockerPhrase(L, act.blockedBy) + ' — no way through');
+    }
+    if (!exp.moved && act.moved) {
+      return tear({ x: act.x, y: act.y },
+        'the crew remembers leaning on something; tonight there is nothing there.',
+        'held at ' + tileName(exp.x, exp.y) + ' by ' + blockerPhrase(L, exp.blockedBy),
+        'the way clear — the crew walks into ' + tileName(act.x, act.y) + ' where no one ever stood');
+    }
+    return tear(expTile, 'the crew is off its mark.',
+      'at ' + tileName(exp.x, exp.y), 'at ' + tileName(act.x, act.y));
+  }
+  if (exp.pickup && !act.pickup) {
+    return tear(expTile,
+      'the crew reaches for the practical; the table is bare.',
+      'lifting the practical from ' + tileName(L.lantern.x, L.lantern.y),
+      'an empty prop table');
+  }
+  if (!exp.pickup && act.pickup) {
+    return tear(expTile,
+      'the crew finds a practical that was never in its hands.',
+      'crossing ' + tileName(exp.x, exp.y) + ' empty-handed',
+      'the practical, still sitting on its table');
+  }
+  if (exp.push && !act.push) {
+    return tear({ x: exp.push.fx, y: exp.push.fy },
+      'the crew remembers pushing the piano; the piano is gone.',
+      'rolling the piano out of ' + tileName(exp.push.fx, exp.push.fy),
+      'bare boards where the piano stood');
+  }
+  if (!exp.push && act.push) {
+    return tear({ x: act.push.fx, y: act.push.fy },
+      'the crew rolls a piano that was never there.',
+      'walking freely into ' + tileName(exp.x, exp.y),
+      'a piano at ' + tileName(act.push.fx, act.push.fy) + ' that history never parked');
+  }
+  if (exp.carry !== act.carry) {
+    return tear(expTile, 'the crew’s hands are wrong.',
+      exp.carry ? 'carrying the practical' : 'empty hands',
+      act.carry ? 'carrying the practical' : 'empty hands');
+  }
+  return null;
+}
+
+/* Full recomputation from the log. Returns a snapshot for rendering. */
+function simulate(L, iters) {
+  let recs = [];
+  for (let i = 0; i < iters.length; i++) {
+    const it = iters[i];
+    const world = freshWorld(L);
+    for (const r of recs) { r.pos = { x: L.start.x, y: L.start.y }; r.carry = false; r.facing = 'R'; }
+    const traj = [];
+    let hold = null, won = false, t = 0;
+    for (; t < it.moves.length && !hold && !won; t++) {
+      for (let k = 0; k < recs.length; k++) {
+        const act = applyMove(L, world, recs, k, recMoveAt(recs[k], t));
+        hold = checkTear(L, k, t, recs[k].traj[t] ||
+          { x: recs[k].pos.x, y: recs[k].pos.y, carry: recs[k].carry,
+            moved: false, push: null, pickup: false, dir: 'W' }, act);
+        if (hold) break;
+      }
+      if (hold) break;
+      const act = applyMove(L, world, recs, -1, it.moves[t]);
+      traj.push(act);
+      if (world.live.carry && world.live.x === L.mark.x && world.live.y === L.mark.y)
+        won = true;
+    }
+    const last = i === iters.length - 1;
+    if (last || hold || won) {
+      return { L, world, recs, liveTraj: traj, iter: i, tick: hold ? hold.t : t,
+               hold, won };
+    }
+    // This pass is committed to the house's memory; pad happens via recMoveAt.
+    recs = recs.concat([{ moves: it.moves.slice(), early: it.early,
+                          traj, pos: null, carry: false, facing: 'R' }]);
+  }
+  // Empty log: places, count zero.
+  const world = freshWorld(L);
+  return { L, world, recs: [], liveTraj: [], iter: 0, tick: 0, hold: null, won: false };
+}
+
+/* ------------------------------------------------------------------ */
+/*  Renderer — the deck, the set, the crew                             */
+/* ------------------------------------------------------------------ */
+const cv = document.getElementById('stage');
+const cx = cv.getContext('2d');
+let nowMs = 0; // set each frame
+
+function rr(x, y, w, h, r) {
+  cx.beginPath();
+  cx.moveTo(x + r, y);
+  cx.arcTo(x + w, y, x + w, y + h, r);
+  cx.arcTo(x + w, y + h, x, y + h, r);
+  cx.arcTo(x, y + h, x, y, r);
+  cx.arcTo(x, y, x + w, y, r);
+  cx.closePath();
+}
+
+function tileXY(x, y) { return [BOARD_X + x * TILE, BOARD_Y + y * TILE]; }
+
+/* Movement interpolation: rendering may glide, logic never does. */
+const animState = {};
+function animPos(key, x, y) {
+  const st = animState[key];
+  if (!st) { animState[key] = { x, y, fx: x, fy: y, t0: 0 }; return [x, y]; }
+  if (st.x !== x || st.y !== y) {
+    const p = Math.min(1, (nowMs - st.t0) / 130);
+    st.fx = st.fx + (st.x - st.fx) * p; st.fy = st.fy + (st.y - st.fy) * p;
+    st.x = x; st.y = y; st.t0 = nowMs;
+  }
+  const p = Math.min(1, (nowMs - st.t0) / 130);
+  const e = 1 - (1 - p) * (1 - p);
+  return [st.fx + (x - st.fx) * e, st.fy + (y - st.fy) * e, p < 1];
+}
+function resetAnim() { for (const k in animState) delete animState[k]; }
+
+/* Flats glide too — openness eases toward 0 or 1. */
+const flatAnim = {};
+function flatOpenness(letter, open) {
+  const key = letter;
+  if (!(key in flatAnim)) flatAnim[key] = open ? 1 : 0;
+  const target = open ? 1 : 0;
+  flatAnim[key] += (target - flatAnim[key]) * 0.18;
+  if (Math.abs(flatAnim[key] - target) < 0.01) flatAnim[key] = target;
+  return flatAnim[key];
+}
+
+function drawDeckTile(x, y) {
+  const [px, py] = tileXY(x, y);
+  const j = jitter(x, y, 1);
+  cx.fillStyle = j > 0.5 ? PAL.board1 : PAL.board2;
+  cx.fillRect(px, py, TILE, TILE);
+  // plank seams
+  cx.strokeStyle = PAL.seam; cx.lineWidth = 1; cx.globalAlpha = 0.7;
+  cx.beginPath();
+  const off = Math.floor(jitter(x, y, 2) * 3);
+  cx.moveTo(px, py + 15 + off); cx.lineTo(px + TILE, py + 15 + off);
+  cx.moveTo(px, py + 31 + off); cx.lineTo(px + TILE, py + 31 + off);
+  cx.stroke();
+  if (jitter(x, y, 3) > 0.72) { // the odd nail / scuff
+    cx.fillStyle = PAL.boardHi; cx.globalAlpha = 0.5;
+    cx.fillRect(px + 6 + jitter(x, y, 4) * 30, py + 6 + jitter(x, y, 5) * 30, 2, 2);
+  }
+  cx.globalAlpha = 1;
+}
+
+function drawWallTile(x, y, L) {
+  const [px, py] = tileXY(x, y);
+  const border = x === 0 || y === 0 || x === L.cols - 1 || y === L.rows - 1;
+  if (border) { // masked by the proscenium; keep it house-dark
+    cx.fillStyle = PAL.house; cx.fillRect(px, py, TILE, TILE);
+    return;
+  }
+  // stacked scenery crates
+  cx.fillStyle = '#31261a'; cx.fillRect(px, py, TILE, TILE);
+  cx.fillStyle = '#41321f';
+  rr(px + 2, py + 2, TILE - 4, TILE / 2 - 3, 3); cx.fill();
+  rr(px + 2, py + TILE / 2 + 1, TILE - 4, TILE / 2 - 3, 3); cx.fill();
+  cx.strokeStyle = '#57432a'; cx.lineWidth = 1.5;
+  cx.beginPath();
+  cx.moveTo(px + 4, py + 4); cx.lineTo(px + TILE - 4, py + TILE / 2 - 4);
+  cx.moveTo(px + TILE - 4, py + 4); cx.lineTo(px + 4, py + TILE / 2 - 4);
+  cx.stroke();
+  cx.strokeStyle = '#241b10';
+  cx.strokeRect(px + 2.5, py + 2.5, TILE - 5, TILE - 5);
+}
+
+function drawPedal(x, y, letter, weighted) {
+  const [px, py] = tileXY(x, y);
+  const c = px + TILE / 2, m = py + TILE / 2;
+  cx.fillStyle = weighted ? '#3c352c' : '#4b4335';
+  rr(px + 7, py + 7, TILE - 14, TILE - 14, 5); cx.fill();
+  cx.strokeStyle = weighted ? '#2b251d' : '#6a5e4a'; cx.lineWidth = 2;
+  rr(px + 7, py + 7, TILE - 14, TILE - 14, 5); cx.stroke();
+  cx.fillStyle = '#6a5e4a';
+  for (const [rx, ry] of [[-1, -1], [1, -1], [-1, 1], [1, 1]])
+    cx.fillRect(c + rx * (TILE / 2 - 12) - 1.5, m + ry * (TILE / 2 - 12) - 1.5, 3, 3);
+  cx.fillStyle = PAL.chalk; cx.globalAlpha = weighted ? 0.5 : 0.9;
+  cx.font = 'italic 15px Georgia, serif'; cx.textAlign = 'center'; cx.textBaseline = 'middle';
+  cx.fillText(letter.toUpperCase(), c, m + 1);
+  cx.globalAlpha = 1;
+}
+
+function drawFlatTile(x, y, letter, openT) {
+  const [px, py] = tileXY(x, y);
+  // ropes to the grid, always visible
+  cx.strokeStyle = PAL.ropeDark; cx.lineWidth = 2;
+  cx.beginPath();
+  cx.moveTo(px + 10, py + 2); cx.lineTo(px + 10, BOARD_Y - 14);
+  cx.moveTo(px + TILE - 10, py + 2); cx.lineTo(px + TILE - 10, BOARD_Y - 14);
+  cx.stroke();
+  const h = (TILE - 4) * (1 - openT);
+  if (openT > 0.02) { // the flat is (partly) flown: show its underside up top
+    cx.fillStyle = PAL.sageDark;
+    cx.fillRect(px + 3, py + 1, TILE - 6, 4);
+  }
+  if (h > 2) {
+    const rose = letter === 'B';
+    cx.fillStyle = rose ? PAL.rose : PAL.sage;
+    rr(px + 3, py + 2, TILE - 6, h, 3); cx.fill();
+    cx.strokeStyle = rose ? PAL.roseDark : PAL.sageDark; cx.lineWidth = 2;
+    rr(px + 3, py + 2, TILE - 6, h, 3); cx.stroke();
+    // painted scenery strokes
+    cx.strokeStyle = rose ? '#b98a75' : '#8f957b'; cx.lineWidth = 1.5;
+    cx.globalAlpha = 0.8;
+    cx.beginPath();
+    for (let i = 0; i < 3; i++) {
+      const yy = py + 8 + i * (h - 12) / 3;
+      if (yy > py + 4 && yy < py + h - 2) {
+        cx.moveTo(px + 8, yy + 4); cx.quadraticCurveTo(px + TILE / 2, yy - 3, px + TILE - 8, yy + 4);
+      }
+    }
+    cx.stroke(); cx.globalAlpha = 1;
+    if (h > 20) {
+      cx.fillStyle = PAL.chalk; cx.globalAlpha = 0.7;
+      cx.font = 'italic 12px Georgia, serif'; cx.textAlign = 'center';
+      cx.fillText(letter, px + TILE / 2, py + h - 5);
+      cx.globalAlpha = 1;
+    }
+  } else {
+    // fully out: spike the empty tile so the lane reads open
+    cx.strokeStyle = PAL.tape; cx.globalAlpha = 0.35; cx.lineWidth = 1.5;
+    cx.strokeRect(px + 5.5, py + 5.5, TILE - 11, TILE - 11);
+    cx.globalAlpha = 1;
+  }
+}
+
+function drawSpike(x, y) {
+  const [px, py] = tileXY(x, y);
+  const c = px + TILE / 2, m = py + TILE / 2;
+  const pulse = 0.55 + 0.2 * Math.sin(nowMs / 600);
+  const g = cx.createRadialGradient(c, m, 2, c, m, TILE * 0.75);
+  g.addColorStop(0, 'rgba(242,179,86,' + (0.28 * pulse) + ')');
+  g.addColorStop(1, 'rgba(242,179,86,0)');
+  cx.fillStyle = g; cx.fillRect(px - 12, py - 12, TILE + 24, TILE + 24);
+  cx.strokeStyle = PAL.tape; cx.lineWidth = 4; cx.lineCap = 'round';
+  cx.globalAlpha = 0.9;
+  cx.beginPath();
+  cx.moveTo(px + 12, py + 12); cx.lineTo(px + TILE - 12, py + TILE - 12);
+  cx.moveTo(px + TILE - 12, py + 12); cx.lineTo(px + 12, py + TILE - 12);
+  cx.stroke();
+  // tape corners
+  cx.lineWidth = 3;
+  for (const [sx, sy] of [[0, 0], [1, 0], [0, 1], [1, 1]]) {
+    const cxx = px + 6 + sx * (TILE - 12), cyy = py + 6 + sy * (TILE - 12);
+    cx.beginPath();
+    cx.moveTo(cxx + (sx ? -8 : 8), cyy); cx.lineTo(cxx, cyy); cx.lineTo(cxx, cyy + (sy ? -8 : 8));
+    cx.stroke();
+  }
+  cx.globalAlpha = 1; cx.lineCap = 'butt';
+}
+
+function drawLantern(px, py, scale, lit) {
+  cx.save(); cx.translate(px, py); cx.scale(scale, scale);
+  if (lit) {
+    const g = cx.createRadialGradient(0, 0, 1, 0, 0, 26);
+    g.addColorStop(0, 'rgba(255,233,172,0.5)'); g.addColorStop(1, 'rgba(255,233,172,0)');
+    cx.fillStyle = g; cx.fillRect(-26, -26, 52, 52);
+  }
+  cx.fillStyle = PAL.brass;
+  rr(-6, -8, 12, 15, 2); cx.fill();
+  cx.fillStyle = '#8f6f2e'; cx.fillRect(-7, 6, 14, 3);
+  cx.beginPath(); cx.arc(0, -9, 4, Math.PI, 0); cx.strokeStyle = PAL.brass;
+  cx.lineWidth = 2; cx.stroke();
+  cx.fillStyle = '#2b1f10'; cx.fillRect(-4, -6, 8, 11);
+  const fl = 1 + 0.3 * Math.sin(nowMs / 90 + px);
+  cx.fillStyle = PAL.flame;
+  cx.beginPath(); cx.ellipse(0, 0, 2.2, 3.6 * fl, 0, 0, Math.PI * 2); cx.fill();
+  cx.restore();
+}
+
+function drawPropTable(x, y, hasLantern) {
+  const [px, py] = tileXY(x, y);
+  cx.fillStyle = '#5c4930';
+  rr(px + 6, py + 12, TILE - 12, TILE - 22, 3); cx.fill();
+  cx.strokeStyle = '#463823'; cx.lineWidth = 2;
+  rr(px + 6, py + 12, TILE - 12, TILE - 22, 3); cx.stroke();
+  cx.fillStyle = '#3a2d1c';
+  cx.fillRect(px + 9, py + TILE - 11, 4, 6); cx.fillRect(px + TILE - 13, py + TILE - 11, 4, 6);
+  cx.fillStyle = PAL.chalk; cx.globalAlpha = 0.55;
+  cx.font = 'italic 9px Georgia, serif'; cx.textAlign = 'center';
+  cx.fillText('props', px + TILE / 2, py + TILE - 3);
+  cx.globalAlpha = 1;
+  if (hasLantern) drawLantern(px + TILE / 2, py + TILE / 2 + 2, 1, true);
+}
+
+function drawPiano(i, x, y) {
+  const [ax, ay] = animPos('piano' + i, x, y);
+  const [px, py] = tileXY(ax, ay);
+  cx.fillStyle = 'rgba(0,0,0,0.35)';
+  cx.beginPath(); cx.ellipse(px + TILE / 2, py + TILE / 2 + 6, TILE / 2 - 4, TILE / 3 - 2, 0, 0, Math.PI * 2); cx.fill();
+  // grand piano, seen from the grid: straight keyboard edge, curved tail
+  cx.fillStyle = PAL.piano;
+  cx.beginPath();
+  cx.moveTo(px + 6, py + 8);
+  cx.lineTo(px + TILE - 8, py + 8);
+  cx.bezierCurveTo(px + TILE + 2, py + 16, px + TILE - 4, py + TILE - 4, px + TILE / 2 + 2, py + TILE - 6);
+  cx.bezierCurveTo(px + TILE / 4, py + TILE - 8, px + 6, py + TILE - 14, px + 6, py + TILE / 2);
+  cx.closePath(); cx.fill();
+  cx.strokeStyle = PAL.pianoHi; cx.lineWidth = 1.5;
+  cx.beginPath();
+  cx.moveTo(px + 10, py + 12);
+  cx.bezierCurveTo(px + TILE - 10, py + 12, px + TILE - 10, py + TILE / 2, px + TILE / 2, py + TILE - 10);
+  cx.stroke();
+  // keys
+  cx.fillStyle = PAL.tape;
+  cx.fillRect(px + 8, py + 5, TILE - 18, 4);
+  cx.fillStyle = PAL.piano;
+  for (let k = 0; k < 6; k++) cx.fillRect(px + 10 + k * 5, py + 5, 1.5, 3);
+  // castors
+  cx.fillStyle = '#57432a';
+  cx.beginPath();
+  cx.arc(px + 10, py + TILE - 8, 2, 0, 7); cx.arc(px + TILE - 12, py + TILE - 10, 2, 0, 7);
+  cx.arc(px + TILE - 14, py + 14, 2, 0, 7); cx.fill();
+}
+
+/* The crew. isPass: a remembered pass (the house's memory of Wren). */
+function drawWorker(key, x, y, facing, opts) {
+  const [ax, ay, moving] = animPos(key, x, y);
+  const [tx, ty] = tileXY(ax, ay);
+  const cxp = tx + TILE / 2, cyp = ty + TILE / 2 + 4;
+  const t = nowMs / 1000;
+  const phase = moving ? Math.sin(nowMs / 55) : 0;
+  const bob = moving ? Math.abs(phase) * 2.2 : Math.sin(t * 2 + (opts.idx || 0)) * 0.8;
+  const flicker = opts.isPass ? 0.5 + 0.1 * Math.sin(t * 7 + opts.idx * 2.1) +
+                  0.04 * Math.sin(t * 23 + opts.idx) : 1;
+  cx.save();
+  cx.globalAlpha = opts.isPass ? Math.max(0.3, flicker) : 1;
+  // shadow
+  cx.fillStyle = 'rgba(0,0,0,' + (opts.isPass ? 0.15 : 0.35) + ')';
+  cx.beginPath(); cx.ellipse(cxp, cyp + 13, 11, 4, 0, 0, Math.PI * 2); cx.fill();
+  const P = opts.isPass
+    ? { jacket: '#82897b', jacketD: '#6b7264', hat: '#8f948a', ap: '#9aa08e',
+        skin: '#a8ad9c', leg: '#6b7264', boot: '#585e52' }
+    : { jacket: PAL.denim, jacketD: PAL.denimDark, hat: PAL.beanie, ap: PAL.apron,
+        skin: PAL.skin, leg: PAL.trouser, boot: PAL.boots };
+  const flip = facing === 'L' ? -1 : 1;
+  cx.translate(cxp, cyp - bob); cx.scale(flip, 1);
+  // legs
+  cx.fillStyle = P.leg;
+  cx.fillRect(-6, 5 + (moving ? phase * 2 : 0) * 0.5, 4.5, 8 - (moving ? phase * 2 : 0));
+  cx.fillRect(1.5, 5 - (moving ? phase * 2 : 0) * 0.5, 4.5, 8 + (moving ? phase * 2 : 0));
+  cx.fillStyle = P.boot;
+  cx.fillRect(-7, 11.5 + (moving ? phase : 0), 6, 3.5);
+  cx.fillRect(1, 11.5 - (moving ? phase : 0), 6, 3.5);
+  // torso: jacket
+  cx.fillStyle = P.jacket; rr(-8, -6, 16, 13, 4); cx.fill();
+  cx.fillStyle = P.jacketD; cx.fillRect(-1, -6, 2, 12);
+  // apron
+  cx.fillStyle = P.ap;
+  cx.beginPath();
+  cx.moveTo(-5, -2); cx.lineTo(5, -2); cx.lineTo(6.5, 7); cx.lineTo(-6.5, 7);
+  cx.closePath(); cx.fill();
+  // arms
+  cx.fillStyle = P.jacket;
+  const swing = moving ? phase * 2.5 : 0;
+  cx.fillRect(-11, -4 + swing, 3.5, 9);
+  cx.fillRect(7.5, -4 - swing, 3.5, 9);
+  // head + beanie
+  cx.fillStyle = P.skin;
+  cx.beginPath(); cx.arc(0, -12, 6.2, 0, Math.PI * 2); cx.fill();
+  cx.fillStyle = P.hat;
+  cx.beginPath(); cx.arc(0, -13.5, 6.4, Math.PI, 0); cx.fill();
+  cx.fillRect(-6.4, -14, 12.8, 2.6);
+  if (!opts.isPass && facing !== 'U') { // a face, when we can see one
+    cx.fillStyle = PAL.ink;
+    if (facing === 'D') { cx.fillRect(-2.8, -11.5, 1.6, 2); cx.fillRect(1.2, -11.5, 1.6, 2); }
+    else { cx.fillRect(2.2, -11.5, 1.6, 2); }
+  }
+  if (opts.isPass) { // chalk pass number on the jacket
+    cx.scale(flip, 1);
+    cx.fillStyle = PAL.chalk; cx.globalAlpha *= 0.9;
+    cx.font = 'italic 10px Georgia, serif'; cx.textAlign = 'center';
+    cx.fillText(String(opts.idx + 1), 0, 3);
+  }
+  cx.restore();
+  if (opts.carry) drawLantern(cxp + 10 * (facing === 'L' ? -1 : 1), cyp + 2 - bob, 0.72, true);
+  if (opts.isPass) { // a little dust where memory stands
+    cx.fillStyle = 'rgba(230,221,200,0.25)';
+    for (let d = 0; d < 2; d++) {
+      const dx = Math.sin(t * 1.7 + opts.idx * 3 + d * 2.4) * 10;
+      const dy = -18 - ((t * 6 + d * 9 + opts.idx * 5) % 14);
+      cx.fillRect(cxp + dx, cyp + dy, 1.5, 1.5);
+    }
+  }
+}
+
+function drawBoardAndSet(snap) {
+  const L = snap.L;
+  for (let y = 0; y < L.rows; y++)
+    for (let x = 0; x < L.cols; x++)
+      if (L.wall[y][x]) drawWallTile(x, y, L); else drawDeckTile(x, y);
+  // wings marker
+  {
+    const [px, py] = tileXY(L.start.x, L.start.y);
+    cx.strokeStyle = PAL.tape; cx.globalAlpha = 0.4; cx.lineWidth = 1.5;
+    cx.setLineDash([4, 4]);
+    cx.strokeRect(px + 4.5, py + 4.5, TILE - 9, TILE - 9);
+    cx.setLineDash([]);
+    cx.fillStyle = PAL.chalk; cx.font = 'italic 9px Georgia, serif';
+    cx.textAlign = 'center';
+    cx.fillText('wings', px + TILE / 2, py + TILE - 6);
+    cx.globalAlpha = 1;
+  }
+  drawSpike(L.mark.x, L.mark.y);
+  for (const letter in L.pedals)
+    drawPedal(L.pedals[letter].x, L.pedals[letter].y, letter,
+              pedalWeighted(L, snap.world, snap.recs, letter));
+  drawPropTable(L.lantern.x, L.lantern.y, !snap.world.lanternTaken);
+  for (const letter in L.flats) {
+    const open = flatOpen(L, snap.world, snap.recs, letter);
+    const oT = flatOpenness(letter, open);
+    for (const tl of L.flats[letter].tiles) drawFlatTile(tl.x, tl.y, letter, oT);
+  }
+  snap.world.pianos.forEach((p, i) => drawPiano(i, p.x, p.y));
+  snap.recs.forEach((r, k) => {
+    if (r.pos) drawWorker('p' + k, r.pos.x, r.pos.y, r.facing || 'R',
+      { isPass: true, idx: k, carry: r.carry });
+  });
+  drawWorker('live', snap.world.live.x, snap.world.live.y, snap.world.live.facing,
+    { isPass: false, idx: -1, carry: snap.world.live.carry });
+  // a torn memory gets a ring of gaffer tape
+  if (snap.hold) {
+    const [px, py] = tileXY(snap.hold.tile.x, snap.hold.tile.y);
+    const blink = 0.6 + 0.4 * Math.sin(nowMs / 220);
+    cx.strokeStyle = PAL.gaffer; cx.lineWidth = 4; cx.globalAlpha = blink;
+    rr(px + 2, py + 2, TILE - 4, TILE - 4, 6); cx.stroke();
+    const r = snap.recs[snap.hold.k];
+    if (r && r.pos) {
+      const [qx, qy] = tileXY(r.pos.x, r.pos.y);
+      cx.lineWidth = 3;
+      rr(qx + 5, qy + 5, TILE - 10, TILE - 10, 6); cx.stroke();
+    }
+    cx.globalAlpha = 1;
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/*  Light, weather of the indoors                                      */
+/* ------------------------------------------------------------------ */
+function drawBoardLight() {
+  const cxp = BOARD_X + (14 * TILE) / 2, cyp = BOARD_Y + (12 * TILE) / 2;
+  const flick = 1 + 0.015 * Math.sin(nowMs / 130) + 0.008 * Math.sin(nowMs / 47);
+  const g = cx.createRadialGradient(cxp, cyp - 40, 60 * flick, cxp, cyp - 40, 480);
+  g.addColorStop(0, 'rgba(242,179,86,0.07)');
+  g.addColorStop(0.55, 'rgba(36,27,19,0)');
+  g.addColorStop(1, 'rgba(20,14,9,0.55)');
+  cx.fillStyle = g;
+  cx.fillRect(BOARD_X, BOARD_Y, 14 * TILE, 12 * TILE);
+}
+function drawDust() {
+  cx.fillStyle = 'rgba(230,221,200,0.16)';
+  for (let i = 0; i < 26; i++) {
+    const sp = 8 + jitter(i, 3, 7) * 14;
+    const x = BOARD_X + ((jitter(i, 1, 5) * 900 + nowMs / (90 - sp)) % (14 * TILE));
+    const y = BOARD_Y + ((jitter(i, 2, 6) * 700 + nowMs / (sp * 14)) % (12 * TILE));
+    const tw = 0.5 + 0.5 * Math.sin(nowMs / 700 + i * 2.4);
+    cx.globalAlpha = 0.1 + 0.14 * tw;
+    cx.fillRect(x, y, 1.6, 1.6);
+  }
+  cx.globalAlpha = 1;
+}
+function drawGhostLamp(x, y, s) {
+  cx.save(); cx.translate(x, y); cx.scale(s, s);
+  const flick = 0.85 + 0.12 * Math.sin(nowMs / 140) + 0.05 * Math.sin(nowMs / 53);
+  const g = cx.createRadialGradient(0, -70, 4, 0, -70, 90 * flick);
+  g.addColorStop(0, 'rgba(255,217,143,0.55)');
+  g.addColorStop(1, 'rgba(255,217,143,0)');
+  cx.fillStyle = g; cx.fillRect(-95, -165, 190, 190);
+  cx.strokeStyle = '#4a3c28'; cx.lineWidth = 4;
+  cx.beginPath(); cx.moveTo(0, 0); cx.lineTo(0, -62); cx.stroke();
+  cx.fillStyle = '#4a3c28';
+  cx.beginPath(); cx.ellipse(0, 0, 16, 4, 0, 0, Math.PI * 2); cx.fill();
+  cx.strokeStyle = '#6a5638'; cx.lineWidth = 2;
+  cx.beginPath(); cx.arc(0, -70, 9, 0, Math.PI * 2); cx.stroke();
+  cx.beginPath();
+  cx.moveTo(-9, -70); cx.lineTo(9, -70); cx.moveTo(0, -79); cx.lineTo(0, -61);
+  cx.stroke();
+  cx.fillStyle = 'rgba(255,233,172,' + (0.75 * flick) + ')';
+  cx.beginPath(); cx.arc(0, -70, 5.5, 0, Math.PI * 2); cx.fill();
+  cx.restore();
+}
+
+/* ------------------------------------------------------------------ */
+/*  The backstage wall: pin rail, callboard, a small courtesy legend   */
+/* ------------------------------------------------------------------ */
+const PANEL_X = 700, PANEL_W = 244;
+function drawPanel(snap, iters) {
+  const L = snap.L;
+  cx.fillStyle = '#2b2116';
+  rr(PANEL_X, BOARD_Y, PANEL_W, 12 * TILE, 6); cx.fill();
+  cx.strokeStyle = '#1c150d'; cx.lineWidth = 2;
+  rr(PANEL_X, BOARD_Y, PANEL_W, 12 * TILE, 6); cx.stroke();
+  // --- pin rail ---
+  let y = BOARD_Y + 22;
+  cx.fillStyle = PAL.chalk; cx.font = 'italic 14px Georgia, serif';
+  cx.textAlign = 'left';
+  cx.fillText('the pin rail', PANEL_X + 16, y);
+  y += 10;
+  cx.fillStyle = PAL.rail; cx.fillRect(PANEL_X + 14, y, PANEL_W - 28, 7);
+  cx.fillStyle = PAL.railHi; cx.fillRect(PANEL_X + 14, y, PANEL_W - 28, 2);
+  const letters = Object.keys(L.flats);
+  letters.forEach((letter, i) => {
+    const rx = PANEL_X + 52 + i * 92;
+    const oT = flatAnim[letter] !== undefined ? flatAnim[letter] : 0;
+    const bagY = y + 66 - oT * 40; // flat out = counterweight riding low? no: bag high when flat in
+    // rope from rail down to sandbag
+    cx.strokeStyle = PAL.rope; cx.lineWidth = 2.5;
+    cx.beginPath(); cx.moveTo(rx, y + 7); cx.lineTo(rx, bagY); cx.stroke();
+    // cleat
+    cx.fillStyle = PAL.railHi; cx.fillRect(rx - 7, y + 8, 14, 5);
+    // sandbag
+    cx.fillStyle = '#8d7550';
+    rr(rx - 8, bagY, 16, 22, 4); cx.fill();
+    cx.strokeStyle = '#6d5a3c'; cx.lineWidth = 1.5;
+    rr(rx - 8, bagY, 16, 22, 4); cx.stroke();
+    cx.fillStyle = PAL.chalk; cx.globalAlpha = 0.85;
+    cx.font = 'italic 12px Georgia, serif'; cx.textAlign = 'center';
+    cx.fillText((L.flatNames[letter] || letter), rx, y + 108);
+    cx.font = 'italic 11px Georgia, serif'; cx.globalAlpha = 0.6;
+    cx.fillText(oT > 0.5 ? 'flown out' : 'in', rx, y + 122);
+    cx.globalAlpha = 1;
+  });
+  // --- callboard ---
+  const cbY = BOARD_Y + 170;
+  cx.fillStyle = PAL.slate;
+  rr(PANEL_X + 14, cbY, PANEL_W - 28, 168, 4); cx.fill();
+  cx.strokeStyle = '#54432b'; cx.lineWidth = 3;
+  rr(PANEL_X + 14, cbY, PANEL_W - 28, 168, 4); cx.stroke();
+  cx.fillStyle = PAL.chalk; cx.textAlign = 'center';
+  const mid = PANEL_X + PANEL_W / 2;
+  cx.font = 'italic 15px Georgia, serif';
+  cx.fillText(L.def.cue + ' — ' + L.def.name, mid, cbY + 26);
+  cx.strokeStyle = 'rgba(230,221,200,0.4)'; cx.lineWidth = 1;
+  cx.beginPath(); cx.moveTo(PANEL_X + 30, cbY + 36); cx.lineTo(PANEL_X + PANEL_W - 30, cbY + 36); cx.stroke();
+  cx.font = 'italic 26px Georgia, serif';
+  cx.fillText('pass ' + (snap.iter + 1), mid, cbY + 70);
+  cx.font = 'italic 15px Georgia, serif'; cx.globalAlpha = 0.75;
+  cx.fillText(snap.recs.length + ' of ' + MAX_PASSES + ' remembered', mid, cbY + 92);
+  cx.globalAlpha = 1;
+  cx.font = 'italic 22px Georgia, serif';
+  cx.fillText('count ' + snap.tick + ' of ' + N_COUNTS, mid, cbY + 124);
+  cx.font = 'italic 14px Georgia, serif'; cx.globalAlpha = 0.75;
+  cx.fillText(snap.world.live.carry ? 'the practical is in hand'
+    : (snap.world.lanternTaken ? 'the practical is with the crew' : 'the practical is on its table'),
+    mid, cbY + 150);
+  cx.globalAlpha = 1;
+  // --- ghost lamp keeps the corner ---
+  drawGhostLamp(PANEL_X + PANEL_W / 2, BOARD_Y + 12 * TILE - 26, 0.85);
+  // --- legend, visually subordinate ---
+  cx.fillStyle = PAL.chalk; cx.globalAlpha = 0.42;
+  cx.font = 'italic 11.5px Georgia, serif'; cx.textAlign = 'center';
+  cx.fillText('arrows walk · space stands', mid, cbY + 196);
+  cx.fillText('X — that’s the pass · Z walks it back', mid, cbY + 212);
+  cx.fillText('R — top of the cue', mid, cbY + 228);
+  cx.globalAlpha = 1;
+}
+
+/* ------------------------------------------------------------------ */
+/*  The shift plot — the stage manager's pencilled record of every     */
+/*  pass, forty little marks to a line                                 */
+/* ------------------------------------------------------------------ */
+function drawShiftPlot(snap, iters) {
+  const x0 = 36, y0 = 12 * TILE + BOARD_Y + 14, w = 908, h = CANVAS_H - y0 - 10;
+  cx.fillStyle = PAL.paper;
+  rr(x0, y0, w, h, 3); cx.fill();
+  cx.fillStyle = PAL.paperDark;
+  cx.fillRect(x0, y0 + h - 5, w, 5);
+  cx.fillStyle = PAL.pencil; cx.font = 'italic 13px Georgia, serif';
+  cx.textAlign = 'left';
+  cx.fillText('shift plot — ' + snap.L.def.cue.toLowerCase() + ', forty counts to the line', x0 + 14, y0 + 18);
+  const rowY = i => y0 + 32 + i * 16.5;
+  const colX = t => x0 + 106 + t * 19.6;
+  // faint count rule every ten
+  cx.strokeStyle = 'rgba(90,79,61,0.25)'; cx.lineWidth = 1;
+  for (let t = 0; t <= N_COUNTS; t += 10) {
+    cx.beginPath(); cx.moveTo(colX(t) - 6, y0 + 24); cx.lineTo(colX(t) - 6, y0 + h - 8); cx.stroke();
+    if (t > 0) {
+      cx.fillStyle = 'rgba(90,79,61,0.5)'; cx.font = 'italic 10px Georgia, serif';
+      cx.fillText(String(t), colX(t) - 14, y0 + 24);
+    }
+  }
+  iters.forEach((it, i) => {
+    const live = i === iters.length - 1;
+    cx.fillStyle = live ? PAL.pencil : PAL.graphite;
+    cx.font = 'italic 12px Georgia, serif'; cx.textAlign = 'left';
+    cx.fillText(live ? 'this pass' : 'pass ' + (i + 1), x0 + 14, rowY(i) + 4);
+    cx.textAlign = 'center'; cx.font = '12px Georgia, serif';
+    for (let t = 0; t < it.moves.length && t < N_COUNTS; t++)
+      cx.fillText(GLYPH[it.moves[t]] || '·', colX(t), rowY(i) + 4);
+    if (it.early) cx.fillText(GLYPH.X, colX(it.moves.length), rowY(i) + 4);
+    if (!live && it.moves.length < N_COUNTS) {
+      cx.globalAlpha = 0.35;
+      for (let t = it.moves.length + 1; t < N_COUNTS; t++)
+        cx.fillText('·', colX(t), rowY(i) + 4);
+      cx.globalAlpha = 1;
+    }
+  });
+  // the stage manager's pencil rests on the current count
+  const li = iters.length - 1;
+  cx.strokeStyle = '#7d3b2a'; cx.lineWidth = 1.8;
+  cx.beginPath();
+  cx.arc(colX(Math.min(snap.tick, N_COUNTS - 1) - (snap.tick > 0 ? 1 : 0) + (snap.tick === 0 ? 0 : 0)), rowY(li) + 0.5, 8, 0, Math.PI * 2);
+  cx.stroke();
+}
+
+/* ------------------------------------------------------------------ */
+/*  Header                                                             */
+/* ------------------------------------------------------------------ */
+function drawHeader(snap) {
+  cx.fillStyle = PAL.tape; cx.globalAlpha = 0.8;
+  cx.font = 'italic 15px Georgia, serif'; cx.textAlign = 'left';
+  cx.fillText('THE GARLAND · last night', 38, 34);
+  cx.textAlign = 'right';
+  cx.fillText(snap.L.def.cue + ' — ' + snap.L.def.name, 942, 34);
+  cx.globalAlpha = 0.5; cx.textAlign = 'center';
+  cx.font = 'italic 13px Georgia, serif';
+  cx.fillText('the changeover, in forty counts', CANVAS_W / 2, 60);
+  cx.globalAlpha = 1;
+}
+
+/* ------------------------------------------------------------------ */
+/*  Full-screen scenes                                                 */
+/* ------------------------------------------------------------------ */
+function paintHouse() {
+  cx.fillStyle = PAL.house; cx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+  // receding deck boards
+  cx.strokeStyle = 'rgba(107,90,71,0.25)'; cx.lineWidth = 1.5;
+  for (let i = 0; i < 9; i++) {
+    const y = 460 + i * i * 4.6;
+    cx.beginPath(); cx.moveTo(0, y); cx.lineTo(CANVAS_W, y); cx.stroke();
+  }
+  for (let i = -6; i <= 6; i++) {
+    cx.beginPath();
+    cx.moveTo(CANVAS_W / 2 + i * 60, 460); cx.lineTo(CANVAS_W / 2 + i * 130, CANVAS_H);
+    cx.stroke();
+  }
+  // proscenium
+  cx.fillStyle = '#171009';
+  cx.fillRect(0, 0, 70, CANVAS_H); cx.fillRect(CANVAS_W - 70, 0, 70, CANVAS_H);
+  cx.fillRect(0, 0, CANVAS_W, 90);
+  cx.strokeStyle = '#3f3122'; cx.lineWidth = 3;
+  cx.strokeRect(70, 90, CANVAS_W - 140, CANVAS_H);
+  cx.fillStyle = PAL.copper; cx.globalAlpha = 0.35;
+  cx.font = 'italic 16px Georgia, serif'; cx.textAlign = 'center';
+  cx.fillText('❦', CANVAS_W / 2, 58);
+  cx.globalAlpha = 1;
+}
+function drawLines(lines, x, y, lh, font, color, align, alpha) {
+  cx.font = font; cx.fillStyle = color; cx.textAlign = align || 'center';
+  cx.globalAlpha = alpha === undefined ? 1 : alpha;
+  lines.forEach((ln, i) => cx.fillText(ln, x, y + i * lh));
+  cx.globalAlpha = 1;
+}
+
+function drawTitle() {
+  paintHouse();
+  drawGhostLamp(CANVAS_W / 2, 560, 1.5);
+  drawDustFull();
+  drawLines(['CHANGEOVER'], CANVAS_W / 2, 210, 0, 'italic 64px Georgia, serif', PAL.tape);
+  drawLines(['the Garland Theatre · the last night · one stagehand short of four'],
+    CANVAS_W / 2, 248, 0, 'italic 16px Georgia, serif', PAL.copper, 'center', 0.9);
+  drawLines([
+    'Forty counts of blackout between the acts. That’s the whole job, love.',
+    'The crew’s long gone, but old houses remember: leave the lamp burning,',
+    'run your pass, and the Garland will run every pass you’ve already made',
+    'right alongside you — count for count, exactly as you did it.',
+    'Memory doesn’t improvise. Don’t make a liar of it.',
+  ], CANVAS_W / 2, 316, 26, 'italic 16.5px Georgia, serif', PAL.chalk, 'center', 0.85);
+  const blink = 0.45 + 0.4 * Math.sin(nowMs / 500);
+  drawLines(['— any key. we are at half hour —'], CANVAS_W / 2, 690, 0,
+    'italic 16px Georgia, serif', PAL.amber, 'center', blink);
+}
+function drawDustFull() {
+  cx.fillStyle = 'rgba(230,221,200,0.14)';
+  for (let i = 0; i < 34; i++) {
+    const sp = 8 + jitter(i, 3, 7) * 14;
+    const x = (jitter(i, 1, 5) * 940 + nowMs / (90 - sp)) % CANVAS_W;
+    const y = (jitter(i, 2, 6) * 740 + nowMs / (sp * 14)) % CANVAS_H;
+    cx.globalAlpha = 0.08 + 0.12 * (0.5 + 0.5 * Math.sin(nowMs / 700 + i * 2.4));
+    cx.fillRect(x, y, 1.6, 1.6);
+  }
+  cx.globalAlpha = 1;
+}
+
+function drawBrief(levelIndex) {
+  paintHouse();
+  drawGhostLamp(CANVAS_W / 2, 590, 1.2);
+  drawDustFull();
+  const def = LEVELS[levelIndex];
+  drawLines([def.cue + ' — ' + def.name], CANVAS_W / 2, 200, 0,
+    'italic 40px Georgia, serif', PAL.tape);
+  drawLines(def.brief, CANVAS_W / 2, 280, 30, 'italic 17px Georgia, serif', PAL.chalk, 'center', 0.9);
+  const blink = 0.45 + 0.4 * Math.sin(nowMs / 500);
+  drawLines(['— any key. places, please —'], CANVAS_W / 2, 700, 0,
+    'italic 16px Georgia, serif', PAL.amber, 'center', blink);
+}
+
+/* The HOLD: work lights up, the tear named precisely, in her voice. */
+function drawHoldOverlay(snap) {
+  cx.fillStyle = 'rgba(244,233,208,0.14)';
+  cx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+  const h = snap.hold;
+  const W = 640, H = 240, x = (CANVAS_W - W) / 2, y = 150;
+  cx.fillStyle = PAL.paper; cx.strokeStyle = PAL.gaffer; cx.lineWidth = 5;
+  rr(x, y, W, H, 4); cx.fill(); cx.stroke();
+  cx.fillStyle = PAL.gaffer; cx.font = 'italic 30px Georgia, serif'; cx.textAlign = 'left';
+  cx.fillText('HOLD. Hold, please.', x + 26, y + 44);
+  cx.fillStyle = PAL.ink;
+  drawLines([
+    'Pass ' + (h.k + 1) + ', count ' + (h.t + 1) + ', at ' + tileName(h.tile.x, h.tile.y) + ' — ' + h.headline,
+  ], x + 26, y + 82, 22, 'italic 16.5px Georgia, serif', PAL.ink, 'left');
+  drawLines([
+    'The house remembers:  ' + h.expected + '.',
+    'Tonight it finds:  ' + h.found + '.',
+  ], x + 26, y + 116, 26, 'italic 15.5px Georgia, serif', '#4d3f2e', 'left');
+  drawLines([
+    'History holds, or the curtain never rises.',
+  ], x + 26, y + 176, 0, 'italic 15px Georgia, serif', '#4d3f2e', 'left', 0.85);
+  drawLines([
+    'Z — walk it back a count      B — strike this pass      R — top of the cue',
+  ], x + 26, y + 212, 0, 'italic 15px Georgia, serif', PAL.gaffer, 'left');
+}
+
+function drawPassFullOverlay() {
+  cx.fillStyle = 'rgba(244,233,208,0.12)';
+  cx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+  const W = 620, H = 170, x = (CANVAS_W - W) / 2, y = 190;
+  cx.fillStyle = PAL.paper; cx.strokeStyle = PAL.gaffer; cx.lineWidth = 5;
+  rr(x, y, W, H, 4); cx.fill(); cx.stroke();
+  cx.fillStyle = PAL.gaffer; cx.font = 'italic 26px Georgia, serif'; cx.textAlign = 'left';
+  cx.fillText('That’s four passes, love.', x + 26, y + 42);
+  drawLines([
+    'The house holds four memories and not one more. The change',
+    'isn’t made, and there’s no room left to remember this one.',
+  ], x + 26, y + 76, 24, 'italic 15.5px Georgia, serif', PAL.ink, 'left');
+  drawLines([
+    'Z — walk it back      B — strike this pass      R — top of the cue',
+  ], x + 26, y + 144, 0, 'italic 15px Georgia, serif', PAL.gaffer, 'left');
+}
+
+function drawWonOverlay(levelIndex) {
+  cx.fillStyle = 'rgba(24,17,11,0.55)';
+  cx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+  const lines = [
+    ['That’s the parlor set. Clean. See — you were never short of crew.',
+     'You just hadn’t met them yet.'],
+    ['The piano’s on its mark and nobody walked through anybody.',
+     'One cue left. The big one.'],
+    [],
+  ][levelIndex] || [];
+  drawLines(['— the change is made —'], CANVAS_W / 2, 300, 0,
+    'italic 34px Georgia, serif', PAL.amber);
+  drawLines(lines, CANVAS_W / 2, 356, 28, 'italic 17px Georgia, serif', PAL.chalk, 'center', 0.9);
+  const blink = 0.45 + 0.4 * Math.sin(nowMs / 500);
+  drawLines(['— any key —'], CANVAS_W / 2, 470, 0,
+    'italic 15px Georgia, serif', PAL.amber, 'center', blink);
+}
+
+/* The ending: the house takes its bow. */
+function drawEnding(tMs) {
+  paintHouse();
+  const t = tMs / 1000;
+  // warm house lights rising
+  const warm = Math.min(0.35, t * 0.04);
+  cx.fillStyle = 'rgba(242,179,86,' + warm + ')';
+  cx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+  drawGhostLamp(CANVAS_W / 2, 470, 1.25);
+  drawDustFull();
+  const fade = Math.max(0, Math.min(1, (t - 12) / 4)); // the crew takes its leave
+  // five bodies at the line: Wren and four remembered passes, bowing
+  for (let i = 0; i < 5; i++) {
+    const isWren = i === 2;
+    const bx = CANVAS_W / 2 + (i - 2) * 90;
+    const bowT = Math.max(0, Math.min(1, (t - 2 - i * 0.4) / 1.2));
+    const bow = Math.sin(Math.min(Math.PI, bowT * Math.PI)) * 0.5;
+    cx.save();
+    cx.globalAlpha = isWren ? 1 : Math.max(0, 0.75 - fade);
+    cx.translate(bx, 560); cx.rotate(isWren ? bow * 0.4 : bow * 0.5); cx.scale(1.6, 1.6);
+    cx.translate(-bx, -560);
+    const saveNow = nowMs; nowMs = 0; // hold them still but let the drawer run
+    drawWorker('bow' + i, (bx - BOARD_X) / TILE - 0.5, (560 - BOARD_Y) / TILE - 0.5, 'D',
+      { isPass: !isWren, idx: i > 2 ? i - 1 : i, carry: false });
+    nowMs = saveNow;
+    cx.restore();
+  }
+  const lines = [];
+  if (t > 1) lines.push('…and curtain. That’s the changeover. That’s the show.');
+  if (t > 4) lines.push('Good work, everyone. Yes — everyone. Take the bow, you earned it four times over.');
+  if (t > 7) lines.push('They’re striking the Garland in the morning. The set, the rail, the boards.');
+  if (t > 10) lines.push('But not tonight. Tonight the house is full of everything we did,');
+  if (t > 12.5) lines.push('doing it again, count for count, whenever the lamp is lit.');
+  if (t > 15.5) lines.push('Leave it burning, love.');
+  drawLines(lines, CANVAS_W / 2, 170, 30, 'italic 17px Georgia, serif', PAL.chalk, 'center', 0.92);
+  if (t > 18) {
+    const blink = 0.45 + 0.4 * Math.sin(nowMs / 500);
+    drawLines(['THE GARLAND — good night'], CANVAS_W / 2, 680, 0,
+      'italic 22px Georgia, serif', PAL.tape, 'center', 0.9);
+    drawLines(['— any key leaves the lamp on —'], CANVAS_W / 2, 712, 0,
+      'italic 14px Georgia, serif', PAL.amber, 'center', blink);
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/*  Sound — a little, made on the spot with WebAudio                   */
+/* ------------------------------------------------------------------ */
+let AC = null;
+function initAudio() {
+  if (AC) return;
+  try { AC = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { AC = null; }
+}
+function tone(freq, dur, type, gain, when, slide) {
+  const t = AC.currentTime + (when || 0);
+  const o = AC.createOscillator(), g = AC.createGain();
+  o.type = type; o.frequency.setValueAtTime(freq, t);
+  if (slide) o.frequency.exponentialRampToValueAtTime(slide, t + dur);
+  g.gain.setValueAtTime(gain, t);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  o.connect(g).connect(AC.destination);
+  o.start(t); o.stop(t + dur + 0.02);
+}
+function thud(dur, gain, freq) {
+  const t = AC.currentTime;
+  const n = AC.createBufferSource();
+  const buf = AC.createBuffer(1, AC.sampleRate * dur, AC.sampleRate);
+  const d = buf.getChannelData(0);
+  for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / d.length);
+  n.buffer = buf;
+  const f = AC.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = freq;
+  const g = AC.createGain(); g.gain.value = gain;
+  n.connect(f).connect(g).connect(AC.destination); n.start(t);
+}
+function sfx(kind) {
+  if (!AC) return;
+  if (kind === 'step') thud(0.07, 0.25, 700);
+  else if (kind === 'bump') { thud(0.12, 0.3, 200); tone(72, 0.12, 'sine', 0.18, 0); }
+  else if (kind === 'wait') thud(0.04, 0.08, 500);
+  else if (kind === 'pickup') { tone(660, 0.12, 'triangle', 0.12, 0, 880); }
+  else if (kind === 'places') { thud(0.09, 0.2, 900); thud(0.09, 0.18, 900); }
+  else if (kind === 'hold') {
+    thud(0.3, 0.35, 2400);
+    tone(196, 0.7, 'sawtooth', 0.05, 0.05); tone(208, 0.7, 'sawtooth', 0.05, 0.05);
+  } else if (kind === 'win') {
+    tone(262, 0.5, 'triangle', 0.12, 0); tone(330, 0.5, 'triangle', 0.1, 0.08);
+    tone(392, 0.7, 'triangle', 0.1, 0.16); tone(523, 0.9, 'triangle', 0.08, 0.24);
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/*  The game — a thin shell around the pure log                        */
+/* ------------------------------------------------------------------ */
+const game = {
+  screen: 'title', levelIndex: 0, L: null, iters: null, snap: null,
+  passfull: false, confirmRestart: false, endingStart: 0, selftest: null,
+};
+
+function resim() { game.snap = simulate(game.L, game.iters); }
+function loadLevel(i) {
+  game.levelIndex = i;
+  game.L = parseLevel(LEVELS[i]);
+  game.iters = [{ moves: [], early: false }];
+  game.passfull = false; game.confirmRestart = false;
+  resetAnim();
+  for (const k in flatAnim) delete flatAnim[k];
+  resim();
+}
+function committedCount() { return game.iters.length - 1; }
+
+function tryMove(m) {
+  if (game.snap.hold || game.snap.won || game.passfull) return;
+  const cur = game.iters[game.iters.length - 1];
+  cur.moves.push(m);
+  resim();
+  const last = game.snap.liveTraj[game.snap.liveTraj.length - 1];
+  if (game.snap.hold) sfx('hold');
+  else if (last && last.pickup) sfx('pickup');
+  else if (m === 'W') sfx('wait');
+  else sfx(last && last.moved ? 'step' : 'bump');
+  if (game.snap.won) { sfx('win'); game.screen = 'won'; return; }
+  if (!game.snap.hold && cur.moves.length >= N_COUNTS) commitPass(false);
+}
+function commitPass(early) {
+  const cur = game.iters[game.iters.length - 1];
+  if (early) {
+    if (cur.moves.length === 0) return;
+    cur.early = true;
+  }
+  if (committedCount() >= MAX_PASSES) { game.passfull = true; sfx('hold'); return; }
+  game.iters.push({ moves: [], early: false });
+  resim();
+  sfx('places');
+}
+
+/* Pure single-step undo over the log; shared with the self-test.
+   Undoing across a pass boundary dissolves the newest memory and
+   resumes the prior pass mid-recording (its final user action —
+   the X, or count forty — is the action undone). */
+function logUndo(iters) {
+  const cur = iters[iters.length - 1];
+  if (cur.early) { cur.early = false; return true; }
+  if (cur.moves.length > 0) { cur.moves.pop(); return true; }
+  if (iters.length > 1) {
+    iters.pop();
+    const prev = iters[iters.length - 1];
+    if (prev.early) prev.early = false; else prev.moves.pop();
+    return true;
+  }
+  return false;
+}
+function undo() {
+  if (game.snap.won && game.screen !== 'play') return;
+  if (logUndo(game.iters)) { game.passfull = false; resim(); sfx('wait'); }
+}
+function strikePass() {
+  const cur = game.iters[game.iters.length - 1];
+  cur.moves = []; cur.early = false;
+  game.passfull = false;
+  resim(); sfx('places');
+}
+
+/* ------------------------------------------------------------------ */
+/*  Input                                                              */
+/* ------------------------------------------------------------------ */
+const KEYMAP = {
+  ArrowUp: 'U', ArrowDown: 'D', ArrowLeft: 'L', ArrowRight: 'R',
+  w: 'U', s: 'D', a: 'L', d: 'R', W: 'U', S: 'D', A: 'L', D: 'R',
+};
+window.addEventListener('keydown', e => {
+  if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', ' '].includes(e.key))
+    e.preventDefault();
+  initAudio();
+  const k = e.key;
+  if (game.selftest) { game.selftest = null; return; }
+  if (game.screen === 'title') {
+    if (k === 't' || k === 'T') { game.selftest = runSelfTest(); return; }
+    loadLevel(0); game.screen = 'brief'; return;
+  }
+  if (game.screen === 'brief') { game.screen = 'play'; return; }
+  if (game.screen === 'won') {
+    if (game.levelIndex + 1 < LEVELS.length) {
+      loadLevel(game.levelIndex + 1); game.screen = 'brief';
+    } else {
+      game.screen = 'ending'; game.endingStart = nowMs;
+    }
+    return;
+  }
+  if (game.screen === 'ending') {
+    const t = (nowMs - game.endingStart) / 1000;
+    if (t < 2) return;
+    if (t < 18) game.endingStart = nowMs - 18000;
+    else { game.screen = 'title'; game.levelIndex = 0; }
+    return;
+  }
+  if (game.screen !== 'play') return;
+  // HOLD / four-passes overlays take their own three keys
+  if (game.snap.hold || game.passfull) {
+    if (k === 'z' || k === 'Z') undo();
+    else if (k === 'b' || k === 'B') strikePass();
+    else if (k === 'r' || k === 'R') loadLevel(game.levelIndex);
+    return;
+  }
+  if (game.confirmRestart) {
+    game.confirmRestart = false;
+    if (k === 'r' || k === 'R') { loadLevel(game.levelIndex); }
+    return;
+  }
+  if (KEYMAP[k]) tryMove(KEYMAP[k]);
+  else if (k === ' ') tryMove('W');
+  else if (k === 'x' || k === 'X') commitPass(true);
+  else if (k === 'z' || k === 'Z') undo();
+  else if (k === 'r' || k === 'R') game.confirmRestart = true;
+});
+
+/* ------------------------------------------------------------------ */
+/*  Self-test — the ghost run. Every cue, run empty, plus an undo      */
+/*  determinism sweep and one deliberate tear.                         */
+/* ------------------------------------------------------------------ */
+function parseSolutionIters(sol) {
+  return sol.map(s => {
+    const early = s.endsWith('X');
+    return { moves: (early ? s.slice(0, -1) : s).split(''), early };
+  });
+}
+function hashSnap(snap) {
+  return JSON.stringify({
+    l: [snap.world.live.x, snap.world.live.y, snap.world.live.carry],
+    p: snap.world.pianos, lt: snap.world.lanternTaken,
+    r: snap.recs.map(r => r.pos ? [r.pos.x, r.pos.y, r.carry] : null),
+    i: snap.iter, t: snap.tick, w: snap.won, h: !!snap.hold,
+  });
+}
+function runSelfTest() {
+  const rows = []; let allOK = true;
+  const check = (label, ok, detail) => {
+    allOK = allOK && ok;
+    rows.push({ label, ok, detail });
+    console.log((ok ? 'PASS  ' : 'FAIL  ') + label + (detail ? ' — ' + detail : ''));
+  };
+  // 1. every intended solution makes the change
+  LEVELS.forEach(def => {
+    const L = parseLevel(def);
+    const snap = simulate(L, parseSolutionIters(def.solution));
+    check(def.cue + ' — ' + def.name, snap.won && !snap.hold,
+      snap.won ? 'the change is made on count ' + snap.tick
+        : snap.hold ? 'HOLD, pass ' + (snap.hold.k + 1) + ', count ' + (snap.hold.t + 1)
+        : 'the spike is never reached');
+  });
+  // 2. undo determinism: forward hashes, undo all the way back, replay
+  {
+    const L = parseLevel(LEVELS[1]);
+    const orig = parseSolutionIters(LEVELS[1].solution);
+    orig[orig.length - 1].moves.pop(); // stop one count shy of the win
+    const actions = [];
+    orig.forEach((it, i) => {
+      it.moves.forEach(m => actions.push({ t: 'm', m }));
+      if (i < orig.length - 1) actions.push({ t: 'c' });
+    });
+    const cur = [{ moves: [], early: false }];
+    const hashes = [hashSnap(simulate(L, cur))];
+    for (const a of actions) {
+      if (a.t === 'm') cur[cur.length - 1].moves.push(a.m);
+      else { cur[cur.length - 1].early = true; cur.push({ moves: [], early: false }); }
+      hashes.push(hashSnap(simulate(L, cur)));
+    }
+    let ok = true;
+    for (let j = actions.length - 1; j >= 0; j--) {
+      logUndo(cur);
+      if (hashSnap(simulate(L, cur)) !== hashes[j]) { ok = false; break; }
+    }
+    check('walk it all back', ok, ok ? actions.length + ' counts undone, every state identical' : 'a state differed on the way back');
+    let ok2 = true;
+    for (let j = 0; j < actions.length; j++) {
+      const a = actions[j];
+      if (a.t === 'm') cur[cur.length - 1].moves.push(a.m);
+      else { cur[cur.length - 1].early = true; cur.push({ moves: [], early: false }); }
+      if (hashSnap(simulate(L, cur)) !== hashes[j + 1]) { ok2 = false; break; }
+    }
+    check('run it again, identical', ok2, ok2 ? 'replay reproduces every state' : 'replay diverged');
+  }
+  // 3. one deliberate tear: shove the piano into the aisle early in Cue 47
+  {
+    const L = parseLevel(LEVELS[2]);
+    const iters = parseSolutionIters(['RRRRRRUUUUUUUX', 'URRRRRW']);
+    const snap = simulate(L, iters);
+    const h = snap.hold;
+    const ok = !!h && h.k === 0 && h.t === 6 && h.tile.x === 7 && h.tile.y === 8;
+    check('a deliberate tear holds correctly', ok,
+      h ? 'HOLD, pass ' + (h.k + 1) + ', count ' + (h.t + 1) + ', at ' + tileName(h.tile.x, h.tile.y)
+        : 'no hold was called');
+  }
+  return { rows, allOK };
+}
+function drawSelftestOverlay() {
+  const st = game.selftest;
+  const W = 660, H = 120 + st.rows.length * 42, x = (CANVAS_W - W) / 2, y = 110;
+  cx.fillStyle = 'rgba(20,14,9,0.7)'; cx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+  cx.fillStyle = PAL.paper;
+  rr(x, y, W, H, 4); cx.fill();
+  cx.strokeStyle = st.allOK ? '#6d7a54' : PAL.gaffer; cx.lineWidth = 5;
+  rr(x, y, W, H, 4); cx.stroke();
+  cx.fillStyle = PAL.ink; cx.font = 'italic 24px Georgia, serif'; cx.textAlign = 'left';
+  cx.fillText('the ghost run — every cue, played to an empty house', x + 24, y + 42);
+  st.rows.forEach((r, i) => {
+    const ry = y + 84 + i * 42;
+    cx.font = 'italic 16px Georgia, serif';
+    cx.fillStyle = r.ok ? '#5a6844' : PAL.gaffer;
+    cx.fillText(r.ok ? '✓' : '✗', x + 24, ry);
+    cx.fillStyle = PAL.ink;
+    cx.fillText(r.label, x + 48, ry);
+    cx.font = 'italic 13px Georgia, serif'; cx.fillStyle = '#4d3f2e';
+    cx.fillText(r.detail, x + 48, ry + 18);
+  });
+  cx.font = 'italic 15px Georgia, serif';
+  cx.fillStyle = st.allOK ? '#5a6844' : PAL.gaffer;
+  cx.fillText(st.allOK ? 'Every pass holds. We can open.' : 'Something tears. We do not open.', x + 24, y + H - 18);
+}
+
+/* ------------------------------------------------------------------ */
+/*  Frame loop                                                         */
+/* ------------------------------------------------------------------ */
+function drawPlayScene() {
+  cx.fillStyle = PAL.house; cx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+  drawHeader(game.snap);
+  drawBoardAndSet(game.snap);
+  drawBoardLight();
+  drawDust();
+  drawPanel(game.snap, game.iters);
+  drawShiftPlot(game.snap, game.iters);
+  if (game.confirmRestart) {
+    cx.fillStyle = PAL.amber; cx.globalAlpha = 0.9;
+    cx.font = 'italic 15px Georgia, serif'; cx.textAlign = 'center';
+    cx.fillText('top of the cue? R again scrubs everything — any other key stays', CANVAS_W / 2, 82);
+    cx.globalAlpha = 1;
+  }
+  if (game.snap.hold) drawHoldOverlay(game.snap);
+  else if (game.passfull) drawPassFullOverlay();
+}
+function frame(ts) {
+  nowMs = ts || 0;
+  cx.fillStyle = PAL.houseDeep; cx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+  if (game.screen === 'title') drawTitle();
+  else if (game.screen === 'brief') drawBrief(game.levelIndex);
+  else if (game.screen === 'play') drawPlayScene();
+  else if (game.screen === 'won') { drawPlayScene(); drawWonOverlay(game.levelIndex); }
+  else if (game.screen === 'ending') drawEnding(nowMs - game.endingStart);
+  if (game.selftest) drawSelftestOverlay();
+  requestAnimationFrame(frame);
+}
+
+/* Boot */
+if (/[?&]selftest/.test(location.search)) {
+  game.selftest = runSelfTest();
+  window.__selftest = game.selftest; // headless hook
+  const pre = document.createElement('pre'); // machine-readable for --dump-dom
+  pre.id = 'selftest-out'; pre.style.display = 'none';
+  pre.textContent = 'SELFTEST ' + (game.selftest.allOK ? 'ALL-PASS' : 'FAILING') + '\n' +
+    game.selftest.rows.map(r => (r.ok ? 'PASS' : 'FAIL') + ' :: ' + r.label + ' :: ' + r.detail).join('\n');
+  document.body.appendChild(pre);
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
