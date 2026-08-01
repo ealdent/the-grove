@@ -1,0 +1,2207 @@
+<!--
+===============================================================================
+DESIGN DOCUMENT — THE LOOM THAT ATE THE DAWN
+===============================================================================
+
+TITLE
+The Loom That Ate the Dawn
+
+PREMISE (223 words)
+You are Sava, the last pattern-runner in a cliffside weaving house whose
+colossal loom draws each morning across the sky. Your teacher Maret died with
+her final cloth unfinished; beyond the windows, the east has remained the
+color of unbleached wool. The loom grants one repair ritual. Walk a pattern of
+forty-eight beats, throw the shuttle, and it returns you to the row's beginning.
+
+A completed pass becomes a Woven Figure: not a ghost or memory, but Sava's
+previous passage made bodily from the new cloth, raised upright by warp
+strings. Each Figure repeats the exact footfalls, hesitations, knots, and
+shoves that formed it. Several Figures can hold treadles together, lifting
+different heddle combs so Sava may carry Maret's saffron sun-skein toward the
+Finishing Eye.
+
+Woven cloth cannot revise what lies beneath it. If a Figure reaches for a
+loaded boat-shuttle that is no longer there, meets closed teeth where it once
+crossed an open shed, or finds another body occupying its stitch, the loom
+pulls the contradiction tight into a Snarl. The repair stops before the whole
+horizon tears.
+
+Maret's abandoned pattern gradually reveals itself as deliberate: a black
+mourning strand runs through the promised dawn. The final repair seems to ask
+Sava to hurry that darkness out of the design. She must instead protect every
+earlier stitch and finish around it, accepting that morning is not made by
+erasing the night.
+
+ART DIRECTION
+The palette is raw linen #E8D7B5, bone #F6EACF, saffron #D7A337, madder
+#B64A3A, oxblood #7B3028, lichen #596548, walnut #49382B, charcoal-brown
+#2B241F, and dusty slate #68706C. Warm upper-left window light casts long
+walnut shadows. Shapes use interlocking lozenges, blunt triangles, scalloped
+hems, wooden ovals, and comb-like verticals. References are handwoven
+Anatolian kilims, 1930s textile posters, faded gouache, visible registration
+error, and the lint-softened wood of a working loom. Typography uses the
+browser's Georgia/Palatino-style serif faces: large irregular embroidered
+forms for the title, bookish roman for the loom's speech, and italic for
+Maret's remembered words. No monospace face is used.
+
+VOICE
+Every line is spoken by the loom like a stern, loving grandmother dictating a
+pattern: tactile, exact, mournful, and incapable of neutral modern phrasing.
+
+DETERMINISTIC RULINGS
+- Logic is replayed from only (authored level, flat input log); animation time
+  and ambient lint never enter the simulation.
+- A pass is forty-eight beats. Throwing the shuttle is itself one recorded
+  beat and ends a pass early; its Figure holds that last stitch thereafter.
+- At most four Woven Figures stand beside living Sava. A fifth finished pass
+  frays the cloth instead of silently discarding history.
+- Each beat is called from oldest Figure to newest, then living Sava. The
+  shared starting stitch alone permits overlap. Elsewhere the older body wins
+  a contested stitch. A just-vacated stitch may be entered later in the same
+  beat; swaps fail because the older mover first finds the newer body present.
+- Treadles are sampled after every actor's action. Thus an older Figure may
+  lift a shed for a newer actor on the same beat. An actor stepping off a
+  treadle cannot use that treadle to hold a comb open for its own move.
+- Boat-shuttles obey strict Sokoban rules: one-cell pushes only, no pulling,
+  no chained pushes. Figures replay inputs, and their typed local outcomes
+  (movement, obstruction, shuttle, carried skein, and crossed shed) must match
+  what they originally experienced.
+- A contradictory beat is rejected whole. Z removes that one input. Unweaving
+  a pass removes the current pass's inputs. Both rebuild from the same log.
+
+AUTHORED SOLUTIONS (U/R/D/L move, W hold, C knot/lay skein, E throw shuttle)
+
+Act I — "The Hem Comes Loose"
+  Pass 1: UUUUUUURE
+  Pass 2: RRRUUUUUURRRRUCRRDD
+
+Act II — "The Pattern Beneath Her Palm"
+  Pass 1: UUUUUUURE
+  Pass 2: RRUUUUURRRDRE
+  Pass 3: WUUUURWRRRURRRDDRRUURCDDDD
+
+Act III — "A Black Thread Must Remain"
+  Pass 1: UUUUUUUURE
+  Pass 2: RRUUUUUURRRWWWWLDDDRRE
+  Pass 3: WUURRWWWWWRRURURRRDWRRRUUUE
+  Pass 4: LUUUUUURRRRRUURRRRDDDDDRRRRDDLDCRR
+
+The Act III tempting tear is Passes 1–2 followed by:
+  UURRWWWWWWRRURRURRDWW
+On beat 21, Figure 2 remembers pushing the loaded boat-shuttle east; living
+Sava has already moved it, so the Figure finds bare warp instead.
+===============================================================================
+-->
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <link rel="icon" href="data:,">
+  <title>The Loom That Ate the Dawn</title>
+  <style>
+    html, body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      overflow: hidden;
+      background: #2B241F;
+    }
+    body { touch-action: none; }
+    canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      outline: none;
+      cursor: default;
+    }
+  </style>
+</head>
+<body>
+<canvas id="loom" tabindex="0" aria-label="Child, set Sava's feet upon the loom's unfinished morning.">
+  Child, this pattern asks for a browser that can hold a canvas.
+</canvas>
+<script>
+(() => {
+  "use strict";
+
+  const BEATS = 48;
+  const MAX_FIGURES = 4;
+  const INPUTS = Object.freeze({ U: "U", R: "R", D: "D", L: "L", W: "W", C: "C", E: "E" });
+  const DIR = Object.freeze({ U: [0, -1], R: [1, 0], D: [0, 1], L: [-1, 0] });
+  const PALETTE = Object.freeze({
+    linen: "#E8D7B5", bone: "#F6EACF", saffron: "#D7A337",
+    madder: "#B64A3A", oxblood: "#7B3028", lichen: "#596548",
+    walnut: "#49382B", charcoal: "#2B241F", slate: "#68706C"
+  });
+
+  const RAW_LEVELS = [
+    {
+      act: "Act I",
+      title: "The Hem Comes Loose",
+      opening: "Child, the east has come loose. Leave one honest Figure upon the first treadle, then carry Maret's saffron to the Eye.",
+      objective: "Hold the first treadle; knot the sun-skein; reach the Finishing Eye while its shed stays lifted.",
+      hint: "Your first pass need only climb to the first lozenge and throw the shuttle. On the next pass, let that woven foot hold what living feet cannot.",
+      required: ["A"],
+      map: [
+        "###############",
+        "#.....#.......#",
+        "#..A..#..Y....#",
+        "#.....a.......#",
+        "#.....#....F..#",
+        "#.....#.......#",
+        "#.....#.......#",
+        "#.....#.......#",
+        "#.....#.......#",
+        "#.@...#.......#",
+        "#.....#.......#",
+        "#.....#.......#",
+        "###############"
+      ],
+      solutionPasses: ["UUUUUUURE", "RRRUUUUUURRRRUCRRDD"]
+    },
+    {
+      act: "Act II",
+      title: "The Pattern Beneath Her Palm",
+      opening: "Maret weighted the cloth for a reason. One Figure must hold the first treadle; another must seat the loaded boat-shuttle upon the second.",
+      objective: "Lift both sheds, leave the loaded shuttle on its lozenge, then bind saffron into the waiting Eye.",
+      hint: "The first Figure climbs. The second crosses the lifted teeth and pushes the wooden shuttle one stitch east. The third may then follow both strands.",
+      required: ["A", "B"],
+      map: [
+        "###############",
+        "#....#....#...#",
+        "#..A.#....#...#",
+        "#....#....#...#",
+        "#....#....#.Y.#",
+        "#....a....#...#",
+        "#....#.OB.b...#",
+        "#....#....#...#",
+        "#....#....#.F.#",
+        "#.@..#....#...#",
+        "#....#....#...#",
+        "#....#....#...#",
+        "###############"
+      ],
+      solutionPasses: ["UUUUUUURE", "RRUUUURRRDRE", "WUUUURWRRRURRRDDRRUURCDDDD"]
+    },
+    {
+      act: "Act III",
+      title: "A Black Thread Must Remain",
+      opening: "Here is Maret's mourning strand. A brief shed will tempt you toward the loaded shuttle before its appointed hand arrives. Do not improve the past, child. Protect it.",
+      objective: "Keep every earlier shove true; set a third Figure on the far treadle; carry saffron beneath the uncut black strand.",
+      hint: "Use the brief lower shed, but turn north when the loaded shuttle tempts your hand. Let the second Figure make its remembered shove before you cross east.",
+      required: ["A", "B", "C"],
+      map: [
+        "#################",
+        "#....#.....#....#",
+        "#..A.#.....#....#",
+        "#....#.....#....#",
+        "#....a.D...#.C..#",
+        "#....#.....#....#",
+        "#....#.....#....#",
+        "#....#..OB.b....#",
+        "#....d.....###c##",
+        "#....#.....#....#",
+        "#.@..#.....#.Y.F#",
+        "#....#.....#....#",
+        "#################"
+      ],
+      solutionPasses: [
+        "UUUUUUUURE",
+        "RRUUUUUURRRWWWWLDDDRRE",
+        "WUURRWWWWWRRURURRRDWRRRUUUE",
+        "LUUUUUURRRRRUURRRRDDDDDRRRRDDLDCRR"
+      ],
+      sabotagePasses: [
+        "UUUUUUUURE",
+        "RRUUUUUURRRWWWWLDDDRRE",
+        "UURRWWWWWWRRURRURRDWW"
+      ]
+    }
+  ];
+
+  const keyOf = (x, y) => `${x},${y}`;
+  const sameTile = (a, b) => !!a && !!b && a.x === b.x && a.y === b.y;
+  const copyTile = p => p ? { x: p.x, y: p.y } : null;
+  const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+  const lerp = (a, b, t) => a + (b - a) * t;
+
+  function parseLevel(raw, index) {
+    const height = raw.map.length;
+    const width = raw.map[0].length;
+    const level = {
+      ...raw, index, width, height, walls: new Set(), gates: [], treadles: [],
+      boats: [], start: null, skein: null, finish: null
+    };
+    raw.map.forEach((row, y) => {
+      if (row.length !== width) throw new Error(`The loom rejects a crooked row in ${raw.title}.`);
+      [...row].forEach((ch, x) => {
+        if (ch === "#") level.walls.add(keyOf(x, y));
+        else if (ch === "@") level.start = { x, y };
+        else if (ch === "Y") level.skein = { x, y };
+        else if (ch === "F") level.finish = { x, y };
+        else if (ch === "O") level.boats.push({ id: `boat-${level.boats.length + 1}`, x, y });
+        else if (/[A-D]/.test(ch)) level.treadles.push({ id: ch, x, y });
+        else if (/[a-d]/.test(ch)) level.gates.push({ id: ch.toUpperCase(), x, y });
+      });
+    });
+    if (width < 12 || height < 12 || !level.start || !level.skein || !level.finish) {
+      throw new Error(`The loom finds ${raw.title} too small or missing a sacred stitch.`);
+    }
+    if (level.boats.some(b => sameTile(b, level.start))) {
+      throw new Error(`The loom will not set a loaded shuttle upon Sava's first stitch.`);
+    }
+    raw.required.forEach(id => {
+      if (!level.treadles.some(t => t.id === id) || !level.gates.some(g => g.id === id)) {
+        throw new Error(`The loom finds required shed ${id} without both its treadle and its teeth in ${raw.title}.`);
+      }
+    });
+    level.solutionLog = raw.solutionPasses.flatMap(s => [...s]);
+    level.sabotageLog = raw.sabotagePasses ? raw.sabotagePasses.flatMap(s => [...s]) : null;
+    return level;
+  }
+
+  const LEVELS = RAW_LEVELS.map(parseLevel);
+
+  function makeWorld(level, records) {
+    const actors = records.map(record => ({
+      id: `figure-${record.iteration}`,
+      iteration: record.iteration,
+      live: false,
+      x: level.start.x,
+      y: level.start.y
+    }));
+    actors.push({
+      id: "sava",
+      iteration: records.length + 1,
+      live: true,
+      x: level.start.x,
+      y: level.start.y
+    });
+    return {
+      actors,
+      boats: level.boats.map(b => ({ ...b })),
+      skein: { x: level.skein.x, y: level.skein.y, carrier: null }
+    };
+  }
+
+  function freshCycle(level, records = [], cycleStartIndex = 0, consumed = 0) {
+    return {
+      mode: "play",
+      records,
+      world: makeWorld(level, records),
+      iteration: records.length + 1,
+      beat: 0,
+      liveScript: [],
+      liveExpected: [],
+      lastLiveOutcome: null,
+      catastrophe: null,
+      cycleStartIndex,
+      consumed
+    };
+  }
+
+  function cloneWorld(world) {
+    return {
+      actors: world.actors.map(a => ({ ...a })),
+      boats: world.boats.map(b => ({ ...b })),
+      skein: { ...world.skein }
+    };
+  }
+
+  function gateAt(level, x, y) {
+    return level.gates.find(g => g.x === x && g.y === y) || null;
+  }
+
+  function treadleAt(level, x, y) {
+    return level.treadles.find(t => t.x === x && t.y === y) || null;
+  }
+
+  function boatAt(world, x, y) {
+    return world.boats.find(b => b.x === x && b.y === y) || null;
+  }
+
+  function actorAt(world, x, y, exceptIndex = -1) {
+    return world.actors.find((a, i) => i !== exceptIndex && a.x === x && a.y === y) || null;
+  }
+
+  function mechanismOpen(level, world, id, excludeActorIndex = -1) {
+    const marks = level.treadles.filter(t => t.id === id);
+    return marks.some(mark => {
+      const actor = world.actors.some((a, i) => i !== excludeActorIndex && a.x === mark.x && a.y === mark.y);
+      const boat = world.boats.some(b => b.x === mark.x && b.y === mark.y);
+      return actor || boat;
+    });
+  }
+
+  function mechanismStates(level, world) {
+    const ids = [...new Set([...level.treadles.map(t => t.id), ...level.gates.map(g => g.id)])].sort();
+    return ids.map(id => ({ id, open: mechanismOpen(level, world, id) }));
+  }
+
+  function blockerFor(level, world, x, y, actorIndex, excludeLeavingActor = true, allowSharedStart = true) {
+    if (x < 0 || y < 0 || x >= level.width || y >= level.height) {
+      return { kind: "edge", id: "selvedge", tile: { x, y } };
+    }
+    if (level.walls.has(keyOf(x, y))) {
+      return { kind: "beam", id: "loom-beam", tile: { x, y } };
+    }
+    const other = actorAt(world, x, y, actorIndex);
+    if (other && !(allowSharedStart && sameTile({ x, y }, level.start))) {
+      return { kind: "figure", id: other.id, iteration: other.iteration, tile: { x, y } };
+    }
+    const gate = gateAt(level, x, y);
+    const excluded = excludeLeavingActor ? actorIndex : -1;
+    if (gate && !mechanismOpen(level, world, gate.id, excluded)) {
+      return { kind: "heddle", id: gate.id, tile: { x, y } };
+    }
+    return null;
+  }
+
+  function baseOutcome(input, actor, world) {
+    return {
+      input,
+      from: { x: actor.x, y: actor.y },
+      attempted: null,
+      to: { x: actor.x, y: actor.y },
+      result: "hold",
+      blocker: null,
+      boat: null,
+      crossedShed: null,
+      carryingBefore: world.skein.carrier === actor.id,
+      carryingAfter: world.skein.carrier === actor.id
+    };
+  }
+
+  function resolveAction(level, world, actorIndex, input) {
+    const actor = world.actors[actorIndex];
+    const out = baseOutcome(input, actor, world);
+
+    if (input === INPUTS.W) {
+      out.result = "hold";
+      return out;
+    }
+    if (input === INPUTS.E) {
+      out.result = "shuttle-thrown";
+      return out;
+    }
+    if (input === INPUTS.C) {
+      if (world.skein.carrier === actor.id) {
+        world.skein.carrier = null;
+        world.skein.x = actor.x;
+        world.skein.y = actor.y;
+        out.result = "skein-laid";
+        out.carryingAfter = false;
+      } else if (world.skein.carrier === null && world.skein.x === actor.x && world.skein.y === actor.y) {
+        world.skein.carrier = actor.id;
+        out.result = "skein-knotted";
+        out.carryingAfter = true;
+      } else {
+        out.result = "empty-knot";
+      }
+      return out;
+    }
+
+    const delta = DIR[input];
+    if (!delta) {
+      out.result = "unread-stitch";
+      return out;
+    }
+    const nx = actor.x + delta[0];
+    const ny = actor.y + delta[1];
+    out.attempted = { x: nx, y: ny };
+
+    const firstBlocker = blockerFor(level, world, nx, ny, actorIndex, true);
+    if (firstBlocker) {
+      out.result = `blocked-${firstBlocker.kind}`;
+      out.blocker = firstBlocker;
+      return out;
+    }
+
+    const boat = boatAt(world, nx, ny);
+    if (boat) {
+      const bx = nx + delta[0];
+      const by = ny + delta[1];
+      let pushBlocker = blockerFor(level, world, bx, by, actorIndex, true, false);
+      if (!pushBlocker) {
+        const nextBoat = boatAt(world, bx, by);
+        if (nextBoat) pushBlocker = { kind: "shuttle", id: nextBoat.id, tile: { x: bx, y: by } };
+      }
+      if (pushBlocker) {
+        out.result = "blocked-push";
+        out.blocker = pushBlocker;
+        out.boat = { id: boat.id, from: { x: nx, y: ny }, to: { x: nx, y: ny } };
+        return out;
+      }
+      const before = { x: boat.x, y: boat.y };
+      boat.x = bx;
+      boat.y = by;
+      actor.x = nx;
+      actor.y = ny;
+      out.result = "push";
+      out.to = { x: nx, y: ny };
+      out.boat = { id: boat.id, from: before, to: { x: bx, y: by } };
+      const gate = gateAt(level, nx, ny);
+      out.crossedShed = gate ? gate.id : null;
+      return out;
+    }
+
+    actor.x = nx;
+    actor.y = ny;
+    out.result = "move";
+    out.to = { x: nx, y: ny };
+    const gate = gateAt(level, nx, ny);
+    out.crossedShed = gate ? gate.id : null;
+    return out;
+  }
+
+  function stableOutcome(outcome) {
+    if (!outcome) return null;
+    return {
+      input: outcome.input,
+      from: outcome.from,
+      attempted: outcome.attempted,
+      to: outcome.to,
+      result: outcome.result,
+      blocker: outcome.blocker,
+      boat: outcome.boat,
+      crossedShed: outcome.crossedShed,
+      carryingBefore: outcome.carryingBefore,
+      carryingAfter: outcome.carryingAfter
+    };
+  }
+
+  function outcomesMatch(expected, actual) {
+    return JSON.stringify(stableOutcome(expected)) === JSON.stringify(stableOutcome(actual));
+  }
+
+  function offendingTile(expected, actual) {
+    if (actual && actual.blocker && actual.blocker.tile) return copyTile(actual.blocker.tile);
+    if (expected && expected.boat) return copyTile(expected.boat.from);
+    if (actual && actual.attempted) return copyTile(actual.attempted);
+    if (expected && expected.attempted) return copyTile(expected.attempted);
+    return expected ? copyTile(expected.from) : null;
+  }
+
+  function liveHasFinished(level, world) {
+    const live = world.actors[world.actors.length - 1];
+    const onEye = live.x === level.finish.x && live.y === level.finish.y;
+    const carriesSun = world.skein.carrier === live.id;
+    const shedsHeld = level.required.every(id => mechanismOpen(level, world, id));
+    return onEye && carriesSun && shedsHeld;
+  }
+
+  function advanceOneBeat(level, state, input, actionIndex) {
+    const draft = cloneWorld(state.world);
+    let liveOutcome = null;
+
+    for (let i = 0; i < draft.actors.length; i++) {
+      const actor = draft.actors[i];
+      const record = actor.live ? null : state.records[i];
+      const action = actor.live ? input : record.script[state.beat];
+      if (action === undefined) continue;
+      const actual = resolveAction(level, draft, i, action);
+      if (!actor.live) {
+        const expected = record.expected[state.beat];
+        if (!outcomesMatch(expected, actual)) {
+          return {
+            ...state,
+            mode: "snarl",
+            catastrophe: {
+              recordingIteration: record.iteration,
+              beat: state.beat + 1,
+              expected: stableOutcome(expected),
+              actual: stableOutcome(actual),
+              tile: offendingTile(expected, actual),
+              actorId: actor.id
+            },
+            consumed: actionIndex + 1
+          };
+        }
+      } else {
+        liveOutcome = stableOutcome(actual);
+      }
+    }
+
+    const nextBeat = state.beat + 1;
+    const nextScript = state.liveScript.concat(input);
+    const nextExpected = state.liveExpected.concat(liveOutcome);
+    const common = {
+      ...state,
+      world: draft,
+      beat: nextBeat,
+      liveScript: nextScript,
+      liveExpected: nextExpected,
+      lastLiveOutcome: liveOutcome,
+      consumed: actionIndex + 1
+    };
+
+    if (liveHasFinished(level, draft)) {
+      return { ...common, mode: "won" };
+    }
+
+    if (input === INPUTS.E || nextBeat === BEATS) {
+      if (state.records.length >= MAX_FIGURES) {
+        return { ...common, mode: "frayed" };
+      }
+      const record = {
+        iteration: state.iteration,
+        script: nextScript,
+        expected: nextExpected.map(stableOutcome)
+      };
+      return freshCycle(level, state.records.concat(record), actionIndex + 1, actionIndex + 1);
+    }
+
+    return common;
+  }
+
+  function derive(level, inputLog) {
+    let state = freshCycle(level);
+    for (let i = 0; i < inputLog.length; i++) {
+      if (state.mode !== "play") break;
+      state = advanceOneBeat(level, state, inputLog[i], i);
+    }
+    return state;
+  }
+
+  function logicDigest(state) {
+    return JSON.stringify({
+      mode: state.mode,
+      iteration: state.iteration,
+      beat: state.beat,
+      records: state.records.map(r => ({ iteration: r.iteration, script: r.script, expected: r.expected })),
+      actors: state.world.actors.map(a => ({ id: a.id, iteration: a.iteration, live: a.live, x: a.x, y: a.y })),
+      boats: state.world.boats.map(b => ({ id: b.id, x: b.x, y: b.y })),
+      skein: state.world.skein,
+      mechanisms: null,
+      liveScript: state.liveScript,
+      liveExpected: state.liveExpected,
+      catastrophe: state.catastrophe,
+      cycleStartIndex: state.cycleStartIndex,
+      consumed: state.consumed
+    });
+  }
+
+  function ordinal(n) {
+    const words = ["zeroth", "first", "second", "third", "fourth", "fifth"];
+    return words[n] || `${n}th`;
+  }
+
+  function stitch(p) {
+    return p ? `stitch ${p.x + 1},${p.y + 1}` : "an unnamed stitch";
+  }
+
+  function actorName(id, iteration) {
+    if (id === "sava") return "living Sava";
+    return `${ordinal(iteration)} Woven Figure`;
+  }
+
+  function describeOutcome(outcome) {
+    if (!outcome) return "a mark the cloth can no longer read";
+    const from = stitch(outcome.from);
+    const to = stitch(outcome.to);
+    switch (outcome.result) {
+      case "move":
+        return `${outcome.crossedShed ? `crossing lifted shed ${outcome.crossedShed} ` : "stepping "}from ${from} to ${to}`;
+      case "push":
+        return `the loaded boat-shuttle yielding from ${stitch(outcome.boat.from)} to ${stitch(outcome.boat.to)} while she stepped to ${to}`;
+      case "hold":
+        return `holding her thread at ${from}`;
+      case "shuttle-thrown":
+        return `throwing the pass-shuttle at ${from}`;
+      case "skein-knotted":
+        return `knotting Maret's saffron skein at ${from}`;
+      case "skein-laid":
+        return `laying Maret's saffron skein at ${from}`;
+      case "empty-knot":
+        return `reaching for saffron at ${from} and finding none`;
+      case "blocked-heddle":
+        return `the teeth of shed ${outcome.blocker.id} holding her at ${from} before ${stitch(outcome.attempted)}`;
+      case "blocked-figure":
+        return `${actorName(outcome.blocker.id, outcome.blocker.iteration)} occupying ${stitch(outcome.blocker.tile)} and holding her at ${from}`;
+      case "blocked-beam":
+      case "blocked-edge":
+        return `the loom's wooden selvedge holding her at ${from} before ${stitch(outcome.attempted)}`;
+      case "blocked-push":
+        return `the loaded boat-shuttle refusing at ${stitch(outcome.boat.from)} because ${stitch(outcome.blocker.tile)} was bound`;
+      default:
+        return `${outcome.result.replace(/-/g, " ")} at ${from}`;
+    }
+  }
+
+  function snarlCopy(catastrophe) {
+    return [
+      `Child, a Snarl has caught the ${ordinal(catastrophe.recordingIteration)} Figure on beat ${catastrophe.beat}.`,
+      `She remembers ${describeOutcome(catastrophe.expected)}.`,
+      `Today she found ${describeOutcome(catastrophe.actual)}.`,
+      "Pick back one beat, unweave this pass, or cut this act from the loom."
+    ];
+  }
+
+  function runSelfTests() {
+    const checks = [];
+    const check = (name, fn) => {
+      try {
+        const detail = fn();
+        checks.push({ ok: true, text: `The ${name} lies true${detail ? `: ${detail}` : "."}` });
+      } catch (error) {
+        checks.push({ ok: false, text: `The ${name} has puckered: ${error.message}` });
+      }
+    };
+    const insist = (value, message) => { if (!value) throw new Error(message); };
+
+    LEVELS.forEach((level, i) => {
+      check(`${ordinal(i + 1)} authored cloth`, () => {
+        const state = derive(level, level.solutionLog);
+        insist(state.mode === "won", `it ended as ${state.mode} on pass ${state.iteration}, beat ${state.beat}`);
+        insist(state.consumed === level.solutionLog.length, "the pattern carried stray stitches after the Eye");
+        insist(level.required.every(id => mechanismOpen(level, state.world, id)), "a required shed had fallen at the Eye");
+        return `${level.title} binds off on pass ${state.iteration}, beat ${state.beat}.`;
+      });
+    });
+
+    check("forty-eight-notch measuring braid", () => {
+      const log = Array(BEATS).fill(INPUTS.W);
+      const state = derive(LEVELS[0], log);
+      insist(state.iteration === 2 && state.beat === 0 && state.records.length === 1, "the natural selvedge missed its forty-eighth beat");
+      insist(state.records[0].script.length === BEATS, "the Figure did not inherit every held beat");
+    });
+
+    check("early pass-shuttle", () => {
+      const state = derive(LEVELS[0], [INPUTS.E]);
+      insist(state.iteration === 2 && state.records.length === 1, "one thrown shuttle did not turn a pass into cloth");
+      insist(state.records[0].script.join("") === INPUTS.E, "the thrown beat was not recorded");
+    });
+
+    check("fifth-figure selvedge", () => {
+      const state = derive(LEVELS[0], [INPUTS.E, INPUTS.E, INPUTS.E, INPUTS.E, INPUTS.E]);
+      insist(state.mode === "frayed" && state.records.length === MAX_FIGURES, "the loom silently forgot an older Figure");
+    });
+
+    check("blocked footfall", () => {
+      const state = derive(LEVELS[0], [INPUTS.L, INPUTS.L]);
+      insist(state.beat === 2, "a wooden beam stole a beat from the braid");
+      insist(state.lastLiveOutcome.result === "blocked-beam", "the selvedge did not name itself");
+    });
+
+    check("oldest-thread contention", () => {
+      const level = LEVELS[0];
+      const world = {
+        actors: [
+          { id: "figure-1", iteration: 1, live: false, x: 2, y: 6 },
+          { id: "sava", iteration: 2, live: true, x: 4, y: 6 }
+        ],
+        boats: [],
+        skein: { x: 9, y: 2, carrier: null }
+      };
+      const older = resolveAction(level, world, 0, INPUTS.R);
+      const living = resolveAction(level, world, 1, INPUTS.L);
+      insist(older.result === "move" && living.result === "blocked-figure", "the newer strand stole a contested stitch");
+      insist(world.actors[0].x === 3 && world.actors[1].x === 4, "two bodies were woven into one stitch");
+    });
+
+    check("closed-heddle witness", () => {
+      const level = LEVELS[0];
+      const state = freshCycle(level, [{ iteration: 1, script: [INPUTS.R], expected: [] }]);
+      state.world.actors[0].x = 5;
+      state.world.actors[0].y = 3;
+      const rememberedWorld = cloneWorld(state.world);
+      rememberedWorld.actors[1].x = 3;
+      rememberedWorld.actors[1].y = 2;
+      const expected = stableOutcome(resolveAction(level, rememberedWorld, 0, INPUTS.R));
+      state.records[0].expected = [expected];
+      const torn = advanceOneBeat(level, state, INPUTS.W, 0);
+      insist(torn.mode === "snarl", "a fallen comb revised an older crossing without protest");
+      insist(torn.catastrophe.recordingIteration === 1 && torn.catastrophe.beat === 1, "the fallen comb accused the wrong woven witness");
+      insist(torn.catastrophe.expected.result === "move" && torn.catastrophe.actual.result === "blocked-heddle", "the shed's expected and actual states were not distinguished");
+    });
+
+    check("living-body witness", () => {
+      const level = LEVELS[0];
+      const state = freshCycle(level, [{ iteration: 1, script: [INPUTS.R], expected: [] }]);
+      state.world.actors[0].x = 3;
+      state.world.actors[0].y = 5;
+      state.world.actors[1].x = 4;
+      state.world.actors[1].y = 5;
+      const rememberedWorld = cloneWorld(state.world);
+      rememberedWorld.actors[1].x = level.start.x;
+      rememberedWorld.actors[1].y = level.start.y;
+      const expected = stableOutcome(resolveAction(level, rememberedWorld, 0, INPUTS.R));
+      state.records[0].expected = [expected];
+      const torn = advanceOneBeat(level, state, INPUTS.W, 0);
+      insist(torn.mode === "snarl", "living Sava occupied remembered cloth without a Snarl");
+      insist(torn.catastrophe.actual.result === "blocked-figure" && torn.catastrophe.actual.blocker.id === "sava", "the living obstruction was not named");
+      insist(sameTile(torn.catastrophe.tile, { x: 4, y: 5 }), "the loom highlighted the wrong collision stitch");
+    });
+
+    check("unlimited picking-back", () => {
+      const level = LEVELS[1];
+      const complete = level.solutionLog.slice();
+      const original = logicDigest(derive(level, complete));
+      const boundary = level.solutionPasses[0].length;
+      const crossed = complete.slice(0, boundary + 7);
+      const beforePick = derive(level, crossed);
+      insist(beforePick.records.length === 1, "the test never crossed a pass boundary");
+      const picked = crossed.slice(0, boundary - 1);
+      const restored = derive(level, picked);
+      insist(restored.records.length === 0 && restored.iteration === 1, "picking past the shuttle left a phantom Figure");
+      const replayed = logicDigest(derive(level, complete));
+      insist(replayed === original, "the same stitches made a different cloth after undo");
+      insist(logicDigest(derive(level, [])) === logicDigest(freshCycle(level)), "the first stitch would not return cleanly");
+    });
+
+    check("protected black strand", () => {
+      const level = LEVELS[2];
+      const state = derive(level, level.sabotageLog);
+      insist(state.mode === "snarl", `the tempting shove ended as ${state.mode}`);
+      insist(state.catastrophe.recordingIteration === 2 && state.catastrophe.beat === 21, "the loom accused the wrong Figure or beat");
+      insist(state.catastrophe.expected.result === "push" && state.catastrophe.actual.result === "move", "the missing loaded shuttle was not named precisely");
+      return "Figure 2 catches the stolen boat-shuttle on beat 21.";
+    });
+
+    const passed = checks.filter(c => c.ok).length;
+    const report = {
+      ok: passed === checks.length,
+      passed,
+      total: checks.length,
+      checks,
+      summary: passed === checks.length
+        ? `Child, I read my underside: all ${passed} pattern-knots lie true.`
+        : `Child, ${checks.length - passed} of my ${checks.length} pattern-knots have puckered.`
+    };
+    window.__LOOM_TEST_REPORT__ = report;
+    console.info(report.summary);
+    checks.forEach(c => console.info(c.text));
+    return report;
+  }
+
+  const canvas = document.getElementById("loom");
+  const ctx = canvas.getContext("2d", { alpha: false });
+  let viewW = 0;
+  let viewH = 0;
+  let dpr = 1;
+  let screen = "title";
+  let levelIndex = 0;
+  let inputLog = [];
+  let logic = derive(LEVELS[levelIndex], inputLog);
+  let hintOpen = false;
+  let testReport = null;
+  let testOpen = false;
+  let transitionAt = 0;
+  let previousPositions = new Map();
+  let screenEnteredAt = performance.now();
+  let hitRegions = [];
+  let boardLayout = null;
+
+  const lint = Array.from({ length: 54 }, (_, i) => ({
+    x: ((i * 233 + 71) % 997) / 997,
+    y: ((i * 421 + 113) % 991) / 991,
+    r: 0.6 + ((i * 17) % 13) / 8,
+    drift: 0.18 + ((i * 29) % 31) / 70,
+    phase: ((i * 67) % 360) * Math.PI / 180
+  }));
+
+  function resizeCanvas() {
+    viewW = Math.max(280, window.innerWidth);
+    viewH = Math.max(280, window.innerHeight);
+    dpr = clamp(window.devicePixelRatio || 1, 1, 2);
+    canvas.width = Math.round(viewW * dpr);
+    canvas.height = Math.round(viewH * dpr);
+    canvas.style.width = `${viewW}px`;
+    canvas.style.height = `${viewH}px`;
+  }
+
+  function roundedRectPath(x, y, w, h, r) {
+    const radius = Math.min(r, w / 2, h / 2);
+    ctx.beginPath();
+    ctx.moveTo(x + radius, y);
+    ctx.arcTo(x + w, y, x + w, y + h, radius);
+    ctx.arcTo(x + w, y + h, x, y + h, radius);
+    ctx.arcTo(x, y + h, x, y, radius);
+    ctx.arcTo(x, y, x + w, y, radius);
+    ctx.closePath();
+  }
+
+  function fillRound(x, y, w, h, r, fill, stroke = null, line = 1) {
+    roundedRectPath(x, y, w, h, r);
+    ctx.fillStyle = fill;
+    ctx.fill();
+    if (stroke) {
+      ctx.strokeStyle = stroke;
+      ctx.lineWidth = line;
+      ctx.stroke();
+    }
+  }
+
+  function wrapLines(text, maxWidth, font, maxLines = Infinity) {
+    ctx.save();
+    ctx.font = font;
+    const words = String(text).split(/\s+/);
+    const lines = [];
+    let line = "";
+    for (const word of words) {
+      const test = line ? `${line} ${word}` : word;
+      if (ctx.measureText(test).width > maxWidth && line) {
+        lines.push(line);
+        line = word;
+        if (lines.length >= maxLines) break;
+      } else {
+        line = test;
+      }
+    }
+    if (line && lines.length < maxLines) lines.push(line);
+    ctx.restore();
+    return lines;
+  }
+
+  function drawWrapped(text, x, y, maxWidth, lineHeight, font, color, align = "left", maxLines = Infinity) {
+    const lines = wrapLines(text, maxWidth, font, maxLines);
+    ctx.save();
+    ctx.font = font;
+    ctx.fillStyle = color;
+    ctx.textAlign = align;
+    ctx.textBaseline = "top";
+    lines.forEach((line, i) => ctx.fillText(line, x, y + i * lineHeight));
+    ctx.restore();
+    return lines.length * lineHeight;
+  }
+
+  function drawButton(label, x, y, w, h, action, emphasized = false) {
+    const hover = false;
+    fillRound(x, y, w, h, 7, emphasized ? PALETTE.madder : PALETTE.linen, emphasized ? PALETTE.bone : PALETTE.walnut, 2);
+    ctx.save();
+    ctx.strokeStyle = emphasized ? PALETTE.saffron : PALETTE.oxblood;
+    ctx.lineWidth = 1;
+    ctx.setLineDash([4, 4]);
+    roundedRectPath(x + 5, y + 5, w - 10, h - 10, 4);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.font = `${Math.max(13, Math.min(18, h * 0.34))}px Georgia, serif`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillStyle = emphasized ? PALETTE.bone : PALETTE.charcoal;
+    ctx.fillText(label, x + w / 2, y + h / 2 + 1);
+    ctx.restore();
+    hitRegions.push({ x, y, w, h, action });
+  }
+
+  function captureTransition(before, after) {
+    previousPositions = new Map();
+    if (before && before.world) {
+      before.world.actors.forEach(a => previousPositions.set(a.id, { x: a.x, y: a.y }));
+    }
+    transitionAt = performance.now();
+  }
+
+  function refreshLogic(before = logic) {
+    const next = derive(LEVELS[levelIndex], inputLog);
+    captureTransition(before, next);
+    logic = next;
+  }
+
+  function appendInput(input) {
+    if (screen !== "play" || logic.mode !== "play") return;
+    if (!Object.prototype.hasOwnProperty.call(INPUTS, input)) return;
+    const before = logic;
+    inputLog.push(input);
+    refreshLogic(before);
+  }
+
+  function pickBackBeat() {
+    if (screen !== "play" || inputLog.length === 0) return;
+    const before = logic;
+    inputLog.pop();
+    refreshLogic(before);
+  }
+
+  function passStarts(level, log) {
+    const starts = [0];
+    let state = freshCycle(level);
+    for (let i = 0; i < log.length; i++) {
+      if (state.mode !== "play") break;
+      const priorIteration = state.iteration;
+      state = advanceOneBeat(level, state, log[i], i);
+      if (state.mode === "play" && state.iteration > priorIteration) starts.push(i + 1);
+    }
+    return starts;
+  }
+
+  function unweavePass() {
+    if (screen !== "play" || inputLog.length === 0) return;
+    const starts = passStarts(LEVELS[levelIndex], inputLog);
+    let cut = logic.cycleStartIndex;
+    if (cut >= inputLog.length && starts.length > 1) cut = starts[starts.length - 2];
+    const before = logic;
+    inputLog = inputLog.slice(0, cut);
+    refreshLogic(before);
+  }
+
+  function cutAwayAct() {
+    const before = logic;
+    inputLog = [];
+    logic = derive(LEVELS[levelIndex], inputLog);
+    captureTransition(before, logic);
+    hintOpen = false;
+  }
+
+  function openAct(index) {
+    levelIndex = index;
+    inputLog = [];
+    logic = derive(LEVELS[levelIndex], inputLog);
+    previousPositions.clear();
+    hintOpen = false;
+    testOpen = false;
+    screen = "act-intro";
+    screenEnteredAt = performance.now();
+  }
+
+  function beginAct() {
+    screen = "play";
+    screenEnteredAt = performance.now();
+    canvas.focus();
+  }
+
+  function continueCloth() {
+    if (logic.mode !== "won") return;
+    if (levelIndex < LEVELS.length - 1) openAct(levelIndex + 1);
+    else {
+      screen = "ending";
+      screenEnteredAt = performance.now();
+      previousPositions.clear();
+    }
+  }
+
+  function returnToFirstLight() {
+    screen = "title";
+    levelIndex = 0;
+    inputLog = [];
+    logic = derive(LEVELS[0], inputLog);
+    testOpen = false;
+    hintOpen = false;
+    screenEnteredAt = performance.now();
+  }
+
+  function inspectKnots() {
+    testReport = runSelfTests();
+    testOpen = true;
+  }
+
+  function handleKey(event) {
+    if (event.repeat) return;
+    const key = event.key.toLowerCase();
+    const handled = ["arrowup", "arrowright", "arrowdown", "arrowleft", "w", "a", "s", "d", "x", ".", "c", " ", "z", "r", "h", "t", "enter", "escape", "backspace"].includes(key);
+    if (handled) event.preventDefault();
+
+    if (key === "t") {
+      inspectKnots();
+      return;
+    }
+    if (testOpen && (key === "escape" || key === "enter")) {
+      testOpen = false;
+      return;
+    }
+    if (screen === "title") {
+      if (key === "enter" || key === " ") openAct(0);
+      return;
+    }
+    if (screen === "act-intro") {
+      if (key === "enter" || key === " ") beginAct();
+      return;
+    }
+    if (screen === "ending") {
+      if (key === "enter" || key === " ") returnToFirstLight();
+      return;
+    }
+    if (screen !== "play") return;
+
+    if (key === "z") { pickBackBeat(); return; }
+    if (key === "backspace") { unweavePass(); return; }
+    if (key === "r") { cutAwayAct(); return; }
+    if (key === "h") { hintOpen = !hintOpen; return; }
+    if (logic.mode === "won" && (key === "enter" || key === " ")) { continueCloth(); return; }
+    if (logic.mode !== "play") return;
+
+    const mapped = {
+      arrowup: INPUTS.U, w: INPUTS.U,
+      arrowright: INPUTS.R, d: INPUTS.R,
+      arrowdown: INPUTS.D, s: INPUTS.D,
+      arrowleft: INPUTS.L, a: INPUTS.L,
+      x: INPUTS.W, ".": INPUTS.W,
+      c: INPUTS.C, " ": INPUTS.E
+    }[key];
+    if (mapped) appendInput(mapped);
+  }
+
+  function handlePointer(event) {
+    const rect = canvas.getBoundingClientRect();
+    const x = (event.clientX - rect.left) * viewW / rect.width;
+    const y = (event.clientY - rect.top) * viewH / rect.height;
+    for (let i = hitRegions.length - 1; i >= 0; i--) {
+      const h = hitRegions[i];
+      if (x >= h.x && x <= h.x + h.w && y >= h.y && y <= h.y + h.h) {
+        h.action();
+        break;
+      }
+    }
+  }
+
+  function drawLint(now, strength = 1) {
+    ctx.save();
+    lint.forEach((mote, i) => {
+      const driftX = Math.sin(now * 0.00021 * mote.drift + mote.phase) * 28;
+      const driftY = ((now * 0.006 * mote.drift + i * 29) % (viewH + 80)) - 40;
+      const x = mote.x * viewW + driftX;
+      const y = (mote.y * viewH + driftY) % viewH;
+      ctx.globalAlpha = strength * (0.12 + (i % 5) * 0.035);
+      ctx.fillStyle = i % 3 ? PALETTE.bone : PALETTE.saffron;
+      ctx.beginPath();
+      ctx.ellipse(x, y, mote.r * 1.8, mote.r * 0.55, mote.phase + now * 0.0001, 0, Math.PI * 2);
+      ctx.fill();
+    });
+    ctx.restore();
+  }
+
+  function drawWorkshop(now, brighter = false) {
+    const wall = ctx.createLinearGradient(0, 0, viewW, viewH);
+    wall.addColorStop(0, brighter ? PALETTE.linen : "#B79C76");
+    wall.addColorStop(0.48, brighter ? "#C6A96F" : "#6B5540");
+    wall.addColorStop(1, PALETTE.charcoal);
+    ctx.fillStyle = wall;
+    ctx.fillRect(0, 0, viewW, viewH);
+
+    const wx = viewW * 0.055;
+    const wy = viewH * 0.075;
+    const ww = Math.min(viewW * 0.29, 390);
+    const wh = Math.min(viewH * 0.52, 470);
+    ctx.fillStyle = PALETTE.walnut;
+    ctx.fillRect(wx - 14, wy - 14, ww + 28, wh + 28);
+    const sky = ctx.createLinearGradient(wx, wy, wx, wy + wh);
+    sky.addColorStop(0, brighter ? PALETTE.bone : PALETTE.linen);
+    sky.addColorStop(0.58, brighter ? PALETTE.saffron : "#C5A46B");
+    sky.addColorStop(1, PALETTE.madder);
+    ctx.fillStyle = sky;
+    ctx.fillRect(wx, wy, ww, wh);
+    ctx.fillStyle = PALETTE.oxblood;
+    ctx.beginPath();
+    ctx.moveTo(wx, wy + wh * 0.72);
+    ctx.lineTo(wx + ww * 0.29, wy + wh * 0.43);
+    ctx.lineTo(wx + ww * 0.5, wy + wh * 0.72);
+    ctx.lineTo(wx + ww * 0.71, wy + wh * 0.35);
+    ctx.lineTo(wx + ww, wy + wh * 0.7);
+    ctx.lineTo(wx + ww, wy + wh);
+    ctx.lineTo(wx, wy + wh);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = PALETTE.walnut;
+    ctx.lineWidth = 9;
+    ctx.beginPath();
+    ctx.moveTo(wx + ww / 2, wy);
+    ctx.lineTo(wx + ww / 2, wy + wh);
+    ctx.moveTo(wx, wy + wh * 0.55);
+    ctx.lineTo(wx + ww, wy + wh * 0.55);
+    ctx.stroke();
+
+    ctx.save();
+    ctx.globalAlpha = brighter ? 0.2 : 0.11;
+    ctx.fillStyle = PALETTE.bone;
+    ctx.beginPath();
+    ctx.moveTo(wx + ww * 0.25, wy + wh * 0.2);
+    ctx.lineTo(viewW * 0.92, viewH * 0.78);
+    ctx.lineTo(viewW * 0.62, viewH);
+    ctx.lineTo(wx + ww * 0.05, wy + wh * 0.72);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+
+    ctx.fillStyle = "rgba(43,36,31,0.35)";
+    for (let y = viewH * 0.74; y < viewH; y += 28) ctx.fillRect(0, y, viewW, 2);
+    drawLint(now, brighter ? 1.15 : 0.8);
+  }
+
+  function drawWarpLoom(x, y, w, h, now, ending = false) {
+    const sway = Math.sin(now * 0.0011) * 2;
+    ctx.save();
+    ctx.fillStyle = PALETTE.walnut;
+    ctx.fillRect(x, y, 22, h);
+    ctx.fillRect(x + w - 22, y, 22, h);
+    ctx.fillRect(x - 10, y, w + 20, 26);
+    ctx.fillRect(x - 4, y + h - 34, w + 8, 30);
+    ctx.fillStyle = "#74543A";
+    ctx.fillRect(x + 5, y + 5, w - 10, 7);
+
+    const clothX = x + w * 0.18;
+    const clothW = w * 0.64;
+    const clothTop = y + 28;
+    const clothBottom = y + h * (ending ? 0.83 : 0.68);
+    for (let i = 0; i <= 38; i++) {
+      const px = clothX + clothW * i / 38 + Math.sin(i * 1.9 + now * 0.0007) * 0.45;
+      ctx.strokeStyle = i % 7 === 0 ? PALETTE.saffron : PALETTE.bone;
+      ctx.globalAlpha = 0.52;
+      ctx.lineWidth = i % 7 === 0 ? 1.8 : 0.85;
+      ctx.beginPath();
+      ctx.moveTo(px, clothTop);
+      ctx.lineTo(px + sway * (i % 3) / 3, y + h - 12);
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 0.95;
+    ctx.fillStyle = PALETTE.linen;
+    ctx.fillRect(clothX, clothTop, clothW, clothBottom - clothTop);
+    for (let yy = clothTop + 7; yy < clothBottom; yy += 8) {
+      ctx.strokeStyle = ((yy / 8) | 0) % 5 === 0 ? PALETTE.saffron : "#CDBB96";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(clothX, yy);
+      for (let xx = clothX; xx <= clothX + clothW; xx += 12) {
+        ctx.lineTo(xx, yy + Math.sin(xx * 0.09 + yy) * 1.1);
+      }
+      ctx.stroke();
+    }
+    ctx.fillStyle = PALETTE.charcoal;
+    ctx.fillRect(clothX, clothTop + (clothBottom - clothTop) * 0.62, clothW, Math.max(7, h * 0.027));
+    ctx.globalAlpha = 1;
+    for (let i = 0; i < 11; i++) {
+      const tx = clothX + i * clothW / 10;
+      ctx.strokeStyle = i % 2 ? PALETTE.bone : PALETTE.saffron;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(tx, clothBottom);
+      ctx.quadraticCurveTo(tx + sway, clothBottom + 19, tx + Math.sin(now * 0.001 + i) * 3, clothBottom + 34);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  function drawActorShape(x, y, size, actor, now, carrying, highlighted = false, moving = false) {
+    const figure = !actor.live;
+    const phase = now * 0.006 + actor.iteration * 1.7;
+    const step = moving ? Math.sin(phase * 2.8) : Math.sin(phase * 0.45) * 0.12;
+    const bob = moving ? Math.abs(Math.sin(phase * 2.8)) * 2.2 : Math.sin(phase * 0.7) * 0.8;
+    const baseY = y - bob;
+    const figureColors = [PALETTE.madder, PALETTE.lichen, PALETTE.saffron, PALETTE.slate];
+    const bodyColor = figure ? figureColors[(actor.iteration - 1) % figureColors.length] : PALETTE.madder;
+
+    ctx.save();
+    if (figure) ctx.globalAlpha = highlighted ? 0.95 : 0.68;
+    ctx.translate(x, baseY);
+    if (highlighted) {
+      ctx.strokeStyle = PALETTE.saffron;
+      ctx.lineWidth = Math.max(2, size * 0.065);
+      ctx.beginPath();
+      ctx.ellipse(0, -size * 0.48, size * 0.39, size * 0.58, 0, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+
+    ctx.fillStyle = "rgba(43,36,31,0.35)";
+    ctx.beginPath();
+    ctx.ellipse(0, size * 0.08, size * 0.3, size * 0.075, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    const leftFoot = -size * 0.12 + step * size * 0.065;
+    const rightFoot = size * 0.12 - step * size * 0.065;
+    ctx.fillStyle = figure ? bodyColor : PALETTE.charcoal;
+    ctx.beginPath();
+    ctx.moveTo(-size * 0.12, -size * 0.18);
+    ctx.lineTo(leftFoot - size * 0.09, size * 0.03);
+    ctx.lineTo(leftFoot + size * 0.08, size * 0.04);
+    ctx.lineTo(0, -size * 0.17);
+    ctx.closePath();
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(size * 0.1, -size * 0.18);
+    ctx.lineTo(rightFoot - size * 0.07, size * 0.04);
+    ctx.lineTo(rightFoot + size * 0.1, size * 0.03);
+    ctx.lineTo(0, -size * 0.17);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.strokeStyle = figure ? bodyColor : PALETTE.oxblood;
+    ctx.lineWidth = size * 0.085;
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.moveTo(-size * 0.2, -size * 0.52);
+    ctx.lineTo(-size * 0.32 - step * size * 0.025, -size * 0.27);
+    ctx.moveTo(size * 0.2, -size * 0.52);
+    ctx.lineTo(size * 0.32 + step * size * 0.025, -size * 0.28);
+    ctx.stroke();
+
+    ctx.fillStyle = bodyColor;
+    ctx.beginPath();
+    ctx.moveTo(0, -size * 0.65);
+    ctx.lineTo(-size * 0.29, -size * 0.18);
+    ctx.lineTo(size * 0.29, -size * 0.18);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = figure ? "rgba(246,234,207,0.28)" : PALETTE.bone;
+    ctx.beginPath();
+    ctx.moveTo(-size * 0.105, -size * 0.49);
+    ctx.lineTo(-size * 0.13, -size * 0.2);
+    ctx.lineTo(size * 0.13, -size * 0.2);
+    ctx.lineTo(size * 0.105, -size * 0.49);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.fillStyle = figure ? bodyColor : "#D6B58D";
+    ctx.beginPath();
+    ctx.ellipse(0, -size * 0.73, size * 0.135, size * 0.16, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = figure ? bodyColor : PALETTE.charcoal;
+    ctx.beginPath();
+    ctx.arc(size * 0.07, -size * 0.88, size * 0.085, 0, Math.PI * 2);
+    ctx.fill();
+    if (!figure) {
+      ctx.fillStyle = PALETTE.charcoal;
+      ctx.beginPath();
+      ctx.arc(-size * 0.045, -size * 0.75, size * 0.015, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    ctx.fillStyle = bodyColor;
+    ctx.beginPath();
+    ctx.moveTo(-size * 0.19, -size * 0.61);
+    ctx.quadraticCurveTo(-size * 0.48, -size * 0.54, -size * 0.48 - Math.sin(phase) * size * 0.05, -size * 0.37);
+    ctx.lineTo(-size * 0.23, -size * 0.46);
+    ctx.closePath();
+    ctx.fill();
+
+    if (carrying) {
+      ctx.strokeStyle = PALETTE.saffron;
+      ctx.lineWidth = size * 0.045;
+      for (let i = 0; i < 3; i++) {
+        ctx.beginPath();
+        ctx.ellipse(size * (0.28 + i * 0.01), -size * 0.31, size * (0.12 - i * 0.02), size * (0.08 + i * 0.015), i * 0.7, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+    }
+
+    if (figure) {
+      ctx.save();
+      ctx.globalCompositeOperation = "source-atop";
+      ctx.strokeStyle = PALETTE.bone;
+      ctx.globalAlpha = 0.48;
+      ctx.lineWidth = Math.max(0.8, size * 0.017);
+      for (let yy = -size * 0.87; yy < size * 0.02; yy += size * 0.095) {
+        ctx.beginPath();
+        ctx.moveTo(-size * 0.34 + ((yy / size * 10) % 2) * size * 0.04, yy);
+        ctx.lineTo(size * 0.34, yy + size * 0.025);
+        ctx.stroke();
+      }
+      ctx.restore();
+      ctx.strokeStyle = bodyColor;
+      ctx.lineWidth = Math.max(0.9, size * 0.018);
+      for (let i = 0; i < 4; i++) {
+        ctx.beginPath();
+        ctx.moveTo(size * (0.18 + i * 0.03), -size * (0.34 + i * 0.08));
+        ctx.quadraticCurveTo(size * 0.5, -size * (0.28 + i * 0.03), size * (0.43 + Math.sin(phase + i) * 0.06), -size * (0.1 + i * 0.02));
+        ctx.stroke();
+      }
+    }
+    ctx.restore();
+  }
+
+  const mechanismColors = Object.freeze({
+    A: PALETTE.madder,
+    B: PALETTE.lichen,
+    C: PALETTE.saffron,
+    D: PALETTE.slate
+  });
+  const mechanismNames = Object.freeze({ A: "first", B: "second", C: "third", D: "brief" });
+
+  function computeBoardLayout(level) {
+    const wide = viewW >= 1020;
+    const top = wide ? 108 : 100;
+    const bottom = wide ? 62 : 154;
+    const sideW = wide ? clamp(viewW * 0.225, 270, 330) : 0;
+    const gap = wide ? 28 : 0;
+    const horizontalRoom = viewW - (wide ? sideW + gap + 64 : 34);
+    const verticalRoom = viewH - top - bottom;
+    const cell = Math.max(12, Math.min(52, horizontalRoom / level.width, verticalRoom / level.height));
+    const boardW = cell * level.width;
+    const boardH = cell * level.height;
+    const totalW = boardW + (wide ? gap + sideW : 0);
+    const boardX = (viewW - totalW) / 2;
+    const boardY = top + (verticalRoom - boardH) / 2;
+    return {
+      wide, cell, boardX, boardY, boardW, boardH,
+      sideX: boardX + boardW + gap, sideY: boardY,
+      sideW, sideH: boardH
+    };
+  }
+
+  function cellCenter(layout, x, y) {
+    return {
+      x: layout.boardX + (x + 0.5) * layout.cell,
+      y: layout.boardY + (y + 0.5) * layout.cell
+    };
+  }
+
+  function drawWovenFloor(layout, level) {
+    const { boardX: x, boardY: y, boardW: w, boardH: h, cell } = layout;
+    ctx.save();
+    ctx.shadowColor = "rgba(43,36,31,0.7)";
+    ctx.shadowBlur = 22;
+    ctx.shadowOffsetY = 12;
+    ctx.fillStyle = PALETTE.linen;
+    ctx.fillRect(x, y, w, h);
+    ctx.shadowColor = "transparent";
+
+    for (let gy = 0; gy < level.height; gy++) {
+      for (let gx = 0; gx < level.width; gx++) {
+        if (level.walls.has(keyOf(gx, gy))) continue;
+        const px = x + gx * cell;
+        const py = y + gy * cell;
+        ctx.fillStyle = (gx + gy) % 2 ? "#E2D0AB" : PALETTE.linen;
+        ctx.fillRect(px, py, cell, cell);
+        ctx.globalAlpha = 0.16;
+        ctx.strokeStyle = (gx * 3 + gy) % 5 ? PALETTE.walnut : PALETTE.madder;
+        ctx.lineWidth = Math.max(0.45, cell * 0.014);
+        const spacing = Math.max(5, cell / 7);
+        for (let yy = py + spacing; yy < py + cell; yy += spacing) {
+          ctx.beginPath();
+          ctx.moveTo(px + 1, yy);
+          ctx.quadraticCurveTo(px + cell * 0.5, yy + ((gx + gy) % 2 ? 1 : -1), px + cell - 1, yy);
+          ctx.stroke();
+        }
+        ctx.globalAlpha = 1;
+      }
+    }
+
+    ctx.strokeStyle = PALETTE.walnut;
+    ctx.lineWidth = Math.max(8, cell * 0.18);
+    ctx.strokeRect(x - 4, y - 4, w + 8, h + 8);
+    ctx.strokeStyle = "#74543A";
+    ctx.lineWidth = Math.max(2, cell * 0.045);
+    ctx.strokeRect(x + 2, y + 2, w - 4, h - 4);
+
+    for (let gx = 0; gx <= level.width; gx++) {
+      const tx = x + gx * cell;
+      ctx.strokeStyle = gx % 3 === 0 ? "rgba(215,163,55,0.22)" : "rgba(73,56,43,0.11)";
+      ctx.lineWidth = gx % 3 === 0 ? 1.2 : 0.65;
+      ctx.beginPath();
+      ctx.moveTo(tx, y);
+      ctx.lineTo(tx, y + h);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  function drawBeamTile(layout, x, y) {
+    const px = layout.boardX + x * layout.cell;
+    const py = layout.boardY + y * layout.cell;
+    const c = layout.cell;
+    ctx.fillStyle = PALETTE.walnut;
+    ctx.fillRect(px, py, c, c);
+    ctx.fillStyle = "#5D4432";
+    ctx.fillRect(px + c * 0.09, py + c * 0.08, c * 0.82, c * 0.18);
+    ctx.strokeStyle = "rgba(232,215,181,0.18)";
+    ctx.lineWidth = Math.max(0.7, c * 0.018);
+    ctx.beginPath();
+    ctx.moveTo(px + c * 0.15, py + c * 0.35);
+    ctx.bezierCurveTo(px + c * 0.42, py + c * 0.25, px + c * 0.63, py + c * 0.48, px + c * 0.88, py + c * 0.38);
+    ctx.moveTo(px + c * 0.12, py + c * 0.73);
+    ctx.bezierCurveTo(px + c * 0.36, py + c * 0.62, px + c * 0.62, py + c * 0.85, px + c * 0.91, py + c * 0.66);
+    ctx.stroke();
+  }
+
+  function drawStartStitch(layout, level, now) {
+    const p = cellCenter(layout, level.start.x, level.start.y);
+    const c = layout.cell;
+    ctx.save();
+    ctx.translate(p.x, p.y);
+    ctx.rotate(Math.PI / 4);
+    ctx.strokeStyle = PALETTE.oxblood;
+    ctx.globalAlpha = 0.34 + Math.sin(now * 0.002) * 0.05;
+    ctx.lineWidth = Math.max(1.2, c * 0.035);
+    ctx.strokeRect(-c * 0.2, -c * 0.2, c * 0.4, c * 0.4);
+    ctx.restore();
+  }
+
+  function drawTreadle(layout, treadle, open, now) {
+    const p = cellCenter(layout, treadle.x, treadle.y);
+    const c = layout.cell;
+    const color = mechanismColors[treadle.id] || PALETTE.slate;
+    const depression = open ? c * 0.07 : 0;
+    ctx.save();
+    ctx.translate(p.x, p.y + depression);
+    ctx.fillStyle = "rgba(43,36,31,0.22)";
+    ctx.beginPath();
+    ctx.ellipse(0, c * 0.18, c * 0.34, c * 0.12, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.rotate(Math.PI / 4);
+    ctx.fillStyle = color;
+    ctx.fillRect(-c * 0.24, -c * 0.24, c * 0.48, c * 0.48);
+    ctx.strokeStyle = PALETTE.bone;
+    ctx.globalAlpha = 0.8;
+    ctx.lineWidth = Math.max(1, c * 0.028);
+    ctx.strokeRect(-c * 0.16, -c * 0.16, c * 0.32, c * 0.32);
+    ctx.rotate(-Math.PI / 4);
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = PALETTE.charcoal;
+    ctx.font = `bold ${Math.max(9, c * 0.25)}px Georgia, serif`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    const mark = { A: "I", B: "II", C: "III", D: "◊" }[treadle.id] || treadle.id;
+    ctx.fillText(mark, 0, -1);
+    ctx.strokeStyle = color;
+    ctx.globalAlpha = open ? 0.8 : 0.35;
+    ctx.lineWidth = Math.max(1, c * 0.025);
+    ctx.beginPath();
+    ctx.moveTo(0, -c * 0.28);
+    ctx.quadraticCurveTo(Math.sin(now * 0.0015) * 2, -c * 0.55, 0, -c * 0.72);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function drawGate(layout, gate, open, now) {
+    const px = layout.boardX + gate.x * layout.cell;
+    const py = layout.boardY + gate.y * layout.cell;
+    const c = layout.cell;
+    const color = mechanismColors[gate.id] || PALETTE.slate;
+    ctx.save();
+    ctx.fillStyle = open ? "rgba(246,234,207,0.12)" : "rgba(43,36,31,0.18)";
+    ctx.fillRect(px, py, c, c);
+    const lift = open ? -c * 0.63 : 0;
+    const teeth = 6;
+    for (let i = 0; i < teeth; i++) {
+      const tx = px + c * (0.1 + i * 0.16);
+      ctx.strokeStyle = i % 2 ? PALETTE.walnut : color;
+      ctx.lineWidth = Math.max(2.2, c * 0.065);
+      ctx.lineCap = "square";
+      ctx.beginPath();
+      ctx.moveTo(tx, py + lift - c * 0.08);
+      ctx.lineTo(tx, py + lift + c * 0.72);
+      ctx.stroke();
+      ctx.fillStyle = i % 2 ? PALETTE.walnut : color;
+      ctx.beginPath();
+      ctx.moveTo(tx - c * 0.055, py + lift + c * 0.7);
+      ctx.lineTo(tx + c * 0.055, py + lift + c * 0.7);
+      ctx.lineTo(tx, py + lift + c * 0.92);
+      ctx.closePath();
+      ctx.fill();
+    }
+    ctx.strokeStyle = color;
+    ctx.lineWidth = Math.max(1, c * 0.025);
+    ctx.globalAlpha = open ? 0.7 : 0.4;
+    ctx.beginPath();
+    ctx.moveTo(px + c * 0.08, py + c * 0.08 + lift);
+    ctx.quadraticCurveTo(px + c * 0.5 + Math.sin(now * 0.001) * 2, py - c * 0.35, px + c * 0.92, py + c * 0.08 + lift);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function drawBoat(layout, boat, now) {
+    const p = cellCenter(layout, boat.x, boat.y);
+    const c = layout.cell;
+    ctx.save();
+    ctx.translate(p.x, p.y + Math.sin(now * 0.002 + boat.x) * c * 0.018);
+    ctx.fillStyle = "rgba(43,36,31,0.26)";
+    ctx.beginPath();
+    ctx.ellipse(0, c * 0.21, c * 0.37, c * 0.11, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#6E4C32";
+    ctx.beginPath();
+    ctx.moveTo(-c * 0.42, -c * 0.02);
+    ctx.quadraticCurveTo(-c * 0.27, c * 0.34, 0, c * 0.3);
+    ctx.quadraticCurveTo(c * 0.28, c * 0.34, c * 0.42, -c * 0.02);
+    ctx.quadraticCurveTo(0, c * 0.16, -c * 0.42, -c * 0.02);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = PALETTE.saffron;
+    ctx.lineWidth = Math.max(1.5, c * 0.055);
+    for (let i = 0; i < 3; i++) {
+      ctx.beginPath();
+      ctx.ellipse(0, -c * 0.04, c * (0.16 - i * 0.025), c * (0.12 - i * 0.018), i * 0.55, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    ctx.strokeStyle = PALETTE.charcoal;
+    ctx.lineWidth = Math.max(1, c * 0.025);
+    ctx.beginPath();
+    ctx.moveTo(-c * 0.42, -c * 0.02);
+    ctx.quadraticCurveTo(0, c * 0.17, c * 0.42, -c * 0.02);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function drawSkein(layout, skein, now) {
+    if (skein.carrier !== null) return;
+    const p = cellCenter(layout, skein.x, skein.y);
+    const c = layout.cell;
+    ctx.save();
+    ctx.translate(p.x, p.y + Math.sin(now * 0.0022) * c * 0.025);
+    ctx.strokeStyle = PALETTE.saffron;
+    ctx.lineWidth = Math.max(2, c * 0.06);
+    for (let i = 0; i < 5; i++) {
+      ctx.beginPath();
+      ctx.ellipse(0, 0, c * (0.27 - i * 0.025), c * (0.17 - i * 0.012), i * 0.72, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    ctx.strokeStyle = PALETTE.oxblood;
+    ctx.lineWidth = Math.max(1, c * 0.025);
+    ctx.beginPath();
+    ctx.moveTo(c * 0.18, c * 0.09);
+    ctx.quadraticCurveTo(c * 0.34, c * 0.19, c * 0.39, c * 0.35);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function drawFinishingEye(layout, level, held, now) {
+    const p = cellCenter(layout, level.finish.x, level.finish.y);
+    const c = layout.cell;
+    const pulse = 1 + Math.sin(now * 0.002) * 0.035;
+    ctx.save();
+    ctx.translate(p.x, p.y);
+    ctx.scale(pulse, pulse);
+    ctx.strokeStyle = held ? PALETTE.saffron : PALETTE.oxblood;
+    ctx.lineWidth = Math.max(2.2, c * 0.075);
+    ctx.beginPath();
+    ctx.ellipse(0, 0, c * 0.34, c * 0.22, -0.25, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.strokeStyle = PALETTE.walnut;
+    ctx.lineWidth = Math.max(1, c * 0.025);
+    ctx.beginPath();
+    ctx.ellipse(0, 0, c * 0.17, c * 0.095, -0.25, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.fillStyle = held ? PALETTE.saffron : PALETTE.charcoal;
+    ctx.beginPath();
+    ctx.arc(c * 0.16, -c * 0.045, c * 0.045, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  function drawSnarlMark(layout, tile, now) {
+    if (!tile) return;
+    const p = cellCenter(layout, tile.x, tile.y);
+    const c = layout.cell;
+    ctx.save();
+    ctx.translate(p.x, p.y);
+    ctx.strokeStyle = PALETTE.madder;
+    ctx.fillStyle = "rgba(182,74,58,0.18)";
+    ctx.lineWidth = Math.max(2, c * 0.07);
+    ctx.beginPath();
+    ctx.arc(0, 0, c * (0.39 + Math.sin(now * 0.007) * 0.04), 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    for (let i = 0; i < 7; i++) {
+      const a = i * Math.PI * 2 / 7 + now * 0.0004;
+      ctx.beginPath();
+      ctx.moveTo(Math.cos(a) * c * 0.2, Math.sin(a) * c * 0.2);
+      ctx.quadraticCurveTo(Math.cos(a + 1.3) * c * 0.5, Math.sin(a + 1.3) * c * 0.5, Math.cos(a) * c * 0.52, Math.sin(a) * c * 0.52);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  function drawBoard(level, state, now) {
+    const layout = computeBoardLayout(level);
+    boardLayout = layout;
+    drawWovenFloor(layout, level);
+    drawStartStitch(layout, level, now);
+
+    for (let y = 0; y < level.height; y++) {
+      for (let x = 0; x < level.width; x++) {
+        if (level.walls.has(keyOf(x, y))) drawBeamTile(layout, x, y);
+      }
+    }
+
+    const states = Object.fromEntries(mechanismStates(level, state.world).map(s => [s.id, s.open]));
+    level.gates.forEach(g => drawGate(layout, g, !!states[g.id], now));
+    level.treadles.forEach(t => drawTreadle(layout, t, !!states[t.id], now));
+    drawFinishingEye(layout, level, level.required.every(id => states[id]), now);
+    drawSkein(layout, state.world.skein, now);
+    state.world.boats.forEach(b => drawBoat(layout, b, now));
+
+    if (state.mode === "snarl") drawSnarlMark(layout, state.catastrophe.tile, now);
+
+    const transition = clamp((now - transitionAt) / 150, 0, 1);
+    state.world.actors.forEach(actor => {
+      const previous = previousPositions.get(actor.id);
+      const current = { x: actor.x, y: actor.y };
+      const moving = !!previous && !sameTile(previous, current) && transition < 1;
+      const gx = previous ? lerp(previous.x, current.x, transition) : current.x;
+      const gy = previous ? lerp(previous.y, current.y, transition) : current.y;
+      const p = cellCenter(layout, gx, gy);
+      const carries = state.world.skein.carrier === actor.id;
+      const highlighted = state.mode === "snarl" && state.catastrophe.actorId === actor.id;
+      drawActorShape(p.x, p.y + layout.cell * 0.45, layout.cell * 1.06, actor, now, carries, highlighted, moving);
+    });
+
+    return layout;
+  }
+
+  function inputGlyph(input) {
+    return { U: "↑", R: "→", D: "↓", L: "←", W: "·", C: "○", E: "◆" }[input] || "?";
+  }
+
+  function drawMeasuringBraid(x, y, w, beat) {
+    ctx.save();
+    ctx.strokeStyle = PALETTE.walnut;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(x, y + 9);
+    ctx.lineTo(x + w, y + 9);
+    ctx.stroke();
+    for (let i = 0; i <= BEATS; i++) {
+      const px = x + w * i / BEATS;
+      const major = i % 8 === 0;
+      ctx.strokeStyle = i <= beat ? PALETTE.madder : PALETTE.walnut;
+      ctx.globalAlpha = i <= beat ? 0.95 : 0.38;
+      ctx.lineWidth = major ? 2 : 1;
+      ctx.beginPath();
+      ctx.moveTo(px, y + (major ? 1 : 5));
+      ctx.lineTo(px, y + (major ? 18 : 14));
+      ctx.stroke();
+    }
+    const knotX = x + w * beat / BEATS;
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = PALETTE.saffron;
+    ctx.beginPath();
+    ctx.arc(knotX, y + 9, 4.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  function drawScriptRibbon(label, script, x, y, w, active = false) {
+    const cols = 16;
+    const dot = Math.min(15, (w - 16) / cols);
+    const rows = Math.max(1, Math.ceil(Math.min(script.length, BEATS) / cols));
+    const h = 24 + rows * 15;
+    fillRound(x, y, w, h, 5, active ? "rgba(215,163,55,0.16)" : "rgba(73,56,43,0.1)", active ? PALETTE.saffron : "rgba(73,56,43,0.3)", 1);
+    ctx.save();
+    ctx.font = `${active ? "italic " : ""}${Math.max(11, dot * 0.78)}px Georgia, serif`;
+    ctx.fillStyle = active ? PALETTE.oxblood : PALETTE.walnut;
+    ctx.textAlign = "left";
+    ctx.textBaseline = "top";
+    ctx.fillText(label, x + 8, y + 5);
+    ctx.font = `${Math.max(9, dot * 0.82)}px Georgia, serif`;
+    ctx.textAlign = "center";
+    script.slice(0, BEATS).forEach((input, i) => {
+      const gx = i % cols;
+      const gy = Math.floor(i / cols);
+      const px = x + 9 + gx * dot + dot / 2;
+      const py = y + 24 + gy * 15;
+      ctx.fillStyle = input === INPUTS.E ? PALETTE.madder : input === INPUTS.C ? PALETTE.saffron : PALETTE.charcoal;
+      ctx.fillText(inputGlyph(input), px, py);
+    });
+    ctx.restore();
+    return h;
+  }
+
+  function drawSidebar(layout, level, state) {
+    if (!layout.wide) return;
+    const x = layout.sideX;
+    const y = layout.sideY;
+    const w = layout.sideW;
+    const h = layout.sideH;
+    fillRound(x, y, w, h, 9, "rgba(232,215,181,0.94)", PALETTE.walnut, 3);
+    ctx.save();
+    ctx.setLineDash([7, 5]);
+    ctx.strokeStyle = PALETTE.oxblood;
+    ctx.lineWidth = 1.4;
+    roundedRectPath(x + 7, y + 7, w - 14, h - 14, 5);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    ctx.fillStyle = PALETTE.charcoal;
+    ctx.font = `bold 18px Georgia, serif`;
+    ctx.textAlign = "left";
+    ctx.textBaseline = "top";
+    ctx.fillText("My measuring braid", x + 16, y + 15);
+    ctx.font = `italic 14px Georgia, serif`;
+    ctx.fillStyle = PALETTE.oxblood;
+    ctx.fillText(`${ordinal(state.iteration)} pass · beat ${state.beat} of ${BEATS}`, x + 16, y + 40);
+    drawMeasuringBraid(x + 17, y + 62, w - 34, state.beat);
+
+    let cy = y + 88;
+    state.records.forEach(record => {
+      cy += drawScriptRibbon(`${ordinal(record.iteration)} Woven Figure`, record.script, x + 13, cy, w - 26, false) + 5;
+    });
+    cy += drawScriptRibbon("Sava's living strand", state.liveScript, x + 13, cy, w - 26, true) + 9;
+
+    if (cy < y + h - 125) {
+      ctx.font = `bold 15px Georgia, serif`;
+      ctx.fillStyle = PALETTE.charcoal;
+      ctx.fillText("My heddle cords", x + 16, cy);
+      cy += 23;
+      mechanismStates(level, state.world).forEach(mechanism => {
+        const color = mechanismColors[mechanism.id] || PALETTE.slate;
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.moveTo(x + 22, cy + 7);
+        ctx.quadraticCurveTo(x + 32, cy + (mechanism.open ? 1 : 14), x + 42, cy + 7);
+        ctx.stroke();
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        ctx.arc(x + 32, cy + 7, 4, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.font = `14px Georgia, serif`;
+        ctx.fillStyle = PALETTE.charcoal;
+        ctx.fillText(`${mechanismNames[mechanism.id]} shed: ${mechanism.open ? "lifted true" : "teeth lowered"}`, x + 50, cy - 2);
+        cy += 21;
+      });
+    }
+    ctx.restore();
+  }
+
+  function drawCompactBraid(level, state, layout) {
+    if (layout.wide) return;
+    const x = 17;
+    const y = viewH - 140;
+    const w = viewW - 34;
+    fillRound(x, y, w, 123, 8, "rgba(232,215,181,0.94)", PALETTE.walnut, 2);
+    ctx.save();
+    ctx.fillStyle = PALETTE.charcoal;
+    ctx.font = `bold ${viewW < 390 ? 12 : 14}px Georgia, serif`;
+    ctx.textBaseline = "top";
+    ctx.fillText(`${ordinal(state.iteration)} pass · beat ${state.beat} of ${BEATS}`, x + 12, y + 9);
+    const shedWords = mechanismStates(level, state.world)
+      .map(s => `${mechanismNames[s.id]} ${s.open ? "↑" : "↓"}`).join(" · ");
+    ctx.font = `${viewW < 390 ? 10 : 11}px Georgia, serif`;
+    ctx.fillStyle = PALETTE.oxblood;
+    ctx.textAlign = "left";
+    ctx.fillText(shedWords, x + 12, y + 25);
+    ctx.textAlign = "left";
+    drawMeasuringBraid(x + 12, y + 39, w - 24, state.beat);
+    const figureThread = state.records.length
+      ? state.records.map(r => `${ordinal(r.iteration)} ${r.script.slice(-8).map(inputGlyph).join("")}`).join("   ")
+      : "No Woven Figure has been raised.";
+    const livingThread = `Sava ${state.liveScript.slice(-16).map(inputGlyph).join("") || "awaits her first stitch"}`;
+    ctx.font = `${viewW < 390 ? 10 : 11}px Georgia, serif`;
+    ctx.fillStyle = PALETTE.oxblood;
+    ctx.fillText(figureThread, x + 12, y + 59);
+    ctx.fillStyle = PALETTE.lichen;
+    ctx.fillText(livingThread, x + 12, y + 75);
+    ctx.fillStyle = PALETTE.walnut;
+    ctx.font = `${viewW < 390 ? 9 : 11}px Georgia, serif`;
+    ctx.fillText("Arrows/WASD place her feet · X holds · C knots · Space throws", x + 12, y + 94);
+    ctx.fillText("Z picks back · Backspace unweaves · H asks my counsel", x + 12, y + 108);
+    ctx.restore();
+  }
+
+  function drawGameHeader(level) {
+    ctx.save();
+    ctx.fillStyle = PALETTE.bone;
+    ctx.font = `italic ${clamp(viewW * 0.015, 15, 21)}px Georgia, serif`;
+    ctx.textBaseline = "top";
+    ctx.textAlign = "left";
+    ctx.fillText(`${level.act} · ${level.title}`, 28, 20);
+    ctx.fillStyle = PALETTE.linen;
+    ctx.globalAlpha = 0.82;
+    ctx.font = `${clamp(viewW * 0.0095, 12, 15)}px Georgia, serif`;
+    const status = logic.lastLiveOutcome
+      ? `I felt Sava ${describeOutcome(logic.lastLiveOutcome)}.`
+      : "Set the first foot carefully; cloth remembers pressure better than promises.";
+    drawWrapped(status, 28, 48, Math.min(viewW - 56, 850), 18, ctx.font, PALETTE.linen, "left", 2);
+    ctx.restore();
+  }
+
+  function drawControls(layout) {
+    if (!layout.wide) return;
+    const y = viewH - 35;
+    ctx.save();
+    ctx.font = `13px Georgia, serif`;
+    ctx.fillStyle = "rgba(246,234,207,0.74)";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText("Arrows/WASD place her feet · X holds the mark · C knots or lays saffron · Space throws the pass-shuttle", viewW / 2, y - 9);
+    ctx.font = `12px Georgia, serif`;
+    ctx.fillStyle = "rgba(232,215,181,0.57)";
+    ctx.fillText("Z picks back one beat · Backspace unweaves this pass · R cuts away the act · H asks my counsel · T lets me inspect every knot", viewW / 2, y + 9);
+    ctx.restore();
+  }
+
+  function drawHintRibbon(level, layout) {
+    if (!hintOpen) return;
+    const w = Math.min(710, layout.boardW * 0.88);
+    const h = 86;
+    const x = layout.boardX + (layout.boardW - w) / 2;
+    const y = layout.boardY + layout.boardH - h - 14;
+    fillRound(x, y, w, h, 7, "rgba(246,234,207,0.96)", PALETTE.oxblood, 2);
+    ctx.save();
+    ctx.fillStyle = PALETTE.madder;
+    ctx.font = `italic 16px Georgia, serif`;
+    ctx.textBaseline = "top";
+    ctx.fillText("Very well; put your ear to the warp.", x + 16, y + 12);
+    drawWrapped(level.hint, x + 16, y + 36, w - 32, 17, `14px Georgia, serif`, PALETTE.charcoal, "left", 3);
+    ctx.restore();
+  }
+
+  function drawVeil(alpha = 0.68) {
+    ctx.fillStyle = `rgba(43,36,31,${alpha})`;
+    ctx.fillRect(0, 0, viewW, viewH);
+  }
+
+  function drawSnarlOverlay(state, now) {
+    drawVeil(0.66);
+    if (boardLayout && state.catastrophe) {
+      drawSnarlMark(boardLayout, state.catastrophe.tile, now);
+      const offending = state.world.actors.find(a => a.id === state.catastrophe.actorId);
+      if (offending) {
+        const p = cellCenter(boardLayout, offending.x, offending.y);
+        const carries = state.world.skein.carrier === offending.id;
+        drawActorShape(p.x, p.y + boardLayout.cell * 0.45, boardLayout.cell * 1.06, offending, now, carries, true, false);
+      }
+    }
+    const w = Math.min(780, viewW - 40);
+    const narrow = w < 620 || viewH < 520;
+    const h = narrow ? Math.min(404, viewH - 16) : Math.min(410, viewH - 50);
+    const x = (viewW - w) / 2;
+    const y = narrow ? (viewH - h) / 2 : Math.max(18, (viewH - h) * 0.12);
+    fillRound(x, y, w, h, 12, PALETTE.linen, PALETTE.madder, 5);
+    ctx.save();
+    ctx.setLineDash([9, 5, 2, 5]);
+    ctx.strokeStyle = PALETTE.oxblood;
+    ctx.lineWidth = 2;
+    roundedRectPath(x + 10, y + 10, w - 20, h - 20, 8);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = PALETTE.madder;
+    ctx.font = `bold ${narrow ? clamp(w * 0.06, 17, 22) : clamp(w * 0.047, 25, 38)}px Georgia, serif`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "top";
+    ctx.fillText("The cloth has drawn a Snarl", x + w / 2, y + (narrow ? 20 : 30));
+    const lines = snarlCopy(state.catastrophe);
+    let ty = y + (narrow ? 60 : 88);
+    lines.forEach((line, i) => {
+      const lineHeight = narrow ? (i === 0 ? 18 : 17) : (i === 0 ? 24 : 22);
+      const fontSize = narrow ? (i === 0 ? 14 : 13) : (i === 0 ? 18 : 16);
+      ty += drawWrapped(line, x + (narrow ? 22 : 34), ty, w - (narrow ? 44 : 68), lineHeight, `${i === 0 ? "italic " : ""}${fontSize}px Georgia, serif`, i === 2 ? PALETTE.oxblood : PALETTE.charcoal, "left", narrow ? 2 : 3) + (narrow ? 4 : 7);
+    });
+    ctx.restore();
+    if (narrow) {
+      drawButton("Pick back one beat [Z]", x + 18, y + h - 99, w - 36, 41, pickBackBeat, true);
+      drawButton("Unweave this pass", x + 18, y + h - 51, (w - 43) / 2, 37, unweavePass, false);
+      drawButton("Cut away this act [R]", x + 25 + (w - 43) / 2, y + h - 51, (w - 43) / 2, 37, cutAwayAct, false);
+    } else {
+      const by = y + h - 72;
+      const gap = 10;
+      const bw = (w - 68 - gap * 2) / 3;
+      drawButton("Pick back one beat [Z]", x + 24, by, bw, 48, pickBackBeat, true);
+      drawButton("Unweave this pass", x + 24 + bw + gap, by, bw, 48, unweavePass, false);
+      drawButton("Cut away this act [R]", x + 24 + (bw + gap) * 2, by, bw, 48, cutAwayAct, false);
+    }
+  }
+
+  function drawFrayedOverlay() {
+    drawVeil(0.68);
+    const w = Math.min(660, viewW - 42);
+    const h = 300;
+    const x = (viewW - w) / 2;
+    const y = (viewH - h) / 2;
+    fillRound(x, y, w, h, 12, PALETTE.linen, PALETTE.oxblood, 4);
+    ctx.fillStyle = PALETTE.oxblood;
+    ctx.font = `bold 32px Georgia, serif`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "top";
+    ctx.fillText("Four Figures are all I can raise", x + w / 2, y + 30);
+    drawWrapped("Child, a fifth woven body would pull the horizon from its beams. Pick back this pass, or cut the act and choose cleaner work.", x + w / 2, y + 91, w - 74, 24, `18px Georgia, serif`, PALETTE.charcoal, "center", 4);
+    drawButton("Unweave the last pass", x + 42, y + h - 74, (w - 94) / 2, 48, unweavePass, true);
+    drawButton("Cut away this act", x + 52 + (w - 94) / 2, y + h - 74, (w - 94) / 2, 48, cutAwayAct, false);
+  }
+
+  function drawWonOverlay(level) {
+    drawVeil(0.52);
+    const w = Math.min(650, viewW - 42);
+    const h = 310;
+    const x = (viewW - w) / 2;
+    const y = (viewH - h) / 2;
+    fillRound(x, y, w, h, 13, PALETTE.bone, PALETTE.saffron, 5);
+    ctx.save();
+    ctx.strokeStyle = PALETTE.madder;
+    ctx.lineWidth = 2;
+    for (let i = 0; i < 12; i++) {
+      const px = x + 24 + i * (w - 48) / 11;
+      ctx.beginPath();
+      ctx.moveTo(px, y + 14);
+      ctx.lineTo(px + (i % 2 ? 8 : -8), y + 31);
+      ctx.lineTo(px, y + 47);
+      ctx.stroke();
+    }
+    ctx.fillStyle = PALETTE.oxblood;
+    ctx.font = `bold 36px Georgia, serif`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "top";
+    ctx.fillText("This row holds", x + w / 2, y + 61);
+    const copy = levelIndex === 0
+      ? "Good. The first Figure is not imitation; she bears weight. Maret left us company in the cloth."
+      : levelIndex === 1
+        ? "Feel the black strand beneath your palm. Maret placed it; grief is not a flaw in her pattern."
+        : "You kept the dark strand and still found saffron. Now let me show you what Maret meant to make.";
+    drawWrapped(copy, x + w / 2, y + 122, w - 78, 24, `italic 18px Georgia, serif`, PALETTE.charcoal, "center", 4);
+    ctx.restore();
+    drawButton(levelIndex < LEVELS.length - 1 ? "Turn the cloth" : "Bind off the morning", x + w / 2 - 130, y + h - 69, 260, 48, continueCloth, true);
+  }
+
+  function drawTitle(now) {
+    drawWorkshop(now, false);
+    const loomW = Math.min(viewW * 0.48, 650);
+    const loomH = Math.min(viewH * 0.68, 610);
+    const loomX = viewW - loomW - Math.max(28, viewW * 0.045);
+    const loomY = viewH * 0.11;
+    drawWarpLoom(loomX, loomY, loomW, loomH, now, false);
+    drawActorShape(loomX - Math.min(45, viewW * 0.025), loomY + loomH * 0.93, Math.min(118, viewH * 0.15), { live: true, iteration: 1 }, now, false, false, false);
+
+    const compact = viewW < 880;
+    const panelX = compact ? 22 : Math.max(34, viewW * 0.045);
+    const panelW = compact ? viewW - 44 : Math.min(580, viewW * 0.43);
+    const panelY = compact ? 42 : viewH * 0.12;
+    const panelH = compact ? Math.min(viewH - 80, 590) : Math.min(650, viewH * 0.77);
+    fillRound(panelX, panelY, panelW, panelH, 12, compact ? "rgba(43,36,31,0.87)" : "rgba(43,36,31,0.72)", PALETTE.saffron, 2);
+    ctx.save();
+    ctx.setLineDash([8, 5, 2, 5]);
+    ctx.strokeStyle = PALETTE.linen;
+    ctx.globalAlpha = 0.62;
+    ctx.lineWidth = 1.5;
+    roundedRectPath(panelX + 9, panelY + 9, panelW - 18, panelH - 18, 7);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.globalAlpha = 1;
+
+    const titleSize = clamp(panelW * 0.092, 34, 60);
+    ctx.textAlign = "left";
+    ctx.textBaseline = "top";
+    ctx.font = `bold ${titleSize}px Georgia, serif`;
+    ctx.fillStyle = PALETTE.bone;
+    ctx.fillText("The Loom That", panelX + 28, panelY + 29);
+    ctx.fillStyle = PALETTE.saffron;
+    ctx.fillText("Ate the Dawn", panelX + 28 + Math.sin(now * 0.0007) * 1.3, panelY + 29 + titleSize * 0.92);
+    ctx.strokeStyle = PALETTE.madder;
+    ctx.lineWidth = 1.5;
+    const underlineY = panelY + 42 + titleSize * 1.87;
+    ctx.beginPath();
+    for (let xx = panelX + 29; xx < panelX + panelW - 29; xx += 13) {
+      const yy = underlineY + Math.sin(xx * 0.12) * 2;
+      if (xx === panelX + 29) ctx.moveTo(xx, yy); else ctx.lineTo(xx, yy);
+    }
+    ctx.stroke();
+
+    let ty = underlineY + 24;
+    ty += drawWrapped("Child, the east has come loose.", panelX + 29, ty, panelW - 58, 25, `italic 20px Georgia, serif`, PALETTE.saffron, "left", 2) + 12;
+    ty += drawWrapped("Maret died with her last morning unfinished. I can raise each passage you weave into a body of cloth—faithful feet to hold the treadles beside you.", panelX + 29, ty, panelW - 58, 22, `17px Georgia, serif`, PALETTE.bone, "left", 5) + 11;
+    ty += drawWrapped("But older cloth lies beneath new. Make a Figure remember falsely, and I must pull every strand still before the horizon tears.", panelX + 29, ty, panelW - 58, 22, `17px Georgia, serif`, PALETTE.linen, "left", 5);
+    ctx.restore();
+
+    const buttonY = panelY + panelH - 79;
+    drawButton("Take up Maret's pattern", panelX + 29, buttonY, Math.min(280, panelW - 58), 51, () => openAct(0), true);
+    ctx.save();
+    ctx.font = `12px Georgia, serif`;
+    ctx.fillStyle = "rgba(246,234,207,0.55)";
+    ctx.textAlign = "right";
+    ctx.textBaseline = "bottom";
+    ctx.fillText("Enter begins · T asks me to inspect my underside", panelX + panelW - 25, panelY + panelH - 16);
+    ctx.restore();
+  }
+
+  function drawActIntro(now) {
+    const level = LEVELS[levelIndex];
+    drawWorkshop(now, false);
+    const loomW = Math.min(viewW * 0.54, 730);
+    const loomH = Math.min(viewH * 0.72, 650);
+    drawWarpLoom(viewW - loomW - 36, viewH * 0.11, loomW, loomH, now, false);
+    drawVeil(0.32);
+    const w = Math.min(720, viewW - 42);
+    const h = Math.min(500, viewH - 54);
+    const x = (viewW - w) / 2;
+    const y = (viewH - h) / 2;
+    fillRound(x, y, w, h, 13, "rgba(246,234,207,0.97)", PALETTE.walnut, 5);
+    ctx.save();
+    ctx.setLineDash([9, 6]);
+    ctx.strokeStyle = PALETTE.madder;
+    ctx.lineWidth = 1.5;
+    roundedRectPath(x + 11, y + 11, w - 22, h - 22, 8);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.textAlign = "center";
+    ctx.textBaseline = "top";
+    ctx.fillStyle = PALETTE.oxblood;
+    ctx.font = `italic 18px Georgia, serif`;
+    ctx.fillText(level.act, x + w / 2, y + 40);
+    ctx.fillStyle = PALETTE.charcoal;
+    ctx.font = `bold ${clamp(w * 0.058, 29, 42)}px Georgia, serif`;
+    ctx.fillText(level.title, x + w / 2, y + 72);
+    ctx.fillStyle = PALETTE.madder;
+    ctx.fillRect(x + w * 0.23, y + 128, w * 0.54, 3);
+    drawWrapped(level.opening, x + w / 2, y + 158, w - 92, 26, `italic 19px Georgia, serif`, PALETTE.oxblood, "center", 6);
+    ctx.fillStyle = PALETTE.lichen;
+    ctx.font = `bold 15px Georgia, serif`;
+    ctx.fillText("Lay this row true:", x + w / 2, y + 291);
+    drawWrapped(level.objective, x + w / 2, y + 319, w - 110, 22, `16px Georgia, serif`, PALETTE.charcoal, "center", 4);
+    ctx.restore();
+    drawButton("Place Sava's first foot", x + w / 2 - 135, y + h - 76, 270, 50, beginAct, true);
+  }
+
+  function drawPlay(now) {
+    const level = LEVELS[levelIndex];
+    drawWorkshop(now, false);
+    ctx.fillStyle = "rgba(43,36,31,0.31)";
+    ctx.fillRect(0, 0, viewW, viewH);
+    drawGameHeader(level);
+    const layout = drawBoard(level, logic, now);
+    drawSidebar(layout, level, logic);
+    drawCompactBraid(level, logic, layout);
+    drawControls(layout);
+    drawHintRibbon(level, layout);
+
+    if (logic.mode === "snarl") drawSnarlOverlay(logic, now);
+    else if (logic.mode === "frayed") drawFrayedOverlay();
+    else if (logic.mode === "won") drawWonOverlay(level);
+  }
+
+  function drawWovenMaret(x, y, size, now) {
+    ctx.save();
+    ctx.globalAlpha = 0.72;
+    drawActorShape(x, y, size, { live: false, iteration: 4 }, now, false, false, false);
+    ctx.globalAlpha = 0.72;
+    ctx.strokeStyle = PALETTE.charcoal;
+    ctx.lineWidth = Math.max(2, size * 0.025);
+    ctx.beginPath();
+    ctx.moveTo(x - size * 0.28, y - size * 0.68);
+    ctx.quadraticCurveTo(x, y - size * 1.02, x + size * 0.31, y - size * 0.68);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function drawEnding(now) {
+    const elapsed = now - screenEnteredAt;
+    const compact = viewW < 760;
+    drawWorkshop(now, true);
+    const loomW = Math.min(viewW * 0.54, 760);
+    const loomH = Math.min(viewH * 0.75, 680);
+    const loomX = viewW - loomW - Math.max(24, viewW * 0.035);
+    const loomY = viewH * 0.08;
+    drawWarpLoom(loomX, loomY, loomW, loomH, now, true);
+    const flatten = clamp((elapsed - 500) / 2300, 0, 1);
+    for (let i = 0; i < 4; i++) {
+      const fx = loomX + loomW * (0.3 + i * 0.13);
+      const fy = loomY + loomH * (0.43 + Math.sin(i) * 0.025);
+      ctx.save();
+      ctx.translate(fx, fy);
+      ctx.scale(1, 1 - flatten * 0.78);
+      ctx.translate(-fx, -fy);
+      drawActorShape(fx, fy, loomH * 0.11, { live: false, iteration: i + 1 }, now, false, false, false);
+      ctx.restore();
+    }
+    if (elapsed > 2100) drawWovenMaret(loomX + loomW * 0.51, loomY + loomH * 0.62, loomH * 0.2, now);
+    drawActorShape(loomX - 28, loomY + loomH * 0.93, Math.min(116, viewH * 0.145), { live: true, iteration: 5 }, now, true, false, false);
+
+    const w = compact ? viewW - 24 : Math.min(650, viewW * 0.47, viewW - 42);
+    const x = compact ? 12 : Math.max(21, viewW * 0.04);
+    const y = compact ? 12 : viewH * 0.1;
+    const h = compact ? Math.min(viewH - 24, 530) : Math.min(610, viewH * 0.76);
+    fillRound(x, y, w, h, 12, "rgba(43,36,31,0.79)", PALETTE.saffron, 2);
+    ctx.save();
+    ctx.textAlign = "left";
+    ctx.textBaseline = "top";
+    ctx.fillStyle = PALETTE.saffron;
+    ctx.font = `bold ${compact ? clamp(w * 0.07, 22, 28) : clamp(w * 0.073, 31, 46)}px Georgia, serif`;
+    ctx.fillText("The morning binds off", x + 28, y + 28);
+    let ty = y + (compact ? 78 : 96);
+    const endingLines = compact ? [
+      "The Woven Figures loosen their shoulders and lie flat—not dead, child, but finished—becoming saffron road beneath the dawn.",
+      "Maret's black strand remains. It was not a mistake; she gave grief one place, so it would not enter every color.",
+      "The east brightens. Sava carries no stolen past; every faithful footstep rises beside the sun."
+    ] : [
+      "The Woven Figures loosen their shoulders. One by one, they lie flat—not dead, child, but finished—becoming the very road of saffron beneath the dawn.",
+      "Maret's black strand remains across the cloth. It was never a mistake. She wove the shape of her leaving so grief would have a place, and would not spread into every color.",
+      "Beyond the cliffside windows, the east finally brightens. Sava carries no stolen past with her; every faithful footstep rises in the sky beside the sun."
+    ];
+    endingLines.forEach((line, i) => {
+      const lineHeight = compact ? (viewH < 520 ? 15 : 18) : 23;
+      const fontSize = compact ? (viewH < 520 ? 12 : 14) : 17;
+      ty += drawWrapped(line, x + (compact ? 20 : 28), ty, w - (compact ? 40 : 56), lineHeight, `${i === 1 ? "italic " : ""}${fontSize}px Georgia, serif`, i === 1 ? PALETTE.linen : PALETTE.bone, "left", compact ? 5 : 6) + (compact ? 8 : 15);
+    });
+    ctx.fillStyle = PALETTE.saffron;
+    ctx.font = `italic ${compact ? (viewH < 520 ? 14 : 17) : 21}px Georgia, serif`;
+    if (compact) {
+      drawWrapped("There, child. Morning remembers what it cost.", x + 20, Math.min(y + h - 113, ty + 5), w - 40, viewH < 520 ? 16 : 20, `italic ${viewH < 520 ? 14 : 17}px Georgia, serif`, PALETTE.saffron, "left", 2);
+    } else {
+      ctx.fillText("There, child. Morning remembers what it cost.", x + 28, Math.min(y + h - 108, ty + 5));
+    }
+    ctx.restore();
+    drawButton("Let the house see another dawn", x + (compact ? 20 : 28), y + h - 69, Math.min(310, w - (compact ? 40 : 56)), 45, returnToFirstLight, true);
+  }
+
+  function drawTestOverlay() {
+    if (!testOpen || !testReport) return;
+    drawVeil(0.79);
+    const w = Math.min(850, viewW - 34);
+    const h = Math.min(720, viewH - 34);
+    const x = (viewW - w) / 2;
+    const y = (viewH - h) / 2;
+    fillRound(x, y, w, h, 12, PALETTE.bone, testReport.ok ? PALETTE.lichen : PALETTE.madder, 5);
+    ctx.save();
+    ctx.fillStyle = testReport.ok ? PALETTE.lichen : PALETTE.madder;
+    ctx.font = `bold ${clamp(w * 0.045, 26, 38)}px Georgia, serif`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "top";
+    ctx.fillText("I have read the cloth's underside", x + w / 2, y + 25);
+    drawWrapped(testReport.summary, x + w / 2, y + 73, w - 70, 23, `italic 18px Georgia, serif`, PALETTE.oxblood, "center", 3);
+    let cy = y + 126;
+    testReport.checks.forEach((check, i) => {
+      const rowH = Math.max(30, wrapLines(check.text, w - 98, `14px Georgia, serif`, 2).length * 18 + 10);
+      if (cy + rowH > y + h - 83) return;
+      ctx.fillStyle = check.ok ? PALETTE.lichen : PALETTE.madder;
+      ctx.beginPath();
+      ctx.moveTo(x + 30, cy + 9);
+      ctx.lineTo(x + 37, cy + 17);
+      ctx.lineTo(x + 48, cy + 3);
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = check.ok ? PALETTE.lichen : PALETTE.madder;
+      ctx.stroke();
+      drawWrapped(check.text, x + 60, cy, w - 88, 18, `14px Georgia, serif`, PALETTE.charcoal, "left", 2);
+      cy += rowH;
+    });
+    ctx.restore();
+    drawButton("Fold the underside away", x + w / 2 - 130, y + h - 65, 260, 46, () => { testOpen = false; }, testReport.ok);
+  }
+
+  function render(now) {
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, viewW, viewH);
+    hitRegions = [];
+    if (screen === "title") drawTitle(now);
+    else if (screen === "act-intro") drawActIntro(now);
+    else if (screen === "play") drawPlay(now);
+    else if (screen === "ending") drawEnding(now);
+    drawTestOverlay();
+    requestAnimationFrame(render);
+  }
+
+  window.__LOOM_DEBUG__ = Object.freeze({
+    runSelfTests,
+    state: () => JSON.parse(logicDigest(logic)),
+    solutionState: index => JSON.parse(logicDigest(derive(LEVELS[index], LEVELS[index].solutionLog))),
+    sabotageState: () => JSON.parse(logicDigest(derive(LEVELS[2], LEVELS[2].sabotageLog))),
+    playSolution: index => {
+      levelIndex = clamp(index, 0, LEVELS.length - 1);
+      screen = "play";
+      inputLog = LEVELS[levelIndex].solutionLog.slice();
+      logic = derive(LEVELS[levelIndex], inputLog);
+      return JSON.parse(logicDigest(logic));
+    },
+    openLevel: index => {
+      levelIndex = clamp(index, 0, LEVELS.length - 1);
+      inputLog = [];
+      logic = derive(LEVELS[levelIndex], inputLog);
+      screen = "play";
+      return JSON.parse(logicDigest(logic));
+    },
+    input: code => { appendInput(String(code).toUpperCase()); return JSON.parse(logicDigest(logic)); },
+    undo: () => { pickBackBeat(); return JSON.parse(logicDigest(logic)); },
+    log: () => inputLog.slice(),
+    screen: () => screen
+  });
+
+  window.addEventListener("resize", resizeCanvas);
+  window.addEventListener("keydown", handleKey, { passive: false });
+  canvas.addEventListener("pointerdown", handlePointer);
+  resizeCanvas();
+  requestAnimationFrame(render);
+  canvas.focus();
+
+  if (new URLSearchParams(window.location.search).has("selftest")) {
+    setTimeout(inspectKnots, 0);
+  }
+})();
+</script>
+</body>
+</html>
