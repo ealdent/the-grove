@@ -22,15 +22,26 @@ const SETTINGS_KEY = 'greenhouse-audio-settings';
 const BED_FILES = { day: 'audio/bed-day.mp3', night: 'audio/bed-night.mp3' };
 const VIOLIN_FILES = [
     'audio/violin-1.mp3', 'audio/violin-2.mp3', 'audio/violin-3.mp3',
-    'audio/violin-4.mp3', 'audio/violin-5.mp3'
+    'audio/violin-4.mp3', 'audio/violin-5.mp3', 'audio/violin-6.mp3',
+    'audio/violin-7.mp3', 'audio/violin-8.mp3', 'audio/violin-9.mp3',
+    'audio/violin-10.mp3'
 ];
 const ONESHOT_FILES = {
     owl: 'audio/owl-hoot.mp3',
+    owl2: 'audio/owl-2.mp3',
     nightbird: 'audio/nightbird.mp3',
     animalCall: 'audio/animal-call.mp3',
     cicada: 'audio/cicada.mp3',
+    frogs: 'audio/frogs.mp3',
+    nightRustle: 'audio/night-rustle.mp3',
+    distantHowl: 'audio/distant-howl.mp3',
+    breezeSwell: 'audio/breeze-swell.mp3',
     songbird1: 'audio/songbird-1.mp3',
     songbird2: 'audio/songbird-2.mp3',
+    chickadee: 'audio/chickadee.mp3',
+    dove: 'audio/dove.mp3',
+    crow: 'audio/crow.mp3',
+    squirrel: 'audio/squirrel.mp3',
     woodpecker: 'audio/woodpecker.mp3'
 };
 
@@ -168,14 +179,29 @@ class GreenhouseAudio {
         const t = this.ctx.currentTime;
         const night = d => d < 0.35;
         const day = d => d > 0.55;
+        const always = () => true;
+        const pick = (...names) => names[Math.floor(Math.random() * names.length)];
         this.events = [
             // The owl's distance is rolled fresh every call — see _playOwl.
             { name: 'owl', when: night, gapLo: 30, gapHi: 100, nextAt: t + rand(8, 40), play: () => this._playOwl() },
             { name: 'nightbird', when: night, gapLo: 40, gapHi: 130, nextAt: t + rand(20, 70), play: () => this._playOneShot('nightbird', { gainLo: 0.10, gainHi: 0.28 }) },
             { name: 'animalCall', when: night, gapLo: 110, gapHi: 280, nextAt: t + rand(60, 160), play: () => this._playOneShot('animalCall', { gainLo: 0.08, gainHi: 0.2, lowpassHz: 2200 }) },
             { name: 'cicada', when: night, gapLo: 70, gapHi: 200, nextAt: t + rand(30, 90), play: () => this._playOneShot('cicada', { gainLo: 0.07, gainHi: 0.18 }) },
-            { name: 'songbird', when: day, gapLo: 14, gapHi: 45, nextAt: t + rand(4, 15), play: () => this._playOneShot(Math.random() < 0.5 ? 'songbird1' : 'songbird2', { gainLo: 0.12, gainHi: 0.3 }) },
-            { name: 'woodpecker', when: day, gapLo: 70, gapHi: 200, nextAt: t + rand(25, 90), play: () => this._playOneShot('woodpecker', { gainLo: 0.08, gainHi: 0.2 }) }
+            { name: 'frogs', when: night, gapLo: 70, gapHi: 180, nextAt: t + rand(25, 80), play: () => this._playOneShot('frogs', { gainLo: 0.1, gainHi: 0.24 }) },
+            // Something small moving through the leaves — quiet, and never far
+            // off to one side; it should feel like it's just past the glass.
+            { name: 'nightRustle', when: night, gapLo: 90, gapHi: 240, nextAt: t + rand(40, 120), play: () => this._playOneShot('nightRustle', { gainLo: 0.12, gainHi: 0.24, pan: rand(-0.4, 0.4) }) },
+            // The rarest sound in the forest. The clip is already recorded-distant,
+            // so it gets no lowpass — just low gain and a long wait.
+            { name: 'distantHowl', when: night, gapLo: 200, gapHi: 480, nextAt: t + rand(120, 300), play: () => this._playOneShot('distantHowl', { gainLo: 0.1, gainHi: 0.2 }) },
+            { name: 'songbird', when: day, gapLo: 16, gapHi: 50, nextAt: t + rand(4, 15), play: () => this._playOneShot(pick('songbird1', 'songbird2', 'chickadee'), { gainLo: 0.12, gainHi: 0.3 }) },
+            { name: 'dove', when: day, gapLo: 45, gapHi: 120, nextAt: t + rand(15, 60), play: () => this._playOneShot('dove', { gainLo: 0.1, gainHi: 0.24 }) },
+            { name: 'crow', when: day, gapLo: 80, gapHi: 200, nextAt: t + rand(30, 100), play: () => this._playOneShot('crow', { gainLo: 0.08, gainHi: 0.2 }) },
+            { name: 'squirrel', when: day, gapLo: 100, gapHi: 260, nextAt: t + rand(50, 140), play: () => this._playOneShot('squirrel', { gainLo: 0.07, gainHi: 0.16 }) },
+            { name: 'woodpecker', when: day, gapLo: 70, gapHi: 200, nextAt: t + rand(25, 90), play: () => this._playOneShot('woodpecker', { gainLo: 0.08, gainHi: 0.2 }) },
+            // Wind doesn't keep office hours — the breeze swell plays around
+            // the clock, and wide, since it isn't a point source.
+            { name: 'breezeSwell', when: always, gapLo: 50, gapHi: 130, nextAt: t + rand(15, 60), play: () => this._playOneShot('breezeSwell', { gainLo: 0.12, gainHi: 0.28, pan: rand(-0.3, 0.3) }) }
         ];
     }
 
@@ -216,7 +242,9 @@ class GreenhouseAudio {
     _playOwl() {
         const d = Math.pow(Math.random(), 0.6); // 0 = on the roof, 1 = deep in the trees
         const gain = 0.45 * Math.pow(0.12, d);  // ~0.45 close → ~0.055 far
-        this._playOneShot('owl', {
+        // Two species share the forest: the great horned owl's double hoot and
+        // the barred owl's who-cooks-for-you, at roughly two-to-one.
+        this._playOneShot(Math.random() < 0.65 ? 'owl' : 'owl2', {
             gainLo: gain * 0.9, gainHi: gain * 1.1,
             lowpassHz: 5200 * Math.pow(0.16, d), // ~5200 Hz close → ~830 Hz far
             rate: rand(0.94, 1.04),
