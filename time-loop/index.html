@@ -1,0 +1,1340 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>Time Loop</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700&family=JetBrains+Mono:wght@300;400;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --ink:        #06070a;
+            --ink-2:      #0c0f15;
+            --brass:      #c8a24a;
+            --brass-dim:  #8a7031;
+            --brass-deep: #4a3b19;
+            --bone:       #e9e2d1;
+            --bone-dim:   rgba(233, 226, 209, 0.52);
+            --ember:      #ff9d5c;
+            --echo-line:  rgba(200, 162, 74, 0.30);
+            --rule:       rgba(200, 162, 74, 0.18);
+            /* opaque enough that the sweep hand passing behind never costs
+               legibility */
+            --panel:      rgba(9, 11, 16, 0.86);
+            --loop-secs:  12s;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        html { -webkit-text-size-adjust: 100%; }
+
+        body {
+            min-height: 100vh;
+            min-height: -webkit-fill-available;
+            background: var(--ink);
+            font-family: 'JetBrains Mono', ui-monospace, monospace;
+            font-weight: 300;
+            color: var(--bone);
+            overflow-x: hidden;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        /* ---------- Background layers ---------- */
+
+        /* WebGL veil: engraved rings + a sweeping hand, on a clock that rewinds */
+        .veil {
+            position: fixed;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 0;
+            display: block;
+            /* visible if WebGL never comes up */
+            background:
+                radial-gradient(circle at 50% 46%, rgba(200, 162, 74, 0.10) 0%, transparent 42%),
+                radial-gradient(circle at 50% 46%, rgba(200, 162, 74, 0.05) 43%, transparent 68%),
+                linear-gradient(180deg, var(--ink-2) 0%, var(--ink) 100%);
+        }
+
+        /* paper fiber */
+        .fiber {
+            position: fixed;
+            inset: 0;
+            z-index: 1;
+            pointer-events: none;
+            opacity: 0.11;
+            mix-blend-mode: overlay;
+            background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 220 220' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='f'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.72' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23f)'/%3E%3C/svg%3E");
+            background-size: 200px;
+        }
+
+        .vig {
+            position: fixed;
+            inset: 0;
+            z-index: 1;
+            pointer-events: none;
+            background: radial-gradient(ellipse at 50% 42%, transparent 34%, rgba(0, 0, 0, 0.72) 100%);
+        }
+
+        /* the whole page snapping back to the top of the loop */
+        .rewind {
+            position: fixed;
+            inset: 0;
+            z-index: 60;
+            pointer-events: none;
+            opacity: 0;
+            background:
+                linear-gradient(90deg, transparent 0%, rgba(255, 157, 92, 0.16) 45%, rgba(233, 226, 209, 0.30) 50%, rgba(255, 157, 92, 0.16) 55%, transparent 100%);
+            background-size: 220% 100%;
+        }
+
+        body.rewinding .rewind {
+            animation: wipe 460ms cubic-bezier(0.2, 0.8, 0.2, 1) 1;
+        }
+
+        @keyframes wipe {
+            0%   { opacity: 0;    background-position: 130% 0; }
+            18%  { opacity: 0.95; }
+            100% { opacity: 0;    background-position: -80% 0; }
+        }
+
+        /* ---------- Shell ---------- */
+
+        main {
+            position: relative;
+            z-index: 2;
+            width: 100%;
+            max-width: 980px;
+            margin: 0 auto;
+            padding: max(1.75rem, env(safe-area-inset-top)) max(1.25rem, env(safe-area-inset-right)) max(2rem, env(safe-area-inset-bottom)) max(1.25rem, env(safe-area-inset-left));
+        }
+
+        .back {
+            display: inline-block;
+            font-size: 0.78rem;
+            letter-spacing: 0.1em;
+            color: rgba(233, 226, 209, 0.4);
+            text-decoration: none;
+            transition: color 0.2s ease;
+        }
+        .back:hover { color: var(--brass); }
+
+        /* ---------- Title ---------- */
+
+        .title-block {
+            text-align: center;
+            padding: 2.4rem 0 1.6rem;
+        }
+
+        h1 {
+            font-family: 'Cinzel', serif;
+            font-weight: 700;
+            font-size: clamp(2.1rem, 8vw, 4rem);
+            letter-spacing: 0.16em;
+            text-transform: uppercase;
+            line-height: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: clamp(0.5rem, 2.4vw, 1.1rem);
+            color: transparent;
+            background: linear-gradient(100deg, var(--brass-deep) 0%, var(--brass) 32%, var(--bone) 50%, var(--brass) 68%, var(--brass-deep) 100%);
+            background-size: 260% 100%;
+            -webkit-background-clip: text;
+            background-clip: text;
+            animation: sheen var(--loop-secs) linear infinite;
+            filter: drop-shadow(0 0 26px rgba(200, 162, 74, 0.22));
+        }
+
+        @keyframes sheen {
+            0%   { background-position: 140% 0; }
+            100% { background-position: -140% 0; }
+        }
+
+        /* the dial glyph makes exactly one revolution per loop */
+        .dial {
+            flex: 0 0 auto;
+            width: clamp(1.5rem, 5.4vw, 2.6rem);
+            height: clamp(1.5rem, 5.4vw, 2.6rem);
+            overflow: visible;
+        }
+        .dial .face  { fill: none; stroke: var(--brass-dim); stroke-width: 1.4; }
+        .dial .pip   { fill: var(--brass-dim); }
+        .dial .hand  { stroke: var(--ember); stroke-width: 1.8; stroke-linecap: round; transform-origin: 24px 24px; }
+        .dial .ghost { stroke: rgba(200, 162, 74, 0.4); stroke-width: 1.4; stroke-linecap: round; transform-origin: 24px 24px; }
+
+        .kicker {
+            margin-top: 1.05rem;
+            font-size: clamp(0.66rem, 1.8vw, 0.78rem);
+            letter-spacing: 0.34em;
+            text-transform: uppercase;
+            color: var(--brass);
+            opacity: 0.82;
+        }
+
+        .lede {
+            margin: 0.85rem auto 0;
+            max-width: 44ch;
+            font-size: clamp(0.76rem, 2vw, 0.86rem);
+            line-height: 1.75;
+            color: var(--bone-dim);
+        }
+
+        /* ---------- Iteration tape ---------- */
+
+        .tape-block {
+            margin: 2rem 0 1.9rem;
+            padding: 0.9rem 1rem 0.75rem;
+            border: 1px solid var(--rule);
+            border-radius: 2px;
+            background: var(--panel);
+            backdrop-filter: blur(7px);
+            -webkit-backdrop-filter: blur(7px);
+        }
+
+        .tape-head, .tape-foot {
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+            gap: 1rem;
+            font-size: 0.6rem;
+            letter-spacing: 0.24em;
+            text-transform: uppercase;
+            color: rgba(233, 226, 209, 0.34);
+        }
+
+        .tape-head { margin-bottom: 0.6rem; }
+        .tape-foot { margin-top: 0.55rem; }
+
+        .tape-head .iter {
+            color: var(--brass);
+            letter-spacing: 0.18em;
+        }
+        .tape-head .iter b {
+            font-family: 'Cinzel', serif;
+            font-size: 0.9rem;
+            color: var(--bone);
+            letter-spacing: 0.06em;
+        }
+
+        .tape {
+            position: relative;
+            height: 30px;
+            display: flex;
+            align-items: flex-end;
+            gap: 2px;
+            overflow: hidden;
+        }
+
+        .tape i {
+            flex: 1 1 0;
+            min-width: 0;
+            height: 34%;
+            background: rgba(200, 162, 74, 0.14);
+            transition: height 0.18s ease, background-color 0.18s ease;
+        }
+        .tape i.major { height: 58%; background: rgba(200, 162, 74, 0.22); }
+        .tape i.lit   { background: var(--brass-dim); height: 62%; }
+        .tape i.lit.major { height: 88%; background: var(--brass); }
+        .tape i.now   { background: var(--ember); height: 100%; box-shadow: 0 0 12px rgba(255, 157, 92, 0.6); }
+
+        .playhead {
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            width: 1px;
+            left: 0;
+            background: linear-gradient(180deg, transparent, var(--ember), transparent);
+            box-shadow: 0 0 10px rgba(255, 157, 92, 0.7);
+            will-change: transform;
+        }
+
+        /* ---------- About ---------- */
+
+        .about {
+            border: 1px solid var(--rule);
+            border-radius: 2px;
+            background: var(--panel);
+            backdrop-filter: blur(7px);
+            -webkit-backdrop-filter: blur(7px);
+            margin-bottom: 1.5rem;
+        }
+
+        .about summary {
+            cursor: pointer;
+            list-style: none;
+            padding: 0.85rem 1.05rem;
+            font-size: 0.68rem;
+            letter-spacing: 0.24em;
+            text-transform: uppercase;
+            color: var(--brass);
+            display: flex;
+            align-items: center;
+            gap: 0.6rem;
+        }
+        .about summary::-webkit-details-marker { display: none; }
+        .about summary::before {
+            content: '\25B8';
+            display: inline-block;
+            transition: transform 0.2s ease;
+        }
+        .about[open] summary::before { transform: rotate(90deg); }
+
+        .about-body {
+            padding: 0 1.05rem 1.05rem;
+            font-size: 0.8rem;
+            line-height: 1.78;
+            color: rgba(233, 226, 209, 0.62);
+        }
+        .about-body strong { color: var(--bone); font-weight: 700; }
+
+        /* ---------- Filter bar ---------- */
+
+        .filter-bar {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 1rem;
+            width: 100%;
+            margin-bottom: 1.9rem;
+        }
+
+        .filter-group {
+            display: flex;
+            flex-direction: column;
+            gap: 0.4rem;
+            flex: 1 1 220px;
+            min-width: 0;
+        }
+
+        .filter-label {
+            font-size: 0.58rem;
+            letter-spacing: 0.26em;
+            text-transform: uppercase;
+            color: var(--brass);
+            opacity: 0.75;
+            padding-left: 2px;
+        }
+
+        .dropdown { position: relative; }
+
+        .dropdown-toggle {
+            width: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 0.6rem;
+            padding: 0.68rem 0.85rem;
+            background: var(--panel);
+            border: 1px solid var(--rule);
+            border-radius: 2px;
+            color: var(--bone);
+            font-family: inherit;
+            font-size: 0.8rem;
+            font-weight: 300;
+            letter-spacing: 0.05em;
+            cursor: pointer;
+            transition: border-color 0.25s ease, box-shadow 0.25s ease, background-color 0.25s ease;
+        }
+
+        .dropdown-toggle:hover,
+        .dropdown.open .dropdown-toggle {
+            border-color: rgba(200, 162, 74, 0.6);
+            box-shadow: 0 0 18px rgba(200, 162, 74, 0.12);
+        }
+
+        .dd-current {
+            display: flex;
+            align-items: center;
+            gap: 0.55rem;
+            overflow: hidden;
+        }
+        .dd-current svg { width: 17px; height: 17px; flex: 0 0 auto; }
+        .dd-current span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+        .dd-chevron { flex: 0 0 auto; opacity: 0.55; transition: transform 0.25s ease; }
+        .dropdown.open .dd-chevron { transform: rotate(180deg); }
+
+        .dropdown-menu {
+            position: absolute;
+            top: calc(100% + 5px);
+            left: 0;
+            right: 0;
+            z-index: 50;
+            margin: 0;
+            padding: 4px;
+            list-style: none;
+            background: rgba(9, 11, 16, 0.97);
+            border: 1px solid rgba(200, 162, 74, 0.5);
+            border-radius: 2px;
+            box-shadow: 0 18px 40px rgba(0, 0, 0, 0.6);
+            max-height: 320px;
+            overflow-y: auto;
+            opacity: 0;
+            visibility: hidden;
+            transform: translateY(-6px);
+            transition: opacity 0.2s ease, transform 0.2s ease, visibility 0.2s;
+        }
+
+        .dropdown.open .dropdown-menu {
+            opacity: 1;
+            visibility: visible;
+            transform: translateY(0);
+        }
+
+        .dropdown-menu li {
+            display: flex;
+            align-items: center;
+            gap: 0.55rem;
+            padding: 0.58rem 0.65rem;
+            border-radius: 2px;
+            cursor: pointer;
+            font-size: 0.78rem;
+            color: rgba(233, 226, 209, 0.72);
+            transition: background-color 0.15s ease, color 0.15s ease;
+        }
+        .dropdown-menu li svg { width: 17px; height: 17px; flex: 0 0 auto; }
+
+        .dropdown-menu li:hover,
+        .dropdown-menu li.active {
+            background: rgba(200, 162, 74, 0.12);
+            color: var(--bone);
+        }
+
+        .dropdown-menu li .count {
+            margin-left: auto;
+            font-size: 0.68rem;
+            opacity: 0.42;
+        }
+
+        /* ---------- Ledger ---------- */
+
+        .ledger {
+            display: flex;
+            flex-direction: column;
+            gap: 1.05rem;
+        }
+
+        .loop-row {
+            --accent: var(--brass);
+            --pad-y: 1.15rem;
+            --pad-x: 1.2rem;
+            position: relative;
+            display: grid;
+            grid-template-columns: 3.1rem 1fr 11rem;
+            align-items: stretch;
+            gap: 0 1.1rem;
+            padding: var(--pad-y) var(--pad-x);
+            border: 1px solid var(--rule);
+            border-radius: 2px;
+            background: var(--panel);
+            backdrop-filter: blur(7px);
+            -webkit-backdrop-filter: blur(7px);
+            text-decoration: none;
+            color: inherit;
+            transition: border-color 0.28s ease, box-shadow 0.28s ease, transform 0.28s ease, background-color 0.28s ease;
+        }
+
+        .loop-row:hover {
+            transform: translateY(-2px);
+            border-color: color-mix(in srgb, var(--accent) 55%, transparent);
+            box-shadow: 0 0 34px color-mix(in srgb, var(--accent) 14%, transparent);
+        }
+
+        /* Two past selves, replaying the pointer a beat late.
+           An abspos child of a grid container is positioned against the
+           padding box; -1px pulls the outline out onto the row's border. */
+        .loop-row .echo {
+            position: absolute;
+            inset: -1px;
+            z-index: -1;
+            border: 1px solid var(--echo-line);
+            border-radius: 2px;
+            pointer-events: none;
+            opacity: 0.5;
+            transform: translate(6px, 6px);
+            transition: opacity 0.3s ease;
+        }
+        .loop-row .echo.far {
+            border-color: rgba(200, 162, 74, 0.16);
+            opacity: 0.4;
+            transform: translate(11px, 11px);
+        }
+        .loop-row:hover .echo { opacity: 0.85; }
+        .loop-row:hover .echo.far { opacity: 0.6; }
+
+        /* when the loop closes, every echo lands exactly on the present */
+        body.rewinding .loop-row .echo {
+            transform: none !important;
+            opacity: 0.95;
+            border-color: rgba(255, 157, 92, 0.55);
+            transition: transform 220ms cubic-bezier(0.2, 0.9, 0.1, 1), opacity 220ms ease;
+        }
+
+        .row-rail {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 0.5rem;
+            border-right: 1px solid var(--rule);
+            padding-right: 0.9rem;
+        }
+
+        .row-ord {
+            font-family: 'Cinzel', serif;
+            font-weight: 700;
+            font-size: 1.05rem;
+            color: var(--accent);
+            opacity: 0.85;
+            letter-spacing: 0.02em;
+        }
+
+        .row-glyph {
+            font-size: 1.25rem;
+            line-height: 1;
+            filter: drop-shadow(0 0 9px color-mix(in srgb, var(--accent) 45%, transparent));
+        }
+
+        .row-body { min-width: 0; }
+
+        .row-title {
+            display: block;
+            font-family: 'Cinzel', serif;
+            font-weight: 700;
+            font-size: clamp(0.98rem, 2.4vw, 1.16rem);
+            letter-spacing: 0.07em;
+            text-transform: uppercase;
+            color: var(--bone);
+            margin-bottom: 0.45rem;
+        }
+
+        .loop-row:hover .row-title { color: var(--accent); }
+
+        .row-desc {
+            display: block;
+            font-size: 0.78rem;
+            line-height: 1.68;
+            color: var(--bone-dim);
+        }
+
+        .row-meta {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+            justify-content: space-between;
+            gap: 0.8rem;
+            text-align: right;
+        }
+
+        .model-tag {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.4rem;
+            font-size: 0.68rem;
+            letter-spacing: 0.04em;
+            color: rgba(233, 226, 209, 0.62);
+            white-space: nowrap;
+        }
+        .model-logo { width: 15px; height: 15px; flex: 0 0 auto; }
+        .model-name { font-weight: 400; }
+        .model-effort {
+            padding: 0.1em 0.4em;
+            border-radius: 2px;
+            font-size: 0.6rem;
+            font-weight: 700;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            background: rgba(200, 162, 74, 0.14);
+            color: var(--brass);
+        }
+
+        .enter {
+            font-size: 0.62rem;
+            letter-spacing: 0.22em;
+            text-transform: uppercase;
+            padding: 0.42em 0.7em;
+            border: 1px solid color-mix(in srgb, var(--accent) 38%, transparent);
+            border-radius: 2px;
+            color: var(--accent);
+            opacity: 0.72;
+            transition: background-color 0.28s ease, opacity 0.28s ease, box-shadow 0.28s ease;
+            white-space: nowrap;
+        }
+        .loop-row:hover .enter {
+            opacity: 1;
+            background: color-mix(in srgb, var(--accent) 12%, transparent);
+            box-shadow: 0 0 16px color-mix(in srgb, var(--accent) 22%, transparent);
+        }
+
+        .no-results {
+            padding: 3rem 1rem;
+            text-align: center;
+            font-size: 0.8rem;
+            letter-spacing: 0.18em;
+            text-transform: uppercase;
+            color: rgba(233, 226, 209, 0.4);
+            border: 1px dashed var(--rule);
+            border-radius: 2px;
+        }
+
+        /* per-game accents, carried over from the arcade cards */
+        .row-changeover   { --accent: #f2b356; }
+        .row-organist     { --accent: #c8963e; }
+        .row-dawnloom     { --accent: #d7a337; }
+        .row-paradox      { --accent: #47d7ff; }
+        .row-standingsalt { --accent: #b98b46; }
+
+        footer {
+            margin-top: 3rem;
+            padding-bottom: 0.5rem;
+            text-align: center;
+            font-size: 0.66rem;
+            letter-spacing: 0.2em;
+            text-transform: uppercase;
+            color: rgba(233, 226, 209, 0.26);
+        }
+        footer a { color: rgba(200, 162, 74, 0.55); text-decoration: none; }
+        footer a:hover { color: var(--brass); }
+
+        @media (max-width: 760px) {
+            .loop-row {
+                grid-template-columns: 2.6rem 1fr;
+                gap: 0 0.9rem;
+            }
+            .row-meta {
+                grid-column: 2;
+                flex-direction: row;
+                align-items: center;
+                justify-content: space-between;
+                text-align: left;
+                margin-top: 0.95rem;
+                padding-top: 0.85rem;
+                border-top: 1px solid var(--rule);
+                width: 100%;
+            }
+        }
+
+        @media (max-width: 560px) {
+            /* decorative, and it wraps into the state label at this width */
+            .loop-note { display: none; }
+        }
+
+        @media (max-width: 430px) {
+            .row-meta { flex-wrap: wrap; gap: 0.6rem; }
+            .tape { height: 24px; gap: 1px; }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            h1 { animation: none; }
+            .loop-row, .loop-row .echo, .enter, .tape i { transition: none; }
+            body.rewinding .rewind { animation: none; }
+        }
+    </style>
+</head>
+<body>
+    <svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+        <defs>
+            <linearGradient id="gemGrad" x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0" stop-color="#4285f4"/>
+                <stop offset="0.5" stop-color="#9b72cb"/>
+                <stop offset="1" stop-color="#d96570"/>
+            </linearGradient>
+            <symbol id="logo-google" viewBox="0 0 24 24">
+                <path d="M12 2c0 5.52-4.48 10-10 10 5.52 0 10 4.48 10 10 0-5.52 4.48-10 10-10-5.52 0-10-4.48-10-10Z" fill="url(#gemGrad)"/>
+            </symbol>
+            <symbol id="logo-anthropic" viewBox="0 0 24 24">
+                <g fill="#d97757">
+                    <rect x="10.7" y="1.5" width="2.6" height="21" rx="1.3"/>
+                    <rect x="10.7" y="1.5" width="2.6" height="21" rx="1.3" transform="rotate(45 12 12)"/>
+                    <rect x="10.7" y="1.5" width="2.6" height="21" rx="1.3" transform="rotate(90 12 12)"/>
+                    <rect x="10.7" y="1.5" width="2.6" height="21" rx="1.3" transform="rotate(135 12 12)"/>
+                </g>
+            </symbol>
+            <symbol id="logo-openai" viewBox="0 0 24 24">
+                <g fill="none" stroke="#e6e6e6" stroke-width="1.7">
+                    <ellipse cx="12" cy="12" rx="4.1" ry="9"/>
+                    <ellipse cx="12" cy="12" rx="4.1" ry="9" transform="rotate(60 12 12)"/>
+                    <ellipse cx="12" cy="12" rx="4.1" ry="9" transform="rotate(120 12 12)"/>
+                </g>
+            </symbol>
+            <symbol id="logo-xai" viewBox="0 0 24 24">
+                <g stroke="#f5f5f7" stroke-width="2.8">
+                    <line x1="4.5" y1="4.5" x2="19.5" y2="19.5"/>
+                    <line x1="19.5" y1="4.5" x2="4.5" y2="19.5"/>
+                </g>
+            </symbol>
+            <symbol id="logo-zai" viewBox="0 0 24 24">
+                <path d="M5 5 L19 5 L19 8 L11 16 L19 16 L19 19 L5 19 L5 16 L13 8 L5 8 Z" fill="#4d6bff"/>
+            </symbol>
+            <symbol id="logo-sakana" viewBox="0 0 24 24">
+                <path d="M9 12c0-3.5 4.5-6 9-6 2.5 0 4 1 4 6s-1.5 6-4 6c-4.5 0-9-2.5-9-6z" fill="#ff6b57"/>
+                <path d="M9 12 L3 7 Q5.5 12 3 17 Z" fill="#ff6b57"/>
+                <circle cx="18.3" cy="10.4" r="1.1" fill="#06070a"/>
+            </symbol>
+            <symbol id="logo-deepseek" viewBox="0 0 24 24">
+                <path d="M4 13C4 9.7 6.9 7.5 10.5 7.5 13.8 7.5 16.6 9.2 17.8 11.6L21 10 19.6 13 21 16 17.8 14.4C16.6 16.8 13.8 18.5 10.5 18.5 6.9 18.5 4 16.3 4 13Z" fill="#4d6bfe"/>
+                <circle cx="7" cy="11.6" r="1.1" fill="#06070a"/>
+            </symbol>
+            <symbol id="logo-moonshot" viewBox="0 0 24 24">
+                <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" fill="#e8e6f0"/>
+            </symbol>
+            <symbol id="logo-qwen" viewBox="0 0 24 24">
+                <circle cx="11.5" cy="11.5" r="7.5" fill="none" stroke="#8b5cf6" stroke-width="2.2"/>
+                <line x1="16.5" y1="16.5" x2="20" y2="20" stroke="#8b5cf6" stroke-width="2.4" stroke-linecap="round"/>
+            </symbol>
+            <symbol id="logo-other" viewBox="0 0 24 24">
+                <circle cx="12" cy="12" r="9" fill="none" stroke="#8a8aa8" stroke-width="1.5" stroke-dasharray="3 3"/>
+                <text x="12" y="16.5" text-anchor="middle" font-family="sans-serif" font-weight="700" font-size="12" fill="#8a8aa8">?</text>
+            </symbol>
+        </defs>
+    </svg>
+
+    <canvas class="veil" id="veil" aria-hidden="true"></canvas>
+    <div class="fiber" aria-hidden="true"></div>
+    <div class="vig" aria-hidden="true"></div>
+    <div class="rewind" aria-hidden="true"></div>
+
+    <main>
+        <a class="back" href="../">&larr; back to hub</a>
+
+        <header class="title-block">
+            <h1>
+                <span>Time</span>
+                <svg class="dial" viewBox="0 0 48 48" aria-hidden="true">
+                    <circle class="face" cx="24" cy="24" r="20"/>
+                    <circle class="pip" cx="24" cy="24" r="1.7"/>
+                    <circle class="pip" cx="24" cy="6.5" r="1.2"/>
+                    <circle class="pip" cx="41.5" cy="24" r="1.2"/>
+                    <circle class="pip" cx="24" cy="41.5" r="1.2"/>
+                    <circle class="pip" cx="6.5" cy="24" r="1.2"/>
+                    <line class="ghost" id="dialGhost" x1="24" y1="24" x2="24" y2="11"/>
+                    <line class="hand" id="dialHand" x1="24" y1="24" x2="24" y2="9"/>
+                </svg>
+                <span>Loop</span>
+            </h1>
+            <p class="kicker">Five models &middot; one impossible shift</p>
+            <p class="lede">Puzzles where the level is crowded with your own earlier attempts, replayed to the tick. Every solution has to agree with the history that produced it.</p>
+        </header>
+
+        <section class="tape-block" aria-hidden="true">
+            <div class="tape-head">
+                <span class="iter">Iteration <b id="iterCount">01</b></span>
+                <span id="tickLabel">tick 00 / 48</span>
+            </div>
+            <div class="tape" id="tape">
+                <div class="playhead" id="playhead"></div>
+            </div>
+            <div class="tape-foot">
+                <span class="loop-note">this page is on a 12-second loop</span>
+                <span id="stateLabel">running</span>
+            </div>
+        </section>
+
+        <details class="about">
+            <summary>About this experiment</summary>
+            <div class="about-body">
+                Every game here is built from the <strong>same time-loop prompt</strong> &mdash; a deterministic puzzle where you share the level with exact replays of your own earlier passes, and contradicting one of them fails the run. The prompt is handed to a range of frontier models as a way to compare them head-to-head on a genre that punishes sloppy state handling: each entry has to keep a recording, replay it faithfully, and detect its own paradoxes. Each is typically a <strong>single one-shot generation</strong>, occasionally with a follow-up prompt to nudge the setting somewhere more distinctive or to fix a bug that stopped it from running at all. Afterward each entry gets a light post-processing pass from me for responsive / mobile layout and to fit the site shell. The badge on each row shows <strong>which model and effort level</strong> produced it.
+            </div>
+        </details>
+
+        <section class="filter-bar" aria-label="Filter loops by model">
+            <div class="filter-group">
+                <span class="filter-label">Provider</span>
+                <div class="dropdown" id="providerDropdown" data-filter="provider">
+                    <button class="dropdown-toggle" type="button" aria-haspopup="listbox" aria-expanded="false">
+                        <span class="dd-current"><span>All Providers</span></span>
+                        <span class="dd-chevron" aria-hidden="true">&#9662;</span>
+                    </button>
+                    <ul class="dropdown-menu" role="listbox"></ul>
+                </div>
+            </div>
+            <div class="filter-group">
+                <span class="filter-label">Model</span>
+                <div class="dropdown" id="modelDropdown" data-filter="model">
+                    <button class="dropdown-toggle" type="button" aria-haspopup="listbox" aria-expanded="false">
+                        <span class="dd-current"><span>All Models</span></span>
+                        <span class="dd-chevron" aria-hidden="true">&#9662;</span>
+                    </button>
+                    <ul class="dropdown-menu" role="listbox"></ul>
+                </div>
+            </div>
+        </section>
+
+        <nav class="ledger" id="ledger">
+            <a href="fable5-ultra-time-loop-puzzle.html" class="loop-row row-changeover" data-provider="anthropic" data-model="Fable 5" data-effort="Ultra">
+                <span class="echo" aria-hidden="true"></span>
+                <span class="echo far" aria-hidden="true"></span>
+                <span class="row-rail">
+                    <span class="row-ord">01</span>
+                    <span class="row-glyph">&#127917;</span>
+                </span>
+                <span class="row-body">
+                    <span class="row-title">Changeover</span>
+                    <span class="row-desc">The last stagehand of a closing theater runs a forty-count scene change beside the house's pale memories of every pass already made. Contradict history and the stage manager calls a hold.</span>
+                </span>
+                <span class="row-meta">
+                    <span class="model-tag"><svg class="model-logo" aria-hidden="true"><use href="#logo-anthropic"></use></svg><span class="model-name">Fable 5</span><span class="model-effort">Ultra</span></span>
+                    <span class="enter">Enter loop &#9656;</span>
+                </span>
+            </a>
+
+            <a href="gemini-3.6-flash-high-time-loop-puzzle.html" class="loop-row row-organist" data-provider="google" data-model="Gemini 3.6 Flash" data-effort="High">
+                <span class="echo" aria-hidden="true"></span>
+                <span class="echo far" aria-hidden="true"></span>
+                <span class="row-rail">
+                    <span class="row-ord">02</span>
+                    <span class="row-glyph">&#127929;</span>
+                </span>
+                <span class="row-body">
+                    <span class="row-title">The Organist's Ledger</span>
+                    <span class="row-desc">Sustain cathedral air pressure across deterministic measures. Coordinate prior verses, manage pedal valves, and prevent dissonant ruptures.</span>
+                </span>
+                <span class="row-meta">
+                    <span class="model-tag"><svg class="model-logo" aria-hidden="true"><use href="#logo-google"></use></svg><span class="model-name">Gemini 3.6 Flash</span><span class="model-effort">High</span></span>
+                    <span class="enter">Enter loop &#9656;</span>
+                </span>
+            </a>
+
+            <a href="gpt-5.6-sol-ultra-time-loop-puzzle.html" class="loop-row row-dawnloom" data-provider="openai" data-model="GPT-5.6 Sol" data-effort="Ultra">
+                <span class="echo" aria-hidden="true"></span>
+                <span class="echo far" aria-hidden="true"></span>
+                <span class="row-rail">
+                    <span class="row-ord">03</span>
+                    <span class="row-glyph">&#129526;</span>
+                </span>
+                <span class="row-body">
+                    <span class="row-title">The Loom That Ate the Dawn</span>
+                    <span class="row-desc">Finish a dead weaver's last dawn beside Woven Figures made from your prior footfalls. Hold treadles, seat boat-shuttles, and protect every older stitch from a Snarl.</span>
+                </span>
+                <span class="row-meta">
+                    <span class="model-tag"><svg class="model-logo" aria-hidden="true"><use href="#logo-openai"></use></svg><span class="model-name">GPT-5.6 Sol</span><span class="model-effort">Ultra</span></span>
+                    <span class="enter">Enter loop &#9656;</span>
+                </span>
+            </a>
+
+            <a href="paradox-vault.html" class="loop-row row-paradox" data-provider="anthropic" data-model="Opus 5" data-effort="High">
+                <span class="echo" aria-hidden="true"></span>
+                <span class="echo far" aria-hidden="true"></span>
+                <span class="row-rail">
+                    <span class="row-ord">04</span>
+                    <span class="row-glyph">&#10199;</span>
+                </span>
+                <span class="row-body">
+                    <span class="row-title">Paradox Vault</span>
+                    <span class="row-desc">Rob a vault by cooperating with your past selves. Every loop, your old inputs replay beside you &mdash; move one box they depended on and history tears open.</span>
+                </span>
+                <span class="row-meta">
+                    <span class="model-tag"><svg class="model-logo" aria-hidden="true"><use href="#logo-anthropic"></use></svg><span class="model-name">Opus 5</span><span class="model-effort">High</span></span>
+                    <span class="enter">Enter loop &#9656;</span>
+                </span>
+            </a>
+
+            <a href="opus5-ultra-time-loop-puzzle.html" class="loop-row row-standingsalt" data-provider="anthropic" data-model="Opus 5" data-effort="Ultra">
+                <span class="echo" aria-hidden="true"></span>
+                <span class="echo far" aria-hidden="true"></span>
+                <span class="row-rail">
+                    <span class="row-ord">05</span>
+                    <span class="row-glyph">&#129474;</span>
+                </span>
+                <span class="row-body">
+                    <span class="row-title">The Standing Salt</span>
+                    <span class="row-desc">Walk a 1670s salt-pan alone, beside four shifts of hardened salt repeating your earlier work exactly. Weight the tread-boards, shoulder the loaves, carry the mother to the crib. Contradict what you already did and the salt slakes.</span>
+                </span>
+                <span class="row-meta">
+                    <span class="model-tag"><svg class="model-logo" aria-hidden="true"><use href="#logo-anthropic"></use></svg><span class="model-name">Opus 5</span><span class="model-effort">Ultra</span></span>
+                    <span class="enter">Enter loop &#9656;</span>
+                </span>
+            </a>
+
+            <div class="no-results" style="display:none">No loops match that filter.</div>
+        </nav>
+
+        <footer>Part of <a href="../">Fun with AI</a> &nbsp;//&nbsp; cycle &#8734;</footer>
+    </main>
+
+    <script>
+    /* ------------------------------------------------------------------
+       1. The clock. Everything on this page shares one 12-second loop.
+       ------------------------------------------------------------------ */
+    (function () {
+        const LOOP = 12;          // seconds per iteration
+        const TICKS = 48;         // ticks drawn on the tape
+        const REWIND_AT = 0.955;  // phase where the snap-back begins
+        const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+        /* ---- tape ---- */
+        const tape = document.getElementById('tape');
+        const playhead = document.getElementById('playhead');
+        const iterCount = document.getElementById('iterCount');
+        const tickLabel = document.getElementById('tickLabel');
+        const stateLabel = document.getElementById('stateLabel');
+        const ticks = [];
+
+        for (let i = 0; i < TICKS; i++) {
+            const el = document.createElement('i');
+            if (i % 8 === 0) el.className = 'major';
+            tape.insertBefore(el, playhead);
+            ticks.push(el);
+        }
+
+        let iteration = 1;
+        let lastTick = -1;
+        // cached: reading it back after writing tick classes would force a
+        // synchronous layout every frame
+        let tapeW = 0;
+
+        function paintTape(phase) {
+            playhead.style.transform = 'translateX(' + (phase * tapeW) + 'px)';
+            const cur = Math.min(TICKS - 1, Math.floor(phase * TICKS));
+            if (cur === lastTick) return;
+            lastTick = cur;
+            for (let i = 0; i < TICKS; i++) {
+                const t = ticks[i];
+                const major = i % 8 === 0;
+                t.className = (major ? 'major' : '') + (i < cur ? ' lit' : '') + (i === cur ? ' now' : '');
+            }
+            tickLabel.textContent = 'tick ' + String(cur).padStart(2, '0') + ' / ' + TICKS;
+        }
+
+        function wrap() {
+            iteration++;
+            iterCount.textContent = String(iteration).padStart(2, '0');
+            if (reduced) return;
+            document.body.classList.add('rewinding');
+            setTimeout(() => document.body.classList.remove('rewinding'), 460);
+        }
+
+        /* ---- WebGL veil ---- */
+        const canvas = document.getElementById('veil');
+        const VERT = [
+            'attribute vec2 p;',
+            'void main(){ gl_Position = vec4(p, 0.0, 1.0); }'
+        ].join('\n');
+
+        const FRAG = [
+            'precision highp float;',
+            'uniform vec2  u_res;',
+            'uniform float u_time;',
+            'uniform float u_loop;',
+            'uniform float u_rewind;',
+            '',
+            '#define TAU 6.28318530718',
+            '',
+            'float ring(vec2 p, float t){',
+            '  float r = length(p);',
+            '  float w = sin(r * 40.0 - t * 2.1);',
+            '  float line = 1.0 - smoothstep(0.0, 0.075, abs(w));',
+            '  return line * exp(-r * 1.25);',
+            '}',
+            '',
+            'void main(){',
+            '  vec2 p = (gl_FragCoord.xy - 0.5 * u_res) / max(1.0, min(u_res.x, u_res.y));',
+            '  p.y -= 0.04;',
+            '  float t = u_time;',
+            '  float ph = t / u_loop;',
+            '  float r = length(p);',
+            '',
+            /* the live engraving, plus two ghost iterations trailing behind it */
+            '  float rings = ring(p, t) + ring(p, t - 1.7) * 0.42 + ring(p, t - 3.4) * 0.17;',
+            '',
+            /* sweep hand: exactly one revolution per loop */
+            '  float a = atan(p.y, p.x);',
+            '  float sweep = 1.5707963 - ph * TAU;',
+            '  float hand = pow(max(0.0, cos(a - sweep)), 110.0) * smoothstep(0.66, 0.02, r);',
+            '  float ghost = pow(max(0.0, cos(a - (sweep + 0.62))), 150.0) * smoothstep(0.52, 0.02, r) * 0.4;',
+            '',
+            /* faint ledger ruling */
+            '  vec2 g = abs(fract(p * 6.5) - 0.5);',
+            '  float rule = (1.0 - smoothstep(0.0, 0.022, min(g.x, g.y))) * 0.045;',
+            '',
+            /* the snap-back: a ring collapsing inward as the loop closes */
+            '  float burst = u_rewind * exp(-abs(r - (1.0 - u_rewind) * 1.15) * 13.0);',
+            '',
+            '  float i = rings * 0.5 + hand * 0.7 + ghost + rule + burst * 1.15;',
+            '',
+            '  vec3 ink   = vec3(0.024, 0.027, 0.039);',
+            '  vec3 brass = vec3(0.784, 0.635, 0.290);',
+            '  vec3 ember = vec3(1.000, 0.616, 0.361);',
+            '  vec3 col = ink + brass * i * 0.9 + ember * (hand * 0.32 + burst * 0.55);',
+            '  col *= 1.0 - smoothstep(0.34, 1.18, r) * 0.86;',
+            '  gl_FragColor = vec4(col, 1.0);',
+            '}'
+        ].join('\n');
+
+        let gl = null, uRes = null, uTime = null, uLoop = null, uRewind = null;
+
+        function initGL() {
+            try {
+                gl = canvas.getContext('webgl', { antialias: false, alpha: false, depth: false })
+                  || canvas.getContext('experimental-webgl', { antialias: false, alpha: false, depth: false });
+            } catch (e) { gl = null; }
+            if (!gl) return false;
+
+            const compile = (type, src) => {
+                const s = gl.createShader(type);
+                gl.shaderSource(s, src);
+                gl.compileShader(s);
+                if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) {
+                    gl.deleteShader(s);
+                    return null;
+                }
+                return s;
+            };
+
+            const vs = compile(gl.VERTEX_SHADER, VERT);
+            const fs = compile(gl.FRAGMENT_SHADER, FRAG);
+            if (!vs || !fs) { gl = null; return false; }
+
+            const prog = gl.createProgram();
+            gl.attachShader(prog, vs);
+            gl.attachShader(prog, fs);
+            gl.linkProgram(prog);
+            if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) { gl = null; return false; }
+            gl.useProgram(prog);
+
+            const buf = gl.createBuffer();
+            gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+            gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
+            const loc = gl.getAttribLocation(prog, 'p');
+            gl.enableVertexAttribArray(loc);
+            gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+
+            uRes = gl.getUniformLocation(prog, 'u_res');
+            uTime = gl.getUniformLocation(prog, 'u_time');
+            uLoop = gl.getUniformLocation(prog, 'u_loop');
+            uRewind = gl.getUniformLocation(prog, 'u_rewind');
+            gl.uniform1f(uLoop, LOOP);
+            return true;
+        }
+
+        let vw = 0, vh = 0, cssW = 0, cssH = 0;
+
+        function measure() {
+            return [
+                Math.max(1, canvas.clientWidth || window.innerWidth || document.documentElement.clientWidth || 1),
+                Math.max(1, canvas.clientHeight || window.innerHeight || document.documentElement.clientHeight || 1),
+            ];
+        }
+
+        function resize() {
+            // some harnesses report 0 at load; never hand WebGL a 0-sized buffer
+            const [w, h] = measure();
+            const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
+            cssW = w;
+            cssH = h;
+            tapeW = tape.clientWidth;
+            vw = Math.round(w * dpr);
+            vh = Math.round(h * dpr);
+            canvas.width = vw;
+            canvas.height = vh;
+            if (gl) {
+                gl.viewport(0, 0, vw, vh);
+                gl.uniform2f(uRes, vw, vh);
+            }
+        }
+
+        // ...and re-check per frame, so a size that shows up late still lands
+        function syncSize() {
+            const [w, h] = measure();
+            if (w !== cssW || h !== cssH) resize();
+        }
+
+        function drawGL(t, rewindAmt) {
+            if (!gl) return;
+            gl.uniform1f(uTime, t);
+            gl.uniform1f(uRewind, rewindAmt);
+            gl.drawArrays(gl.TRIANGLES, 0, 3);
+        }
+
+        /* ---- echoes: each row replays your pointer a few frames late ---- */
+        const NEAR = 9, FAR = 20, BUF = 28;
+        const rows = Array.from(document.querySelectorAll('.loop-row')).map((el, idx) => ({
+            el,
+            near: el.querySelector('.echo:not(.far)'),
+            far: el.querySelector('.echo.far'),
+            rect: null,
+            live: { x: 0, y: 0 },
+            buf: Array.from({ length: BUF }, () => ({ x: 0, y: 0 })),
+            head: 0,
+            seed: idx * 1.9,
+            hot: false,
+        }));
+
+        const ledger = document.getElementById('ledger');
+
+        ledger.addEventListener('pointerover', e => {
+            const el = e.target.closest('.loop-row');
+            if (!el) return;
+            const row = rows.find(r => r.el === el);
+            if (row) { row.hot = true; row.rect = el.getBoundingClientRect(); }
+        });
+
+        ledger.addEventListener('pointerout', e => {
+            const el = e.target.closest('.loop-row');
+            if (!el) return;
+            const row = rows.find(r => r.el === el);
+            if (row) row.hot = false;
+        });
+
+        ledger.addEventListener('pointermove', e => {
+            const el = e.target.closest('.loop-row');
+            if (!el) return;
+            const row = rows.find(r => r.el === el);
+            if (!row || !row.rect) return;
+            const cx = row.rect.left + row.rect.width / 2;
+            const cy = row.rect.top + row.rect.height / 2;
+            row.live.x = Math.max(-1, Math.min(1, (e.clientX - cx) / (row.rect.width / 2)));
+            row.live.y = Math.max(-1, Math.min(1, (e.clientY - cy) / (row.rect.height / 2)));
+        }, { passive: true });
+
+        window.addEventListener('scroll', () => {
+            rows.forEach(r => { if (r.hot) r.rect = r.el.getBoundingClientRect(); });
+        }, { passive: true });
+
+        function stepEchoes(now) {
+            for (const row of rows) {
+                if (!row.hot) {
+                    // idle drift, so the past selves breathe even untouched
+                    row.live.x += (Math.sin(now * 0.00055 + row.seed) * 0.3 - row.live.x) * 0.05;
+                    row.live.y += (Math.cos(now * 0.00041 + row.seed) * 0.22 - row.live.y) * 0.05;
+                }
+                const slot = row.buf[row.head];
+                slot.x = row.live.x;
+                slot.y = row.live.y;
+                row.head = (row.head + 1) % BUF;
+
+                const a = row.buf[(row.head - NEAR + BUF) % BUF];
+                const b = row.buf[(row.head - FAR + BUF) % BUF];
+                row.near.style.transform =
+                    'translate(' + (6 + a.x * 7).toFixed(2) + 'px,' + (6 + a.y * 7).toFixed(2) + 'px) rotate(' + (a.x * 0.35).toFixed(3) + 'deg)';
+                row.far.style.transform =
+                    'translate(' + (11 + b.x * 12).toFixed(2) + 'px,' + (11 + b.y * 12).toFixed(2) + 'px) rotate(' + (b.x * 0.7).toFixed(3) + 'deg)';
+            }
+        }
+
+        /* ---- the dial hand in the title ---- */
+        const dialHand = document.getElementById('dialHand');
+        const dialGhost = document.getElementById('dialGhost');
+
+        function stepDial(phase) {
+            dialHand.setAttribute('transform', 'rotate(' + (phase * 360).toFixed(2) + ' 24 24)');
+            dialGhost.setAttribute('transform', 'rotate(' + (((phase - 0.07 + 1) % 1) * 360).toFixed(2) + ' 24 24)');
+        }
+
+        /* ---- main loop ---- */
+        const hasGL = initGL();
+        resize();
+        window.addEventListener('resize', resize);
+
+        // Seeded from the first rAF timestamp, not performance.now(): the two
+        // are not always the same clock, and mixing them starts the page
+        // an arbitrary offset into the loop.
+        let start = null;
+        let prevPhase = 0;
+        let running = true;
+
+        function frame(now) {
+            if (!running) return;
+            if (start === null) start = now - prevPhase * LOOP * 1000;
+            const elapsed = ((now - start) / 1000) % LOOP;
+            const phase = elapsed / LOOP;
+            if (phase < prevPhase) wrap();
+            prevPhase = phase;
+
+            const rewindAmt = phase > REWIND_AT ? (phase - REWIND_AT) / (1 - REWIND_AT) : 0;
+
+            syncSize();
+            drawGL(elapsed, rewindAmt);
+            paintTape(phase);
+            stepDial(phase);
+            stepEchoes(now);
+
+            requestAnimationFrame(frame);
+        }
+
+        if (reduced) {
+            // one static frame, mid-iteration
+            drawGL(LOOP * 0.6, 0);
+            paintTape(0.6);
+            stepDial(0.6);
+            stepEchoes(0);
+            stateLabel.textContent = 'held';
+        } else {
+            document.addEventListener('visibilitychange', () => {
+                if (document.hidden) {
+                    running = false;
+                    stateLabel.textContent = 'paused';
+                } else if (!running) {
+                    running = true;
+                    stateLabel.textContent = 'running';
+                    // re-seed on the next frame so the loop resumes where it
+                    // left off instead of jumping
+                    start = null;
+                    requestAnimationFrame(frame);
+                }
+            });
+            requestAnimationFrame(frame);
+        }
+
+        if (!hasGL) stateLabel.textContent = 'no webgl';
+    })();
+
+    /* ------------------------------------------------------------------
+       2. Provider / model filter — same behavior as the tower-def index.
+       ------------------------------------------------------------------ */
+    (function () {
+        const PROVIDERS = {
+            alibaba:   { name: 'Alibaba',     logo: 'logo-qwen' },
+            anthropic: { name: 'Anthropic',   logo: 'logo-anthropic' },
+            deepseek:  { name: 'DeepSeek',    logo: 'logo-deepseek' },
+            google:    { name: 'Google',      logo: 'logo-google' },
+            moonshot:  { name: 'Moonshot AI', logo: 'logo-moonshot' },
+            openai:    { name: 'OpenAI',      logo: 'logo-openai' },
+            sakana:    { name: 'Sakana AI',   logo: 'logo-sakana' },
+            xai:       { name: 'xAI',         logo: 'logo-xai' },
+            zai:       { name: 'Z.ai',        logo: 'logo-zai' },
+            other:     { name: 'Other',       logo: 'logo-other' },
+        };
+
+        const grid = document.querySelector('.ledger');
+        const cards = Array.from(grid.querySelectorAll('.loop-row')).map(el => ({
+            el,
+            provider: el.dataset.provider || 'other',
+            model: el.dataset.model || 'Unknown',
+        }));
+        const noResults = grid.querySelector('.no-results');
+
+        const providerDD = document.getElementById('providerDropdown');
+        const modelDD = document.getElementById('modelDropdown');
+        const state = { provider: 'all', model: 'all' };
+
+        const logo = id => '<svg aria-hidden="true"><use href="#' + id + '"></use></svg>';
+
+        const presentProviders = Object.keys(PROVIDERS).filter(
+            p => cards.some(c => c.provider === p)
+        );
+
+        const providerOf = model => {
+            const c = cards.find(c => c.model === model);
+            return c ? c.provider : 'all';
+        };
+
+        const modelsFor = provider => {
+            const seen = [];
+            cards.forEach(c => {
+                if (provider !== 'all' && c.provider !== provider) return;
+                if (!seen.includes(c.model)) seen.push(c.model);
+            });
+            return seen;
+        };
+
+        const countProvider = p => cards.filter(c => c.provider === p).length;
+        const countModel = m => cards.filter(c => c.model === m).length;
+
+        const setToggle = (dd, html) => { dd.querySelector('.dd-current').innerHTML = html; };
+
+        function renderProviderMenu() {
+            let html = '<li role="option" data-value="all"' +
+                (state.provider === 'all' ? ' class="active"' : '') +
+                '><span>All Providers</span><span class="count">' + cards.length + '</span></li>';
+            presentProviders.forEach(p => {
+                html += '<li role="option" data-value="' + p + '"' +
+                    (state.provider === p ? ' class="active"' : '') + '>' +
+                    logo(PROVIDERS[p].logo) + '<span>' + PROVIDERS[p].name + '</span>' +
+                    '<span class="count">' + countProvider(p) + '</span></li>';
+            });
+            providerDD.querySelector('.dropdown-menu').innerHTML = html;
+            setToggle(providerDD, state.provider === 'all'
+                ? '<span>All Providers</span>'
+                : logo(PROVIDERS[state.provider].logo) + '<span>' + PROVIDERS[state.provider].name + '</span>');
+        }
+
+        function renderModelMenu() {
+            const models = modelsFor(state.provider);
+            const allLabel = state.provider === 'all'
+                ? 'All Models'
+                : 'All ' + PROVIDERS[state.provider].name + ' Models';
+            let html = '<li role="option" data-value="all"' +
+                (state.model === 'all' ? ' class="active"' : '') +
+                '><span>' + allLabel + '</span></li>';
+            models.forEach(m => {
+                const p = providerOf(m);
+                const lg = PROVIDERS[p] ? PROVIDERS[p].logo : 'logo-other';
+                html += '<li role="option" data-value="' + m + '"' +
+                    (state.model === m ? ' class="active"' : '') + '>' +
+                    logo(lg) + '<span>' + m + '</span>' +
+                    '<span class="count">' + countModel(m) + '</span></li>';
+            });
+            modelDD.querySelector('.dropdown-menu').innerHTML = html;
+            if (state.model === 'all') {
+                setToggle(modelDD, '<span>' + allLabel + '</span>');
+            } else {
+                const p = providerOf(state.model);
+                const lg = PROVIDERS[p] ? PROVIDERS[p].logo : 'logo-other';
+                setToggle(modelDD, logo(lg) + '<span>' + state.model + '</span>');
+            }
+        }
+
+        function applyFilter() {
+            let shown = 0;
+            cards.forEach(c => {
+                const ok = (state.provider === 'all' || c.provider === state.provider) &&
+                           (state.model === 'all' || c.model === state.model);
+                c.el.style.display = ok ? '' : 'none';
+                if (ok) shown++;
+            });
+            if (noResults) noResults.style.display = shown ? 'none' : 'block';
+        }
+
+        function render() {
+            renderProviderMenu();
+            renderModelMenu();
+            applyFilter();
+        }
+
+        function closeAll() {
+            document.querySelectorAll('.dropdown.open').forEach(d => {
+                d.classList.remove('open');
+                d.querySelector('.dropdown-toggle').setAttribute('aria-expanded', 'false');
+            });
+        }
+
+        function wire(dd, onSelect) {
+            const toggle = dd.querySelector('.dropdown-toggle');
+            toggle.addEventListener('click', e => {
+                e.stopPropagation();
+                const isOpen = dd.classList.contains('open');
+                closeAll();
+                if (!isOpen) {
+                    dd.classList.add('open');
+                    toggle.setAttribute('aria-expanded', 'true');
+                }
+            });
+            dd.querySelector('.dropdown-menu').addEventListener('click', e => {
+                const li = e.target.closest('li[data-value]');
+                if (!li) return;
+                e.stopPropagation();
+                onSelect(li.dataset.value);
+                closeAll();
+            });
+        }
+
+        wire(providerDD, val => {
+            state.provider = val;
+            state.model = 'all';
+            render();
+        });
+        wire(modelDD, val => {
+            if (val !== 'all') state.provider = providerOf(val);
+            state.model = val;
+            render();
+        });
+
+        document.addEventListener('click', closeAll);
+        document.addEventListener('keydown', e => { if (e.key === 'Escape') closeAll(); });
+
+        render();
+    })();
+    </script>
+</body>
+</html>

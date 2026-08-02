@@ -8,10 +8,6 @@ A collection of games, tools, and experiments built with AI — hosted on GitHub
 
 *Interactive games & simulations*
 
-- **[The Loom That Ate the Dawn](arcade/gpt-5.6-sol-ultra-time-loop-puzzle.html)** — Finish a dead weaver's last dawn beside Woven Figures made from your prior footfalls. Hold treadles, seat boat-shuttles, and protect every older stitch from a Snarl. (*GPT-5.6 Sol Ultra*)
-- **[Changeover](arcade/fable5-ultra-time-loop-puzzle.html)** — The last stagehand of a closing theater runs a forty-count scene change beside the house's pale memories of every pass already made. Contradict history and the stage manager calls a hold. (*Claude Fable 5 Ultra*)
-- **[The Organist's Ledger](arcade/gemini-3.6-flash-high-time-loop-puzzle.html)** — Sustain cathedral air pressure across deterministic measures. Coordinate prior verses, manage pedal valves, and prevent dissonant ruptures. (*Gemini 3.6 Flash High*)
-- **[Paradox Vault](arcade/paradox-vault.html)** — Rob a vault by cooperating with your past selves. Every loop, your old inputs replay beside you — move one box they depended on and history tears open. (*Claude Opus 5 High*)
 - **[Blightspore](arcade/gemini-3.6-flash-high-blightspore.html)** — Steer a multi-species cellular automaton on a 24x24 grid. Plant moss, dig firebreaks, and ignite controlled burns to clear the blight. (*Gemini 3.6 Flash High*)
 - **[ACTIAS](arcade/actias.html)** — You are the last luna moth, seven nights old, flying the drowned road to the Moon. Snuff the lying lights, slip the webs and wires — and do not trust the lighthouse. (*rail shooter*)
 - **[GILDWAKE](arcade/gildwake.html)** — Ride a restoration brush across a falling porcelain world — bind living cobalt with gold, dodge unbreakable relief, and outrun the fracture. (*rail shooter*)
@@ -24,6 +20,16 @@ A collection of games, tools, and experiments built with AI — hosted on GitHub
 - **[Mosslight](arcade/mosslight.html)** — Tend a tiny 3D ecology where procedural creatures forage, reproduce, mutate, and evolve. (*simulation*)
 - **[Pale Blue Dot](arcade/pale_blue_dot_prologue_prototype.html)** — A narrative prototype set against the vastness of space. Prologue edition. (*narrative*)
 - **[Baseboard Bandit](arcade/scooter.html)** — Tight-turn scooter action. Weave through obstacles at breakneck speed. (*action*)
+
+### [Time Loop](time-loop/)
+
+*AI-generated time-loop puzzles from multiple models*
+
+- **[Changeover](time-loop/fable5-ultra-time-loop-puzzle.html)** — The last stagehand of a closing theater runs a forty-count scene change beside the house's pale memories of every pass already made. Contradict history and the stage manager calls a hold. (*Fable 5 Ultra*)
+- **[The Organist's Ledger](time-loop/gemini-3.6-flash-high-time-loop-puzzle.html)** — Sustain cathedral air pressure across deterministic measures. Coordinate prior verses, manage pedal valves, and prevent dissonant ruptures. (*Gemini 3.6 Flash High*)
+- **[The Loom That Ate the Dawn](time-loop/gpt-5.6-sol-ultra-time-loop-puzzle.html)** — Finish a dead weaver's last dawn beside Woven Figures made from your prior footfalls. Hold treadles, seat boat-shuttles, and protect every older stitch from a Snarl. (*GPT-5.6 Sol Ultra*)
+- **[Paradox Vault](time-loop/paradox-vault.html)** — Rob a vault by cooperating with your past selves. Every loop, your old inputs replay beside you — move one box they depended on and history tears open. (*Opus 5 High*)
+- **[The Standing Salt](time-loop/opus5-ultra-time-loop-puzzle.html)** — Walk a 1670s salt-pan alone, beside four shifts of hardened salt repeating your earlier work exactly. Weight the tread-boards, shoulder the loaves, carry the mother to the crib. Contradict what you already did and the salt slakes. (*Opus 5 Ultra*)
 
 ### [Tower Defense](tower-def/)
 
