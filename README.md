@@ -9,10 +9,6 @@ A collection of games, tools, and experiments built with AI — hosted on GitHub
 *Interactive games & simulations*
 
 - **[Blightspore](arcade/gemini-3.6-flash-high-blightspore.html)** — Steer a multi-species cellular automaton on a 24x24 grid. Plant moss, dig firebreaks, and ignite controlled burns to clear the blight. (*Gemini 3.6 Flash High*)
-- **[ACTIAS](arcade/actias.html)** — You are the last luna moth, seven nights old, flying the drowned road to the Moon. Snuff the lying lights, slip the webs and wires — and do not trust the lighthouse. (*rail shooter*)
-- **[GILDWAKE](arcade/gildwake.html)** — Ride a restoration brush across a falling porcelain world — bind living cobalt with gold, dodge unbreakable relief, and outrun the fracture. (*rail shooter*)
-- **[Weftrunner](arcade/weftrunner.html)** — The world is a cloth on the Great Loom. Fly the weft toward the Beam, stitch down the moths eating it, and outrun the unravelling closing from behind. (*rail shooter*)
-- **[Redline Ascent](arcade/redline-ascent/index.html)** — Blast through a scorched pseudo-3D wasteland. Thread ruined arches, crush attack waves, and manage your weapon heat. (*arcade shooter*)
 - **[Mother OS Defense](arcade/mother-os-defense/index.html)** — A green-screen tactical tower defense with unlimited waves, upgrades, and enemy intel. (*tower defense*)
 - **[Neon Ascent](arcade/neon-ascent.html)** — Bounce up an endless cyberpunk tower. Steer with mouse, arrows, or touch — collect shards, dodge drones. (*arcade*)
 - **[Genesis Colony](arcade/genesis-colony/index.html)** — Defend and grow an alien colony with orbital weapons, energy management, and prestige upgrades. (*strategy*)
