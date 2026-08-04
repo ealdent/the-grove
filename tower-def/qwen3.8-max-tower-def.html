@@ -1,0 +1,1631 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>GLOWGROT — A Sporekeeper's Vigil</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='0.9em' font-size='90'%3E%F0%9F%8D%84%3C/text%3E%3C/svg%3E">
+<style>
+  :root{
+    --bg:#07090f; --bg2:#0d1119; --panel:rgba(11,15,23,.88);
+    --ink:#dfe7f5; --dim:#8ea0bf; --gold:#ffd97a; --teal:#6ef3c3; --rose:#ff7a9c;
+    --line:rgba(255,217,122,.16);
+    --serif:"Iowan Old Style",Palatino,"Palatino Linotype",Georgia,serif;
+    --sans:ui-rounded,"SF Pro Rounded",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{height:100%;margin:0}
+  body{
+    background:
+      radial-gradient(1200px 700px at 50% -10%, #101627 0%, var(--bg) 60%),
+      var(--bg);
+    color:var(--ink); font-family:var(--sans); overflow:hidden;
+    user-select:none; -webkit-user-select:none;
+  }
+  #app{height:100dvh;display:flex;flex-direction:column}
+
+  /* ---------- HUD ---------- */
+  #hud{
+    display:flex;align-items:center;justify-content:space-between;gap:10px;
+    padding:8px 14px;border-bottom:1px solid var(--line);
+    background:linear-gradient(180deg,rgba(16,22,36,.92),rgba(9,12,20,.75));
+    backdrop-filter:blur(6px);z-index:20;flex:0 0 auto;
+  }
+  .hud-group{display:flex;align-items:center;gap:8px}
+  .stat{
+    display:flex;align-items:center;gap:6px;padding:4px 12px;border-radius:999px;
+    background:rgba(255,255,255,.045);border:1px solid rgba(255,255,255,.07);
+    font-weight:700;font-size:15px;letter-spacing:.02em;white-space:nowrap;
+  }
+  .stat .ico{font-style:normal;font-size:14px}
+  #stat-lives .ico{color:var(--rose)} #stat-motes .ico{color:var(--gold)}
+  #stat-lives.hurt{animation:hurt .4s} @keyframes hurt{50%{background:rgba(255,80,110,.25)}}
+  #hud-title{
+    font-family:var(--serif);font-style:italic;color:var(--dim);
+    font-size:14px;letter-spacing:.14em;text-align:center;flex:1;min-width:0;
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  }
+  #hud-title b{color:var(--gold);font-style:normal}
+  .hbtn{
+    min-width:38px;height:34px;padding:0 10px;border-radius:10px;cursor:pointer;
+    background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);
+    color:var(--ink);font:600 13px var(--sans);letter-spacing:.04em;
+    transition:background .15s,border-color .15s,transform .05s;
+  }
+  .hbtn:hover{background:rgba(255,217,122,.12);border-color:rgba(255,217,122,.35)}
+  .hbtn:active{transform:scale(.95)}
+  .hbtn.on{background:rgba(110,243,195,.15);border-color:rgba(110,243,195,.45);color:var(--teal)}
+
+  /* ---------- Stage ---------- */
+  #stage{flex:1;min-height:0;display:flex;align-items:center;justify-content:center;position:relative;padding:10px}
+  #wrap{position:relative;line-height:0}
+  canvas#cv{
+    display:block;border-radius:14px;cursor:crosshair;touch-action:manipulation;
+    border:1px solid rgba(110,243,195,.14);
+    box-shadow:0 0 0 1px rgba(0,0,0,.5),0 10px 60px rgba(0,0,0,.65),0 0 90px rgba(110,243,195,.05);
+  }
+  #stage::after{
+    content:"";position:absolute;inset:0;pointer-events:none;
+    background:radial-gradient(120% 90% at 50% 45%,transparent 62%,rgba(0,0,0,.5) 100%);
+  }
+
+  /* ---------- Wave banner ---------- */
+  #banner{
+    position:absolute;top:14px;left:50%;transform:translateX(-50%);z-index:15;
+    width:min(560px,92%);text-align:center;padding:12px 18px 14px;border-radius:16px;
+    background:var(--panel);border:1px solid var(--line);
+    box-shadow:0 8px 40px rgba(0,0,0,.55);backdrop-filter:blur(8px);
+    transition:opacity .35s,transform .35s;pointer-events:auto;
+  }
+  #banner.hide{opacity:0;transform:translateX(-50%) translateY(-16px);pointer-events:none}
+  #b-title{font-family:var(--serif);color:var(--gold);letter-spacing:.22em;font-size:13px;text-transform:uppercase;margin-bottom:4px}
+  #b-line{font-family:var(--serif);font-style:italic;color:var(--ink);font-size:15px;line-height:1.45}
+  #b-row{display:flex;align-items:center;justify-content:center;gap:14px;margin-top:10px}
+  #b-count{color:var(--dim);font-size:13px;letter-spacing:.08em;font-variant-numeric:tabular-nums}
+  .btn{
+    border:none;cursor:pointer;border-radius:12px;padding:9px 18px;
+    font:700 14px var(--sans);letter-spacing:.06em;color:#1a1206;
+    background:linear-gradient(180deg,#ffe7a8,#f4c256);
+    box-shadow:0 2px 0 #a67c22,0 6px 18px rgba(244,194,86,.25);
+    transition:transform .06s,filter .15s;
+  }
+  .btn:hover{filter:brightness(1.07)} .btn:active{transform:translateY(2px);box-shadow:0 0 0 #a67c22,0 3px 10px rgba(244,194,86,.2)}
+  .btn.ghost{background:rgba(255,255,255,.07);color:var(--ink);box-shadow:none;border:1px solid rgba(255,255,255,.16)}
+  .btn.ghost:hover{border-color:rgba(255,217,122,.5)}
+  .btn:disabled{opacity:.45;cursor:default;filter:grayscale(.4)}
+
+  /* ---------- Radial build menu ---------- */
+  #bmenu{position:absolute;z-index:18;width:0;height:0;display:none}
+  #bmenu.open{display:block}
+  .bm-core{
+    position:absolute;left:-17px;top:-17px;width:34px;height:34px;border-radius:50%;
+    background:rgba(10,14,22,.95);border:1px solid rgba(255,255,255,.2);color:var(--dim);
+    font-size:13px;cursor:pointer;transition:transform .12s;
+  }
+  .bm-core:hover{color:var(--rose);transform:rotate(90deg)}
+  .bm-item{
+    position:absolute;left:-32px;top:-32px;width:64px;height:64px;border-radius:50%;
+    background:rgba(12,17,27,.96);border:1px solid rgba(255,255,255,.14);cursor:pointer;
+    display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;
+    transform:rotate(var(--a)) translate(74px) rotate(calc(-1*var(--a)));
+    transition:transform .18s cubic-bezier(.2,1.6,.4,1),border-color .15s,opacity .18s;
+    box-shadow:0 6px 18px rgba(0,0,0,.5);padding:0;
+  }
+  #bmenu:not(.open) .bm-item{transform:rotate(var(--a)) translate(6px) rotate(calc(-1*var(--a)));opacity:0}
+  .bm-item:hover{border-color:rgba(255,217,122,.6)}
+  .bm-item canvas{width:30px;height:30px;pointer-events:none}
+  .bm-item .cost{font:700 10px var(--sans);color:var(--gold);pointer-events:none}
+  .bm-item.poor .cost{color:var(--rose)} .bm-item.poor canvas{opacity:.45}
+  .bm-item .tip{
+    position:absolute;top:110%;left:50%;transform:translateX(-50%);white-space:nowrap;
+    font:600 11px var(--sans);color:var(--ink);background:rgba(8,11,18,.95);
+    padding:3px 9px;border-radius:8px;border:1px solid var(--line);opacity:0;pointer-events:none;transition:opacity .15s;
+  }
+  .bm-item:hover .tip{opacity:1}
+
+  /* ---------- Tower panel ---------- */
+  #tpanel{
+    position:absolute;left:14px;bottom:14px;z-index:16;width:264px;padding:12px 14px;
+    background:var(--panel);border:1px solid var(--line);border-radius:16px;
+    backdrop-filter:blur(8px);box-shadow:0 10px 40px rgba(0,0,0,.5);
+    transition:opacity .25s,transform .25s;
+  }
+  #tpanel.hide{opacity:0;transform:translateY(12px);pointer-events:none}
+  .tp-head{display:flex;align-items:center;gap:10px}
+  .tp-head canvas{width:44px;height:44px;flex:0 0 auto}
+  .tp-head b{font-family:var(--serif);font-size:16px;display:block;line-height:1.1}
+  .tp-tier{font-size:12px;color:var(--gold);letter-spacing:.14em}
+  #tp-close{margin-left:auto;background:none;border:none;color:var(--dim);font-size:15px;cursor:pointer}
+  #tp-close:hover{color:var(--rose)}
+  #tp-flavor{font-family:var(--serif);font-style:italic;font-size:12.5px;color:var(--dim);margin:8px 0 6px;line-height:1.4}
+  #tp-stats{display:grid;grid-template-columns:1fr 1fr;gap:3px 12px;font-size:12.5px;margin-bottom:6px}
+  #tp-stats .k{color:var(--dim)} #tp-stats .v{text-align:right;font-weight:700;font-variant-numeric:tabular-nums}
+  #tp-perk{font-size:12px;color:var(--teal);margin-bottom:8px;line-height:1.35}
+  .tp-actions{display:flex;gap:8px}
+  .tp-actions .btn{flex:1;padding:8px 6px;font-size:12.5px}
+
+  /* ---------- Toasts ---------- */
+  #toasts{position:absolute;top:14px;right:14px;z-index:25;display:flex;flex-direction:column;gap:6px;pointer-events:none;max-width:70%}
+  .toast{
+    background:rgba(10,14,22,.92);border:1px solid var(--line);border-left:3px solid var(--gold);
+    padding:7px 12px;border-radius:10px;font-size:13px;box-shadow:0 6px 20px rgba(0,0,0,.4);
+    animation:tin .3s ease-out;
+  }
+  .toast.bad{border-left-color:var(--rose)}
+  .toast.boss{border-left-color:#ff5d5d;color:#ffd7d7;font-family:var(--serif);font-style:italic}
+  @keyframes tin{from{opacity:0;transform:translateX(20px)}}
+
+  /* ---------- Overlays ---------- */
+  .overlay{
+    position:absolute;inset:0;z-index:30;display:flex;align-items:center;justify-content:center;
+    background:rgba(5,7,12,.72);backdrop-filter:blur(10px);padding:16px;
+    transition:opacity .4s;overflow:auto;
+  }
+  .overlay.hide{opacity:0;pointer-events:none}
+  .card{
+    width:min(640px,96%);max-height:100%;overflow:auto;background:rgba(10,14,23,.94);
+    border:1px solid var(--line);border-radius:20px;padding:28px 30px;text-align:center;
+    box-shadow:0 30px 80px rgba(0,0,0,.6),0 0 120px rgba(110,243,195,.05);
+  }
+  .card h1{
+    font-family:var(--serif);font-size:clamp(30px,7vw,46px);letter-spacing:.34em;margin:0 0 2px;
+    color:var(--teal);text-shadow:0 0 24px rgba(110,243,195,.5),0 0 60px rgba(110,243,195,.25);
+    text-indent:.34em;
+  }
+  .card .sub{font-family:var(--serif);font-style:italic;color:var(--gold);letter-spacing:.12em;font-size:14px;margin-bottom:18px}
+  .card p{font-family:var(--serif);font-size:15px;line-height:1.65;color:#c9d5e8;text-align:left}
+  .card .rules{list-style:none;padding:0;margin:16px 0;text-align:left;font-size:13.5px;color:var(--dim);line-height:1.9}
+  .card .rules b{color:var(--ink)}
+  .card .rules li::before{content:"❋ ";color:var(--teal)}
+  .endstats{display:flex;justify-content:center;gap:26px;margin:18px 0;flex-wrap:wrap}
+  .endstats div{font-size:12px;color:var(--dim);letter-spacing:.1em}
+  .endstats b{display:block;font-size:26px;color:var(--gold);font-variant-numeric:tabular-nums}
+  .rowbtns{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-top:8px}
+
+  /* ---------- Codex ---------- */
+  #codex .card{width:min(760px,96%);text-align:left}
+  #codex h2{font-family:var(--serif);color:var(--gold);letter-spacing:.24em;font-size:14px;text-transform:uppercase;border-bottom:1px solid var(--line);padding-bottom:6px;margin:22px 0 12px}
+  .cx-grid{display:grid;grid-template-columns:1fr;gap:8px}
+  .cx-row{display:flex;gap:12px;align-items:center;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.05);border-radius:12px;padding:8px 12px}
+  .cx-row canvas{width:42px;height:42px;flex:0 0 auto}
+  .cx-row .nm{font-weight:700;font-size:13.5px}
+  .cx-row .rl{font-size:12px;color:var(--teal)}
+  .cx-row .fl{font-family:var(--serif);font-style:italic;font-size:12px;color:var(--dim);line-height:1.35}
+
+  #pauseveil{position:absolute;inset:0;z-index:22;display:flex;align-items:center;justify-content:center;background:rgba(4,6,10,.55);backdrop-filter:blur(3px)}
+  #pauseveil.hide{display:none}
+  #pauseveil span{font-family:var(--serif);font-style:italic;letter-spacing:.2em;color:var(--dim);font-size:18px}
+
+  .hint{position:absolute;left:16px;top:14px;z-index:14;font-size:12px;color:var(--dim);letter-spacing:.06em;pointer-events:none;text-shadow:0 1px 4px #000;transition:opacity 1s}
+
+  @media (max-width:860px){
+    #hud{padding:6px 8px;gap:6px}
+    .stat{font-size:13px;padding:3px 9px}
+    #hud-title{display:none}
+    #tpanel{left:8px;right:8px;bottom:8px;width:auto}
+    .bm-item{width:58px;height:58px;left:-29px;top:-29px}
+    #bmenu.open .bm-item{transform:rotate(var(--a)) translate(66px) rotate(calc(-1*var(--a)))}
+    .hint{display:none}
+  }
+  @media (prefers-reduced-motion:reduce){
+    *{animation-duration:.01ms !important}
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <header id="hud">
+    <div class="hud-group">
+      <div class="stat" id="stat-lives" title="Heartspore integrity"><i class="ico">❥</i><b id="ui-lives">20</b></div>
+      <div class="stat" id="stat-motes" title="Lightmotes — spend to cultivate"><i class="ico">✦</i><b id="ui-motes">130</b></div>
+    </div>
+    <div id="hud-title">the garden sleeps</div>
+    <div class="hud-group">
+      <button class="hbtn" id="btn-speed" title="Game speed (F)">1×</button>
+      <button class="hbtn" id="btn-pause" title="Pause (P)">❚❚</button>
+      <button class="hbtn on" id="btn-sound" title="Sound">♪</button>
+      <button class="hbtn" id="btn-codex" title="Codex (C)">✧</button>
+    </div>
+  </header>
+
+  <main id="stage">
+    <div id="wrap">
+      <canvas id="cv" width="960" height="600" role="img" aria-label="Glowgrot cavern battlefield"></canvas>
+
+      <div class="hint" id="hint">tap the cavern floor to cultivate</div>
+
+      <div id="banner" class="hide">
+        <div id="b-title">WAVE 1 — FIRST WHISPER</div>
+        <div id="b-line">They smell the light.</div>
+        <div id="b-row">
+          <span id="b-count">—</span>
+          <button class="btn" id="btn-summon">Summon the Wave</button>
+        </div>
+      </div>
+
+      <div id="bmenu" aria-hidden="true">
+        <button class="bm-core" id="bm-close" aria-label="Close">✕</button>
+      </div>
+
+      <div id="tpanel" class="hide">
+        <div class="tp-head">
+          <canvas id="tp-icon" width="88" height="88"></canvas>
+          <div><b id="tp-name">Tower</b><span class="tp-tier" id="tp-tier">TIER I</span></div>
+          <button id="tp-close" aria-label="Close">✕</button>
+        </div>
+        <div id="tp-flavor"></div>
+        <div id="tp-stats"></div>
+        <div id="tp-perk"></div>
+        <div class="tp-actions">
+          <button class="btn" id="tp-up">Bloom ✦0</button>
+          <button class="btn ghost" id="tp-sell">Uproot +✦0</button>
+        </div>
+      </div>
+
+      <div id="toasts"></div>
+      <div id="pauseveil" class="hide"><span>— the garden holds its breath —</span></div>
+    </div>
+
+    <div class="overlay" id="ov-start">
+      <div class="card">
+        <h1>GLOWGROT</h1>
+        <div class="sub">a sporekeeper's vigil</div>
+        <p>Ten thousand years ago, the <b style="color:var(--teal)">First Spore</b> took root in a cavern beneath
+        the oldest forest, and its dreaming mycelium — the <b style="color:var(--gold)">Heartspore</b> — has kept the
+        dark gentle ever since. Tonight a chasm yawns in the deep, and the <b style="color:var(--rose)">Dusk Tide</b>,
+        eyeless things starved since before trees, climb toward the scent of light. The order of Sporekeepers is gone.
+        You are what remains. Grow the old gardens. Hold the vigil.</p>
+        <ul class="rules">
+          <li><b>Cultivate</b> — tap any cavern floor to plant one of five living towers.</li>
+          <li><b>Bloom</b> — tap a tower to upgrade it, four blooms deep. Between waves you have time to tend.</li>
+          <li><b>Survive</b> — 24 waves of the Tide. Each vigil grows a new, random vein.</li>
+          <li><b>Be bold</b> — summoning a wave early earns bonus lightmotes ✦.</li>
+        </ul>
+        <div class="rowbtns"><button class="btn" id="btn-begin" style="font-size:16px;padding:12px 34px">Begin the Vigil</button></div>
+      </div>
+    </div>
+
+    <div class="overlay hide" id="ov-end">
+      <div class="card">
+        <h1 id="end-title" style="font-size:clamp(24px,5vw,34px)">THE LIGHT HOLDS</h1>
+        <div class="sub" id="end-sub"></div>
+        <p id="end-text"></p>
+        <div class="endstats" id="end-stats"></div>
+        <div class="rowbtns">
+          <button class="btn" id="btn-again">Grow a New Vein</button>
+          <button class="btn ghost" id="btn-endless">The Long Dusk (endless)</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="overlay hide" id="codex">
+      <div class="card">
+        <div style="display:flex;align-items:center">
+          <h2 style="border:none;margin:0;flex:1">Sporekeeper's Codex</h2>
+          <button class="hbtn" id="btn-codex-close">✕</button>
+        </div>
+        <div id="cx-body"></div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script>
+'use strict';
+/* ============================================================
+   GLOWGROT — a single-file tower defense. No dependencies.
+   ============================================================ */
+
+/* ---------- tiny utils ---------- */
+const TAU = Math.PI*2;
+const clamp=(v,a,b)=>v<a?a:v>b?b:v;
+const lerp=(a,b,t)=>a+(b-a)*t;
+const rnd=Math.random;
+const ROMAN=['I','II','III','IV','V'];
+function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
+function shade(hex,p){ // lighten(+) darken(-) hex color
+  const n=parseInt(hex.slice(1),16);let r=n>>16,g=(n>>8)&255,b=n&255;
+  if(p>=0){r+= (255-r)*p;g+=(255-g)*p;b+=(255-b)*p;}else{r*=1+p;g*=1+p;b*=1+p;}
+  return `rgb(${r|0},${g|0},${b|0})`;
+}
+const REDUCED_MOTION = !!(typeof matchMedia==='function' && matchMedia('(prefers-reduced-motion: reduce)').matches);
+
+/* ---------- world constants ---------- */
+const W=960,H=600,CELL=60,COLS=16,ROWS=10;
+const START_MOTES=130, START_LIVES=20, PREP_TIME=22, LAST_WAVE=24;
+
+/* ---------- audio (all synthesized, lazily unlocked) ---------- */
+const Snd={
+  ctx:null,on:true,last:0,
+  unlock(){ if(this.ctx)return; try{ const AC=window.AudioContext||window.webkitAudioContext; if(AC) this.ctx=new AC(); }catch(e){} },
+  play(f,d,type,v,f2){
+    if(!this.on||!this.ctx)return;
+    const now=this.ctx.currentTime;
+    if(now-this.last<0.018)return; this.last=now;
+    try{
+      const o=this.ctx.createOscillator(),g=this.ctx.createGain();
+      o.type=type||'sine'; o.frequency.setValueAtTime(f,now);
+      if(f2)o.frequency.exponentialRampToValueAtTime(Math.max(20,f2),now+d);
+      g.gain.setValueAtTime(v||0.12,now); g.gain.exponentialRampToValueAtTime(0.0001,now+d);
+      o.connect(g);g.connect(this.ctx.destination);o.start(now);o.stop(now+d+0.02);
+    }catch(e){}
+  },
+  shoot(t){ const m={puff:620,vine:430,crystal:980,pitcher:190}[t]||500; this.play(m,0.07,'triangle',0.07,m*0.6); },
+  hit(){ this.play(170,0.045,'square',0.04,120); },
+  death(){ this.play(330,0.16,'sine',0.1,90); },
+  leak(){ this.play(120,0.35,'sine',0.2,50); },
+  build(){ this.play(520,0.12,'triangle',0.12,760); },
+  up(){ this.play(440,0.1,'sine',0.12); setTimeout(()=>this.play(660,0.14,'sine',0.12),90); },
+  sell(){ this.play(300,0.12,'sine',0.1,180); },
+  wave(){ this.play(140,0.55,'sawtooth',0.09,85); },
+  win(){ [523,659,784,1046].forEach((f,i)=>setTimeout(()=>this.play(f,0.25,'triangle',0.12),i*140)); },
+  lose(){ [330,262,196,131].forEach((f,i)=>setTimeout(()=>this.play(f,0.3,'sine',0.12),i*170)); },
+};
+
+/* ============================================================
+   DEFINITIONS
+   ============================================================ */
+const TOWERS={
+  puff:{name:'Sporeling Puffball',col:'#a8ff6e',cost:50,role:'Rapid spore darts',
+    lore:'The gardener\u2019s first friend: cheerful, prolific, and only slightly sentient.',
+    tiers:[
+      {dmg:7, rate:2.2, range:110},
+      {cost:40, dmg:12, rate:2.4, range:120},
+      {cost:70, dmg:17, rate:2.6, range:132},
+      {cost:110,dmg:26, rate:2.8, range:145},
+      {cost:180,dmg:26, rate:3.0, range:158, twin:true, perk:'Twin Spores — every shot bursts in pairs.'},
+    ]},
+  lantern:{name:'Lantern Bloom',col:'#ffd166',cost:60,role:'Lures and slows the Tide',
+    lore:'Cave-things cannot ignore light. The Bloom weaponizes their longing.',
+    tiers:[
+      {slow:0.25, range:95, dps:0},
+      {cost:50, slow:0.35, range:110, dps:4},
+      {cost:85, slow:0.45, range:125, dps:8},
+      {cost:140,slow:0.55, range:140, dps:13},
+      {cost:220,slow:0.62, range:155, dps:18, strobe:true, perk:'Strobe Pulse — every 4s the Bloom flashes and roots prey for a moment.'},
+    ]},
+  pitcher:{name:'Pitcher Maw',col:'#ff6f91',cost:80,role:'Lobbed acid, splashes groups',
+    lore:'It purrs when it is fed. Sporekeepers learn not to listen.',
+    tiers:[
+      {dmg:26, splash:46, rate:0.55, range:125},
+      {cost:65, dmg:40, splash:52, rate:0.58, range:132},
+      {cost:105,dmg:62, splash:58, rate:0.60, range:142},
+      {cost:170,dmg:95, splash:66, rate:0.65, range:152},
+      {cost:260,dmg:140,splash:74, rate:0.70, range:162, pool:true, perk:'Digestive Pool — globs leave a churning acid pool on the vein.'},
+    ]},
+  crystal:{name:'Crystalcap Resonator',col:'#7ce7ff',cost:90,role:'Long shards pierce lines',
+    lore:'Grown around one perfect note. Its shards still remember the chord.',
+    tiers:[
+      {dmg:34, rate:0.80, range:170},
+      {cost:70, dmg:52, rate:0.85, range:185},
+      {cost:115,dmg:80, rate:0.90, range:200},
+      {cost:185,dmg:120,rate:0.95, range:215},
+      {cost:300,dmg:175,rate:1.00, range:232, shatter:true, perk:'Shatter — pierced foes fling shards into neighbours.'},
+    ]},
+  vine:{name:'Gloomvine',col:'#c58fff',cost:70,role:'Venom melts armour',
+    lore:'The garden\u2019s quiet cruelty. What it bites, it keeps.',
+    tiers:[
+      {dmg:5, rate:1.10, range:105, pois:6, pdur:3.0, pmax:30},
+      {cost:55, dmg:8, rate:1.15, range:112, pois:9, pdur:3.0, pmax:45},
+      {cost:95, dmg:12,rate:1.20, range:120, pois:13,pdur:3.2, pmax:65},
+      {cost:150,dmg:17,rate:1.25, range:130, pois:18,pdur:3.2, pmax:90},
+      {cost:240,dmg:22,rate:1.30, range:140, pois:24,pdur:3.5, pmax:120, burst:true, perk:'Sporeburst — foes slain by venom erupt and infect their neighbours.'},
+    ]},
+};
+const TOWER_ORDER=['puff','lantern','pitcher','crystal','vine'];
+
+const ENEMIES={
+  mite:      {name:'Cave Mite',hp:9,spd:78,dmg:1,bounty:3,r:7,col:'#ffd98a',
+    lore:'A single hunger is small. A thousand are weather.',hint:'Feeble alone — pray they stay that way.'},
+  silverfish:{name:'Silverfish Skitter',hp:18,spd:105,dmg:1,bounty:5,r:9,col:'#cfd8ea',
+    lore:'Mercury, with an appetite.',hint:'Quick but frail. Puffballs love them.'},
+  beetle:    {name:'Shellback Beetle',hp:80,spd:44,dmg:2,bounty:12,r:12,armor:3,col:'#8fa3bf',
+    lore:'Patient as stone, and wearing some.',hint:'Plates shrug off weak hits. Venom ignores armour.'},
+  slug:      {name:'Gloam Slug',hp:190,spd:25,dmg:3,bounty:22,r:14,regen:2,col:'#b8a1e8',
+    lore:'It drinks the dark and grows heavy with it.',hint:'Slow, vast, and knitting itself whole. Burn it fast.'},
+  blink:     {name:'Blinkmoth',hp:46,spd:62,dmg:2,bounty:11,r:10,col:'#9fffe0',
+    lore:'It folds the dark like a page.',hint:'Teleports forward between heartbeats. Root it with a Strobe.'},
+  burrower:  {name:'Vein Burrower',hp:105,spd:56,dmg:2,bounty:15,r:11,col:'#d9a066',
+    lore:'The vein remembers every tunnel it digs.',hint:'Dives underground where towers cannot reach.'},
+  brood:     {name:'The Broodmother',hp:750,spd:30,dmg:10,bounty:140,r:20,armor:4,col:'#e08fae',boss:true,
+    lore:'Her children ride her back, chittering.',hint:'Spawns mites as she crawls. Focus everything.'},
+  matron:    {name:'The Pale Matron',hp:1700,spd:23,dmg:12,bounty:220,r:22,regen:5,col:'#e8e4f4',boss:true,
+    lore:'Even the mites keep their distance.',hint:'Her hush shields nearby prey from your lanterns.'},
+  tyrant:    {name:'Burrower Tyrant',hp:2200,spd:38,dmg:14,bounty:320,r:20,col:'#c98d4f',boss:true,
+    lore:'It tastes the roots of the world.',hint:'A burrower the size of a river. Strike between dives.'},
+  king:      {name:'The Blind King',hp:6200,spd:21,dmg:20,bounty:600,r:26,armor:7,col:'#5a4d7a',boss:true,
+    lore:'It opens its thousand eyes.',hint:'Armoured, ancient, and summoning. When it enrages — hold on.'},
+};
+
+const WAVES=[
+ {name:'First Whisper',line:'They smell the light. First come the silverfish, quick as spilled mercury.',g:[['silverfish',8,1.1,0]]},
+ {name:'Scuttling Tide',line:'Mites ride the chasm drafts. Small hungers, in great numbers.',g:[['silverfish',10,0.9,0],['mite',10,0.3,5]]},
+ {name:'Plates of Stone',line:'Shellbacks grind along the vein. Their plates turn aside soft spores.',g:[['beetle',4,2.4,0],['silverfish',8,0.8,3]]},
+ {name:'The Garden Hums',line:'The garden hums. The Heartspore knows you are awake.',g:[['mite',22,0.26,0],['silverfish',10,0.9,4]]},
+ {name:'In Formation',line:'Something is teaching them formation. They come in columns now.',g:[['beetle',6,1.9,0],['blink',5,1.6,4]]},
+ {name:'The Broodmother',line:'The Broodmother climbs. Her children ride her back, chittering.',g:[['brood',1,0,0],['silverfish',12,1.0,2]]},
+ {name:'Drinking the Dark',line:'Gloam slugs drink the dark and grow heavy with it.',g:[['slug',3,4,0],['mite',18,0.28,3]]},
+ {name:'Folded Distance',line:'Blinkmoths fold the distance. Watch where they will be, not where they were.',g:[['blink',10,1.2,0],['silverfish',12,0.7,5]]},
+ {name:'Stones Remember',line:'The records say the Tide drowned a garden like this once. The stones remember.',g:[['beetle',9,1.6,0],['slug',3,4,6]]},
+ {name:'Between Breaths',line:'Burrowers. They move beneath the vein — strike them between breaths.',g:[['burrower',6,2.2,0],['mite',20,0.25,4]]},
+ {name:'Bright Lanterns',line:'Your lanterns burn bright tonight. The Tide hates them. Good.',g:[['slug',5,3.2,0],['blink',8,1.3,5]]},
+ {name:'The Pale Matron',line:'The Pale Matron arrives wrapped in hush. Even the mites keep their distance.',g:[['matron',1,0,0],['beetle',8,1.8,3]]},
+ {name:'Silver Flood',line:'A silver flood. Do not count them — count your spores instead.',g:[['silverfish',26,0.38,0],['mite',12,0.3,8]]},
+ {name:'Parallel Roads',line:'They dig in parallel now. Learning. The chasm teaches them.',g:[['burrower',10,1.7,0],['beetle',8,1.7,4]]},
+ {name:'Slug-Song',line:'Slug-song carries through the stone. It sounds almost like a lullaby.',g:[['slug',7,2.8,0],['mite',26,0.24,6]]},
+ {name:'Thrown Coins',line:'Blinkmoths scatter like thrown coins. Keep a vine for every shadow.',g:[['blink',14,1.0,0],['burrower',8,1.9,6]]},
+ {name:'Grow Something Cruel',line:'The Tide\u2019s armour thickens. Grow something cruel, gardener.',g:[['beetle',14,1.3,0],['slug',6,3.0,5]]},
+ {name:'The Root-Taster',line:'The Tyrant tunnels under the garden, tasting roots. Stop it before it drinks.',g:[['tyrant',1,0,0],['burrower',8,2.0,3]]},
+ {name:'Small Hungers',line:'The air is thick with small hungers tonight.',g:[['mite',44,0.18,0],['blink',12,1.1,6]]},
+ {name:'Longest Night',line:'Halfway through the longest night. Steady your hands.',g:[['slug',10,2.4,0],['beetle',12,1.4,6]]},
+ {name:'Two Directions',line:'They come from two directions in the dark — yet the chasm is one. Strange.',g:[['burrower',14,1.5,0],['blink',10,1.2,8]]},
+ {name:'Everything It Has',line:'Everything the Tide has, it brings tonight.',g:[['beetle',12,1.3,0],['slug',8,2.6,4],['blink',10,1.1,10]]},
+ {name:'The Swept Road',line:'Before a king walks, his road is swept clean. Survive the sweeping.',g:[['silverfish',30,0.35,0],['beetle',14,1.2,6],['slug',10,2.4,12]]},
+ {name:'The Blind King',line:'The Blind King opens his thousand eyes. Keep one light for yourself.',g:[['king',1,0,0],['beetle',10,2.0,2],['blink',10,1.4,10]]},
+];
+const ENDLESS_LINES=[
+ 'The Tide does not end. It was never going to end.','Dawn forgot this place. Keep tending anyway.',
+ 'The Heartspore dreams of you, gardener.','What climbs out of the chasm now has no name yet.',
+ 'Your hands are green with old light.','The vein sings. The Tide answers.',
+];
+
+/* ============================================================
+   TRACK — a random mycelial vein each vigil
+   ============================================================ */
+function chaikin(pts,iters){
+  for(let k=0;k<iters;k++){
+    const out=[pts[0]];
+    for(let i=0;i<pts.length-1;i++){
+      const a=pts[i],b=pts[i+1];
+      out.push({x:a.x*0.75+b.x*0.25,y:a.y*0.75+b.y*0.25});
+      out.push({x:a.x*0.25+b.x*0.75,y:a.y*0.25+b.y*0.75});
+    }
+    out.push(pts[pts.length-1]);
+    pts=out;
+  }
+  return pts;
+}
+function buildTrack(pts){
+  const cum=[0];let len=0;
+  for(let i=1;i<pts.length;i++){len+=Math.hypot(pts[i].x-pts[i-1].x,pts[i].y-pts[i-1].y);cum.push(len);}
+  return {pts,cum,len};
+}
+function trackPoint(d){
+  const T=TRACK;d=clamp(d,0,T.len);
+  let lo=0,hi=T.cum.length-1;
+  while(lo<hi-1){const m=(lo+hi)>>1;if(T.cum[m]<=d)lo=m;else hi=m;}
+  const seg=(T.cum[hi]-T.cum[lo])||1,t=(d-T.cum[lo])/seg;
+  return {x:lerp(T.pts[lo].x,T.pts[hi].x,t),y:lerp(T.pts[lo].y,T.pts[hi].y,t),
+          ang:Math.atan2(T.pts[hi].y-T.pts[lo].y,T.pts[hi].x-T.pts[lo].x)};
+}
+function genTrack(rng){
+  for(let att=0;att<90;att++){
+    const cells=[],used=new Set();
+    let x=0,y=2+Math.floor(rng()*(ROWS-4)),ok=true;
+    const put=(cx,cy)=>{cells.push([cx,cy]);used.add(cx+','+cy);};
+    put(x,y);
+    while(x<COLS-1){
+      if(rng()<0.82){
+        const dir=rng()<0.5?-1:1,steps=1+Math.floor(rng()*4);
+        for(let s=0;s<steps;s++){
+          const ny=y+dir;
+          if(ny<1||ny>ROWS-2)break;
+          y=ny;put(x,y);
+        }
+      }
+      x++;
+      if(used.has(x+','+y)){ok=false;break;}
+      put(x,y);
+    }
+    if(!ok||cells.length<26)continue;
+    const raw=cells.map(([cx,cy])=>({x:cx*CELL+CELL/2,y:cy*CELL+CELL/2}));
+    const pts=chaikin(raw,2);
+    const track=buildTrack(pts);
+    if(track.len<1650)continue;
+    return {track,used};
+  }
+  // fallback: simple snake
+  const cells=[];
+  for(let cx=0;cx<COLS;cx++)cells.push([cx,4]);
+  const raw=cells.map(([cx,cy])=>({x:cx*CELL+CELL/2,y:cy*CELL+CELL/2}));
+  return {track:buildTrack(chaikin(raw,2)),used:new Set(cells.map(c=>c.join(',')))};
+}
+
+/* ============================================================
+   STATE
+   ============================================================ */
+const S={
+  mode:'menu', // menu | prep | wave | over | won
+  time:0, wave:0, motes:START_MOTES, lives:START_LIVES,
+  speed:1, paused:false, endless:false, prepT:0, waveT:0,
+  enemies:[], shots:[], fx:[], puddles:[], towers:[], towerByCell:{},
+  queue:[], sel:null, bmenuCell:null, hoverCell:-1, shake:0,
+  stats:{kills:0,earned:0,built:0,waves:0},
+};
+let TRACK=null, PATH_SET=new Set(), BUILD_CELLS=[], SEED=0, RNG=Math.random;
+let MOTES_AMB=[]; // ambient drifting motes
+
+const hpMul=w=>1+(w-1)*0.095;
+const bountyMul=w=>1+(w-1)*0.04;
+function waveDef(w){
+  if(w<=LAST_WAVE)return WAVES[w-1];
+  const k=w-LAST_WAVE,rng=mulberry32(w*7919+SEED);
+  const pool=['silverfish','beetle','slug','blink','burrower'];
+  const g=[];
+  g.push([pool[Math.floor(rng()*pool.length)],8+k*2,Math.max(0.5,1.4-k*0.06),0]);
+  g.push([pool[Math.floor(rng()*pool.length)],6+k,Math.max(0.4,1.2-k*0.05),4]);
+  g.push(['mite',14+k*4,Math.max(0.14,0.3-k*0.01),6]);
+  if(w%6===0)g.push([['brood','matron','tyrant','king'][(w/6)%4|0],1,0,10]);
+  return {name:'The Long Dusk '+ROMAN[Math.min(4,((k-1)%5))],line:ENDLESS_LINES[k%ENDLESS_LINES.length],g};
+}
+
+/* ============================================================
+   DOM handles
+   ============================================================ */
+const $=id=>document.getElementById(id);
+const cv=$('cv'),ctx=cv.getContext('2d');
+const el={};
+['ui-lives','ui-motes','hud-title','btn-speed','btn-pause','btn-sound','btn-codex',
+ 'banner','b-title','b-line','b-count','btn-summon','bmenu','bm-close','tpanel','tp-icon',
+ 'tp-name','tp-tier','tp-flavor','tp-stats','tp-perk','tp-up','tp-sell','tp-close','toasts',
+ 'ov-start','btn-begin','ov-end','end-title','end-sub','end-text','end-stats','btn-again',
+ 'btn-endless','codex','cx-body','btn-codex-close','pauseveil','hint','stat-lives']
+ .forEach(id=>el[id.replace(/-(\w)/g,(m,c)=>c.toUpperCase())]=$('id'===id?id:id));
+// fix key names
+el.lives=el.uiLives; el.motes=el.uiMotes; el.hudTitle=$('hud-title');
+
+/* ============================================================
+   CANVAS / BACKGROUND
+   ============================================================ */
+let dpr=1,bgCanvas=null;
+function rrect(g,x,y,w,h,r){g.beginPath();g.moveTo(x+r,y);g.arcTo(x+w,y,x+w,y+h,r);g.arcTo(x+w,y+h,x,y+h,r);g.arcTo(x,y+h,x,y,r);g.arcTo(x,y,x+w,y,r);g.closePath();}
+function prerenderBG(){
+  bgCanvas=document.createElement('canvas');bgCanvas.width=W;bgCanvas.height=H;
+  const g=bgCanvas.getContext('2d');
+  const rng=mulberry32(SEED^0xBEEF);
+  const grad=g.createLinearGradient(0,0,0,H);
+  grad.addColorStop(0,'#0c1018');grad.addColorStop(0.5,'#0a0e16');grad.addColorStop(1,'#080b12');
+  g.fillStyle=grad;g.fillRect(0,0,W,H);
+  // distant cavern silhouettes
+  g.fillStyle='rgba(16,22,38,.8)';
+  for(let i=0;i<7;i++){
+    const bx=rng()*W,bw=60+rng()*140,bh=60+rng()*130;
+    g.beginPath();g.moveTo(bx-bw/2,H);g.quadraticCurveTo(bx,H-bh*2,bx+bw/2,H);g.fill();
+  }
+  g.fillStyle='rgba(13,18,32,.9)';
+  for(let i=0;i<6;i++){
+    const bx=rng()*W,bw=50+rng()*120,bh=50+rng()*110;
+    g.beginPath();g.moveTo(bx-bw/2,0);g.quadraticCurveTo(bx,bh*2,bx+bw/2,0);g.fill();
+  }
+  // giant ghost mushrooms in the distance
+  for(let i=0;i<4;i++){
+    const mx=rng()*W,my=H*(0.25+rng()*0.5),ms=24+rng()*46;
+    g.fillStyle='rgba(30,42,70,.35)';
+    g.beginPath();g.ellipse(mx,my,ms,ms*0.55,0,Math.PI,0);g.fill();
+    g.fillRect(mx-ms*0.14,my,ms*0.28,ms*0.9);
+  }
+  // mineral specks
+  for(let i=0;i<420;i++){
+    const a=0.03+rng()*0.08;
+    g.fillStyle=rng()<0.85?`rgba(140,170,220,${a})`:`rgba(110,243,195,${a*1.4})`;
+    g.fillRect(rng()*W,rng()*H,rng()<0.1?2:1,rng()<0.1?2:1);
+  }
+  // faint grid of cultivable floor
+  g.strokeStyle='rgba(120,150,200,.045)';g.lineWidth=1;
+  for(let cx=1;cx<COLS;cx++){g.beginPath();g.moveTo(cx*CELL,0);g.lineTo(cx*CELL,H);g.stroke();}
+  for(let cy=1;cy<ROWS;cy++){g.beginPath();g.moveTo(0,cy*CELL);g.lineTo(W,cy*CELL);g.stroke();}
+  // soft pools of glow near path
+  const T=TRACK;
+  for(let i=0;i<T.pts.length;i+=22){
+    const p=T.pts[i];
+    const rg=g.createRadialGradient(p.x,p.y,4,p.x,p.y,90);
+    rg.addColorStop(0,'rgba(70,220,170,.07)');rg.addColorStop(1,'rgba(70,220,170,0)');
+    g.fillStyle=rg;g.beginPath();g.arc(p.x,p.y,90,0,TAU);g.fill();
+  }
+}
+function makeBuildCells(){
+  BUILD_CELLS=[];
+  const pts=TRACK.pts;
+  for(let cy=0;cy<ROWS;cy++)for(let cx=0;cx<COLS;cx++){
+    const key=cx+','+cy;
+    if(PATH_SET.has(key))continue;
+    const x=cx*CELL+CELL/2,y=cy*CELL+CELL/2;
+    let best=1e9;
+    for(let i=0;i<pts.length;i+=3){const dx=pts[i].x-x,dy=pts[i].y-y;const d2=dx*dx+dy*dy;if(d2<best)best=d2;}
+    BUILD_CELLS.push({i:cx+cy*COLS,x,y,pathDist:Math.sqrt(best)});
+  }
+}
+function newGame(seed){
+  SEED=(seed??((Date.now()*2654435761)>>>0))>>>0;
+  RNG=mulberry32(SEED);
+  const gen=genTrack(RNG);
+  TRACK=gen.track;PATH_SET=gen.used;
+  makeBuildCells();prerenderBG();
+  S.mode='prep';S.wave=0;S.motes=START_MOTES;S.lives=START_LIVES;
+  S.speed=1;S.paused=false;S.endless=false;S.prepT=PREP_TIME+8;
+  S.enemies.length=0;S.shots.length=0;S.fx.length=0;S.puddles.length=0;
+  S.towers.length=0;S.towerByCell={};S.queue.length=0;S.sel=null;S.bmenuCell=null;
+  S.shake=0;S.time=0;S.stats={kills:0,earned:0,built:0,waves:0};
+  MOTES_AMB=[];
+  const nM=REDUCED_MOTION?12:46;
+  for(let i=0;i<nM;i++)MOTES_AMB.push({x:rnd()*W,y:rnd()*H,vx:(rnd()-0.5)*8,vy:-4-rnd()*10,s:0.6+rnd()*1.6,p:rnd()*TAU});
+  closeBMenu();hideTPanel();
+  showBanner();updateHUD();
+  toast('A new vein has grown. Cultivate, Sporekeeper.');
+}
+
+/* ============================================================
+   WAVE FLOW
+   ============================================================ */
+function summonWave(){
+  if(S.mode!=='prep')return;
+  const w=S.wave+1,def=waveDef(w);
+  const bonus=Math.max(0,Math.ceil(S.prepT))*2;
+  if(bonus>0){S.motes+=bonus;S.stats.earned+=bonus;floatText(W/2,80,'+'+bonus+' ✦ early summons','#ffd97a');}
+  S.wave=w;S.mode='wave';S.waveT=0;S.queue=[];
+  for(const [t,n,gap,delay] of def.g)for(let i=0;i<n;i++)S.queue.push({t:delay+i*gap,type:t});
+  S.queue.sort((a,b)=>a.t-b.t);
+  el.banner.classList.add('hide');
+  Snd.wave();updateHUD();
+}
+function waveCleared(){
+  const bonus=30+S.wave*6;
+  S.motes+=bonus;S.stats.earned+=bonus;S.stats.waves=S.wave;
+  floatText(W/2,H/2-40,'+'+bonus+' ✦ the garden gives back','#6ef3c3');
+  if(S.wave>=LAST_WAVE&&!S.endless){winGame();return;}
+  S.mode='prep';S.prepT=PREP_TIME;
+  showBanner();updateHUD();
+}
+function loseGame(){
+  if(S.mode==='over')return;
+  S.mode='over';Snd.lose();
+  showEnd(false);
+}
+function winGame(){
+  if(S.mode==='won')return;
+  S.mode='won';Snd.win();
+  showEnd(true);
+}
+function showEnd(won){
+  el.endTitle.textContent=won?'THE LIGHT HOLDS':'THE LIGHT FADES';
+  el.endTitle.style.color=won?'var(--teal)':'var(--rose)';
+  el.endSub.textContent=won?'the vigil, kept':'the vigil, broken at wave '+S.wave;
+  el.endText.textContent=won
+    ?'Dawn, somewhere far above, pushes through root and stone. The Heartspore pulses once — gratitude, or recognition. The Dusk Tide has broken itself against your garden. (The Long Dusk awaits, if you are not yet ready to sleep.)'
+    :'The lanterns gutter out. In the dark, the Tide drinks ten thousand years of light\u2026 but spores are patient things. Grow again.';
+  el.endStats.innerHTML=
+    '<div><b>'+S.stats.waves+'</b>WAVES HELD</div>'+
+    '<div><b>'+S.stats.kills+'</b>TIDE SLAIN</div>'+
+    '<div><b>'+S.stats.earned+'</b>MOTES GATHERED</div>'+
+    '<div><b>'+S.towers.length+'</b>CULTIVARS</div>';
+  el.btnEndless.style.display=won?'':'none';
+  el.ovEnd.classList.remove('hide');
+}
+function showBanner(){
+  const def=waveDef(S.wave+1);
+  el.bTitle.textContent='WAVE '+(S.wave+1)+(S.wave+1>LAST_WAVE?' ∞':'')+' — '+def.name.toUpperCase();
+  el.bLine.textContent=def.line;
+  el.banner.classList.remove('hide');
+}
+
+/* ============================================================
+   SIMULATION
+   ============================================================ */
+function spawnEnemy(type,w){
+  const d=ENEMIES[type],m=hpMul(w);
+  const e={type,def:d,hp:d.hp*m,maxhp:d.hp*m,d:0,spd:d.spd,bounty:Math.round(d.bounty*bountyMul(w)),
+    dmg:d.dmg,r:d.r,armor:d.armor||0,regen:d.regen||0,
+    slow:1,slowImmune:false,rootU:0,poisDps:0,poisU:0,poisBy:null,
+    flash:0,x:-99,y:-99,ang:0,seed:rnd()*TAU,dead:false};
+  if(type==='blink')e.blinkT=2.6;
+  if(type==='burrower'||type==='tyrant'){e.burT=type==='tyrant'?4:3.2;e.burU=0;e.sub=false;}
+  if(type==='brood')e.spawnT=6;
+  if(type==='king'){e.sumT=7;e.enraged=false;}
+  S.enemies.push(e);
+  if(d.boss)toast(d.name+' emerges from the chasm','boss');
+}
+function targetable(e){return !e.dead&&!e.sub&&e.hp>0;}
+function nearestEnemy(x,y,r,excl){
+  let best=null,bd=r*r;
+  for(const e of S.enemies){
+    if(!targetable(e)||excl===e)continue;
+    const dx=e.x-x,dy=e.y-y,d2=dx*dx+dy*dy;
+    if(d2<bd){bd=d2;best=e;}
+  }
+  return best;
+}
+function firstInRange(x,y,r){
+  let best=null,bd=-1;
+  for(const e of S.enemies){
+    if(!targetable(e))continue;
+    const dx=e.x-x,dy=e.y-y;
+    if(dx*dx+dy*dy<=r*r&&e.d>bd){bd=e.d;best=e;}
+  }
+  return best;
+}
+function hurt(e,amt,src,ignoreArmor){
+  if(e.dead||e.hp<=0)return;
+  if(!ignoreArmor)amt=Math.max(1,amt-e.armor);
+  e.hp-=amt;e.flash=0.09;
+  if(e.hp<=0)killEnemy(e,src);
+}
+function killEnemy(e,src){
+  if(e.dead)return;e.dead=true;
+  S.motes+=e.bounty;S.stats.earned+=e.bounty;S.stats.kills++;
+  burst(e.x,e.y,e.def.col,e.def.boss?26:10);
+  floatText(e.x,e.y-14,'+'+e.bounty+' ✦','#ffd97a');
+  Snd.death();
+  // Gloomvine Sporeburst perk
+  if(src==='vine'&&e.poisU>S.time){
+    const killer=e.poisBy;
+    if(killer&&TOWERS.vine.tiers[killer.tier].burst){
+      for(const o of S.enemies){
+        if(o===e||!targetable(o))continue;
+        const dx=o.x-e.x,dy=o.y-e.y;
+        if(dx*dx+dy*dy<70*70){hurt(o,40,'burst');o.poisDps=Math.max(o.poisDps,12);o.poisU=S.time+3;o.poisBy=killer;}
+      }
+      ring(e.x,e.y,70,'#c58fff');
+    }
+  }
+}
+function leak(e){
+  e.dead=true;
+  S.lives-=e.dmg;S.shake=Math.max(S.shake,0.35);
+  burst(e.x,e.y,'#ff5d7a',12);Snd.leak();
+  el.statLives.classList.remove('hurt');void el.statLives.offsetWidth;el.statLives.classList.add('hurt');
+  if(S.lives<=0){S.lives=0;loseGame();}
+}
+
+function updateWave(dt){
+  // spawner
+  S.waveT+=dt;
+  while(S.queue.length&&S.queue[0].t<=S.waveT)spawnEnemy(S.queue.shift().type,S.wave);
+
+  // lantern auras + strobes
+  for(const e of S.enemies){e.slow=1;e.slowImmune=false;}
+  const matrons=S.enemies.filter(e=>e.type==='matron'&&!e.dead);
+  for(const tw of S.towers){
+    if(tw.type!=='lantern')continue;
+    const tr=TOWERS.lantern.tiers[tw.tier];
+    if(tr.strobe){
+      tw.strobeT=(tw.strobeT||0)-dt;
+      if(tw.strobeT<=0){
+        tw.strobeT=4;let hit=false;
+        for(const e of S.enemies){
+          if(!targetable(e))continue;
+          const dx=e.x-tw.x,dy=e.y-tw.y;
+          if(dx*dx+dy*dy<tr.range*tr.range){e.rootU=S.time+0.8;hit=true;}
+        }
+        if(hit){ring(tw.x,tw.y,tr.range,'#ffd166');Snd.play(880,0.15,'sine',0.08,440);}
+      }
+    }
+    for(const e of S.enemies){
+      if(e.dead||e.sub)continue;
+      const dx=e.x-tw.x,dy=e.y-tw.y;
+      if(dx*dx+dy*dy>tr.range*tr.range)continue;
+      if(matrons.some(m=>{const mx=e.x-m.x,my=e.y-m.y;return mx*mx+my*my<130*130;}))continue;
+      e.slow=Math.min(e.slow,1-tr.slow);
+      if(tr.dps>0)hurt(e,tr.dps*dt,'lantern',true);
+    }
+  }
+
+  // enemies
+  for(const e of S.enemies){
+    if(e.dead)continue;
+    e.flash=Math.max(0,e.flash-dt);
+    if(e.regen&&e.hp<e.maxhp)e.hp=Math.min(e.maxhp,e.hp+e.regen*dt);
+    // poison
+    if(e.poisU>S.time&&e.poisDps>0){e.hp-=e.poisDps*dt;if(e.hp<=0){killEnemy(e,'vine');continue;}}
+    // special behaviours
+    if(e.type==='blink'){
+      e.blinkT-=dt;
+      if(e.blinkT<=0){
+        e.blinkT=2.6;
+        if(e.rootU<=S.time&&e.d<TRACK.len-20){
+          burst(e.x,e.y,'#9fffe0',5);
+          e.d=Math.min(TRACK.len-2,e.d+55);
+          const p=trackPoint(e.d);e.x=p.x;e.y=p.y;
+          burst(e.x,e.y,'#9fffe0',5);
+        }
+      }
+    }else if(e.type==='burrower'||e.type==='tyrant'){
+      e.burT-=dt;
+      if(e.burT<=0){
+        e.sub=!e.sub;
+        e.burT=e.sub?(e.type==='tyrant'?1.7:1.3):(e.type==='tyrant'?4:3.2);
+        if(e.sub)burst(e.x,e.y,'#8a6b45',6);
+      }
+    }else if(e.type==='brood'){
+      e.spawnT-=dt;
+      if(e.spawnT<=0){e.spawnT=6;for(let i=0;i<2;i++){spawnEnemy('mite',S.wave);const m=S.enemies[S.enemies.length-1];m.d=Math.max(0,e.d-8-i*10);m.hp*=0.8;m.maxhp=m.hp;}}
+    }else if(e.type==='king'){
+      e.sumT-=dt;
+      if(e.sumT<=0){e.sumT=7;for(let i=0;i<3;i++){spawnEnemy('mite',S.wave);const m=S.enemies[S.enemies.length-1];m.d=Math.max(0,e.d-10-i*12);}}
+      if(!e.enraged&&e.hp<e.maxhp*0.5){e.enraged=true;toast('The Blind King opens his thousand eyes','boss');ring(e.x,e.y,140,'#ff5d5d');}
+    }
+    // move
+    let sp=e.spd*(e.sub?0.75:1)*e.slow*(e.enraged?1.6:1);
+    if(e.rootU>S.time)sp=0;
+    e.d+=sp*dt;
+    if(e.d>=TRACK.len){leak(e);continue;}
+    const p=trackPoint(e.d);e.x=p.x;e.y=p.y;e.ang=p.ang;
+  }
+
+  // towers fire
+  for(const tw of S.towers){
+    if(tw.type==='lantern')continue;
+    const tr=TOWERS[tw.type].tiers[tw.tier];
+    tw.cool-=dt;
+    if(tw.cool>0)continue;
+    const t=firstInRange(tw.x,tw.y,tr.range);
+    if(!t)continue;
+    tw.cool=1/tr.rate;
+    if(tw.type==='pitcher'){
+      const p=trackPoint(Math.min(TRACK.len,t.d+t.spd*0.55));
+      S.shots.push({kind:'glob',x:tw.x,y:tw.y,sx:tw.x,sy:tw.y,tx:p.x,ty:p.y,t:0,T:0.55,dmg:tr.dmg,splash:tr.splash,pool:!!tr.pool});
+    }else if(tw.type==='crystal'){
+      const ang=Math.atan2(t.y-tw.y,t.x-tw.x);
+      S.shots.push({kind:'ray',x:tw.x,y:tw.y,ang,spd:900,traveled:0,range:tr.range+70,dmg:tr.dmg,shatter:!!tr.shatter,hit:new Set()});
+    }else{
+      const n=(tw.type==='puff'&&tr.twin)?2:1;
+      for(let i=0;i<n;i++){
+        S.shots.push({kind:'dart',x:tw.x+(i?5:-5),y:tw.y-6,tgt:t,lx:t.x,ly:t.y,spd:440,dmg:tr.dmg,pois:tr.pois||0,pdur:tr.pdur||0,tw,type:tw.type});
+      }
+    }
+    Snd.shoot(tw.type);
+  }
+
+  // shots
+  for(const s of S.shots){
+    if(s.dead)continue;
+    if(s.kind==='dart'){
+      const t=s.tgt;
+      if(t&&!t.dead){s.lx=t.x;s.ly=t.y;}
+      const dx=s.lx-s.x,dy=s.ly-s.y,dd=Math.hypot(dx,dy);
+      if(dd<10){
+        s.dead=true;
+        if(t&&!t.dead){
+          if(s.type==='vine'){
+            hurt(t,s.dmg,'vine');
+            t.poisDps=Math.min(t.poisDps+s.pois,TOWERS.vine.tiers[s.tw.tier].pmax);
+            t.poisU=S.time+s.pdur;t.poisBy=s.tw;
+          }else hurt(t,s.dmg,'dart');
+          burst(s.lx,s.ly,shade(TOWERS[s.type].col,0.2),3);Snd.hit();
+        }
+        continue;
+      }
+      const v=s.spd*dt;s.x+=dx/dd*v;s.y+=dy/dd*v;
+    }else if(s.kind==='ray'){
+      const step=s.spd*dt;s.traveled+=step;
+      s.x+=Math.cos(s.ang)*step;s.y+=Math.sin(s.ang)*step;
+      for(const e of S.enemies){
+        if(!targetable(e)||s.hit.has(e))continue;
+        const dx=e.x-s.x,dy=e.y-s.y;
+        if(dx*dx+dy*dy<(e.r+8)*(e.r+8)){
+          s.hit.add(e);hurt(e,s.dmg,'crystal');
+          spark(e.x,e.y,'#7ce7ff');Snd.hit();
+          if(s.shatter){
+            const n2=nearestEnemy(e.x,e.y,70,e);
+            if(n2){hurt(n2,25,'shatter');spark(n2.x,n2.y,'#bfefff');}
+          }
+        }
+      }
+      if(s.traveled>s.range)s.dead=true;
+    }else if(s.kind==='glob'){
+      s.t+=dt;
+      const k=Math.min(1,s.t/s.T);
+      s.x=lerp(s.sx,s.tx,k);s.y=lerp(s.sy,s.ty,k)-Math.sin(k*Math.PI)*46;
+      if(k>=1){
+        s.dead=true;
+        burst(s.tx,s.ty,'#ff6f91',8);
+        for(const e of S.enemies){
+          if(!targetable(e))continue;
+          const dx=e.x-s.tx,dy=e.y-s.ty;
+          if(dx*dx+dy*dy<s.splash*s.splash)hurt(e,s.dmg,'glob');
+        }
+        if(s.pool)S.puddles.push({x:s.tx,y:s.ty,r:s.splash*0.8,dps:14,until:S.time+3});
+        Snd.play(140,0.12,'sine',0.1,60);
+      }
+    }
+  }
+  S.shots=S.shots.filter(s=>!s.dead);
+  S.enemies=S.enemies.filter(e=>!e.dead);
+
+  // puddles
+  for(const p of S.puddles){
+    if(S.time>p.until){p.dead=true;continue;}
+    for(const e of S.enemies){
+      if(e.dead||e.sub)continue;
+      const dx=e.x-p.x,dy=e.y-p.y;
+      if(dx*dx+dy*dy<p.r*p.r)hurt(e,p.dps*dt,'pool',true);
+    }
+  }
+  S.puddles=S.puddles.filter(p=>!p.dead);
+
+  if(!S.queue.length&&S.enemies.length===0&&S.mode==='wave')waveCleared();
+}
+
+function updateWorld(dt){
+  S.time+=dt;
+  // ambient motes
+  for(const m of MOTES_AMB){
+    m.x+=m.vx*dt;m.y+=m.vy*dt;m.p+=dt;
+    if(m.y<-6){m.y=H+6;m.x=rnd()*W;}
+    if(m.x<-6)m.x=W+6;if(m.x>W+6)m.x=-6;
+  }
+  updateFx(dt);
+  S.shake=Math.max(0,S.shake-dt);
+  S.hudT=(S.hudT||0)-dt;
+  if(S.hudT<=0){S.hudT=0.4;if(S.mode==='wave'||S.mode==='prep')updateHUD();}
+  if(S.mode==='wave')updateWave(dt);
+  else if(S.mode==='prep'){
+    S.prepT-=dt;
+    if(S.prepT<=0)summonWave();
+    updateBannerCount();
+  }
+}
+
+/* ---------- fx ---------- */
+function burst(x,y,col,n){for(let i=0;i<n;i++){if(S.fx.length>320)return;const a=rnd()*TAU,v=20+rnd()*70;S.fx.push({k:'p',x,y,vx:Math.cos(a)*v,vy:Math.sin(a)*v-15,t:0,life:0.4+rnd()*0.4,col,sz:1+rnd()*2.2});}}
+function ring(x,y,r,col){S.fx.push({k:'r',x,y,r:6,R:r,t:0,life:0.45,col});}
+function spark(x,y,col){for(let i=0;i<3;i++)S.fx.push({k:'p',x,y,vx:(rnd()-0.5)*90,vy:(rnd()-0.5)*90,t:0,life:0.25,col,sz:1.4});}
+function floatText(x,y,txt,col){S.fx.push({k:'t',x,y,txt,col,t:0,life:1.1});}
+function updateFx(dt){
+  for(const f of S.fx){
+    f.t+=dt;
+    if(f.k==='p'){f.x+=f.vx*dt;f.y+=f.vy*dt;f.vy+=60*dt;}
+    if(f.k==='t')f.y-=22*dt;
+    if(f.k==='r')f.r=lerp(f.r,f.R,dt*9);
+  }
+  S.fx=S.fx.filter(f=>f.t<f.life);
+}
+
+/* ============================================================
+   TOWERS — build / upgrade / sell
+   ============================================================ */
+function cellBuildable(ci){return !PATH_SET.has((ci%COLS)+','+Math.floor(ci/COLS))&&!S.towerByCell[ci];}
+function tryBuild(type,ci,silent){
+  const def=TOWERS[type];
+  if(!cellBuildable(ci)){if(!silent)toast('Nothing takes root there','bad');return false;}
+  if(S.motes<def.cost){if(!silent)toast('Not enough lightmotes ✦','bad');return false;}
+  const cx=ci%COLS,cy=Math.floor(ci/COLS);
+  const tw={type,tier:0,cx,cy,x:cx*CELL+CELL/2,y:cy*CELL+CELL/2,cool:0,strobeT:2,spent:def.cost,seed:rnd()*TAU};
+  S.motes-=def.cost;S.towers.push(tw);S.towerByCell[ci]=tw;S.stats.built++;
+  burst(tw.x,tw.y,def.col,10);Snd.build();
+  el.hint.style.opacity='0';
+  if(!silent){selectTower(tw);}
+  updateHUD();
+  return true;
+}
+function tryUpgrade(tw,silent){
+  const tiers=TOWERS[tw.type].tiers;
+  if(tw.tier>=tiers.length-1){if(!silent)toast('Already in full bloom','bad');return false;}
+  const cost=tiers[tw.tier+1].cost;
+  if(S.motes<cost){if(!silent)toast('Not enough lightmotes ✦','bad');return false;}
+  S.motes-=cost;tw.spent+=cost;tw.tier++;
+  ring(tw.x,tw.y,tiers[tw.tier].range,TOWERS[tw.type].col);
+  burst(tw.x,tw.y,TOWERS[tw.type].col,12);Snd.up();
+  refreshTPanel();updateHUD();
+  return true;
+}
+function sellTower(tw){
+  const refund=Math.floor(tw.spent*7/10);
+  S.motes+=refund;
+  delete S.towerByCell[tw.cx+tw.cy*COLS];
+  S.towers=S.towers.filter(t=>t!==tw);
+  if(S.sel===tw)hideTPanel();
+  burst(tw.x,tw.y,'#8ea0bf',8);floatText(tw.x,tw.y,'+'+refund+' ✦','#ffd97a');Snd.sell();
+  updateHUD();
+}
+function selectTower(tw){S.sel=tw;closeBMenu();showTPanel(tw);}
+
+/* ============================================================
+   RENDERING
+   ============================================================ */
+function drawTrack(t){
+  const pts=TRACK.pts;
+  ctx.lineCap='round';ctx.lineJoin='round';
+  // dark bed
+  ctx.strokeStyle='#0f1520';ctx.lineWidth=34;
+  ctx.beginPath();ctx.moveTo(pts[0].x,pts[0].y);for(const p of pts)ctx.lineTo(p.x,p.y);ctx.stroke();
+  // glow
+  ctx.save();
+  ctx.shadowColor='rgba(110,243,195,.55)';ctx.shadowBlur=18;
+  ctx.strokeStyle='rgba(38,92,74,.9)';ctx.lineWidth=22;
+  ctx.beginPath();ctx.moveTo(pts[0].x,pts[0].y);for(const p of pts)ctx.lineTo(p.x,p.y);ctx.stroke();
+  ctx.restore();
+  ctx.strokeStyle='rgba(110,243,195,.34)';ctx.lineWidth=10;
+  ctx.beginPath();ctx.moveTo(pts[0].x,pts[0].y);for(const p of pts)ctx.lineTo(p.x,p.y);ctx.stroke();
+  // travelling pulse
+  ctx.save();
+  ctx.strokeStyle='rgba(190,255,228,.8)';ctx.lineWidth=3.5;
+  ctx.setLineDash([3,34]);ctx.lineDashOffset=-t*46;
+  ctx.beginPath();ctx.moveTo(pts[0].x,pts[0].y);for(const p of pts)ctx.lineTo(p.x,p.y);ctx.stroke();
+  ctx.restore();
+}
+function drawChasm(t){
+  const p0=TRACK.pts[0];
+  ctx.save();ctx.translate(p0.x,p0.y);
+  const rg=ctx.createRadialGradient(0,0,2,0,0,40);
+  rg.addColorStop(0,'rgba(255,80,90,'+(0.22+Math.sin(t*2.2)*0.08)+')');
+  rg.addColorStop(1,'rgba(255,80,90,0)');
+  ctx.fillStyle=rg;ctx.beginPath();ctx.arc(0,0,40,0,TAU);ctx.fill();
+  ctx.fillStyle='#04060a';
+  ctx.beginPath();
+  ctx.moveTo(-26,-14);ctx.lineTo(-8,-22);ctx.lineTo(4,-12);ctx.lineTo(20,-20);ctx.lineTo(26,-2);
+  ctx.lineTo(18,10);ctx.lineTo(2,20);ctx.lineTo(-14,12);ctx.lineTo(-24,4);ctx.closePath();ctx.fill();
+  ctx.strokeStyle='rgba(255,90,100,.4)';ctx.lineWidth=1.4;ctx.stroke();
+  ctx.restore();
+}
+function drawHeart(t){
+  const p=TRACK.pts[TRACK.pts.length-1];
+  const pulse=1+Math.sin(t*2.6)*0.08;
+  ctx.save();ctx.translate(p.x,p.y);
+  const rg=ctx.createRadialGradient(0,0,2,0,0,54*pulse);
+  rg.addColorStop(0,'rgba(255,224,150,.9)');
+  rg.addColorStop(0.35,'rgba(255,190,110,.35)');
+  rg.addColorStop(1,'rgba(255,190,110,0)');
+  ctx.fillStyle=rg;ctx.beginPath();ctx.arc(0,0,54*pulse,0,TAU);ctx.fill();
+  // bulb
+  ctx.fillStyle='#1c2a26';
+  ctx.beginPath();ctx.ellipse(0,10,14,8,0,0,TAU);ctx.fill();
+  const bg=ctx.createRadialGradient(-3,-6,2,0,0,16*pulse);
+  bg.addColorStop(0,'#ffe9b0');bg.addColorStop(1,'#e2a63f');
+  ctx.fillStyle=bg;
+  ctx.beginPath();ctx.ellipse(0,-2,13*pulse,16*pulse,0,0,TAU);ctx.fill();
+  ctx.strokeStyle='rgba(255,240,200,.7)';ctx.lineWidth=1;
+  for(let i=0;i<3;i++){ctx.beginPath();ctx.ellipse(0,-2,13*pulse,16*pulse,0,Math.PI*0.2+i*0.9,Math.PI*0.8+i*0.9);ctx.stroke();}
+  // integrity halo arcs
+  const frac=S.lives/START_LIVES;
+  ctx.strokeStyle=frac>0.4?'rgba(255,217,122,.8)':'rgba(255,110,130,.9)';
+  ctx.lineWidth=2.4;
+  ctx.beginPath();ctx.arc(0,0,26,-Math.PI/2,-Math.PI/2+TAU*frac);ctx.stroke();
+  ctx.restore();
+}
+function drawTowerSprite(g,type,tier,t,x,y,scale){
+  scale=scale||1;
+  g.save();g.translate(x,y);g.scale(scale,scale);
+  const col=TOWERS[type].col;
+  const bob=Math.sin(t*2.1)*1.4;
+  g.save();g.translate(0,bob*0.3);
+  if(type==='puff'){
+    g.fillStyle='#3c5a34';g.fillRect(-2.5,2,5,12);
+    const r=11+tier*1.6;
+    const rg=g.createRadialGradient(-r*0.3,-r*0.4,1,0,0,r);
+    rg.addColorStop(0,shade(col,0.5));rg.addColorStop(1,shade(col,-0.25));
+    g.fillStyle=rg;g.beginPath();g.arc(0,-4,r,0,TAU);g.fill();
+    if(tier>=4){g.fillStyle=rg;g.beginPath();g.arc(-9,-13,6,0,TAU);g.arc(9,-13,6,0,TAU);g.fill();}
+    g.fillStyle='rgba(255,255,255,.75)';
+    const nsp=3+tier;
+    for(let i=0;i<nsp;i++){const a=i/nsp*TAU+tier;g.beginPath();g.arc(Math.cos(a)*r*0.55,-4+Math.sin(a)*r*0.5,1.6,0,TAU);g.fill();}
+  }else if(type==='lantern'){
+    g.strokeStyle='#5a6b3a';g.lineWidth=2.6;
+    g.beginPath();g.moveTo(0,14);g.quadraticCurveTo(4,0,0,-10);g.stroke();
+    const pulse=0.75+Math.sin(t*3.4)*0.25;
+    const rg=g.createRadialGradient(0,-10,1,0,-10,(13+tier*2)*pulse);
+    rg.addColorStop(0,'#fff6d8');rg.addColorStop(0.45,col);rg.addColorStop(1,'rgba(255,209,102,0)');
+    g.fillStyle=rg;g.beginPath();g.arc(0,-10,(13+tier*2)*pulse,0,TAU);g.fill();
+    g.fillStyle='#ffe9ad';g.beginPath();g.arc(0,-10,5+tier*0.7,0,TAU);g.fill();
+    g.strokeStyle='rgba(255,220,140,.8)';g.lineWidth=1.2;
+    for(let i=0;i<5;i++){const a=i/5*TAU+0.4;g.beginPath();g.moveTo(Math.cos(a)*6,-10+Math.sin(a)*6);g.lineTo(Math.cos(a)*(10+tier),-10+Math.sin(a)*(10+tier));g.stroke();}
+  }else if(type==='pitcher'){
+    g.fillStyle='#4a2436';
+    g.beginPath();g.moveTo(-3,14);g.quadraticCurveTo(-14,6,-11,-6);g.quadraticCurveTo(-9,-16,0,-16-tier);
+    g.quadraticCurveTo(9,-16,11,-6);g.quadraticCurveTo(14,6,3,14);g.closePath();g.fill();
+    const rg=g.createLinearGradient(-10,0,10,0);
+    rg.addColorStop(0,shade(col,-0.3));rg.addColorStop(0.5,col);rg.addColorStop(1,shade(col,-0.35));
+    g.fillStyle=rg;
+    g.beginPath();g.moveTo(-2.5,13);g.quadraticCurveTo(-12,5,-9.5,-5);g.quadraticCurveTo(-7,-13,0,-13-tier);
+    g.quadraticCurveTo(7,-13,9.5,-5);g.quadraticCurveTo(12,5,2.5,13);g.closePath();g.fill();
+    g.fillStyle='#2a0f1c';g.beginPath();g.ellipse(0,-13-tier,6.5,3.4,0,0,TAU);g.fill();
+    g.strokeStyle=shade(col,0.35);g.lineWidth=1.4;g.beginPath();g.ellipse(0,-13-tier,6.5,3.4,0,0,TAU);g.stroke();
+    const drip=(t*0.7)%1;
+    g.fillStyle='rgba(255,160,190,.8)';g.beginPath();g.arc(0,-9-tier+drip*10,1.6,0,TAU);g.fill();
+  }else if(type==='crystal'){
+    g.fillStyle='#15303c';g.beginPath();g.ellipse(0,12,12,5,0,0,TAU);g.fill();
+    const shards=[[-7,0,16+tier*2,-0.5],[0,-2,22+tier*2.6,0],[7,0,14+tier*2,0.5]];
+    for(const [sx,sy,h,tilt] of shards){
+      g.save();g.translate(sx,sy+10);g.rotate(tilt+Math.sin(t*1.8+sx)*0.03);
+      const gr=g.createLinearGradient(0,0,0,-h);
+      gr.addColorStop(0,shade(col,-0.4));gr.addColorStop(1,shade(col,0.45));
+      g.fillStyle=gr;
+      g.beginPath();g.moveTo(-3.4,0);g.lineTo(0,-h);g.lineTo(3.4,0);g.closePath();g.fill();
+      g.strokeStyle='rgba(220,250,255,.5)';g.lineWidth=0.8;g.stroke();
+      g.restore();
+    }
+    const tw2=0.5+Math.sin(t*5)*0.5;
+    g.fillStyle='rgba(255,255,255,'+(0.4*tw2)+')';
+    g.beginPath();g.arc(2,-8-tier*2,1.6,0,TAU);g.fill();
+  }else if(type==='vine'){
+    g.strokeStyle=shade(col,-0.35);g.lineWidth=3;
+    g.beginPath();g.moveTo(0,14);
+    g.bezierCurveTo(-10,6,-12,-4,-2,-8);g.stroke();
+    g.save();g.translate(-2,-8);g.rotate(t*0.9);
+    g.strokeStyle=col;g.lineWidth=2.6;
+    g.beginPath();
+    for(let a=0;a<TAU*1.8;a+=0.3){const rr=2+a*1.5+tier*0.5;g.lineTo(Math.cos(a)*rr,Math.sin(a)*rr);}
+    g.stroke();
+    g.fillStyle=shade(col,0.4);
+    for(let i=0;i<4+tier;i++){const a=i/6*TAU;const rr=3+a;g.beginPath();g.arc(Math.cos(a+i)*rr,Math.sin(a+i)*rr,1.7,0,TAU);g.fill();}
+    g.restore();
+    g.strokeStyle=shade(col,-0.2);g.lineWidth=2;
+    g.beginPath();g.moveTo(2,12);g.quadraticCurveTo(10,4,8,-2);g.stroke();
+  }
+  g.restore();
+  // tier pips
+  g.fillStyle=col;
+  for(let i=0;i<tier;i++){g.beginPath();g.arc(-7.5+i*5,20,1.8,0,TAU);g.fill();}
+  g.restore();
+}
+function drawEnemySprite(g,type,x,y,t,scale,ang){
+  const d=ENEMIES[type];
+  g.save();g.translate(x,y);if(ang!==undefined)g.rotate(ang);g.scale(scale||1,scale||1);
+  const c=d.col;
+  if(type==='mite'){
+    g.fillStyle=c;g.beginPath();g.arc(0,0,4,0,TAU);g.fill();
+    g.strokeStyle=shade(c,-0.4);g.lineWidth=1;
+    for(let i=0;i<4;i++){const a=i/4*TAU+t*10;g.beginPath();g.moveTo(Math.cos(a)*3,Math.sin(a)*3);g.lineTo(Math.cos(a)*6,Math.sin(a)*6);g.stroke();}
+  }else if(type==='silverfish'){
+    g.rotate(Math.sin(t*18)*0.09);
+    const gr=g.createLinearGradient(-10,0,10,0);gr.addColorStop(0,shade(c,-0.35));gr.addColorStop(1,c);
+    g.fillStyle=gr;
+    g.beginPath();g.moveTo(9,0);g.quadraticCurveTo(2,-4.5,-8,-1.5);g.quadraticCurveTo(-10,0,-8,1.5);g.quadraticCurveTo(2,4.5,9,0);g.fill();
+    g.strokeStyle=shade(c,-0.3);g.lineWidth=1;
+    for(let i=0;i<3;i++){g.beginPath();g.moveTo(-8,-1+i);g.lineTo(-13,-3+i*3);g.stroke();}
+    g.beginPath();g.moveTo(9,-1);g.lineTo(13,-4);g.moveTo(9,1);g.lineTo(13,4);g.stroke();
+  }else if(type==='beetle'||type==='brood'||type==='king'){
+    const s=type==='brood'?1.9:type==='king'?2.3:1;
+    g.scale(s,s);
+    const gr=g.createLinearGradient(0,-8,0,8);gr.addColorStop(0,shade(c,0.25));gr.addColorStop(1,shade(c,-0.4));
+    g.fillStyle=gr;
+    g.beginPath();g.ellipse(-1,0,10,7,0,0,TAU);g.fill();
+    g.fillStyle=shade(c,-0.5);g.beginPath();g.arc(9.5,0,4.2,0,TAU);g.fill();
+    g.strokeStyle=shade(c,-0.55);g.lineWidth=1;
+    g.beginPath();g.moveTo(-10,0);g.lineTo(8,0);g.stroke();
+    g.beginPath();g.arc(9.5,-3,4,Math.PI*1.1,Math.PI*1.6);g.stroke();
+    g.beginPath();g.arc(9.5,3,4,Math.PI*0.4,Math.PI*0.9);g.stroke();
+    if(type==='brood'){
+      g.fillStyle='rgba(255,220,235,.85)';
+      for(let i=0;i<4;i++){g.beginPath();g.arc(-6+i*3.4,-2+((i%2)*4),2.4,0,TAU);g.fill();}
+    }
+    if(type==='king'){
+      g.fillStyle='#ffd97a';
+      for(let i=0;i<5;i++){const a=-2.4+i*1.2;g.beginPath();g.arc(-1+Math.cos(a)*5.5,Math.sin(a)*4,1.3,0,TAU);g.fill();}
+      g.strokeStyle='#ffd97a';g.lineWidth=1.2;
+      for(let i=-1;i<=1;i++){g.beginPath();g.moveTo(12,i*3);g.lineTo(16.5,i*4.6);g.stroke();}
+    }
+  }else if(type==='slug'){
+    const br=1+Math.sin(t*4)*0.06;
+    const gr=g.createLinearGradient(0,-7,0,7);gr.addColorStop(0,shade(c,0.3));gr.addColorStop(1,shade(c,-0.35));
+    g.fillStyle=gr;
+    g.beginPath();g.ellipse(0,0,13*br,7*br,0,0,TAU);g.fill();
+    g.fillStyle=shade(c,-0.3);
+    for(let i=0;i<4;i++){g.beginPath();g.arc(-8+i*5,(i%2?2:-2),1.5,0,TAU);g.fill();}
+    g.strokeStyle=shade(c,-0.2);g.lineWidth=1.4;
+    g.beginPath();g.moveTo(10,-3);g.lineTo(15,-8);g.moveTo(10,3);g.lineTo(15,8);g.stroke();
+    g.fillStyle='#1a1030';g.beginPath();g.arc(15,-8,1.6,0,TAU);g.arc(15,8,1.6,0,TAU);g.fill();
+  }else if(type==='blink'||type==='matron'){
+    const s=type==='matron'?2.1:1;g.scale(s,s);
+    const flap=Math.sin(t*22)*0.5+0.5;
+    g.fillStyle=type==='matron'?'rgba(232,228,244,.92)':shade(c,-0.1);
+    for(const m of [-1,1]){
+      g.save();g.scale(1,0.35+flap*0.65);
+      g.beginPath();g.moveTo(-2,0);g.quadraticCurveTo(-12,m*9,-4,m*13);g.quadraticCurveTo(3,m*9,2,m*2);g.closePath();g.fill();
+      g.restore();
+    }
+    g.fillStyle=shade(c,-0.45);g.beginPath();g.ellipse(0,0,2.4,6,0,0,TAU);g.fill();
+    if(type==='matron'){g.strokeStyle='rgba(255,220,240,.25)';g.lineWidth=1.5;g.beginPath();g.arc(0,0,17,0,TAU);g.stroke();}
+  }else if(type==='burrower'||type==='tyrant'){
+    const s=type==='tyrant'?1.9:1;g.scale(s,s);
+    for(let i=3;i>=0;i--){
+      const rr=6.5-i*1.1,px=-i*8;
+      const gr=g.createRadialGradient(px-1,-1,1,px,0,rr+1);
+      gr.addColorStop(0,shade(c,0.25));gr.addColorStop(1,shade(c,-0.4));
+      g.fillStyle=gr;g.beginPath();g.arc(px,Math.sin(t*8-i)*1.2,rr,0,TAU);g.fill();
+    }
+    g.strokeStyle=shade(c,-0.5);g.lineWidth=1.4;
+    g.beginPath();g.arc(7,-2,3,Math.PI*0.9,Math.PI*1.7);g.stroke();
+    g.beginPath();g.arc(7,2,3,Math.PI*0.3,Math.PI*1.1);g.stroke();
+  }
+  g.restore();
+}
+function drawEnemy(e,t){
+  ctx.save();
+  const emerge=Math.min(1,e.d/40);
+  ctx.globalAlpha=e.sub?0.3:emerge;
+  if(e.sub){
+    ctx.fillStyle='rgba(150,120,80,.5)';
+    for(let i=0;i<3;i++){ctx.beginPath();ctx.arc(e.x-(i*8)*Math.cos(e.ang),e.y-(i*8)*Math.sin(e.ang),3-i*0.6,0,TAU);ctx.fill();}
+  }
+  // matron hush aura
+  if(e.type==='matron'){
+    ctx.strokeStyle='rgba(232,228,244,'+(0.12+Math.sin(t*3)*0.05)+')';
+    ctx.lineWidth=2;ctx.beginPath();ctx.arc(e.x,e.y,130,0,TAU);ctx.stroke();
+  }
+  if(e.enraged){ctx.shadowColor='rgba(255,60,60,.9)';ctx.shadowBlur=22;}
+  else if(e.def.boss){ctx.shadowColor='rgba(255,190,190,.5)';ctx.shadowBlur=14;}
+  if(e.flash>0){ctx.shadowColor='#fff';ctx.shadowBlur=18;}
+  drawEnemySprite(ctx,e.type,e.x,e.y,t+e.seed,1,e.ang);
+  ctx.restore();
+  // status + hp
+  if(!e.sub){
+    if(e.slow<1){ctx.fillStyle='rgba(255,209,102,.85)';const a=t*3+e.seed;ctx.beginPath();ctx.arc(e.x+Math.cos(a)*e.r,e.y+Math.sin(a)*e.r*0.6,1.4,0,TAU);ctx.fill();}
+    if(e.poisU>S.time){ctx.fillStyle='rgba(140,255,140,.8)';ctx.beginPath();ctx.arc(e.x+4,e.y-e.r-2,1.6,0,TAU);ctx.fill();}
+    if(e.rootU>S.time){ctx.strokeStyle='rgba(255,209,102,.7)';ctx.lineWidth=1.5;ctx.beginPath();ctx.arc(e.x,e.y,e.r+4,0,TAU);ctx.stroke();}
+  }
+  if(e.hp<e.maxhp){
+    const w=e.def.boss?44:24,h=e.def.boss?5:3,frac=clamp(e.hp/e.maxhp,0,1);
+    ctx.fillStyle='rgba(0,0,0,.6)';ctx.fillRect(e.x-w/2,e.y-e.r-11,w,h);
+    ctx.fillStyle=frac>0.5?'#7dffa8':frac>0.25?'#ffd97a':'#ff6f7a';
+    ctx.fillRect(e.x-w/2,e.y-e.r-11,w*frac,h);
+  }
+}
+function drawRange(x,y,r,col){
+  ctx.save();
+  ctx.strokeStyle=col;ctx.globalAlpha=0.5;ctx.setLineDash([6,8]);ctx.lineWidth=1.4;
+  ctx.beginPath();ctx.arc(x,y,r,0,TAU);ctx.stroke();
+  ctx.globalAlpha=0.06;ctx.setLineDash([]);
+  ctx.fillStyle=col;ctx.beginPath();ctx.arc(x,y,r,0,TAU);ctx.fill();
+  ctx.restore();
+}
+function render(){
+  const t=S.time;
+  ctx.clearRect(0,0,W,H);
+  ctx.save();
+  if(S.shake>0&&!REDUCED_MOTION)ctx.translate((rnd()-0.5)*S.shake*10,(rnd()-0.5)*S.shake*10);
+  ctx.drawImage(bgCanvas,0,0);
+  drawTrack(t);
+  // puddles
+  for(const p of S.puddles){
+    const a=clamp((p.until-S.time)/0.5,0,1);
+    ctx.fillStyle='rgba(255,111,145,'+(0.16*a)+')';
+    ctx.beginPath();ctx.arc(p.x,p.y,p.r*(0.85+Math.sin(t*6)*0.05),0,TAU);ctx.fill();
+    ctx.strokeStyle='rgba(255,160,190,'+(0.4*a)+')';ctx.lineWidth=1.4;
+    ctx.beginPath();ctx.arc(p.x,p.y,p.r*(0.85+Math.sin(t*6)*0.05),0,TAU);ctx.stroke();
+  }
+  // build hints
+  if(S.bmenuCell!=null){
+    ctx.fillStyle='rgba(110,243,195,.12)';
+    for(const c of BUILD_CELLS){if(c.pathDist<170){ctx.beginPath();ctx.arc(c.x,c.y,3,0,TAU);ctx.fill();}}
+  }
+  // hover highlight (desktop)
+  if(S.hoverCell>=0&&S.bmenuCell==null&&!S.towerByCell[S.hoverCell]){
+    ctx.strokeStyle='rgba(110,243,195,.35)';ctx.lineWidth=1.4;
+    rrect(ctx,(S.hoverCell%COLS)*CELL+4,Math.floor(S.hoverCell/COLS)*CELL+4,CELL-8,CELL-8,8);ctx.stroke();
+  }
+  drawChasm(t);drawHeart(t);
+  // towers
+  for(const tw of S.towers){
+    const tr=TOWERS[tw.type].tiers[tw.tier];
+    if(tw.type==='lantern'){
+      ctx.strokeStyle='rgba(255,209,102,'+(0.10+Math.sin(t*3+tw.seed)*0.05)+')';
+      ctx.lineWidth=1.4;ctx.beginPath();ctx.arc(tw.x,tw.y,tr.range*(0.96+Math.sin(t*2.4+tw.seed)*0.03),0,TAU);ctx.stroke();
+    }
+    drawTowerSprite(ctx,tw.type,tw.tier,t+tw.seed,tw.x,tw.y,1);
+  }
+  if(S.sel){
+    const tr=TOWERS[S.sel.type].tiers[S.sel.tier];
+    drawRange(S.sel.x,S.sel.y,tr.range,TOWERS[S.sel.type].col);
+  }
+  // enemies (draw sorted by d so leaders on top-ish)
+  const sorted=S.enemies.slice().sort((a,b)=>a.d-b.d);
+  for(const e of sorted)drawEnemy(e,t);
+  // shots
+  for(const s of S.shots){
+    if(s.kind==='dart'){
+      ctx.fillStyle=s.type==='vine'?'#c58fff':'#c8ffa0';
+      ctx.shadowColor=ctx.fillStyle;ctx.shadowBlur=6;
+      ctx.beginPath();ctx.arc(s.x,s.y,s.type==='vine'?3:2.4,0,TAU);ctx.fill();ctx.shadowBlur=0;
+    }else if(s.kind==='ray'){
+      ctx.save();
+      ctx.translate(s.x,s.y);ctx.rotate(s.ang);
+      const gr=ctx.createLinearGradient(-26,0,6,0);
+      gr.addColorStop(0,'rgba(124,231,255,0)');gr.addColorStop(1,'#dffbff');
+      ctx.strokeStyle=gr;ctx.lineWidth=3;
+      ctx.beginPath();ctx.moveTo(-26,0);ctx.lineTo(6,0);ctx.stroke();
+      ctx.restore();
+    }else if(s.kind==='glob'){
+      ctx.fillStyle='#ff8fae';ctx.shadowColor='#ff6f91';ctx.shadowBlur=10;
+      ctx.beginPath();ctx.arc(s.x,s.y,5,0,TAU);ctx.fill();ctx.shadowBlur=0;
+    }
+  }
+  // fx
+  for(const f of S.fx){
+    const k=1-f.t/f.life;
+    if(f.k==='p'){ctx.globalAlpha=k;ctx.fillStyle=f.col;ctx.beginPath();ctx.arc(f.x,f.y,f.sz*k+0.4,0,TAU);ctx.fill();}
+    else if(f.k==='r'){ctx.globalAlpha=k*0.8;ctx.strokeStyle=f.col;ctx.lineWidth=2;ctx.beginPath();ctx.arc(f.x,f.y,f.r,0,TAU);ctx.stroke();}
+    else if(f.k==='t'){ctx.globalAlpha=Math.min(1,k*2);ctx.font='700 13px ui-rounded,system-ui,sans-serif';ctx.textAlign='center';ctx.fillStyle=f.col;ctx.fillText(f.txt,f.x,f.y);}
+  }
+  ctx.globalAlpha=1;
+  // ambient motes
+  for(const m of MOTES_AMB){
+    ctx.globalAlpha=0.25+Math.sin(m.p*2)*0.18;
+    ctx.fillStyle='#ffe9ad';ctx.beginPath();ctx.arc(m.x,m.y,m.s,0,TAU);ctx.fill();
+  }
+  ctx.globalAlpha=1;
+  ctx.restore();
+}
+
+/* ============================================================
+   UI
+   ============================================================ */
+function updateHUD(){
+  el.lives.textContent=S.lives;
+  el.motes.textContent=Math.floor(S.motes);
+  if(S.mode==='wave'){
+    const remaining=S.enemies.length+S.queue.length;
+    el.hudTitle.innerHTML='<b>WAVE '+(S.wave>LAST_WAVE?'∞':S.wave)+(S.wave<=LAST_WAVE?'/'+LAST_WAVE:'')+'</b> · '+remaining+' of the Tide remain';
+  }else if(S.mode==='prep'){
+    el.hudTitle.innerHTML='prepare · wave <b>'+(S.wave+1)+'</b> approaches';
+  }else el.hudTitle.textContent='the garden sleeps';
+  refreshBMenuAfford();
+  if(S.sel&&!el.tpanel.classList.contains('hide'))refreshTPanel();
+}
+function updateBannerCount(){
+  if(S.mode!=='prep')return;
+  const bonus=Math.max(0,Math.ceil(S.prepT))*2;
+  el.bCount.textContent='arrives in '+Math.ceil(S.prepT)+'s';
+  el.btnSummon.textContent='Summon Now  +'+bonus+' ✦';
+}
+function toast(msg,kind){
+  const d=document.createElement('div');
+  d.className='toast'+(kind?' '+kind:'');d.textContent=msg;
+  el.toasts.appendChild(d);
+  while(el.toasts.childNodes.length>4)el.toasts.removeChild(el.toasts.firstChild);
+  setTimeout(()=>{d.style.transition='opacity .5s';d.style.opacity='0';setTimeout(()=>d.remove(),520);},2600);
+}
+
+/* ----- radial build menu ----- */
+let bmItems=[];
+function initBMenu(){
+  TOWER_ORDER.forEach((type,i)=>{
+    const b=document.createElement('button');
+    b.className='bm-item';b.style.setProperty('--a',(i*(360/TOWER_ORDER.length)-90)+'deg');
+    b.dataset.type=type;
+    const ic=document.createElement('canvas');ic.width=60;ic.height=60;
+    b.appendChild(ic);
+    const cost=document.createElement('span');cost.className='cost';cost.textContent=TOWERS[type].cost+' ✦';
+    b.appendChild(cost);
+    const tip=document.createElement('span');tip.className='tip';tip.textContent=TOWERS[type].name+' — '+TOWERS[type].role;
+    b.appendChild(tip);
+    b.addEventListener('pointerdown',ev=>{
+      ev.stopPropagation();
+      if(S.bmenuCell==null)return;
+      if(S.motes<TOWERS[type].cost){toast('Not enough lightmotes ✦','bad');return;}
+      const ci=S.bmenuCell;closeBMenu();
+      tryBuild(type,ci);
+    });
+    el.bmenu.appendChild(b);
+    bmItems.push({b,ic,type});
+  });
+  el.bmClose.addEventListener('pointerdown',ev=>{ev.stopPropagation();closeBMenu();});
+}
+function renderTowerIcons(){
+  for(const it of bmItems){
+    const g=it.ic.getContext('2d');g.clearRect(0,0,60,60);
+    drawTowerSprite(g,it.type,0,1.2,30,34,1.05);
+  }
+}
+function refreshBMenuAfford(){
+  for(const it of bmItems)it.b.classList.toggle('poor',S.motes<TOWERS[it.type].cost);
+}
+function openBMenu(ci,x,y){
+  S.bmenuCell=ci;
+  const r=cv.getBoundingClientRect(),wr=el.bmenu.parentElement.getBoundingClientRect();
+  const px=r.left-wr.left+x/W*r.width, py=r.top-wr.top+y/H*r.height;
+  el.bmenu.style.left=clamp(px,90,wr.width-90)+'px';
+  el.bmenu.style.top=clamp(py,90,wr.height-90)+'px';
+  el.bmenu.classList.add('open');
+  refreshBMenuAfford();
+}
+function closeBMenu(){S.bmenuCell=null;el.bmenu.classList.remove('open');}
+
+/* ----- tower panel ----- */
+function statRows(type,tier){
+  const tr=TOWERS[type].tiers[tier],rows=[];
+  if(tr.dmg!=null)rows.push(['Bite',tr.dmg]);
+  if(tr.rate!=null)rows.push(['Tempo',tr.rate+'/s']);
+  if(tr.range!=null)rows.push(['Reach',tr.range]);
+  if(tr.slow!=null)rows.push(['Lure','−'+Math.round(tr.slow*100)+'% speed']);
+  if(tr.dps!=null&&tr.dps>0)rows.push(['Sear',tr.dps+'/s']);
+  if(tr.splash!=null)rows.push(['Splash',tr.splash]);
+  if(tr.pois!=null)rows.push(['Venom',tr.pois+'/s ×stacks']);
+  return rows;
+}
+function showTPanel(tw){
+  const def=TOWERS[tw.type];
+  const g=el.tpIcon.getContext('2d');g.clearRect(0,0,88,88);
+  drawTowerSprite(g,tw.type,tw.tier,1.2,44,50,1.5);
+  el.tpName.textContent=def.name;
+  refreshTPanel();
+  el.tpanel.classList.remove('hide');
+}
+function refreshTPanel(){
+  const tw=S.sel;if(!tw)return;
+  const def=TOWERS[tw.type],tiers=def.tiers,tr=tiers[tw.tier];
+  el.tpTier.textContent='TIER '+ROMAN[tw.tier]+(tw.tier===4?' · FULL BLOOM':'');
+  el.tpFlavor.textContent=def.lore;
+  el.tpStats.innerHTML=statRows(tw.type,tw.tier).map(r=>'<span class="k">'+r[0]+'</span><span class="v">'+r[1]+'</span>').join('');
+  el.tpPerk.textContent=tr.perk?('❋ '+tr.perk):'';
+  if(tw.tier<4){
+    const nc=tiers[tw.tier+1].cost;
+    el.tpUp.disabled=false;
+    el.tpUp.textContent='Bloom → Tier '+ROMAN[tw.tier+1]+' · '+nc+' ✦';
+    if(S.motes<nc)el.tpUp.style.opacity='.55';else el.tpUp.style.opacity='1';
+  }else{
+    el.tpUp.disabled=true;el.tpUp.textContent='In full bloom';el.tpUp.style.opacity='1';
+  }
+  el.tpSell.textContent='Uproot +'+Math.floor(tw.spent*7/10)+' ✦';
+}
+function hideTPanel(){S.sel=null;el.tpanel.classList.add('hide');}
+el.tpClose.addEventListener('click',hideTPanel);
+el.tpUp.addEventListener('click',()=>{if(S.sel)tryUpgrade(S.sel);});
+el.tpSell.addEventListener('click',()=>{if(S.sel)sellTower(S.sel);});
+
+/* ----- codex ----- */
+function buildCodex(){
+  let h='<h2>The Vigil — how to hold</h2><div class="cx-grid">'+
+   '<div class="cx-row"><div><div class="nm">Cultivate</div><div class="fl">Tap empty cavern floor to open the seed ring and plant a living tower. Veins and occupied floor take no root.</div></div></div>'+
+   '<div class="cx-row"><div><div class="nm">Bloom</div><div class="fl">Tap a tower to inspect it. Four upgrades deepen every cultivar; the fourth bloom unlocks a perk. Tending between waves is the whole art.</div></div></div>'+
+   '<div class="cx-row"><div><div class="nm">Summon boldly</div><div class="fl">Calling the next wave early pays bonus lightmotes ✦ — the Heartspore rewards courage.</div></div></div>'+
+   '</div>';
+  h+='<h2>Cultivars</h2><div class="cx-grid">';
+  for(const type of TOWER_ORDER){
+    const d=TOWERS[type];
+    h+='<div class="cx-row"><canvas data-ticon="'+type+'" width="84" height="84"></canvas><div>'+
+       '<div class="nm">'+d.name+' <span style="color:var(--gold);font-weight:600">· '+d.cost+' ✦</span></div>'+
+       '<div class="rl">'+d.role+'</div><div class="fl">'+d.lore+'</div></div></div>';
+  }
+  h+='</div><h2>The Dusk Tide — bestiary</h2><div class="cx-grid">';
+  for(const k in ENEMIES){
+    const d=ENEMIES[k];
+    h+='<div class="cx-row"><canvas data-eicon="'+k+'" width="84" height="84"></canvas><div>'+
+       '<div class="nm">'+d.name+'</div><div class="rl">'+d.hint+'</div><div class="fl">'+d.lore+'</div></div></div>';
+  }
+  h+='</div><h2>Of the Heartspore</h2><p style="font-family:var(--serif);font-size:13.5px;line-height:1.6;color:var(--dim)">'+
+  'The order of Sporekeepers kept this garden for three hundred generations, and wrote one rule into every almanac: <i style="color:var(--ink)">the light is not ours — we are its.</i> Every vein grows differently each vigil; learn the one you are given, and let nothing reach the Heartspore.</p>';
+  el.cxBody.innerHTML=h;
+  el.cxBody.querySelectorAll('canvas[data-ticon]').forEach(c=>{
+    const g=c.getContext('2d');drawTowerSprite(g,c.dataset.ticon,2,1.2,42,48,1.3);
+  });
+  el.cxBody.querySelectorAll('canvas[data-eicon]').forEach(c=>{
+    const g=c.getContext('2d');drawEnemySprite(g,c.dataset.eicon,42,42,0.6,1.7,0);
+  });
+}
+el.btnCodex.addEventListener('click',()=>{el.codex.classList.toggle('hide');});
+el.btnCodexClose.addEventListener('click',()=>el.codex.classList.add('hide'));
+
+/* ============================================================
+   INPUT
+   ============================================================ */
+function canvasPos(ev){
+  const r=cv.getBoundingClientRect();
+  return {x:(ev.clientX-r.left)/r.width*W,y:(ev.clientY-r.top)/r.height*H};
+}
+function cellAt(x,y){
+  const cx=Math.floor(x/CELL),cy=Math.floor(y/CELL);
+  if(cx<0||cy<0||cx>=COLS||cy>=ROWS)return -1;
+  return cx+cy*COLS;
+}
+cv.addEventListener('pointerdown',ev=>{
+  Snd.unlock();
+  if(S.mode!=='prep'&&S.mode!=='wave')return;
+  const p=canvasPos(ev),ci=cellAt(p.x,p.y);
+  // tapped a tower?
+  const tw=ci>=0?S.towerByCell[ci]:null;
+  if(tw){selectTower(tw);return;}
+  closeBMenu();
+  if(ci>=0&&cellBuildable(ci)){
+    hideTPanel();
+    openBMenu(ci,(ci%COLS)*CELL+CELL/2,Math.floor(ci/COLS)*CELL+CELL/2);
+  }else{
+    hideTPanel();
+  }
+});
+cv.addEventListener('pointermove',ev=>{
+  const p=canvasPos(ev),ci=cellAt(p.x,p.y);
+  S.hoverCell=(ci>=0&&cellBuildable(ci))?ci:-1;
+});
+document.addEventListener('pointerdown',ev=>{
+  if(el.bmenu.classList.contains('open')&&!el.bmenu.contains(ev.target)&&ev.target!==cv)closeBMenu();
+},{capture:true});
+document.addEventListener('keydown',ev=>{
+  if(ev.key===' '){ev.preventDefault();Snd.unlock();if(S.mode==='prep')summonWave();}
+  else if(ev.key==='Escape'){closeBMenu();hideTPanel();el.codex.classList.add('hide');}
+  else if(ev.key==='f'||ev.key==='F')cycleSpeed();
+  else if(ev.key==='p'||ev.key==='P')togglePause();
+  else if(ev.key==='c'||ev.key==='C')el.codex.classList.toggle('hide');
+});
+function cycleSpeed(){
+  S.speed=S.speed===1?2:S.speed===2?3:1;
+  el.btnSpeed.textContent=S.speed+'×';
+  el.btnSpeed.classList.toggle('on',S.speed>1);
+}
+function togglePause(){
+  if(S.mode!=='wave'&&S.mode!=='prep')return;
+  S.paused=!S.paused;
+  el.pauseveil.classList.toggle('hide',!S.paused);
+  el.btnPause.textContent=S.paused?'▶':'❚❚';
+}
+el.btnSpeed.addEventListener('click',cycleSpeed);
+el.btnPause.addEventListener('click',togglePause);
+el.btnSound.addEventListener('click',()=>{
+  Snd.unlock();Snd.on=!Snd.on;
+  el.btnSound.textContent=Snd.on?'♪':'✕';
+  el.btnSound.classList.toggle('on',Snd.on);
+});
+el.btnSummon.addEventListener('click',()=>{Snd.unlock();summonWave();});
+el.btnBegin.addEventListener('click',()=>{
+  Snd.unlock();
+  el.ovStart.classList.add('hide');
+  newGame();
+});
+el.btnAgain.addEventListener('click',()=>{el.ovEnd.classList.add('hide');newGame();});
+el.btnEndless.addEventListener('click',()=>{
+  el.ovEnd.classList.add('hide');
+  S.mode='prep';S.prepT=PREP_TIME;S.endless=true;S.lives=Math.min(START_LIVES,S.lives+5);
+  showBanner();updateHUD();
+});
+
+/* ============================================================
+   LAYOUT / LOOP
+   ============================================================ */
+function fit(){
+  const stage=document.getElementById('stage');
+  const aw=stage.clientWidth-20,ah=stage.clientHeight-20;
+  const sc=Math.max(0.2,Math.min(aw/W,ah/H));
+  cv.style.width=(W*sc)+'px';cv.style.height=(H*sc)+'px';
+  dpr=Math.min(2,window.devicePixelRatio||1);
+  cv.width=Math.round(W*dpr);cv.height=Math.round(H*dpr);
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+}
+window.addEventListener('resize',fit);
+
+let last=typeof performance!=='undefined'?performance.now():0,acc=0;
+const STEP=1/60;
+function frame(now){
+  requestAnimationFrame(frame);
+  let rdt=(now-last)/1000;last=now;
+  if(rdt>0.1)rdt=0.1;
+  if(!S.paused&&S.mode!=='menu'&&S.mode!=='over'&&S.mode!=='won'){
+    acc+=rdt*S.speed;
+    let n=0;
+    while(acc>=STEP&&n<12){updateWorld(STEP);acc-=STEP;n++;}
+  }else if(S.mode==='menu'){
+    S.time+=rdt;updateFx(rdt);
+    for(const m of MOTES_AMB){m.x+=m.vx*rdt;m.y+=m.vy*rdt;if(m.y<-6){m.y=H+6;m.x=rnd()*W;}}
+  }
+  if(TRACK)render();
+}
+
+/* ---------- boot ---------- */
+initBMenu();
+buildCodex();
+renderTowerIcons();
+// ambient track behind the title screen
+(function(){SEED=(Date.now()>>>0);RNG=mulberry32(SEED);const g=genTrack(RNG);TRACK=g.track;PATH_SET=g.used;makeBuildCells();prerenderBG();
+  MOTES_AMB=[];for(let i=0;i<(REDUCED_MOTION?10:40);i++)MOTES_AMB.push({x:rnd()*W,y:rnd()*H,vx:(rnd()-0.5)*8,vy:-4-rnd()*10,s:0.6+rnd()*1.6,p:rnd()*TAU});
+})();
+fit();
+updateBannerCount();
+requestAnimationFrame(frame);
+
+/* ---------- debug / testing hook ---------- */
+window.GLOWGROT_DEBUG={
+  newGame(seed){el.ovStart.classList.add('hide');newGame(seed);},
+  summon(){summonWave();},
+  step(dt){updateWorld(dt);return this.snap();},
+  snap(){return {mode:S.mode,wave:S.wave,lives:S.lives,motes:Math.floor(S.motes),time:S.time,
+    enemies:S.enemies.length,towers:S.towers.length,kills:S.stats.kills,endless:S.endless};},
+  buildable(){return BUILD_CELLS.map(c=>({i:c.i,x:c.x,y:c.y,d:Math.round(c.pathDist)}));},
+  occupied(ci){return !!S.towerByCell[ci];},
+  build(type,ci){return tryBuild(type,ci,true);},
+  upgrade(idx){const tw=S.towers[idx];return tw?tryUpgrade(tw,true):false;},
+  sell(idx){const tw=S.towers[idx];if(tw)sellTower(tw);},
+  towers(){return S.towers.map(t=>({type:t.type,tier:t.tier}));},
+  prepT(){return S.prepT;},
+  endless(){S.mode='prep';S.prepT=PREP_TIME;S.endless=true;S.lives=Math.min(START_LIVES,S.lives+5);},
+};
+</script>
+</body>
+</html>

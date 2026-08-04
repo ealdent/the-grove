@@ -165,8 +165,12 @@
            attribute that already carries its own centre, and with
            transform-box: view-box a CSS origin is applied on top of it — the
            hand then swings a full dial-width outside the face. */
-        .dial .hand  { stroke: var(--ember); stroke-width: 1.8; stroke-linecap: round; }
-        .dial .ghost { stroke: rgba(200, 162, 74, 0.4); stroke-width: 1.4; stroke-linecap: round; }
+        /* hour hand: short and thick, and it carries the ember — one full turn
+           of it is exactly one iteration */
+        .dial .hour   { stroke: var(--ember); stroke-width: 3.1; stroke-linecap: round; }
+        /* minute hand: long and thin, twelve turns per iteration. Kept dimmer
+           than the hour hand so the 12x sweep stays calm at this size. */
+        .dial .minute { stroke: var(--brass); stroke-width: 1.3; stroke-linecap: round; opacity: 0.8; }
 
         .kicker {
             margin-top: 1.05rem;
@@ -698,13 +702,13 @@
                 <span>Time</span>
                 <svg class="dial" viewBox="0 0 48 48" aria-hidden="true">
                     <circle class="face" cx="24" cy="24" r="20"/>
-                    <circle class="pip" cx="24" cy="24" r="1.7"/>
                     <circle class="pip" cx="24" cy="6.5" r="1.2"/>
                     <circle class="pip" cx="41.5" cy="24" r="1.2"/>
                     <circle class="pip" cx="24" cy="41.5" r="1.2"/>
                     <circle class="pip" cx="6.5" cy="24" r="1.2"/>
-                    <line class="ghost" id="dialGhost" x1="24" y1="24" x2="24" y2="11"/>
-                    <line class="hand" id="dialHand" x1="24" y1="24" x2="24" y2="9"/>
+                    <line class="minute" id="dialMinute" x1="24" y1="24" x2="24" y2="7.5"/>
+                    <line class="hour" id="dialHour" x1="24" y1="24" x2="24" y2="13.5"/>
+                    <circle class="pip" cx="24" cy="24" r="1.9"/>
                 </svg>
                 <span>Loop</span>
             </h1>
@@ -853,6 +857,11 @@
        ------------------------------------------------------------------ */
     (function () {
         const LOOP = 12;          // seconds per iteration
+        // One iteration is one "hour" on this clock, so the hour hand turns
+        // once per loop and the minute hand turns 12 times — a real clock's
+        // ratio. This single constant feeds both the title dial and the
+        // background shader's beams, so the two can never drift apart.
+        const MINUTE_RATIO = 12;
         const TICKS = 48;         // ticks drawn on the tape
         const REWIND_AT = 0.955;  // phase where the snap-back begins
         const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -934,9 +943,15 @@
             '',
             /* sweep hand: exactly one revolution per loop */
             '  float a = atan(p.y, p.x);',
-            '  float sweep = 1.5707963 - ph * TAU;',
-            '  float hand = pow(max(0.0, cos(a - sweep)), 110.0) * smoothstep(0.66, 0.02, r);',
-            '  float ghost = pow(max(0.0, cos(a - (sweep + 0.62))), 150.0) * smoothstep(0.52, 0.02, r) * 0.4;',
+            /* the same two hands as the title dial: both start at 12 o'clock
+               and sweep clockwise, the minute beam MINUTE_RATIO times faster */
+            '  float hourSweep   = 1.5707963 - ph * TAU;',
+            '  float minuteSweep = 1.5707963 - ph * TAU * ' + MINUTE_RATIO.toFixed(1) + ';',
+            /* hour: broad and warm, short reach — the thick hand */
+            '  float hourBeam   = pow(max(0.0, cos(a - hourSweep)), 110.0) * smoothstep(0.66, 0.02, r);',
+            /* minute: a thin blade reaching further out — the long hand. Dim,
+               because at 12x speed a bright one would strobe. */
+            '  float minuteBeam = pow(max(0.0, cos(a - minuteSweep)), 430.0) * smoothstep(0.80, 0.02, r) * 0.45;',
             '',
             /* faint ledger ruling */
             '  vec2 g = abs(fract(p * 6.5) - 0.5);',
@@ -945,12 +960,14 @@
             /* the snap-back: a ring collapsing inward as the loop closes */
             '  float burst = u_rewind * exp(-abs(r - (1.0 - u_rewind) * 1.15) * 13.0);',
             '',
-            '  float i = rings * 0.5 + hand * 0.7 + ghost + rule + burst * 1.15;',
+            '  float i = rings * 0.5 + hourBeam * 0.7 + minuteBeam + rule + burst * 1.15;',
             '',
             '  vec3 ink   = vec3(0.024, 0.027, 0.039);',
             '  vec3 brass = vec3(0.784, 0.635, 0.290);',
             '  vec3 ember = vec3(1.000, 0.616, 0.361);',
-            '  vec3 col = ink + brass * i * 0.9 + ember * (hand * 0.32 + burst * 0.55);',
+            /* only the hour beam takes the ember, matching the dial where the
+               hour hand is ember and the minute hand is plain brass */
+            '  vec3 col = ink + brass * i * 0.9 + ember * (hourBeam * 0.32 + burst * 0.55);',
             '  col *= 1.0 - smoothstep(0.34, 1.18, r) * 0.86;',
             '  gl_FragColor = vec4(col, 1.0);',
             '}'
@@ -1107,13 +1124,17 @@
             }
         }
 
-        /* ---- the dial hand in the title ---- */
-        const dialHand = document.getElementById('dialHand');
-        const dialGhost = document.getElementById('dialGhost');
+        /* ---- the dial hands in the title ---- */
+        const dialHour = document.getElementById('dialHour');
+        const dialMinute = document.getElementById('dialMinute');
 
+        // Same phase and same ratio the shader uses for its two beams, so the
+        // title dial and the background read as one clock.
         function stepDial(phase) {
-            dialHand.setAttribute('transform', 'rotate(' + (phase * 360).toFixed(2) + ' 24 24)');
-            dialGhost.setAttribute('transform', 'rotate(' + (((phase - 0.07 + 1) % 1) * 360).toFixed(2) + ' 24 24)');
+            dialHour.setAttribute('transform',
+                'rotate(' + (phase * 360).toFixed(2) + ' 24 24)');
+            dialMinute.setAttribute('transform',
+                'rotate(' + ((phase * MINUTE_RATIO * 360) % 360).toFixed(2) + ' 24 24)');
         }
 
         /* ---- main loop ---- */
