@@ -1,0 +1,2065 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Key Driver Analysis — A Field Guide</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,600;1,6..72,400&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap');
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg: #eceef1;
+  --paper: #ffffff;
+  --paper-2: #f6f8f9;
+  --ink: #16212e;
+  --ink-2: #38485a;
+  --dim: #6a798a;
+  --rule: #d9dee4;
+  --rule-2: #b6c0ca;
+
+  --key: #0f766e;        /* importance / the "right answer" series */
+  --key-soft: #e7f3f1;
+  --corr: #64748b;       /* naive correlation series */
+  --corr-soft: #eef1f4;
+  --alert: #c2410c;      /* fix first */
+  --alert-soft: #fbeee6;
+  --violet: #5b4bb7;     /* don't over-invest */
+  --violet-soft: #eeeaf8;
+  --slate: #64748b;      /* low priority */
+  --slate-soft: #f0f2f5;
+
+  --d1: #1d6f8b;  /* Taste */
+  --d2: #c2410c;  /* Price fairness */
+  --d3: #a16207;  /* Speed of service */
+  --d4: #0f766e;  /* Staff friendliness */
+  --d5: #5b4bb7;  /* Cleanliness */
+
+  --serif: 'Newsreader', 'Iowan Old Style', Georgia, 'Times New Roman', serif;
+  --sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  --mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+html { -webkit-text-size-adjust: 100%; scroll-behavior: smooth; }
+body {
+  font-family: var(--sans);
+  background: var(--bg);
+  color: var(--ink);
+  line-height: 1.62;
+  overflow-x: hidden;
+  font-size: 16px;
+  -webkit-font-smoothing: antialiased;
+}
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  * { transition: none !important; animation: none !important; }
+}
+
+/* ---------- decorative background ---------- */
+.bg-layer {
+  position: fixed; inset: 0; z-index: 0; pointer-events: none;
+}
+.bg-grid {
+  background-image:
+    linear-gradient(rgba(22, 33, 46, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(22, 33, 46, 0.035) 1px, transparent 1px);
+  background-size: 34px 34px;
+}
+.bg-wash {
+  background:
+    radial-gradient(ellipse 70% 45% at 18% 0%, rgba(15, 118, 110, 0.07), transparent 70%),
+    radial-gradient(ellipse 60% 50% at 92% 22%, rgba(194, 65, 12, 0.05), transparent 70%),
+    radial-gradient(ellipse 80% 60% at 50% 100%, rgba(91, 75, 183, 0.05), transparent 70%);
+}
+
+/* ---------- progress + nav ---------- */
+#progress {
+  position: fixed; top: 0; left: 0; height: 3px; width: 0;
+  background: linear-gradient(90deg, var(--key), #14b8a6);
+  z-index: 40;
+}
+nav#toc {
+  position: sticky; top: 0; z-index: 30;
+  background: rgba(236, 238, 241, 0.94);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--rule);
+}
+nav#toc ol { list-style: none; display: flex; gap: 0.3rem; overflow-x: auto; padding: 0.55rem 0.8rem; }
+nav#toc a {
+  display: block; white-space: nowrap; text-decoration: none;
+  font-family: var(--mono); font-size: 0.68rem; letter-spacing: 0.04em;
+  color: var(--dim); padding: 0.24em 0.55em; border-radius: 4px;
+  border: 1px solid transparent;
+}
+nav#toc a:hover { color: var(--ink); background: rgba(255,255,255,0.75); }
+nav#toc a[aria-current="true"] { color: #fff; background: var(--key); border-color: var(--key); }
+nav#toc .toc-title { display: none; }
+
+@media (min-width: 1180px) {
+  nav#toc {
+    position: fixed; top: 50%; transform: translateY(-50%);
+    left: clamp(1rem, calc(50vw - 570px), 3.5rem);
+    width: 186px; background: none; backdrop-filter: none; border: none;
+  }
+  nav#toc ol { display: block; overflow: visible; padding: 0; }
+  nav#toc li { margin: 0; }
+  nav#toc a {
+    white-space: normal; padding: 0.3em 0.5em 0.3em 0.6em;
+    border-left: 2px solid var(--rule); border-radius: 0;
+    font-size: 0.7rem; line-height: 1.35;
+  }
+  nav#toc a:hover { background: rgba(255,255,255,0.6); }
+  nav#toc a[aria-current="true"] {
+    background: none; color: var(--key); border-left-color: var(--key); font-weight: 500;
+  }
+  nav#toc .toc-title {
+    display: block; font-family: var(--mono); font-size: 0.6rem; letter-spacing: 0.2em;
+    text-transform: uppercase; color: var(--dim); margin-bottom: 0.6rem; padding-left: 0.6rem;
+  }
+  nav#toc .num { color: var(--rule-2); margin-right: 0.4em; }
+  nav#toc a[aria-current="true"] .num { color: var(--key); }
+}
+
+/* ---------- layout ---------- */
+.shell { position: relative; z-index: 1; }
+.content {
+  max-width: 780px; margin: 0 auto;
+  padding: clamp(1.1rem, 3vw, 2rem) clamp(0.9rem, 3.5vw, 1.6rem) 4rem;
+}
+.back-link {
+  display: inline-block; font-family: var(--mono); font-size: 0.74rem;
+  color: var(--dim); text-decoration: none; letter-spacing: 0.04em;
+  margin-bottom: 1.6rem; transition: color 0.18s;
+}
+.back-link:hover { color: var(--key); }
+
+/* ---------- hero ---------- */
+.kicker {
+  font-family: var(--mono); font-size: 0.68rem; letter-spacing: 0.24em;
+  text-transform: uppercase; color: var(--key); margin-bottom: 0.9rem;
+}
+h1 {
+  font-family: var(--serif); font-weight: 600; letter-spacing: -0.015em;
+  font-size: clamp(2rem, 8vw, 3.4rem); line-height: 1.02; margin-bottom: 0.5rem;
+}
+h1 em { font-style: italic; color: var(--key); }
+.definition {
+  font-family: var(--serif); font-size: clamp(1.05rem, 3.2vw, 1.32rem);
+  line-height 1.45; color: var(--ink-2); max-width: 34em; margin-bottom: 1.6rem;
+}
+.hairline { height: 1px; background: var(--rule); margin: 1.6rem 0; }
+.hairline.thick { height: 3px; background: var(--ink); width: 54px; margin: 1.4rem 0; }
+
+/* ---------- sections ---------- */
+section.sec { padding-top: clamp(2.4rem, 6vw, 3.8rem); scroll-margin-top: 56px; }
+@media (min-width: 1180px) { section.sec { scroll-margin-top: 12px; } }
+.sec-head { margin-bottom: 1.2rem; }
+.sec-num {
+  font-family: var(--mono); font-size: 0.7rem; letter-spacing: 0.2em;
+  text-transform: uppercase; color: var(--dim);
+  display: flex; align-items: center; gap: 0.6rem;
+}
+.sec-num::after { content: ''; flex: 1; height: 1px; background: var(--rule); }
+h2 {
+  font-family: var(--serif); font-weight: 600; letter-spacing: -0.01em;
+  font-size: clamp(1.45rem, 5vw, 2.1rem); line-height: 1.12; margin: 0.35em 0 0;
+}
+h3 {
+  font-family: var(--sans); font-weight: 600; font-size: 0.95rem;
+  letter-spacing: 0.01em; margin: 1.6rem 0 0.5rem;
+}
+h4 {
+  font-family: var(--mono); font-weight: 500; font-size: 0.72rem;
+  letter-spacing: 0.14em; text-transform: uppercase; color: var(--dim);
+  margin: 0 0 0.6rem;
+}
+p { margin: 0 0 0.9rem; }
+p.lede { font-size: 1.04rem; color: var(--ink-2); }
+strong { font-weight: 600; }
+.sm { font-size: 0.85rem; }
+.dim { color: var(--dim); }
+ul.bullets, ol.steps { margin: 0 0 1rem 1.15rem; }
+ul.bullets li, ol.steps li { margin-bottom: 0.4rem; }
+code, .num { font-family: var(--mono); font-size: 0.92em; }
+code { background: var(--paper-2); border: 1px solid var(--rule); border-radius: 4px; padding: 0.05em 0.3em; }
+
+/* ---------- panels ---------- */
+.panel {
+  background: var(--paper); border: 1px solid var(--rule); border-radius: 12px;
+  padding: clamp(0.85rem, 2.5vw, 1.3rem);
+  box-shadow: 0 1px 2px rgba(20, 30, 45, 0.035);
+  margin: 1rem 0;
+}
+.panel.tight { padding: clamp(0.7rem, 2vw, 0.9rem); }
+.panel-title {
+  font-family: var(--mono); font-size: 0.7rem; letter-spacing: 0.14em;
+  text-transform: uppercase; color: var(--dim); margin-bottom: 0.7rem;
+}
+.callout {
+  border-left: 3px solid var(--alert); background: var(--alert-soft);
+  padding: 0.8rem 0.95rem; border-radius: 0 8px 8px 0; font-size: 0.92rem;
+  margin: 1rem 0;
+}
+.callout.key { border-color: var(--key); background: var(--key-soft); }
+.callout.note { border-color: var(--rule-2); background: var(--paper-2); }
+.callout b { font-weight: 600; }
+.nudge { font-size: 0.8rem; color: var(--dim); font-style: italic; margin: 0.5rem 0 0; }
+.nudge::before {
+  content: 'try this '; font-style: normal; font-weight: 600; color: var(--key);
+  letter-spacing: 0.12em; text-transform: uppercase; font-size: 0.66rem;
+}
+
+/* ---------- controls ---------- */
+.ctl { display: flex; flex-direction: column; gap: 0.15rem; margin-bottom: 0.7rem; }
+.ctl label {
+  font-size: 0.78rem; font-weight: 500; color: var(--ink-2);
+  display: flex; justify-content: space-between; align-items: baseline; gap: 0.6rem;
+}
+.ctl .val { font-family: var(--mono); font-size: 0.78rem; color: var(--key); font-weight: 500; }
+input[type="range"] {
+  width: 100%; accent-color: var(--key); height: 1.5rem; cursor: pointer; margin: 0;
+}
+select {
+  font: inherit; font-size: 0.82rem; padding: 0.35em 0.5em; border-radius: 6px;
+  border: 1px solid var(--rule-2); background: var(--paper); color: var(--ink);
+}
+button { font: inherit; cursor: pointer; }
+.btn {
+  background: var(--ink); color: #fff; border: 1px solid var(--ink); border-radius: 7px;
+  padding: 0.45em 0.9em; font-size: 0.8rem; font-weight: 500; letter-spacing: 0.01em;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.btn:hover { background: #24343f; }
+.btn.ghost { background: transparent; color: var(--ink-2); border-color: var(--rule-2); }
+.btn.ghost:hover { background: var(--paper-2); color: var(--ink); }
+.btn.key { background: var(--key); border-color: var(--key); }
+.btn.key:hover { background: #0c5f59; }
+.btn:disabled { opacity: 0.42; cursor: default; }
+.btn[aria-pressed="true"] { background: var(--key); border-color: var(--key); color: #fff; }
+.btn-row { display: flex; flex-wrap: wrap; gap: 0.45rem; align-items: center; margin: 0.7rem 0 0; }
+.chip-row { display: flex; flex-wrap: wrap; gap: 0.3rem; margin: 0.5rem 0 0; }
+.chip {
+  font-family: var(--mono); font-size: 0.68rem; padding: 0.2em 0.5em;
+  border: 1px solid var(--rule-2); border-radius: 4px; background: var(--paper);
+  color: var(--ink-2);
+}
+.chip.good { border-color: var(--key); background: var(--key-soft); color: var(--key); }
+.chip.bad { border-color: var(--alert); background: var(--alert-soft); color: var(--alert); }
+
+.readout {
+  font-family: var(--mono); font-size: 0.78rem; color: var(--ink-2);
+  background: var(--paper-2); border: 1px solid var(--rule); border-radius: 6px;
+  padding: 0.45rem 0.6rem; margin-top: 0.55rem; min-height: 2.1rem;
+}
+.readout b { color: var(--ink); font-weight: 500; }
+
+/* ---------- charts ---------- */
+.chart-host { width: 100%; }
+.chart-host svg { display: block; width: 100%; height: auto; overflow: visible; }
+.legend { display: flex; flex-wrap: wrap; gap: 0.35rem 1rem; margin-top: 0.6rem; font-size: 0.75rem; color: var(--ink-2); }
+.legend span { display: inline-flex; align-items: center; gap: 0.35rem; }
+.swatch { width: 11px; height: 11px; border-radius: 3px; flex: none; }
+.swatch.round { border-radius: 50%; }
+
+/* ---------- tables ---------- */
+.table-wrap {
+  overflow-x: auto; -webkit-overflow-scrolling: touch;
+  border: 1px solid var(--rule); border-radius: 10px; background: var(--paper);
+}
+table { border-collapse: collapse; width: 100%; font-family: var(--mono); font-size: 0.76rem; }
+th, td { padding: 0.4rem 0.55rem; text-align: right; white-space: nowrap; border-bottom: 1px solid var(--rule); }
+th { font-weight: 500; color: var(--dim); font-size: 0.68rem; letter-spacing: 0.06em; text-transform: uppercase; }
+th:first-child, td:first-child { text-align: left; }
+tbody tr:last-child td { border-bottom: none; }
+tr.avg td { background: var(--key-soft); color: var(--key); font-weight: 500; border-top: 1px solid var(--key); }
+tr.active td { background: #fff8f2; }
+tr.active td:first-child { box-shadow: inset 3px 0 0 var(--alert); }
+td.muted { color: var(--rule-2); }
+.cap { font-size: 0.74rem; color: var(--dim); margin-top: 0.5rem; }
+
+/* ---------- grids ---------- */
+.two-col { display: grid; grid-template-columns: 1fr; gap: 1rem; }
+@media (min-width: 760px) { .two-col { grid-template-columns: 1fr 1fr; } }
+.sandbox-grid { display: grid; grid-template-columns: 1fr; gap: 1rem; }
+@media (min-width: 860px) { .sandbox-grid { grid-template-columns: minmax(0, 268px) minmax(0, 1fr); } }
+.card-grid { display: grid; grid-template-columns: 1fr; gap: 0.75rem; }
+@media (min-width: 640px) { .card-grid { grid-template-columns: 1fr 1fr; } }
+.pitfall {
+  background: var(--paper); border: 1px solid var(--rule); border-radius: 10px;
+  padding: 0.85rem 0.95rem; border-top: 3px solid var(--alert);
+}
+.pitfall h5 {
+  font-size: 0.86rem; font-weight: 600; margin-bottom: 0.3rem;
+  font-family: var(--sans); letter-spacing: 0.005em;
+}
+.pitfall p { font-size: 0.82rem; color: var(--ink-2); margin: 0; }
+.pitfall .tell {
+  display: block; margin-top: 0.5rem; font-family: var(--mono);
+  font-size: 0.7rem; color: var(--dim);
+}
+
+/* ---------- quiz ---------- */
+.q { border-top: 1px solid var(--rule); padding: 1.1rem 0; }
+.q:first-child { border-top: none; }
+.q-num { font-family: var(--mono); font-size: 0.68rem; letter-spacing: 0.16em; color: var(--dim); }
+.q-text { font-weight: 500; margin: 0.25rem 0 0.7rem; font-size: 0.98rem; }
+.q-opts { display: flex; flex-direction: column; gap: 0.4rem; }
+.opt {
+  text-align: left; background: var(--paper); border: 1px solid var(--rule);
+  border-radius: 8px; padding: 0.5rem 0.7rem; font-size: 0.87rem; color: var(--ink-2);
+  display: flex; gap: 0.55rem; align-items: flex-start;
+  transition: border-color 0.15s, background 0.15s;
+}
+.opt:hover:not(:disabled) { border-color: var(--rule-2); background: var(--paper-2); }
+.opt .mark { font-family: var(--mono); font-size: 0.78rem; color: var(--dim); flex: none; width: 1.1em; }
+.opt:disabled { cursor: default; }
+.opt.correct { border-color: var(--key); background: var(--key-soft); color: var(--key); }
+.opt.correct .mark { color: var(--key); }
+.opt.wrong { border-color: var(--alert); background: var(--alert-soft); color: var(--alert); }
+.opt.wrong .mark { color: var(--alert); }
+.q-fb {
+  font-size: 0.85rem; margin-top: 0.6rem; padding: 0.55rem 0.7rem;
+  border-radius: 7px; background: var(--paper-2); border: 1px solid var(--rule);
+  color: var(--ink-2); display: none;
+}
+.q-fb.show { display: block; }
+.score {
+  font-family: var(--mono); font-size: 0.8rem; color: var(--ink-2);
+  border-top: 1px solid var(--rule); padding-top: 0.8rem; margin-top: 0.4rem;
+}
+
+/* ---------- cheat sheet ---------- */
+.cheat { background: var(--ink); color: #dce4ec; border-radius: 12px; padding: clamp(1rem, 3vw, 1.5rem); }
+.cheat h4 { color: #8fa5b8; }
+.cheat ol { margin: 0 0 0 1.2rem; }
+.cheat li { margin-bottom: 0.55rem; font-size: 0.88rem; }
+.cheat li b { color: #fff; font-weight: 600; }
+.cheat .formula {
+  font-family: var(--mono); font-size: 0.74rem; line-height: 1.9; color: #a8c4c0;
+  background: rgba(255,255,255,0.05); border-radius: 8px; padding: 0.7rem 0.85rem; margin-top: 0.9rem;
+  overflow-x: auto; white-space: pre;
+}
+.cheat .say { border-left: 3px solid #14b8a6; padding-left: 0.8rem; margin-top: 1rem; font-size: 0.88rem; color: #c9d6e0; }
+.cheat .say em { color: #fff; font-family: var(--serif); font-size: 1.02em; }
+
+footer {
+  margin-top: 3rem; padding-top: 1.2rem; border-top: 1px solid var(--rule);
+  font-family: var(--mono); font-size: 0.7rem; color: var(--dim); letter-spacing: 0.04em;
+}
+.sr-only {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0;
+}
+</style>
+</head>
+<body>
+<div class="bg-layer bg-grid"></div>
+<div class="bg-layer bg-wash"></div>
+<div id="progress"></div>
+
+<nav id="toc" aria-label="Sections">
+  <span class="toc-title">Field guide</span>
+  <ol id="toc-list"></ol>
+</nav>
+
+<div class="shell">
+<main class="content">
+  <a href="index.html" class="back-link">&larr; back to learn</a>
+
+  <!-- ================= 1. HERO ================= -->
+  <section class="sec" id="s1" style="padding-top:0">
+    <div class="kicker">Analyst's field guide &middot; no regression required</div>
+    <h1>Key Driver<br>Analysis</h1>
+    <p class="definition">Key driver analysis finds <em>which inputs matter most</em> for an outcome you care about &mdash; so you can spend your one budget on the one thing that moves it.</p>
+    <div class="hairline thick"></div>
+
+    <p class="lede">You run a small coffee-shop chain. Last month you surveyed 240 customers. Each one rated <strong>overall satisfaction</strong> from 0 to 10, and then rated five things about the visit &mdash; also 0 to 10:</p>
+    <ul class="bullets">
+      <li><strong>Taste</strong> of the coffee</li>
+      <li><strong>Price fairness</strong></li>
+      <li><strong>Speed of service</strong></li>
+      <li><strong>Staff friendliness</strong></li>
+      <li><strong>Cleanliness</strong></li>
+    </ul>
+    <p>Your budget covers improving <strong>exactly one</strong> of them this year. Better beans, or a second espresso machine, or a price cut, or barista training, or a cleaning contract. Pick wrong and you have spent the year politely.</p>
+    <p class="lede"><strong>Which lever moves overall satisfaction the most?</strong> That question is key driver analysis. Everything below is how you answer it without fooling yourself.</p>
+
+    <div class="panel">
+      <div class="panel-title">The raw survey &middot; first 8 of 240 respondents</div>
+      <div class="table-wrap" id="raw-table"></div>
+      <p class="cap">Simulated data, generated from a fixed seed so every number on this page is reproducible. Ratings are whole numbers, 0&ndash;10. Every statistic on this page is computed from this exact table.</p>
+    </div>
+
+    <div class="callout note sm">
+      <b>What you need to already know:</b> what an average is, and roughly what a scatterplot and a correlation are. That is genuinely it. No matrix algebra appears anywhere on this page.
+    </div>
+  </section>
+
+  <!-- ================= 2. CORRELATION ================= -->
+  <section class="sec" id="s2">
+    <div class="sec-head">
+      <div class="sec-num">02 &middot; the anchor</div>
+      <h2>A two-minute correlation refresher</h2>
+    </div>
+    <p>Correlation, written <code>r</code>, is one number summarising how two measurements move together. It runs from &minus;1 to +1. Drag the slider to set the <em>true</em> relationship and watch the cloud respond.</p>
+
+    <div class="panel">
+      <div class="chart-host" id="corr-scatter"></div>
+      <div class="ctl" style="margin-top:0.7rem">
+        <label for="corr-r"><span>True correlation <code>r</code> between the two measurements</span><span class="val" id="corr-r-val">0.70</span></label>
+        <input type="range" id="corr-r" min="-0.95" max="0.95" step="0.01" value="0.7" aria-describedby="corr-readout">
+      </div>
+      <div class="btn-row">
+        <button class="btn ghost" id="corr-curve" type="button" aria-pressed="false">Show a curve that r misses</button>
+      </div>
+      <div class="readout" id="corr-readout" aria-live="polite"></div>
+    </div>
+
+    <div class="two-col">
+      <div>
+        <h4>Direction</h4>
+        <p class="sm">Positive <code>r</code>: they rise together. Negative: one rises as the other falls. The sign is the arrow.</p>
+      </div>
+      <div>
+        <h4>Strength</h4>
+        <p class="sm">Near &plusmn;1 the cloud is a tight line. Near 0 it is a blob. Strength is tightness, not steepness.</p>
+      </div>
+    </div>
+    <div class="callout">
+      <b>Correlation only sees straight lines.</b> Press the button above. That U-shaped cloud has an obvious, strong pattern and a correlation of about zero. <code>r</code> answers &ldquo;how well does a straight line describe this?&rdquo; &mdash; not &ldquo;is there a relationship?&rdquo;
+    </div>
+    <p class="nudge">park the slider at 0.30 and then 0.70. Survey drivers usually land in that range &mdash; strong enough to be real, loose enough that ranking them by eye is hopeless.</p>
+  </section>
+
+  <!-- ================= 3. NAIVE ================= -->
+  <section class="sec" id="s3">
+    <div class="sec-head">
+      <div class="sec-num">03 &middot; the trap</div>
+      <h2>The obvious answer, and why it is wrong</h2>
+    </div>
+    <p>Here is the first thing anyone does: correlate each of the five drivers with overall satisfaction, then rank them. Five correlations, computed from the table in section 1.</p>
+
+    <div class="panel">
+      <div class="panel-title">Correlation of each driver with overall satisfaction</div>
+      <div class="chart-host" id="naive-bars"></div>
+    </div>
+
+    <p>That certainly <em>looks</em> like an answer. Price fairness leads, cleanliness trails, ship it. Except every one of those five numbers was computed as if the other four did not exist &mdash; and in survey data, they very much do.</p>
+
+    <h3>The drivers are correlated with each other</h3>
+    <p>Hover any cell. This is the same five drivers correlated against <em>themselves</em>.</p>
+
+    <div class="panel">
+      <div class="panel-title">Intercorrelations &middot; driver &times; driver</div>
+      <div class="chart-host" id="heatmap"></div>
+      <div class="readout" id="heat-readout" aria-live="polite"></div>
+    </div>
+
+    <p>Two things are happening in that grid, and both are normal.</p>
+    <p><strong>The halo effect.</strong> A customer who had a great visit rates <em>everything</em> a bit high, and a customer whose order was wrong rates everything a bit low. Their general mood leaks into every answer. That shared mood puts a floor of roughly 0.3 under every pair in the grid &mdash; it is a property of the respondent, not of your coffee.</p>
+    <p><strong>Genuine overlap.</strong> Staff friendliness and cleanliness sit at <span class="num" id="sc-corr">0.71</span>. A shop that feels well-run feels well-run on both counts, and customers can barely separate them.</p>
+
+    <div class="callout">
+      <b>Why this breaks the ranking.</b> Suppose cleanliness has no independent effect at all &mdash; customers only notice it as part of &ldquo;this place is well-run&rdquo;, which they also express as staff friendliness. Cleanliness will still correlate handsomely with overall satisfaction, because it is riding along with something that does matter. Ranking by raw correlations hands out the same credit five separate times. Add up those five numbers and you get more explanation than the outcome contains.
+    </div>
+  </section>
+
+  <!-- ================= 4. REGRESSION ================= -->
+  <section class="sec" id="s4">
+    <div class="sec-head">
+      <div class="sec-num">04 &middot; the fix, part one</div>
+      <h2>Multiple regression, held at arm's length</h2>
+    </div>
+    <p>Multiple regression asks all five drivers the question at once, so each one has to earn credit the others cannot already supply. The output we want is the <strong>standardized beta</strong>, written <code>&beta;</code>. Read it like this:</p>
+
+    <div class="callout key">
+      <b>&beta; for Price fairness = 0.37</b> means: nudge a customer's price rating up by one standard deviation &mdash; <em>while their four other ratings stay exactly where they are</em> &mdash; and their overall satisfaction goes up about 0.37 standard deviations.
+    </div>
+    <p>The phrase carrying all the weight is <em>while the others stay fixed</em>. That is what a plain correlation cannot do, and it is the entire reason regression is here. Standardized means every driver is measured in its own standard deviations, so the five betas are comparable to each other even though price ratings are more spread out than taste ratings.</p>
+
+    <div class="panel">
+      <div class="panel-title">Raw correlation vs. standardized beta</div>
+      <div class="chart-host" id="dumbbell"></div>
+      <div class="legend">
+        <span><i class="swatch round" style="background:var(--corr)"></i> correlation with overall (each driver alone)</span>
+        <span><i class="swatch round" style="background:var(--key)"></i> standardized &beta; (all five together)</span>
+      </div>
+    </div>
+
+    <p>Every dot moves left, which is the double-counting draining out. But look at <strong>cleanliness</strong>: a perfectly respectable correlation of <span class="num" id="clean-r">0.52</span> collapses to a beta of <span class="num" id="clean-b">0.03</span>.</p>
+    <div class="callout">
+      <b>Cleanliness is not unimportant. It is redundant.</b> Once the model already knows how a customer rated staff friendliness &mdash; its partner at r = <span class="num" id="clean-sc">0.71</span> &mdash; the cleanliness rating has almost nothing left to add. Regression is ruthless about this: when two drivers carry the same information, it gives the credit to whichever one predicts a sliver better and leaves the other holding nothing. In this dataset cleanliness genuinely has no independent effect &mdash; but a beta near zero <em>never</em> tells you which of those two stories you are in.
+    </div>
+
+    <h3>One more number: R&sup2;</h3>
+    <p><strong>R&sup2;</strong> is how much of the variation in overall satisfaction all five drivers explain together. Here R&sup2; = <span class="num" id="r2-val">0.76</span>, so about <span class="num" id="r2-pct">76%</span> of why customers differ in satisfaction is captured by these five ratings; the rest is things you did not ask about, plus noise. Hold onto R&sup2; &mdash; the next section carves it into five pieces.</p>
+
+    <div class="callout note">
+      <b>So why not just ship the betas?</b> Because a beta of 0.03 reads as &ldquo;cleanliness does not matter&rdquo;, and if you act on that by cancelling the cleaner you will find out otherwise. Overlapping drivers make betas a winner-take-all report on shared credit. We need a rule for <em>splitting</em> shared credit instead.
+    </div>
+  </section>
+
+  <!-- ================= 5. SHAPLEY ================= -->
+  <section class="sec" id="s5">
+    <div class="sec-head">
+      <div class="sec-num">05 &middot; the centerpiece</div>
+      <h2>Fair credit: the Shapley split</h2>
+    </div>
+    <p>Three people move a sofa. Ana can shift it alone, Ben can shift it alone, Cai only helps when someone else is already lifting. How much did each contribute? Asking &ldquo;what happens if we remove Ana?&rdquo; undersells her, because Ben quietly covers for her. Asking &ldquo;what can Ana do alone?&rdquo; oversells her, because she and Ben would be double-counted.</p>
+    <p>Lloyd Shapley's answer, from 1953: <strong>line the team up in every possible order, and pay each person the average of what they added when they walked in.</strong> Sometimes you arrive first and get full credit for the whole lift. Sometimes you arrive last, find the sofa nearly up, and add little. Average over all the orders and the overlap gets split instead of awarded.</p>
+    <p>Swap &ldquo;how much of the sofa moved&rdquo; for <strong>R&sup2;</strong> and you have key driver analysis. Let us do it by hand with three drivers.</p>
+
+    <div class="panel">
+      <div class="panel-title">Step 1 &middot; R&sup2; of every possible team &middot; Taste, Price, Speed</div>
+      <p class="sm dim" style="margin-bottom:0.6rem">Eight teams, including the empty one. Each box is a separate small regression: the R&sup2; you get from exactly those drivers and nothing else.</p>
+      <div class="chart-host" id="lattice"></div>
+      <p class="cap">Notice <span class="num">T</span> alone reaches 0.42 and <span class="num">P</span> alone reaches 0.47, but together they only reach 0.62 &mdash; not 0.89. The missing 0.27 is the overlap they share. Shapley's job is to divide it.</p>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title">Step 2 &middot; walk one join-order</div>
+      <p class="sm dim" style="margin-bottom:0.6rem">Pick an order, then step through it. Each driver's contribution is whatever R&sup2; it added <em>at the moment it walked in</em>.</p>
+      <div class="chip-row" id="order-buttons" role="group" aria-label="Choose a join order"></div>
+      <div class="btn-row">
+        <button class="btn key" id="ord-step" type="button">Step &#9656;</button>
+        <button class="btn ghost" id="ord-reset" type="button">Reset</button>
+      </div>
+      <div class="chart-host" id="accum" style="margin-top:0.9rem"></div>
+      <div class="readout" id="ord-readout" aria-live="polite"></div>
+      <p class="nudge">walk <span class="num">T &rarr; P &rarr; S</span>, then walk <span class="num">S &rarr; P &rarr; T</span>. Taste is worth 0.42 in the first order and 0.10 in the last. Neither number is &ldquo;the&rdquo; importance of taste &mdash; that is exactly the problem Shapley solves.</p>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title">Step 3 &middot; average over all six orders</div>
+      <div class="table-wrap" id="ord-table"></div>
+      <div class="btn-row">
+        <button class="btn ghost" id="ord-fill" type="button">Fill in all six orders</button>
+      </div>
+      <p class="cap" id="ord-caption">Walk an order above to fill in its row, or fill in all six at once.</p>
+    </div>
+
+    <p>The three column averages <em>are</em> the Shapley importances. And they add up to exactly the R&sup2; of the full three-driver model &mdash; no credit invented, none lost. That property is why this method won: the pie is the right size, and every slice is defensible.</p>
+
+    <h3>All five drivers</h3>
+    <p>With five drivers there are 32 teams and 120 orders. Your laptop does not care; the page computed it before you finished this sentence.</p>
+
+    <div class="panel">
+      <div class="panel-title">Shapley importance &middot; five drivers &middot; shares of R&sup2;</div>
+      <div class="chart-host" id="shap5"></div>
+      <p class="cap" id="shap5-cap"></p>
+    </div>
+
+    <div class="callout key">
+      <b>Read cleanliness again.</b> Regression gave it &beta; = <span class="num" id="clean-b2">0.03</span> &mdash; effectively nothing. Shapley gives it <span class="num" id="clean-share">10%</span> of the explained variation. Neither is wrong; they answer different questions. Regression asks &ldquo;what does cleanliness add <em>last</em>, after everything else?&rdquo; Shapley asks &ldquo;what does cleanliness add <em>on average, whenever it arrives</em>?&rdquo; For prioritising a budget across overlapping levers, the second question is the one you meant.
+    </div>
+    <div class="callout note sm">
+      <b>Names in the wild.</b> The same computation is sold and published as <b>LMG</b> (Lindeman&ndash;Merenda&ndash;Gold), <b>dominance analysis</b>, <b>Shapley value regression</b>, and &mdash; loosely, via a slightly different algorithm that usually lands close &mdash; Johnson's <b>relative weights</b>. If a market-research vendor hands you &ldquo;relative importance, sums to 100%&rdquo;, this is almost always what is underneath.
+    </div>
+  </section>
+
+  <!-- ================= 6. QUADRANT ================= -->
+  <section class="sec" id="s6">
+    <div class="sec-head">
+      <div class="sec-num">06 &middot; the deliverable</div>
+      <h2>Importance &times; performance</h2>
+    </div>
+    <p>Importance alone does not tell you where to spend. A driver can be the most important thing in the model and already be excellent &mdash; improving it is expensive and nobody notices. You need importance <em>and</em> current performance, on one chart.</p>
+    <p>Performance is the plain average rating. Importance is the Shapley share. Cross them and the action is in the corners.</p>
+
+    <div class="panel">
+      <div class="chart-host" id="quadrant"></div>
+      <div class="legend" style="margin-top:0.75rem">
+        <span><i class="swatch" style="background:var(--alert)"></i> Fix first &mdash; matters, and you are bad at it</span>
+        <span><i class="swatch" style="background:var(--key)"></i> Protect &mdash; matters, and you are good at it</span>
+        <span><i class="swatch" style="background:var(--slate)"></i> Low priority &mdash; weak lever, weak scores</span>
+        <span><i class="swatch" style="background:var(--violet)"></i> Don't over-invest &mdash; already fine, small lever</span>
+      </div>
+      <div class="hairline"></div>
+      <h4>What-if: drag a driver's performance</h4>
+      <div id="quad-sliders"></div>
+      <div class="btn-row">
+        <button class="btn ghost" id="quad-reset" type="button">Reset to observed means</button>
+      </div>
+      <p class="cap">The dividing lines are the average performance across the five drivers (vertical) and an equal 20% share of importance (horizontal) &mdash; so the quadrants are relative to <em>this</em> shop, not absolute standards. The sliders move performance only; importance stays fixed, because it comes from the survey you already ran.</p>
+    </div>
+
+    <p>In this dataset the verdict is unambiguous: <strong>price fairness</strong> is the single most important driver <em>and</em> the worst-rated. It is the only thing in the fix-first corner. Taste and staff friendliness are load-bearing and already strong &mdash; protect them, do not congratulate yourself into a redesign. Cleanliness scores well and moves little; keep it clean and stop there.</p>
+    <div class="callout note sm">
+      <b>Careful with the fix-first corner.</b> A low average can mean you are genuinely bad at it, or that the attribute is intrinsically hard to score well on &mdash; almost nobody rates price fairness a 10 anywhere. Compare against competitor benchmarks or your own history before reading a low mean as a failure.
+    </div>
+  </section>
+
+  <!-- ================= 7. SANDBOX ================= -->
+  <section class="sec" id="s7">
+    <div class="sec-head">
+      <div class="sec-num">07 &middot; the sandbox</div>
+      <h2>Run the whole pipeline yourself</h2>
+    </div>
+    <p>Now you get to be the universe. Set the <strong>true</strong> influence of each driver, decide how strong the halo is, how noisy customers are, and how many of them you surveyed. The page simulates that survey and runs the full pipeline &mdash; correlations, betas, Shapley, quadrant &mdash; then shows you what it recovered next to the truth you set.</p>
+    <p>This is the only place you will ever see both. In real work you get the left column and never learn the right one.</p>
+
+    <div class="panel">
+      <div class="sandbox-grid">
+        <div>
+          <div class="panel-title">The universe</div>
+          <div id="sand-weights"></div>
+          <div class="hairline"></div>
+          <div id="sand-meta"></div>
+          <div class="ctl">
+            <label for="sand-n"><span>Respondents surveyed</span></label>
+            <select id="sand-n">
+              <option value="30">n = 30</option>
+              <option value="100">n = 100</option>
+              <option value="300" selected>n = 300</option>
+              <option value="1000">n = 1000</option>
+            </select>
+          </div>
+          <div class="btn-row">
+            <button class="btn key" id="sand-gen" type="button">Generate survey</button>
+            <button class="btn ghost" id="sand-resample" type="button">Re-sample</button>
+          </div>
+          <p class="cap">Moving a slider re-runs at the same seed, so you see the setting change and nothing else. <b>Re-sample</b> draws a fresh set of customers at the same settings &mdash; that difference is sampling noise, and it is the whole lesson here.</p>
+        </div>
+        <div>
+          <div class="panel-title">What the analysis recovered</div>
+          <div class="chart-host" id="sand-bars"></div>
+          <div class="legend">
+            <span><i class="swatch" style="background:#c3ccd6"></i> true share of influence (you set this)</span>
+            <span><i class="swatch" style="background:var(--key)"></i> recovered Shapley share</span>
+          </div>
+          <div class="readout" id="sand-readout" aria-live="polite"></div>
+          <h4 style="margin-top:1rem">Top driver recovered, one chip per draw</h4>
+          <div class="chip-row" id="sand-history"></div>
+          <div class="table-wrap" style="margin-top:0.9rem" id="sand-table"></div>
+          <h4 style="margin-top:1.1rem">The deliverable, from this draw</h4>
+          <div class="chart-host" id="sand-quad"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="callout">
+      <b>The small-n lesson, explicitly.</b> Set n = 30 and press <b>Re-sample</b> eight or ten times. The recovered importances lurch by 10 or 15 points, the ranking reshuffles, and the top driver chip flips colour &mdash; while the truth never moved. Now set n = 1000 and do it again: the bars barely twitch. A key driver analysis on 30 respondents is not a small answer, it is a random one. Under about 150 respondents for five drivers, treat the <em>ranking</em> as a hypothesis and never quote the decimals.
+    </div>
+    <p class="nudge">crank the halo to 0.8 and re-sample. Every correlation inflates, R&sup2; looks fantastic, and the recovered shares flatten toward equal &mdash; the halo makes the drivers so alike that no method can tell them apart. Good survey design beats clever statistics.</p>
+    <p class="nudge">set one driver's true weight to 0 while leaving the halo at 0.45. It still shows up with a real correlation and a non-trivial Shapley share. That is not a bug in Shapley; it is what shared-mood variance looks like from the inside.</p>
+  </section>
+
+  <!-- ================= 8. PITFALLS ================= -->
+  <section class="sec" id="s8">
+    <div class="sec-head">
+      <div class="sec-num">08 &middot; the fine print</div>
+      <h2>Six ways this goes wrong</h2>
+    </div>
+    <div class="card-grid">
+      <div class="pitfall">
+        <h5>Correlation is not causation</h5>
+        <p>Every number on this page came from watching, not intervening. &ldquo;Customers who rate price fairly are more satisfied&rdquo; is not &ldquo;cutting prices raises satisfaction&rdquo;. Satisfied customers may simply feel generous about price.</p>
+        <span class="tell">Do: use KDA to pick what to test. Then A/B test it in a few stores.</span>
+      </div>
+      <div class="pitfall">
+        <h5>Halo and common-method bias</h5>
+        <p>One person answered every question in one mood, in one sitting, on one scale. Some of what looks like &ldquo;drivers of satisfaction&rdquo; is just that mood echoing through the questionnaire.</p>
+        <span class="tell">Do: pair survey ratings with hard data &mdash; measured wait times, actual prices, audit scores.</span>
+      </div>
+      <div class="pitfall">
+        <h5>Multicollinearity</h5>
+        <p>When two drivers overlap heavily, regression hands the shared credit to whichever wins by a hair. Cleanliness got &beta; = 0.03 here. Re-sample the survey and staff friendliness could be the one holding nothing.</p>
+        <span class="tell">Do: check the intercorrelation grid first. If a pair is above 0.7, report them as one theme, and never rank on betas alone.</span>
+      </div>
+      <div class="pitfall">
+        <h5>Range restriction</h5>
+        <p>If everyone rates taste 9 or 10, taste has almost no variance &mdash; and a driver that does not vary cannot explain variation. It will look unimportant precisely <em>because</em> you are excellent at it.</p>
+        <span class="tell">Do: print the standard deviation next to every mean. A driver with sd under about 0.8 is being suppressed by its own ceiling.</span>
+      </div>
+      <div class="pitfall">
+        <h5>Small samples</h5>
+        <p>Importance estimates are noisy, and Shapley shares are ratios of noisy things. Section 7 lets you watch a 30-person study invent a different winner every draw.</p>
+        <span class="tell">Do: aim for 30&ndash;50 respondents per driver. Bootstrap the importances and show the intervals, not just the bars.</span>
+      </div>
+      <div class="pitfall">
+        <h5>Importance is relative to the model</h5>
+        <p>These five drivers are the only candidates in the room. If the real reason people love the place is the patio, and you never asked about the patio, its credit gets smeared across whatever correlates with it.</p>
+        <span class="tell">Do: run open-ended questions or interviews <em>before</em> fixing the attribute list. And re-check the list every wave.</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= 9. QUIZ ================= -->
+  <section class="sec" id="s9">
+    <div class="sec-head">
+      <div class="sec-num">09 &middot; check yourself</div>
+      <h2>Five questions</h2>
+    </div>
+    <p class="sm dim">Click an answer to see whether it holds up, and why.</p>
+    <div class="panel" id="quiz"></div>
+  </section>
+
+  <!-- ================= 10. CHEAT SHEET ================= -->
+  <section class="sec" id="s10">
+    <div class="sec-head">
+      <div class="sec-num">10 &middot; take this with you</div>
+      <h2>The whole workflow on one card</h2>
+    </div>
+    <div class="cheat">
+      <h4>Key driver analysis &middot; procedure</h4>
+      <ol>
+        <li><b>Name one outcome.</b> Overall satisfaction, NPS, renewal intent &mdash; one column, and it must vary.</li>
+        <li><b>List candidate drivers</b> from qualitative work, not from the dashboard you happen to own. Missing drivers do not stay missing; their credit gets handed to their neighbours.</li>
+        <li><b>Look at the intercorrelation grid before anything else.</b> Anything above 0.7 is one theme wearing two hats. Decide now whether to merge it.</li>
+        <li><b>Fit the standardized regression</b> for the &ldquo;holding the others fixed&rdquo; view, and note R&sup2;. Do not rank on betas when drivers overlap.</li>
+        <li><b>Compute Shapley / LMG importance</b> for the ranking you will actually present. It splits shared credit and sums to R&sup2;, so shares of 100% are honest.</li>
+        <li><b>Plot importance against performance.</b> The fix-first corner is your recommendation. One chart, four labels, no table.</li>
+        <li><b>Sanity-check the sample.</b> Roughly 30&ndash;50 respondents per driver; bootstrap intervals if you can. Quote ranks, not decimals.</li>
+        <li><b>Then go prove it.</b> Change the fix-first driver in a few locations, hold the rest, and measure. KDA points the experiment; the experiment is what earns the budget.</li>
+      </ol>
+      <div class="formula">r(x, y)                           Pearson correlation, &minus;1 to +1
+R_xx &middot; &beta; = r_xy                     standardized betas, solved from the correlation matrix
+R&sup2; = &beta; &middot; r_xy                       variance in the outcome explained by all drivers together
+&phi;_j = &Sigma;_S w(S) &middot; [R&sup2;(S+j) &minus; R&sup2;(S)]   Shapley importance of driver j, over all subsets S
+w(S) = |S|! &middot; (k &minus; |S| &minus; 1)! / k!       the weight each subset carries
+&Sigma;_j &phi;_j = R&sup2;                        the pie comes out exactly the right size</div>
+      <div class="say">
+        The sentence to say out loud in the meeting:<br>
+        <em>&ldquo;Price fairness carries 29% of what explains satisfaction and scores worst of the five. It is the one to fix, and here is the two-store test that would confirm it.&rdquo;</em>
+      </div>
+    </div>
+    <footer>
+      Key driver analysis &middot; the grove &middot; all statistics on this page are computed live in your browser from a seeded simulation. Inspect them at <code>window.kdaDebug</code>.
+    </footer>
+  </section>
+</main>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  /* =========================================================
+     0 · small utilities
+     ========================================================= */
+  var SVGNS = 'http://www.w3.org/2000/svg';
+  var $ = function (sel) { return document.querySelector(sel); };
+
+  function E(tag, attrs, kids) {
+    var e = document.createElementNS(SVGNS, tag);
+    if (attrs) for (var k in attrs) { if (attrs[k] !== null && attrs[k] !== undefined) e.setAttribute(k, attrs[k]); }
+    if (kids !== null && kids !== undefined) {
+      var arr = Array.isArray(kids) ? kids : [kids];
+      for (var i = 0; i < arr.length; i++) {
+        var c = arr[i];
+        if (c === null || c === undefined) continue;
+        e.appendChild(typeof c === 'object' ? c : document.createTextNode(String(c)));
+      }
+    }
+    return e;
+  }
+  function H(tag, cls, text) {
+    var e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (text !== undefined && text !== null) e.textContent = String(text);
+    return e;
+  }
+  function clear(node) { while (node && node.firstChild) node.removeChild(node.firstChild); }
+  function hostWidth(node, max, min) {
+    var w = (node && node.clientWidth) || 0;
+    if (!w) w = 680;                      /* headless / display:none fallback */
+    return Math.max(min || 260, Math.min(max || 700, w));
+  }
+  function f2(v) { return (Math.abs(v) < 0.005 ? 0 : v).toFixed(2); }
+  function f3(v) { return (Math.abs(v) < 0.0005 ? 0 : v).toFixed(3); }
+  function f1(v) { return (Math.abs(v) < 0.05 ? 0 : v).toFixed(1); }
+  function pct(v) { return f1(100 * v) + '%'; }
+  function lerp(a, b, t) { return a + (b - a) * t; }
+  function mixHex(h1, h2, t) {
+    function p(h) { return [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)]; }
+    var a = p(h1), b = p(h2), o = '#';
+    for (var i = 0; i < 3; i++) {
+      var v = Math.round(lerp(a[i], b[i], Math.max(0, Math.min(1, t)))).toString(16);
+      o += v.length === 1 ? '0' + v : v;
+    }
+    return o;
+  }
+
+  /* =========================================================
+     1 · seeded random numbers
+     ========================================================= */
+  function mulberry32(a) {
+    return function () {
+      a |= 0; a = (a + 0x6D2B79F5) | 0;
+      var t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+  /* Box-Muller, cached second deviate */
+  function makeNormal(rng) {
+    var cache = null;
+    return function () {
+      if (cache !== null) { var v = cache; cache = null; return v; }
+      var u = 0, w = 0;
+      while (u === 0) u = rng();
+      while (w === 0) w = rng();
+      var r = Math.sqrt(-2 * Math.log(u));
+      cache = r * Math.sin(2 * Math.PI * w);
+      return r * Math.cos(2 * Math.PI * w);
+    };
+  }
+
+  /* =========================================================
+     2 · statistics
+     ========================================================= */
+  function mean(a) { var s = 0; for (var i = 0; i < a.length; i++) s += a[i]; return s / a.length; }
+  function sd(a) { var m = mean(a), s = 0; for (var i = 0; i < a.length; i++) s += (a[i] - m) * (a[i] - m); return Math.sqrt(s / a.length); }
+  function pearson(a, b) {
+    var ma = mean(a), mb = mean(b), sab = 0, sa = 0, sb = 0;
+    for (var i = 0; i < a.length; i++) {
+      var da = a[i] - ma, db = b[i] - mb;
+      sab += da * db; sa += da * da; sb += db * db;
+    }
+    var den = Math.sqrt(sa * sb);
+    return den === 0 ? 0 : sab / den;
+  }
+  function col(X, j) { var o = []; for (var i = 0; i < X.length; i++) o.push(X[i][j]); return o; }
+  function corrMatrix(X) {
+    var k = X[0].length, M = [], i, j;
+    for (i = 0; i < k; i++) { M.push([]); for (j = 0; j < k; j++) M[i][j] = (i === j) ? 1 : 0; }
+    for (i = 0; i < k; i++) for (j = i + 1; j < k; j++) { var r = pearson(col(X, i), col(X, j)); M[i][j] = r; M[j][i] = r; }
+    return M;
+  }
+  var RIDGE = 1e-9;   /* keeps a near-singular halo from producing NaN */
+  /* Gauss-Jordan with partial pivoting. Small systems only (k up to 5). */
+  function solve(A0, b0) {
+    var n = b0.length, A = [], i, j, c, r;
+    for (i = 0; i < n; i++) { A.push(A0[i].slice()); A[i].push(b0[i]); A[i][i] += RIDGE; }
+    for (c = 0; c < n; c++) {
+      var p = c;
+      for (r = c + 1; r < n; r++) if (Math.abs(A[r][c]) > Math.abs(A[p][c])) p = r;
+      var tmp = A[c]; A[c] = A[p]; A[p] = tmp;
+      var piv = A[c][c];
+      if (Math.abs(piv) < 1e-12) continue;
+      for (r = 0; r < n; r++) {
+        if (r === c) continue;
+        var fct = A[r][c] / piv;
+        if (fct === 0) continue;
+        for (var cc = c; cc <= n; cc++) A[r][cc] -= fct * A[c][cc];
+      }
+    }
+    var x = [];
+    for (i = 0; i < n; i++) x.push(Math.abs(A[i][i]) < 1e-12 ? 0 : A[i][n] / A[i][i]);
+    return x;
+  }
+  /* standardized betas for the subset `idx`, plus that subset's R^2 */
+  function fitSubset(R, rxy, idx) {
+    if (idx.length === 0) return { beta: [], r2: 0 };
+    var A = [], b = [], i, j;
+    for (i = 0; i < idx.length; i++) {
+      A.push([]);
+      for (j = 0; j < idx.length; j++) A[i].push(R[idx[i]][idx[j]]);
+      b.push(rxy[idx[i]]);
+    }
+    var beta = solve(A, b), r2 = 0;
+    for (i = 0; i < idx.length; i++) r2 += beta[i] * b[i];
+    return { beta: beta, r2: r2 };
+  }
+  function factorial(n) { var f = 1; for (var i = 2; i <= n; i++) f *= i; return f; }
+  function maskToIdx(mask, k) { var o = []; for (var i = 0; i < k; i++) if (mask & (1 << i)) o.push(i); return o; }
+  /* Shapley / LMG decomposition of R^2 over all 2^k subsets */
+  function shapleyLMG(R, rxy, k) {
+    var cache = {}, i, mask;
+    function r2of(m) {
+      if (cache[m] !== undefined) return cache[m];
+      var v = fitSubset(R, rxy, maskToIdx(m, k)).r2;
+      cache[m] = v; return v;
+    }
+    var phi = [];
+    for (i = 0; i < k; i++) phi.push(0);
+    for (i = 0; i < k; i++) {
+      for (mask = 0; mask < (1 << k); mask++) {
+        if (mask & (1 << i)) continue;
+        var sz = 0;
+        for (var b = 0; b < k; b++) if (mask & (1 << b)) sz++;
+        var w = factorial(sz) * factorial(k - sz - 1) / factorial(k);
+        phi[i] += w * (r2of(mask | (1 << i)) - r2of(mask));
+      }
+    }
+    return { phi: phi, r2of: r2of };
+  }
+  /* the decomposition must be exact: sum of Shapley values == full-model R^2 */
+  function checkAdditive(phi, r2) {
+    var s = 0;
+    for (var i = 0; i < phi.length; i++) s += phi[i];
+    if (!(Math.abs(s - r2) <= 1e-9)) {
+      throw new Error('Shapley values do not sum to R2 (' + s + ' vs ' + r2 + ')');
+    }
+    return Math.abs(s - r2);
+  }
+
+  /* full pipeline for one dataset */
+  function analyse(X, y) {
+    var k = X[0].length, j;
+    var R = corrMatrix(X), rxy = [];
+    for (j = 0; j < k; j++) rxy.push(pearson(col(X, j), y));
+    var fit = fitSubset(R, rxy, maskToIdx((1 << k) - 1, k));
+    var sh = shapleyLMG(R, rxy, k);
+    var resid = checkAdditive(sh.phi, fit.r2);
+    var means = [], sds = [];
+    for (j = 0; j < k; j++) { means.push(mean(col(X, j))); sds.push(sd(col(X, j))); }
+    return {
+      X: X, y: y, interCorr: R, correlations: rxy,
+      betas: fit.beta, r2: fit.r2, shapley: sh.phi, r2of: sh.r2of,
+      means: means, sds: sds, additiveResidual: resid
+    };
+  }
+
+  /* =========================================================
+     3 · the coffee-shop simulator
+     ========================================================= */
+  var DRIVERS = [
+    { key: 'taste', name: 'Taste',              short: 'Taste',  code: 'Tst', letter: 'T', color: '#1d6f8b', mean: 8.2, sd: 1.20, halo: 0.68, warm: 0.00, w: 0.44 },
+    { key: 'price', name: 'Price fairness',     short: 'Price',  code: 'Prc', letter: 'P', color: '#c2410c', mean: 5.8, sd: 1.75, halo: 0.64, warm: 0.00, w: 0.46 },
+    { key: 'speed', name: 'Speed of service',   short: 'Speed',  code: 'Spd', letter: 'S', color: '#a16207', mean: 6.6, sd: 1.60, halo: 0.58, warm: 0.30, w: 0.24 },
+    { key: 'staff', name: 'Staff friendliness', short: 'Staff',  code: 'Stf', letter: 'F', color: '#0f766e', mean: 7.8, sd: 1.40, halo: 0.50, warm: 0.68, w: 0.42 },
+    { key: 'clean', name: 'Cleanliness',        short: 'Clean',  code: 'Cln', letter: 'C', color: '#5b4bb7', mean: 8.2, sd: 1.25, halo: 0.44, warm: 0.78, w: 0.00 }
+  ];
+  var K = DRIVERS.length;
+  var DEMO_SEED = 20260804, DEMO_N = 240, DEMO_NOISE = 0.62;
+
+  function clampRound(v) { return Math.max(0, Math.min(10, Math.round(v))); }
+
+  /* Latent factor model:
+       h    = "halo": one respondent-level mood that leaks into every answer
+       s    = "well-run feel": a second factor loading mainly on staff + cleanliness
+       z_j  = halo_j*h + warm_j*s + unique_j*e     (unit variance)
+       y    = sum_j w_j*z_j + noise
+     Ratings are then centred, scaled, rounded and clamped to a 0-10 survey scale.
+     Statistics run on those rounded ratings, i.e. on exactly what the table shows. */
+  function simulate(opts) {
+    var spec = opts.spec, n = opts.n, noise = opts.noise;
+    var rng = mulberry32(opts.seed >>> 0), nrm = makeNormal(rng);
+    var X = [], lat = [], i, j;
+    for (i = 0; i < n; i++) {
+      var h = nrm(), s = nrm(), row = [], L = 0;
+      for (j = 0; j < spec.length; j++) {
+        var d = spec[j];
+        var uniq = Math.sqrt(Math.max(0, 1 - d.halo * d.halo - d.warm * d.warm));
+        var z = d.halo * h + d.warm * s + uniq * nrm();
+        row.push(clampRound(d.mean + d.sd * z));
+        L += d.w * z;
+      }
+      L += noise * nrm();
+      X.push(row); lat.push(L);
+    }
+    var y = [];
+    if (opts.standardizeOutcome) {
+      /* keeps the 0-10 outcome scale sane for arbitrary slider weights;
+         a linear rescale, so it changes no correlation, only the clamping */
+      var sl = sd(lat) || 1, ml = mean(lat);
+      for (i = 0; i < n; i++) y.push(clampRound(opts.yCenter + opts.yScale * (lat[i] - ml) / sl));
+    } else {
+      for (i = 0; i < n; i++) y.push(clampRound(opts.yCenter + opts.yScale * lat[i]));
+    }
+    return { X: X, y: y };
+  }
+
+  var demoRaw = simulate({ spec: DRIVERS, n: DEMO_N, noise: DEMO_NOISE, seed: DEMO_SEED, yCenter: 6.9, yScale: 1.42 });
+  var DEMO = analyse(demoRaw.X, demoRaw.y);
+  var SHARE = DEMO.shapley.map(function (v) { return v / DEMO.r2; });
+
+  /* the reduced 3-driver world used for the Shapley walkthrough */
+  var TRIO = [0, 1, 2];
+  var trio = (function () {
+    var R = [], rxy = [], i, j;
+    for (i = 0; i < 3; i++) { R.push([]); for (j = 0; j < 3; j++) R[i].push(DEMO.interCorr[TRIO[i]][TRIO[j]]); }
+    for (i = 0; i < 3; i++) rxy.push(DEMO.correlations[TRIO[i]]);
+    var sh = shapleyLMG(R, rxy, 3);
+    var full = fitSubset(R, rxy, [0, 1, 2]);
+    checkAdditive(sh.phi, full.r2);
+    return { R: R, rxy: rxy, phi: sh.phi, r2of: sh.r2of, r2: full.r2 };
+  })();
+
+  /* =========================================================
+     4 · render registry (re-run on resize, never on rAF)
+     ========================================================= */
+  var renderers = [];
+  function register(fn) { renderers.push(fn); fn(); }
+  function renderAll() { for (var i = 0; i < renderers.length; i++) renderers[i](); }
+  var resizeTimer = null, lastW = window.innerWidth;
+  window.addEventListener('resize', function () {
+    if (window.innerWidth === lastW) return;
+    lastW = window.innerWidth;
+    if (resizeTimer) clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(renderAll, 120);
+  });
+
+  /* shared chart furniture ------------------------------------------------ */
+  function axisText(x, y, txt, opts) {
+    opts = opts || {};
+    return E('text', {
+      x: x, y: y, 'text-anchor': opts.anchor || 'middle',
+      'font-family': opts.mono === false ? "var(--sans)" : "var(--mono)",
+      'font-size': opts.size || 10, fill: opts.fill || 'var(--dim)',
+      'dominant-baseline': opts.baseline || 'auto',
+      'font-weight': opts.weight || 400
+    }, txt);
+  }
+  function svgRoot(w, h, label) {
+    return E('svg', {
+      viewBox: '0 0 ' + w + ' ' + h, width: w, height: h,
+      role: 'img', 'aria-label': label || ''
+    });
+  }
+
+  /* =========================================================
+     SECTION 1 · raw data table
+     ========================================================= */
+  (function rawTable() {
+    var host = $('#raw-table');
+    var t = H('table'), thead = H('thead'), hr = H('tr');
+    hr.appendChild(H('th', null, 'resp'));
+    DRIVERS.forEach(function (d) { hr.appendChild(H('th', null, d.short)); });
+    hr.appendChild(H('th', null, 'Overall'));
+    thead.appendChild(hr); t.appendChild(thead);
+    var tb = H('tbody');
+    for (var i = 0; i < 8; i++) {
+      var tr = H('tr');
+      tr.appendChild(H('td', 'dim', '#' + (i + 1)));
+      for (var j = 0; j < K; j++) tr.appendChild(H('td', null, DEMO.X[i][j]));
+      var last = H('td', null, DEMO.y[i]);
+      last.style.color = 'var(--key)'; last.style.fontWeight = '500';
+      tr.appendChild(last); tb.appendChild(tr);
+    }
+    var trm = H('tr');
+    trm.appendChild(H('th', null, 'mean'));
+    for (var m = 0; m < K; m++) trm.appendChild(H('th', null, f2(DEMO.means[m])));
+    trm.appendChild(H('th', null, f2(mean(DEMO.y))));
+    tb.appendChild(trm);
+    t.appendChild(tb);
+    clear(host); host.appendChild(t);
+  })();
+
+  /* =========================================================
+     SECTION 2 · correlation refresher
+     ========================================================= */
+  (function correlationDemo() {
+    var host = $('#corr-scatter'), slider = $('#corr-r'), valEl = $('#corr-r-val');
+    var readout = $('#corr-readout'), curveBtn = $('#corr-curve');
+    var NPTS = 90, base = [];
+    (function () {
+      var rng = mulberry32(7717), nrm = makeNormal(rng);
+      for (var i = 0; i < NPTS; i++) base.push([nrm(), nrm()]);
+    })();
+    var curveMode = false;
+
+    function points() {
+      var r = parseFloat(slider.value), out = [], i;
+      if (curveMode) {
+        /* an inverted arch, scaled to fit the plot, with its linear component
+           removed so the SAMPLE correlation is exactly zero — which is the point */
+        var xs2 = [], raw = [];
+        for (i = 0; i < NPTS; i++) {
+          var u = base[i][0];
+          xs2.push(u);
+          raw.push(1.9 - 0.42 * u * u + 0.25 * base[i][1]);
+        }
+        var mx = mean(xs2), my = mean(raw), sxy = 0, sxx = 0;
+        for (i = 0; i < NPTS; i++) { sxy += (xs2[i] - mx) * (raw[i] - my); sxx += (xs2[i] - mx) * (xs2[i] - mx); }
+        var slope = sxx === 0 ? 0 : sxy / sxx;
+        for (i = 0; i < NPTS; i++) out.push([xs2[i], raw[i] - slope * (xs2[i] - mx)]);
+      } else {
+        var s = Math.sqrt(Math.max(0, 1 - r * r));
+        for (i = 0; i < NPTS; i++) out.push([base[i][0], r * base[i][0] + s * base[i][1]]);
+      }
+      return out;
+    }
+
+    function draw() {
+      var w = hostWidth(host, 560, 270);
+      var h = Math.round(Math.max(230, Math.min(340, w * 0.7)));
+      var pad = { l: 34, r: 14, t: 14, b: 30 };
+      var pts = points();
+      var xs = pts.map(function (p) { return p[0]; }), ys = pts.map(function (p) { return p[1]; });
+      var lo = -3.2, hi = 3.2, ylo = -3.4, yhi = 3.4;
+      function sx(v) { return pad.l + (v - lo) / (hi - lo) * (w - pad.l - pad.r); }
+      function sy(v) { return h - pad.b - (v - ylo) / (yhi - ylo) * (h - pad.t - pad.b); }
+
+      var svg = svgRoot(w, h, 'Scatterplot of two measurements');
+      svg.appendChild(E('rect', { x: pad.l, y: pad.t, width: w - pad.l - pad.r, height: h - pad.t - pad.b, fill: 'var(--paper-2)', rx: 6 }));
+      var g, t;
+      for (t = -3; t <= 3; t++) {
+        g = E('line', { x1: sx(t), y1: pad.t, x2: sx(t), y2: h - pad.b, stroke: 'var(--rule)', 'stroke-width': t === 0 ? 1.4 : 0.7 });
+        svg.appendChild(g);
+      }
+      for (t = -3; t <= 3; t++) {
+        g = E('line', { x1: pad.l, y1: sy(t), x2: w - pad.r, y2: sy(t), stroke: 'var(--rule)', 'stroke-width': t === 0 ? 1.4 : 0.7 });
+        svg.appendChild(g);
+      }
+      if (!curveMode) {
+        var r = parseFloat(slider.value);
+        svg.appendChild(E('line', {
+          x1: sx(-3.1), y1: sy(-3.1 * r), x2: sx(3.1), y2: sy(3.1 * r),
+          stroke: 'var(--key)', 'stroke-width': 1.6, 'stroke-dasharray': '5 4', opacity: 0.55
+        }));
+      }
+      for (var i = 0; i < pts.length; i++) {
+        svg.appendChild(E('circle', {
+          cx: sx(pts[i][0]), cy: sy(pts[i][1]), r: 3.6,
+          fill: 'var(--d1)', opacity: 0.6, stroke: '#fff', 'stroke-width': 0.7
+        }));
+      }
+      svg.appendChild(axisText(pad.l + (w - pad.l - pad.r) / 2, h - 8, 'measurement A (standard deviations)', { size: 10 }));
+      var yl = axisText(0, 0, 'measurement B', { size: 10 });
+      yl.setAttribute('transform', 'translate(11,' + ((h - pad.b + pad.t) / 2) + ') rotate(-90)');
+      svg.appendChild(yl);
+      clear(host); host.appendChild(svg);
+
+      var sampleR = pearson(xs, ys);
+      clear(readout);
+      if (curveMode) {
+        readout.appendChild(H('span', null, 'sample r = '));
+        var b1 = H('b', null, f2(sampleR));
+        readout.appendChild(b1);
+        readout.appendChild(H('span', null, '  —  a clear pattern, and r sees nothing. r is a straight-line detector.'));
+      } else {
+        readout.appendChild(H('span', null, 'true r = '));
+        readout.appendChild(H('b', null, f2(parseFloat(slider.value))));
+        readout.appendChild(H('span', null, '   sample r (these 90 points) = '));
+        readout.appendChild(H('b', null, f2(sampleR)));
+        readout.appendChild(H('span', null, '   gap = '));
+        readout.appendChild(H('b', null, f2(sampleR - parseFloat(slider.value))));
+        readout.appendChild(H('span', null, '  —  even the truth arrives blurred by sampling.'));
+      }
+    }
+
+    slider.addEventListener('input', function () {
+      valEl.textContent = f2(parseFloat(slider.value));
+      if (curveMode) { curveMode = false; curveBtn.setAttribute('aria-pressed', 'false'); curveBtn.textContent = 'Show a curve that r misses'; }
+      draw();
+    });
+    curveBtn.addEventListener('click', function () {
+      curveMode = !curveMode;
+      curveBtn.setAttribute('aria-pressed', curveMode ? 'true' : 'false');
+      curveBtn.textContent = curveMode ? 'Back to the straight-line cloud' : 'Show a curve that r misses';
+      draw();
+    });
+    valEl.textContent = f2(parseFloat(slider.value));
+    register(draw);
+  })();
+
+  /* =========================================================
+     SECTION 3 · naive correlation bars + heatmap
+     ========================================================= */
+  (function naiveBars() {
+    var host = $('#naive-bars');
+    function draw() {
+      var w = hostWidth(host, 640, 270);
+      var labelW = Math.max(78, Math.min(150, w * 0.3));
+      var rowH = 32, pad = { t: 8, b: 40, r: 46 };
+      var h = pad.t + rowH * K + pad.b;
+      var maxR = 0.8;
+      var plotW = w - labelW - pad.r;
+      var svg = svgRoot(w, h, 'Bar chart of each driver correlation with overall satisfaction');
+      var t;
+      for (t = 0; t <= 4; t++) {
+        var gx = labelW + (t * 0.2 / maxR) * plotW;
+        svg.appendChild(E('line', { x1: gx, y1: pad.t, x2: gx, y2: pad.t + rowH * K, stroke: 'var(--rule)', 'stroke-width': t === 0 ? 1.2 : 0.7 }));
+        svg.appendChild(axisText(gx, h - 24, f2(t * 0.2), { size: 9 }));
+      }
+      for (var j = 0; j < K; j++) {
+        var r = DEMO.correlations[j];
+        var y0 = pad.t + j * rowH + 5, bh = rowH - 13;
+        var bw = Math.max(1, (r / maxR) * plotW);
+        svg.appendChild(axisText(labelW - 8, y0 + bh / 2 + 3.5, DRIVERS[j].name, { anchor: 'end', size: 11, fill: 'var(--ink-2)', mono: false, weight: 500 }));
+        svg.appendChild(E('rect', { x: labelW, y: y0, width: bw, height: bh, fill: 'var(--corr)', opacity: 0.85, rx: 3 }));
+        svg.appendChild(axisText(labelW + bw + 7, y0 + bh / 2 + 3.5, f2(r), { anchor: 'start', size: 11, fill: 'var(--ink)', weight: 500 }));
+      }
+      svg.appendChild(axisText(labelW + plotW / 2, h - 8, 'correlation r', { size: 9 }));
+      clear(host); host.appendChild(svg);
+    }
+    register(draw);
+  })();
+
+  (function heatmap() {
+    var host = $('#heatmap'), readout = $('#heat-readout');
+    function setReadout(i, j) {
+      clear(readout);
+      if (i === null) {
+        readout.appendChild(H('span', 'dim', 'Hover or tap a cell. Diagonal cells are each driver with itself, always 1.00.'));
+        return;
+      }
+      if (i === j) {
+        readout.appendChild(H('b', null, DRIVERS[i].name));
+        readout.appendChild(H('span', null, ' with itself: r = 1.00 (free of charge).'));
+        return;
+      }
+      var r = DEMO.interCorr[i][j];
+      readout.appendChild(H('b', null, DRIVERS[i].name + '  ' + String.fromCharCode(8596) + '  ' + DRIVERS[j].name));
+      readout.appendChild(H('span', null, ':  r = '));
+      readout.appendChild(H('b', null, f2(r)));
+      var note = r > 0.65 ? '  —  practically the same question asked twice.'
+        : (r > 0.42 ? '  —  substantial overlap; credit will be contested.'
+          : '  —  modest overlap, mostly the halo.');
+      readout.appendChild(H('span', null, note));
+    }
+    function draw() {
+      var w = hostWidth(host, 620, 270);
+      var labelW = Math.max(70, Math.min(140, w * 0.26));
+      var pad = { t: 22, r: 4, b: 4 };
+      var cell = Math.max(34, Math.min(84, (w - labelW - pad.r) / K));
+      var h = pad.t + cell * K + pad.b;
+      var fs = Math.max(8.5, Math.min(13, cell * 0.27));
+      var svg = svgRoot(w, h, 'Heatmap of driver intercorrelations');
+      for (var j = 0; j < K; j++) {
+        svg.appendChild(axisText(labelW + cell * (j + 0.5), pad.t - 7, DRIVERS[j].code, { size: Math.min(10.5, fs), fill: 'var(--dim)' }));
+      }
+      for (var i = 0; i < K; i++) {
+        svg.appendChild(axisText(labelW - 8, pad.t + cell * (i + 0.5) + 4, DRIVERS[i].name, { anchor: 'end', size: Math.min(11, fs + 0.5), fill: 'var(--ink-2)', mono: false, weight: 500 }));
+        for (var j2 = 0; j2 < K; j2++) {
+          var r = DEMO.interCorr[i][j2];
+          var g = E('g', { class: 'heat-cell' });
+          var fill = mixHex('#f7fbfa', '#0d5f58', Math.max(0, r));
+          var rect = E('rect', {
+            x: labelW + cell * j2 + 1, y: pad.t + cell * i + 1,
+            width: cell - 2, height: cell - 2, fill: fill, rx: 4,
+            stroke: '#fff', 'stroke-width': 1
+          });
+          g.appendChild(rect);
+          g.appendChild(E('title', null, DRIVERS[i].name + ' / ' + DRIVERS[j2].name + ': r = ' + f2(r)));
+          g.appendChild(axisText(labelW + cell * (j2 + 0.5), pad.t + cell * (i + 0.5) + fs * 0.36, f2(r), {
+            size: fs, fill: r > 0.55 ? '#ffffff' : 'var(--ink-2)', weight: 500
+          }));
+          (function (ii, jj, rr) {
+            g.addEventListener('pointerenter', function () { rr.setAttribute('stroke', 'var(--ink)'); rr.setAttribute('stroke-width', 2); setReadout(ii, jj); });
+            g.addEventListener('pointerleave', function () { rr.setAttribute('stroke', '#fff'); rr.setAttribute('stroke-width', 1); });
+          })(i, j2, rect);
+          svg.appendChild(g);
+        }
+      }
+      clear(host); host.appendChild(svg);
+      setReadout(null);
+    }
+    register(draw);
+    $('#sc-corr').textContent = f2(DEMO.interCorr[3][4]);
+  })();
+
+  /* =========================================================
+     SECTION 4 · dumbbell, correlation vs beta
+     ========================================================= */
+  (function dumbbell() {
+    var host = $('#dumbbell');
+    function draw() {
+      var w = hostWidth(host, 640, 270);
+      var labelW = Math.max(78, Math.min(150, w * 0.3));
+      var rowH = 40, pad = { t: 16, b: 30, r: 40 };
+      var h = pad.t + rowH * K + pad.b;
+      var lo = -0.06, hi = 0.78, plotW = w - labelW - pad.r;
+      function sx(v) { return labelW + (v - lo) / (hi - lo) * plotW; }
+      var svg = svgRoot(w, h, 'Correlation versus standardized beta for each driver');
+      var t;
+      for (t = 0; t <= 0.751; t += 0.25) {
+        svg.appendChild(E('line', { x1: sx(t), y1: pad.t - 6, x2: sx(t), y2: pad.t + rowH * K, stroke: 'var(--rule)', 'stroke-width': t === 0 ? 1.3 : 0.7 }));
+        svg.appendChild(axisText(sx(t), h - 12, f2(t), { size: 9 }));
+      }
+      for (var j = 0; j < K; j++) {
+        var yc = pad.t + j * rowH + rowH / 2;
+        var r = DEMO.correlations[j], b = DEMO.betas[j];
+        var isClean = (j === 4);
+        if (isClean) {
+          svg.appendChild(E('rect', { x: 2, y: pad.t + j * rowH + 2, width: w - 4, height: rowH - 4, fill: 'var(--alert-soft)', rx: 6 }));
+        }
+        svg.appendChild(axisText(labelW - 8, yc + 4, DRIVERS[j].name, { anchor: 'end', size: 11, fill: 'var(--ink-2)', mono: false, weight: 500 }));
+        svg.appendChild(E('line', { x1: sx(b), y1: yc, x2: sx(r), y2: yc, stroke: isClean ? 'var(--alert)' : 'var(--rule-2)', 'stroke-width': 2.4, 'stroke-linecap': 'round', opacity: isClean ? 0.55 : 1 }));
+        svg.appendChild(E('circle', { cx: sx(r), cy: yc, r: 6, fill: 'var(--corr)', stroke: '#fff', 'stroke-width': 1.5 }));
+        svg.appendChild(E('circle', { cx: sx(b), cy: yc, r: 6, fill: 'var(--key)', stroke: '#fff', 'stroke-width': 1.5 }));
+        svg.appendChild(axisText(sx(r) + 10, yc + 4, f2(r), { anchor: 'start', size: 10, fill: 'var(--corr)', weight: 500 }));
+        /* the beta label sits left of its dot unless that would collide with the
+           row name; then it tucks under the dot instead */
+        if (sx(b) - 10 > labelW + 22) {
+          svg.appendChild(axisText(sx(b) - 10, yc + 4, f2(b), { anchor: 'end', size: 10, fill: 'var(--key)', weight: 500 }));
+        } else {
+          svg.appendChild(axisText(sx(b), yc + 15, f2(b), { anchor: 'middle', size: 10, fill: 'var(--key)', weight: 500 }));
+        }
+      }
+      svg.appendChild(axisText(labelW - 8, pad.t - 6, 'r / ' + String.fromCharCode(946), { anchor: 'end', size: 9 }));
+      clear(host); host.appendChild(svg);
+    }
+    register(draw);
+    $('#clean-r').textContent = f2(DEMO.correlations[4]);
+    $('#clean-b').textContent = f2(DEMO.betas[4]);
+    $('#clean-b2').textContent = f2(DEMO.betas[4]);
+    $('#clean-sc').textContent = f2(DEMO.interCorr[3][4]);
+    $('#r2-val').textContent = f2(DEMO.r2);
+    $('#r2-pct').textContent = Math.round(DEMO.r2 * 100) + '%';
+    $('#clean-share').textContent = Math.round(SHARE[4] * 100) + '%';
+  })();
+
+  /* =========================================================
+     SECTION 5 · the Shapley walkthrough
+     ========================================================= */
+  (function shapleyWalk() {
+    var latticeHost = $('#lattice'), accumHost = $('#accum');
+    var tableHost = $('#ord-table'), readout = $('#ord-readout'), caption = $('#ord-caption');
+    var btnHost = $('#order-buttons');
+    var TRI = [DRIVERS[0], DRIVERS[1], DRIVERS[2]];
+    var ORDERS = [[0, 1, 2], [0, 2, 1], [1, 0, 2], [1, 2, 0], [2, 0, 1], [2, 1, 0]];
+    var state = { order: 0, step: 0, revealed: {} };
+
+    function maskOf(list) { var m = 0; for (var i = 0; i < list.length; i++) m |= (1 << list[i]); return m; }
+    function r2(list) { return trio.r2of(maskOf(list)); }
+    function marginals(ord) {
+      var out = [0, 0, 0], prefix = [];
+      for (var p = 0; p < 3; p++) {
+        var before = r2(prefix);
+        prefix = prefix.concat([ord[p]]);
+        out[ord[p]] = r2(prefix) - before;
+      }
+      return out;
+    }
+    var allMarg = ORDERS.map(marginals);
+    function ordLabel(ord) { return ord.map(function (i) { return TRI[i].letter; }).join(' ' + String.fromCharCode(8594) + ' '); }
+
+    /* ---- lattice ---- */
+    var LEVELS = [[[]], [[0], [1], [2]], [[0, 1], [0, 2], [1, 2]], [[0, 1, 2]]];
+    function drawLattice() {
+      var w = hostWidth(latticeHost, 620, 270);
+      var nw = Math.max(58, Math.min(96, (w - 16) / 3.55));
+      var nh = 42, vgap = Math.max(26, Math.min(44, w * 0.06));
+      var pad = { t: 6, b: 6 };
+      var h = pad.t + 4 * nh + 3 * vgap + pad.b;
+      var svg = svgRoot(w, h, 'Lattice of subset R-squared values');
+      var pos = {};
+      LEVELS.forEach(function (level, li) {
+        var y = pad.t + li * (nh + vgap);
+        var gap = level.length > 1 ? Math.max(8, (Math.min(w, 3 * nw + 2 * 26) - level.length * nw) / (level.length - 1)) : 0;
+        var startX = (w - (level.length * nw + (level.length - 1) * gap)) / 2;
+        level.forEach(function (subset, si) {
+          pos[maskOf(subset)] = { x: startX + si * (nw + gap), y: y, w: nw, h: nh };
+        });
+      });
+      var ord = ORDERS[state.order];
+      var pathMasks = [0], acc = [];
+      for (var p = 0; p < 3; p++) { acc = acc.concat([ord[p]]); pathMasks.push(maskOf(acc)); }
+      var onPath = {};
+      for (var q = 0; q <= state.step; q++) onPath[pathMasks[q]] = true;
+
+      /* edges */
+      var edgesG = E('g', null);
+      for (var m in pos) {
+        var mi = parseInt(m, 10);
+        for (var b = 0; b < 3; b++) {
+          if (mi & (1 << b)) continue;
+          var m2 = mi | (1 << b);
+          if (!pos[m2]) continue;
+          var a = pos[mi], c = pos[m2];
+          var active = false;
+          for (var s2 = 0; s2 < state.step; s2++) if (pathMasks[s2] === mi && pathMasks[s2 + 1] === m2) active = true;
+          edgesG.appendChild(E('line', {
+            x1: a.x + a.w / 2, y1: a.y + a.h, x2: c.x + c.w / 2, y2: c.y,
+            stroke: active ? TRI[b].color : 'var(--rule)',
+            'stroke-width': active ? 2.6 : 1, opacity: active ? 1 : 0.8
+          }));
+        }
+      }
+      svg.appendChild(edgesG);
+      /* nodes */
+      for (var mm in pos) {
+        var mk = parseInt(mm, 10), box = pos[mk];
+        var idx = maskToIdx(mk, 3);
+        var lbl = idx.length ? idx.map(function (i) { return TRI[i].letter; }).join('') : String.fromCharCode(8709);
+        var hot = !!onPath[mk];
+        var isCur = pathMasks[state.step] === mk;
+        svg.appendChild(E('rect', {
+          x: box.x, y: box.y, width: box.w, height: box.h, rx: 8,
+          fill: hot ? 'var(--key-soft)' : 'var(--paper)',
+          stroke: isCur ? 'var(--key)' : (hot ? 'var(--key)' : 'var(--rule-2)'),
+          'stroke-width': isCur ? 2.4 : (hot ? 1.4 : 1)
+        }));
+        svg.appendChild(axisText(box.x + box.w / 2, box.y + 17, lbl, { size: 12, fill: hot ? 'var(--key)' : 'var(--ink-2)', weight: 500 }));
+        svg.appendChild(axisText(box.x + box.w / 2, box.y + 32, f2(trio.r2of(mk)), { size: 11, fill: hot ? 'var(--key)' : 'var(--dim)' }));
+      }
+      clear(latticeHost); latticeHost.appendChild(svg);
+    }
+
+    /* ---- accumulation bar ---- */
+    function drawAccum() {
+      var w = hostWidth(accumHost, 620, 270);
+      var pad = { l: 4, r: 4, t: 30, b: 40 };
+      var barH = 34, h = pad.t + barH + pad.b;
+      var maxR2 = 0.72, plotW = w - pad.l - pad.r;
+      function sx(v) { return pad.l + (v / maxR2) * plotW; }
+      var svg = svgRoot(w, h, 'Accumulating R squared along the chosen join order');
+      var t;
+      for (t = 0; t <= 0.7001; t += 0.1) {
+        svg.appendChild(E('line', { x1: sx(t), y1: pad.t - 6, x2: sx(t), y2: pad.t + barH + 6, stroke: 'var(--rule)', 'stroke-width': 0.8 }));
+        svg.appendChild(axisText(sx(t), h - 20, f2(t), { size: 9 }));
+      }
+      svg.appendChild(axisText(pad.l + plotW / 2, h - 6, 'cumulative R' + String.fromCharCode(178), { size: 9.5 }));
+      svg.appendChild(E('rect', { x: pad.l, y: pad.t, width: plotW, height: barH, fill: 'var(--paper-2)', rx: 5, stroke: 'var(--rule)' }));
+      var ord = ORDERS[state.order], mg = allMarg[state.order], run = 0;
+      for (var p = 0; p < state.step; p++) {
+        var d = TRI[ord[p]], v = mg[ord[p]];
+        var x0 = sx(run), x1 = sx(run + v);
+        svg.appendChild(E('rect', { x: x0, y: pad.t, width: Math.max(1, x1 - x0), height: barH, fill: d.color, opacity: 0.88, rx: 3 }));
+        if (x1 - x0 > 34) {
+          svg.appendChild(axisText((x0 + x1) / 2, pad.t + barH / 2 + 4, '+' + f2(v), { size: 10.5, fill: '#fff', weight: 500 }));
+        }
+        svg.appendChild(axisText((x0 + x1) / 2, pad.t - 10, d.letter, { size: 11, fill: d.color, weight: 500 }));
+        run += v;
+      }
+      if (state.step > 0) {
+        svg.appendChild(E('line', { x1: sx(run), y1: pad.t - 4, x2: sx(run), y2: pad.t + barH + 4, stroke: 'var(--ink)', 'stroke-width': 1.6 }));
+        svg.appendChild(axisText(Math.min(w - 22, sx(run) + 6), pad.t + barH + 16, f2(run), { anchor: 'start', size: 10, fill: 'var(--ink)', weight: 500 }));
+      }
+      clear(accumHost); accumHost.appendChild(svg);
+    }
+
+    /* ---- table ---- */
+    function drawTable() {
+      var t = H('table'), thead = H('thead'), hr = H('tr');
+      hr.appendChild(H('th', null, 'join order'));
+      TRI.forEach(function (d) { hr.appendChild(H('th', null, String.fromCharCode(916) + ' ' + d.short)); });
+      hr.appendChild(H('th', null, 'total'));
+      thead.appendChild(hr); t.appendChild(thead);
+      var tb = H('tbody');
+      var revealedCount = 0;
+      ORDERS.forEach(function (ord, oi) {
+        var tr = H('tr');
+        if (oi === state.order) tr.className = 'active';
+        tr.appendChild(H('td', null, ordLabel(ord)));
+        var shown = !!state.revealed[oi];
+        if (shown) revealedCount++;
+        for (var j = 0; j < 3; j++) {
+          if (shown) {
+            var td = H('td', null, f3(allMarg[oi][j]));
+            td.style.color = TRI[j].color;
+            tr.appendChild(td);
+          } else {
+            tr.appendChild(H('td', 'muted', String.fromCharCode(183)));
+          }
+        }
+        tr.appendChild(H('td', shown ? null : 'muted', shown ? f3(trio.r2) : String.fromCharCode(183)));
+        tb.appendChild(tr);
+      });
+      var avg = H('tr', 'avg');
+      avg.className = 'avg';
+      avg.appendChild(H('td', null, 'average = Shapley'));
+      var complete = revealedCount === 6;
+      for (var j2 = 0; j2 < 3; j2++) avg.appendChild(H('td', null, complete ? f3(trio.phi[j2]) : String.fromCharCode(183)));
+      avg.appendChild(H('td', null, complete ? f3(trio.r2) : String.fromCharCode(183)));
+      tb.appendChild(avg);
+      t.appendChild(tb);
+      clear(tableHost); tableHost.appendChild(t);
+
+      clear(caption);
+      if (complete) {
+        caption.appendChild(H('span', null, 'All six orders in. Column averages: T = ' + f3(trio.phi[0]) + ', P = ' + f3(trio.phi[1]) + ', S = ' + f3(trio.phi[2]) + '. They sum to ' + f3(trio.phi[0] + trio.phi[1] + trio.phi[2]) + ', which is exactly the three-driver R' + String.fromCharCode(178) + ' of ' + f3(trio.r2) + '. Every column of every row also sums to that same total — each order divides the identical pie differently.'));
+      } else {
+        caption.appendChild(H('span', null, 'Revealed ' + revealedCount + ' of 6 orders. Finish walking an order above to fill its row, or fill in all six at once.'));
+      }
+    }
+
+    function setReadout() {
+      var ord = ORDERS[state.order], mg = allMarg[state.order];
+      clear(readout);
+      if (state.step === 0) {
+        readout.appendChild(H('span', null, 'Order '));
+        readout.appendChild(H('b', null, ordLabel(ord)));
+        readout.appendChild(H('span', null, '. Nobody has arrived yet: R' + String.fromCharCode(178) + ' = 0.00. Press Step.'));
+        return;
+      }
+      var acc = [], run = 0, parts = [];
+      for (var p = 0; p < state.step; p++) { acc = acc.concat([ord[p]]); run += mg[ord[p]]; parts.push(TRI[ord[p]].short + ' +' + f3(mg[ord[p]])); }
+      var lastD = TRI[ord[state.step - 1]];
+      readout.appendChild(H('b', null, lastD.name));
+      readout.appendChild(H('span', null, ' walked in ' + (state.step === 1 ? 'first' : (state.step === 2 ? 'second' : 'third')) + ' and added '));
+      readout.appendChild(H('b', null, f3(mg[ord[state.step - 1]])));
+      readout.appendChild(H('span', null, ' to R' + String.fromCharCode(178) + '.  Running total: ' + f3(run) + '   (' + parts.join(', ') + ')'));
+      if (state.step === 3) readout.appendChild(H('span', null, '  —  order complete; its row is now filled in below.'));
+    }
+
+    function refresh() { drawLattice(); drawAccum(); drawTable(); setReadout(); syncButtons(); }
+
+    function syncButtons() {
+      var kids = btnHost.childNodes;
+      for (var i = 0; i < kids.length; i++) {
+        kids[i].setAttribute('aria-pressed', i === state.order ? 'true' : 'false');
+      }
+    }
+    ORDERS.forEach(function (ord, oi) {
+      var b = H('button', 'btn ghost', ordLabel(ord));
+      b.type = 'button';
+      b.style.fontFamily = 'var(--mono)';
+      b.style.fontSize = '0.72rem';
+      b.style.padding = '0.28em 0.6em';
+      b.setAttribute('aria-pressed', 'false');
+      b.addEventListener('click', function () { state.order = oi; state.step = 0; refresh(); });
+      btnHost.appendChild(b);
+    });
+    $('#ord-step').addEventListener('click', function () {
+      if (state.step < 3) {
+        state.step++;
+        if (state.step === 3) state.revealed[state.order] = true;
+      } else {
+        state.order = (state.order + 1) % 6; state.step = 0;
+      }
+      refresh();
+    });
+    $('#ord-reset').addEventListener('click', function () { state.step = 0; refresh(); });
+    $('#ord-fill').addEventListener('click', function () {
+      for (var i = 0; i < 6; i++) state.revealed[i] = true;
+      state.step = 3;
+      refresh();
+    });
+    register(function () { drawLattice(); drawAccum(); });
+    drawTable(); setReadout(); syncButtons();
+  })();
+
+  /* ---- five-driver Shapley bars ---- */
+  (function shapley5() {
+    var host = $('#shap5');
+    function draw() {
+      var w = hostWidth(host, 640, 270);
+      var labelW = Math.max(78, Math.min(150, w * 0.3));
+      var rowH = 34, pad = { t: 10, b: 30, r: 62 };
+      var h = pad.t + rowH * K + pad.b;
+      var maxV = 0.26, plotW = w - labelW - pad.r;
+      var svg = svgRoot(w, h, 'Shapley importance of each driver');
+      var t;
+      for (t = 0; t <= 0.2501; t += 0.05) {
+        svg.appendChild(E('line', { x1: labelW + (t / maxV) * plotW, y1: pad.t, x2: labelW + (t / maxV) * plotW, y2: pad.t + rowH * K, stroke: 'var(--rule)', 'stroke-width': t === 0 ? 1.2 : 0.7 }));
+        svg.appendChild(axisText(labelW + (t / maxV) * plotW, h - 16, f2(t), { size: 9 }));
+      }
+      svg.appendChild(axisText(labelW + plotW / 2, h - 4, 'Shapley importance, in R' + String.fromCharCode(178) + ' points', { size: 9.5 }));
+      for (var j = 0; j < K; j++) {
+        var v = DEMO.shapley[j], y0 = pad.t + j * rowH + 5, bh = rowH - 13;
+        var bw = Math.max(1, (v / maxV) * plotW);
+        svg.appendChild(axisText(labelW - 8, y0 + bh / 2 + 3.5, DRIVERS[j].name, { anchor: 'end', size: 11, fill: 'var(--ink-2)', mono: false, weight: 500 }));
+        svg.appendChild(E('rect', { x: labelW, y: y0, width: bw, height: bh, fill: DRIVERS[j].color, opacity: 0.9, rx: 3 }));
+        svg.appendChild(axisText(labelW + bw + 7, y0 + bh / 2 + 3.5, f3(v) + '  ' + f1(SHARE[j] * 100) + '%', { anchor: 'start', size: 10, fill: 'var(--ink)', weight: 500 }));
+      }
+      clear(host); host.appendChild(svg);
+    }
+    register(draw);
+    var sum = DEMO.shapley.reduce(function (a, b) { return a + b; }, 0);
+    $('#shap5-cap').textContent =
+      'The five bars sum to ' + f3(sum) + ', the full-model R' + String.fromCharCode(178) + ' of ' + f3(DEMO.r2) +
+      ' (they agree to within ' + DEMO.additiveResidual.toExponential(1) + '). Dividing each bar by R' + String.fromCharCode(178) +
+      ' turns it into a share of explained variation, which is how importance is usually reported: ' +
+      DRIVERS.map(function (d, j) { return d.short + ' ' + f1(SHARE[j] * 100) + '%'; }).join(', ') + '.';
+  })();
+
+  /* =========================================================
+     SECTION 6 · importance x performance quadrant
+     ========================================================= */
+  var QUAD = {
+    fix: { color: 'var(--alert)', tint: '#fbeee6', label: ['FIX FIRST'] },
+    protect: { color: 'var(--key)', tint: '#e8f3f1', label: ['PROTECT'] },
+    low: { color: 'var(--slate)', tint: '#f0f2f5', label: ['LOW', 'PRIORITY'] },
+    over: { color: 'var(--violet)', tint: '#eeeaf8', label: ['DON’T', 'OVER-INVEST'] }
+  };
+  function classify(perf, imp, xT, yT) {
+    if (imp >= yT) return perf < xT ? 'fix' : 'protect';
+    return perf < xT ? 'low' : 'over';
+  }
+  /* items: [{code, name, perf, imp}] where imp is a percentage */
+  function renderQuadrant(host, items, opts) {
+    opts = opts || {};
+    var w = hostWidth(host, opts.maxW || 640, 260);
+    var h = Math.round(Math.max(250, Math.min(opts.maxH || 420, w * (opts.ratio || 0.82))));
+    var pad = { l: 46, r: 16, t: 16, b: 42 };
+    var xlo = opts.xlo !== undefined ? opts.xlo : 3, xhi = 10;
+    var maxImp = 0; items.forEach(function (it) { maxImp = Math.max(maxImp, it.imp); });
+    var yhi = Math.max(34, Math.ceil((maxImp + 6) / 5) * 5);
+    var xT = mean(items.map(function (it) { return it.perf; }));
+    var yT = 100 / items.length;
+    function sx(v) { return pad.l + (v - xlo) / (xhi - xlo) * (w - pad.l - pad.r); }
+    function sy(v) { return h - pad.b - (v / yhi) * (h - pad.t - pad.b); }
+    var svg = svgRoot(w, h, 'Importance versus performance quadrant chart');
+
+    var regions = [
+      { k: 'fix', x0: xlo, x1: xT, y0: yT, y1: yhi, lx: 'left', ly: 'top' },
+      { k: 'protect', x0: xT, x1: xhi, y0: yT, y1: yhi, lx: 'right', ly: 'top' },
+      { k: 'low', x0: xlo, x1: xT, y0: 0, y1: yT, lx: 'left', ly: 'bottom' },
+      { k: 'over', x0: xT, x1: xhi, y0: 0, y1: yT, lx: 'right', ly: 'bottom' }
+    ];
+    regions.forEach(function (rg) {
+      var q = QUAD[rg.k];
+      svg.appendChild(E('rect', {
+        x: sx(rg.x0), y: sy(rg.y1), width: Math.max(0, sx(rg.x1) - sx(rg.x0)),
+        height: Math.max(0, sy(rg.y0) - sy(rg.y1)), fill: q.tint
+      }));
+    });
+    regions.forEach(function (rg) {
+      var q = QUAD[rg.k], fs = w < 400 ? 8.5 : 10;
+      var tx = rg.lx === 'left' ? sx(rg.x0) + 6 : sx(rg.x1) - 6;
+      var anchor = rg.lx === 'left' ? 'start' : 'end';
+      var ty = rg.ly === 'top' ? sy(rg.y1) + fs + 4 : sy(rg.y0) - 6 - (q.label.length - 1) * (fs + 2);
+      q.label.forEach(function (line, li) {
+        var t = axisText(tx, ty + li * (fs + 2), line, { anchor: anchor, size: fs, fill: q.color, weight: 500 });
+        t.setAttribute('letter-spacing', '0.1em');
+        t.setAttribute('opacity', '0.85');
+        svg.appendChild(t);
+      });
+    });
+    /* frame + threshold lines */
+    svg.appendChild(E('rect', { x: pad.l, y: pad.t, width: w - pad.l - pad.r, height: h - pad.t - pad.b, fill: 'none', stroke: 'var(--rule)' }));
+    svg.appendChild(E('line', { x1: sx(xT), y1: pad.t, x2: sx(xT), y2: h - pad.b, stroke: 'var(--rule-2)', 'stroke-dasharray': '4 4' }));
+    svg.appendChild(E('line', { x1: pad.l, y1: sy(yT), x2: w - pad.r, y2: sy(yT), stroke: 'var(--rule-2)', 'stroke-dasharray': '4 4' }));
+    /* axes */
+    var xt;
+    for (xt = Math.ceil(xlo); xt <= xhi; xt++) {
+      svg.appendChild(axisText(sx(xt), h - pad.b + 14, xt, { size: 9 }));
+    }
+    for (var yt = 0; yt <= yhi; yt += (yhi > 40 ? 10 : 5)) {
+      svg.appendChild(axisText(pad.l - 7, sy(yt) + 3.5, yt + '%', { anchor: 'end', size: 9 }));
+    }
+    svg.appendChild(axisText(pad.l + (w - pad.l - pad.r) / 2, h - 6, 'PERFORMANCE  ' + String.fromCharCode(8594) + '  mean rating (0-10)', { size: 9.5 }));
+    var yl = axisText(0, 0, 'IMPORTANCE  ' + String.fromCharCode(8594) + '  share of R' + String.fromCharCode(178), { size: 9.5 });
+    yl.setAttribute('transform', 'translate(12,' + ((h - pad.b + pad.t) / 2) + ') rotate(-90)');
+    svg.appendChild(yl);
+    /* dots */
+    items.forEach(function (it) {
+      var q = QUAD[classify(it.perf, it.imp, xT, yT)];
+      var cx = sx(Math.max(xlo, Math.min(xhi, it.perf))), cy = sy(Math.max(0, Math.min(yhi, it.imp)));
+      svg.appendChild(E('circle', { cx: cx, cy: cy, r: 7.5, fill: q.color, stroke: '#fff', 'stroke-width': 2 }));
+      var right = cx < w * 0.7;
+      svg.appendChild(axisText(cx + (right ? 12 : -12), cy + 4, it.name, {
+        anchor: right ? 'start' : 'end', size: w < 400 ? 9.5 : 10.5,
+        fill: 'var(--ink)', mono: false, weight: 500
+      }));
+      svg.appendChild(E('title', null, it.name + ': importance ' + f1(it.imp) + '%, performance ' + f2(it.perf)));
+    });
+    clear(host); host.appendChild(svg);
+  }
+
+  (function quadrantSection() {
+    var host = $('#quadrant'), sliderHost = $('#quad-sliders');
+    var perf = DEMO.means.slice();
+    var inputs = [];
+    DRIVERS.forEach(function (d, j) {
+      var wrap = H('div', 'ctl');
+      var lab = H('label');
+      lab.htmlFor = 'quad-p' + j;
+      lab.appendChild(H('span', null, d.name + ' performance'));
+      var v = H('span', 'val', f2(perf[j]));
+      lab.appendChild(v);
+      var inp = document.createElement('input');
+      inp.type = 'range'; inp.min = '3'; inp.max = '10'; inp.step = '0.1';
+      inp.value = String(perf[j]); inp.id = 'quad-p' + j;
+      inp.addEventListener('input', function () {
+        perf[j] = parseFloat(inp.value); v.textContent = f2(perf[j]); draw();
+      });
+      wrap.appendChild(lab); wrap.appendChild(inp);
+      sliderHost.appendChild(wrap);
+      inputs.push({ inp: inp, v: v });
+    });
+    function draw() {
+      renderQuadrant(host, DRIVERS.map(function (d, j) {
+        return { name: d.name, code: d.code, perf: perf[j], imp: SHARE[j] * 100 };
+      }), { maxW: 660, maxH: 430 });
+    }
+    $('#quad-reset').addEventListener('click', function () {
+      DRIVERS.forEach(function (d, j) {
+        perf[j] = DEMO.means[j];
+        inputs[j].inp.value = String(DEMO.means[j]);
+        inputs[j].v.textContent = f2(DEMO.means[j]);
+      });
+      draw();
+    });
+    register(draw);
+  })();
+
+  /* =========================================================
+     SECTION 7 · sandbox
+     ========================================================= */
+  var sandboxState = null;
+  var regenSandbox = null;
+  (function sandbox() {
+    var wHost = $('#sand-weights'), metaHost = $('#sand-meta');
+    var barHost = $('#sand-bars'), tableHost = $('#sand-table');
+    var readout = $('#sand-readout'), quadHost = $('#sand-quad'), histHost = $('#sand-history');
+    var cfg = {
+      w: [0.45, 0.45, 0.25, 0.40, 0.05],
+      halo: 0.45, noise: 0.60, n: 300, seed: 4100
+    };
+    var history = [];
+    var result = null;
+
+    function ctl(id, labelText, min, max, step, value, fmt, onChange) {
+      var wrap = H('div', 'ctl');
+      var lab = H('label'); lab.htmlFor = id;
+      lab.appendChild(H('span', null, labelText));
+      var v = H('span', 'val', fmt(value));
+      lab.appendChild(v);
+      var inp = document.createElement('input');
+      inp.type = 'range'; inp.min = String(min); inp.max = String(max); inp.step = String(step);
+      inp.value = String(value); inp.id = id;
+      inp.addEventListener('input', function () {
+        var val = parseFloat(inp.value);
+        v.textContent = fmt(val);
+        onChange(val);
+      });
+      wrap.appendChild(lab); wrap.appendChild(inp);
+      return { wrap: wrap, input: inp, val: v };
+    }
+
+    DRIVERS.forEach(function (d, j) {
+      var c = ctl('sand-w' + j, 'True weight ' + String.fromCharCode(183) + ' ' + d.name, 0, 1, 0.02, cfg.w[j], f2, function (v) {
+        cfg.w[j] = v; run(false);
+      });
+      c.val.style.color = d.color;
+      wHost.appendChild(c.wrap);
+    });
+    metaHost.appendChild(ctl('sand-halo', 'Halo strength (shared mood across answers)', 0, 0.8, 0.02, cfg.halo, f2, function (v) { cfg.halo = v; run(false); }).wrap);
+    metaHost.appendChild(ctl('sand-noise', 'Noise (everything you did not ask about)', 0.1, 2, 0.05, cfg.noise, f2, function (v) { cfg.noise = v; run(false); }).wrap);
+    $('#sand-n').addEventListener('change', function () { cfg.n = parseInt($('#sand-n').value, 10); run(false); });
+    $('#sand-gen').addEventListener('click', function () { history = []; cfg.seed++; run(true); });
+    $('#sand-resample').addEventListener('click', function () { cfg.seed++; run(true); });
+
+    function buildSpec() {
+      var lam = Math.sqrt(Math.max(0, Math.min(0.8, cfg.halo)));
+      return DRIVERS.map(function (d, j) {
+        return { mean: d.mean, sd: d.sd, halo: lam, warm: 0, w: cfg.w[j] };
+      });
+    }
+    function compute() {
+      var raw = simulate({
+        spec: buildSpec(), n: cfg.n, noise: cfg.noise, seed: cfg.seed,
+        yCenter: 6.9, yScale: 1.9, standardizeOutcome: true
+      });
+      var a = analyse(raw.X, raw.y);
+      var sumW = cfg.w.reduce(function (x, y2) { return x + y2; }, 0);
+      a.trueWeights = cfg.w.slice();
+      a.trueShare = cfg.w.map(function (v) { return sumW > 1e-9 ? 100 * v / sumW : 0; });
+      a.recShare = a.shapley.map(function (v) { return a.r2 > 1e-6 ? 100 * v / a.r2 : 0; });
+      a.n = cfg.n; a.seed = cfg.seed; a.halo = cfg.halo; a.noise = cfg.noise;
+      return a;
+    }
+    function argmax(arr) { var b = 0; for (var i = 1; i < arr.length; i++) if (arr[i] > arr[b]) b = i; return b; }
+
+    function drawBars() {
+      var w = hostWidth(barHost, 620, 260);
+      var labelW = Math.max(64, Math.min(130, w * 0.26));
+      var rowH = 42, pad = { t: 10, b: 26, r: 44 };
+      var h = pad.t + rowH * K + pad.b;
+      var maxV = Math.max(40, Math.ceil(Math.max.apply(null, result.trueShare.concat(result.recShare)) / 10) * 10);
+      var plotW = w - labelW - pad.r;
+      var svg = svgRoot(w, h, 'True versus recovered importance shares');
+      var t;
+      for (t = 0; t <= maxV + 0.01; t += 10) {
+        var gx = labelW + (t / maxV) * plotW;
+        svg.appendChild(E('line', { x1: gx, y1: pad.t, x2: gx, y2: pad.t + rowH * K, stroke: 'var(--rule)', 'stroke-width': t === 0 ? 1.2 : 0.7 }));
+        svg.appendChild(axisText(gx, h - 12, t + '%', { size: 9 }));
+      }
+      for (var j = 0; j < K; j++) {
+        var y0 = pad.t + j * rowH + 4, bh = (rowH - 12) / 2;
+        svg.appendChild(axisText(labelW - 7, y0 + rowH / 2 - 4, DRIVERS[j].short, { anchor: 'end', size: 10.5, fill: 'var(--ink-2)', mono: false, weight: 500 }));
+        var bwT = Math.max(0.5, (result.trueShare[j] / maxV) * plotW);
+        var bwR = Math.max(0.5, (result.recShare[j] / maxV) * plotW);
+        svg.appendChild(E('rect', { x: labelW, y: y0, width: bwT, height: bh, fill: '#c3ccd6', rx: 2 }));
+        svg.appendChild(E('rect', { x: labelW, y: y0 + bh + 2, width: bwR, height: bh, fill: DRIVERS[j].color, opacity: 0.9, rx: 2 }));
+        svg.appendChild(axisText(labelW + Math.max(bwT, bwR) + 6, y0 + rowH / 2 - 4, f1(result.trueShare[j]) + '% ' + String.fromCharCode(8594) + ' ' + f1(result.recShare[j]) + '%', { anchor: 'start', size: 9.5, fill: 'var(--ink-2)' }));
+      }
+      clear(barHost); barHost.appendChild(svg);
+    }
+
+    function drawTable() {
+      var t = H('table'), thead = H('thead'), hr = H('tr');
+      ['driver', 'r', String.fromCharCode(946), 'shapley', 'share', 'mean'].forEach(function (x) { hr.appendChild(H('th', null, x)); });
+      thead.appendChild(hr); t.appendChild(thead);
+      var tb = H('tbody');
+      DRIVERS.forEach(function (d, j) {
+        var tr = H('tr');
+        var td0 = H('td', null, d.short); td0.style.color = d.color; tr.appendChild(td0);
+        tr.appendChild(H('td', null, f2(result.correlations[j])));
+        tr.appendChild(H('td', null, f2(result.betas[j])));
+        tr.appendChild(H('td', null, f3(result.shapley[j])));
+        tr.appendChild(H('td', null, f1(result.recShare[j]) + '%'));
+        tr.appendChild(H('td', null, f2(result.means[j])));
+        tb.appendChild(tr);
+      });
+      t.appendChild(tb);
+      clear(tableHost); tableHost.appendChild(t);
+    }
+
+    function drawHistory() {
+      clear(histHost);
+      if (!history.length) { histHost.appendChild(H('span', 'chip', 'no draws yet')); return; }
+      history.forEach(function (hh) {
+        var c = H('span', 'chip ' + (hh.ok ? 'good' : 'bad'), hh.code);
+        c.title = 'seed ' + hh.seed + (hh.ok ? ' — matched the true top driver' : ' — wrong top driver');
+        histHost.appendChild(c);
+      });
+    }
+
+    function drawReadout() {
+      var mae = 0;
+      for (var j = 0; j < K; j++) mae += Math.abs(result.trueShare[j] - result.recShare[j]);
+      mae /= K;
+      var topTrue = argmax(result.trueWeights), topRec = argmax(result.shapley);
+      clear(readout);
+      readout.appendChild(H('span', null, 'n = '));
+      readout.appendChild(H('b', null, result.n));
+      readout.appendChild(H('span', null, '   seed '));
+      readout.appendChild(H('b', null, result.seed));
+      readout.appendChild(H('span', null, '   R' + String.fromCharCode(178) + ' = '));
+      readout.appendChild(H('b', null, f3(result.r2)));
+      readout.appendChild(H('span', null, '   average share error = '));
+      readout.appendChild(H('b', null, f1(mae) + ' pts'));
+      readout.appendChild(document.createElement('br'));
+      var sumW = result.trueWeights.reduce(function (a, b) { return a + b; }, 0);
+      if (sumW < 1e-9) {
+        readout.appendChild(H('span', null, 'Every true weight is zero: overall satisfaction is pure noise, so any importance you see is an artefact.'));
+      } else if (topRec === topTrue) {
+        readout.appendChild(H('span', null, 'Top driver recovered correctly: '));
+        readout.appendChild(H('b', null, DRIVERS[topRec].name));
+        readout.appendChild(H('span', null, '.' + (result.n <= 100 ? ' At this sample size that is partly luck — re-sample.' : '')));
+      } else {
+        readout.appendChild(H('span', null, 'Wrong call: the analysis crowned '));
+        readout.appendChild(H('b', null, DRIVERS[topRec].name));
+        readout.appendChild(H('span', null, ' but the truth is '));
+        readout.appendChild(H('b', null, DRIVERS[topTrue].name));
+        readout.appendChild(H('span', null, '. This is what an underpowered or halo-soaked study buys you.'));
+      }
+    }
+
+    function drawQuad() {
+      renderQuadrant(quadHost, DRIVERS.map(function (d, j) {
+        return { name: d.short, code: d.code, perf: result.means[j], imp: result.recShare[j] };
+      }), { maxW: 560, maxH: 330, ratio: 0.72, xlo: 4 });
+    }
+
+    function run(logDraw) {
+      result = compute();
+      sandboxState = result;
+      if (logDraw) {
+        var topTrue = argmax(result.trueWeights), topRec = argmax(result.shapley);
+        history.push({ code: DRIVERS[topRec].code, ok: topRec === topTrue, seed: result.seed });
+        if (history.length > 10) history.shift();
+      }
+      drawBars(); drawTable(); drawReadout(); drawQuad(); drawHistory();
+    }
+    regenSandbox = function (seed) {
+      if (seed !== undefined && seed !== null) cfg.seed = seed >>> 0;
+      run(false);
+      return sandboxState;
+    };
+    register(function () { if (result) { drawBars(); drawQuad(); } else { run(false); } });
+  })();
+
+  /* =========================================================
+     SECTION 9 · quiz
+     ========================================================= */
+  var quizTally = { total: 0, answered: 0, correct: 0 };
+  (function quiz() {
+    var host = $('#quiz');
+    var QUESTIONS = [
+      {
+        q: 'A key driver analysis on this survey answers which question?',
+        opts: [
+          'Which attribute do customers rate highest?',
+          'Which attribute, if improved, would move overall satisfaction the most?',
+          'How satisfied are our customers on average?',
+          'Is satisfaction going up or down since last year?'
+        ],
+        a: 1,
+        why: 'KDA is about leverage, not level. The highest-rated attribute is often the one you should leave alone. Averages and trends are useful reporting, but neither tells you where the next dollar goes.'
+      },
+      {
+        q: 'Why is "rank the five drivers by their correlation with overall satisfaction" not good enough?',
+        opts: [
+          'Correlations cannot be computed on 0-10 survey scales.',
+          'Correlation only detects curved relationships, not straight ones.',
+          'The drivers overlap with each other, so shared credit gets counted once per driver.',
+          'You need at least 1,000 respondents before a correlation means anything.'
+        ],
+        a: 2,
+        why: 'Each simple correlation is computed as if the other drivers did not exist. Halo effects and genuine overlap mean the same underlying credit shows up in several correlations at once — the five numbers add up to more explanation than there is.'
+      },
+      {
+        q: 'A standardized beta of 0.37 for price fairness means roughly:',
+        opts: [
+          '37% of customers care about price.',
+          'Price explains 37% of overall satisfaction.',
+          'Raise a customer’s price rating by one standard deviation, with the other four ratings held fixed, and satisfaction rises about 0.37 standard deviations.',
+          'Price is 0.37 times as important as taste.'
+        ],
+        a: 2,
+        why: 'A standardized beta is a per-standard-deviation slope, conditional on the other predictors. "Percent explained" is R-squared, which is a whole-model quantity, not a per-driver one.'
+      },
+      {
+        q: 'Cleanliness correlates 0.52 with overall satisfaction but gets a beta near 0.03, while Shapley gives it about 10%. What is Shapley fixing?',
+        opts: [
+          'It removes the halo effect from the data.',
+          'It splits the credit that two overlapping drivers share, instead of handing it all to whichever one wins by a hair.',
+          'It turns the observational result into a causal one.',
+          'It raises R-squared so the model fits better.'
+        ],
+        a: 1,
+        why: 'Shapley averages each driver’s marginal contribution over every join order, so overlap is divided rather than awarded. It cannot remove the halo (that is a survey-design problem), it says nothing about causation, and it decomposes the same R-squared rather than increasing it.'
+      },
+      {
+        q: 'On the importance-by-performance chart, a driver sitting top-left — high importance, low performance — belongs in which bucket?',
+        opts: [
+          'Protect',
+          'Fix first',
+          'Low priority',
+          'Do not over-invest'
+        ],
+        a: 1,
+        why: 'High leverage plus weak current scores is the definition of the fix-first corner. High importance with high performance is protect; low importance with high performance is where over-investment hides; low on both is a genuine deprioritise.'
+      }
+    ];
+    quizTally.total = QUESTIONS.length;
+    var scoreEl = H('div', 'score');
+
+    function updateScore() {
+      scoreEl.textContent = 'answered ' + quizTally.answered + ' / ' + quizTally.total +
+        '  ' + String.fromCharCode(183) + '  ' + quizTally.correct + ' correct';
+    }
+
+    QUESTIONS.forEach(function (Q, qi) {
+      var box = H('div', 'q');
+      box.appendChild(H('div', 'q-num', 'QUESTION ' + (qi + 1)));
+      box.appendChild(H('div', 'q-text', Q.q));
+      var opts = H('div', 'q-opts');
+      var fb = H('div', 'q-fb');
+      var buttons = [];
+      Q.opts.forEach(function (text, oi) {
+        var b = H('button', 'opt');
+        b.type = 'button';
+        b.appendChild(H('span', 'mark', String.fromCharCode(65 + oi)));
+        b.appendChild(H('span', null, text));
+        b.addEventListener('click', function () {
+          if (box.getAttribute('data-done') === '1') return;
+          box.setAttribute('data-done', '1');
+          var right = oi === Q.a;
+          quizTally.answered++;
+          if (right) quizTally.correct++;
+          buttons.forEach(function (bb, bi) {
+            bb.disabled = true;
+            if (bi === Q.a) bb.className = 'opt correct';
+            else if (bi === oi) bb.className = 'opt wrong';
+          });
+          clear(fb);
+          var head = H('b', null, right ? 'Correct. ' : 'Not quite. ');
+          head.style.color = right ? 'var(--key)' : 'var(--alert)';
+          fb.appendChild(head);
+          fb.appendChild(document.createTextNode(Q.why));
+          fb.className = 'q-fb show';
+          updateScore();
+        });
+        buttons.push(b);
+        opts.appendChild(b);
+      });
+      box.appendChild(opts);
+      box.appendChild(fb);
+      host.appendChild(box);
+    });
+    updateScore();
+    host.appendChild(scoreEl);
+  })();
+
+  /* =========================================================
+     nav · table of contents + progress
+     ========================================================= */
+  (function nav() {
+    var SECTIONS = [
+      ['s1', 'The question'],
+      ['s2', 'Correlation'],
+      ['s3', 'The trap'],
+      ['s4', 'Regression'],
+      ['s5', 'Shapley'],
+      ['s6', 'Quadrant'],
+      ['s7', 'Sandbox'],
+      ['s8', 'Pitfalls'],
+      ['s9', 'Quiz'],
+      ['s10', 'Cheat sheet']
+    ];
+    var list = $('#toc-list'), links = {};
+    SECTIONS.forEach(function (s, i) {
+      var li = H('li'), a = H('a');
+      a.href = '#' + s[0];
+      var num = H('span', 'num', (i + 1) < 10 ? '0' + (i + 1) : String(i + 1));
+      a.appendChild(num);
+      a.appendChild(document.createTextNode(' ' + s[1]));
+      a.setAttribute('aria-current', 'false');
+      li.appendChild(a); list.appendChild(li);
+      links[s[0]] = a;
+    });
+    function setActive(id) {
+      for (var k in links) links[k].setAttribute('aria-current', k === id ? 'true' : 'false');
+    }
+    setActive('s1');
+    var bar = $('#progress');
+    /* scroll-driven, not rAF-driven: the section whose top last crossed the
+       upper third of the viewport is the one being read */
+    function onScroll() {
+      var max = document.documentElement.scrollHeight - window.innerHeight;
+      var p = max > 0 ? Math.max(0, Math.min(1, (window.pageYOffset || document.documentElement.scrollTop) / max)) : 0;
+      bar.style.width = (p * 100).toFixed(2) + '%';
+      var line = (window.innerHeight || 800) * 0.38, active = SECTIONS[0][0];
+      for (var i = 0; i < SECTIONS.length; i++) {
+        var el = document.getElementById(SECTIONS[i][0]);
+        if (el && el.getBoundingClientRect().top <= line) active = SECTIONS[i][0];
+      }
+      if (p > 0.995) active = SECTIONS[SECTIONS.length - 1][0];
+      setActive(active);
+    }
+    window.addEventListener('scroll', onScroll, { passive: true });
+    onScroll();
+  })();
+
+  /* =========================================================
+     verification hook
+     ========================================================= */
+  function exportAnalysis(a, extra) {
+    var o = {
+      X: a.X.map(function (r) { return r.slice(); }),
+      y: a.y.slice(),
+      correlations: a.correlations.slice(),
+      interCorr: a.interCorr.map(function (r) { return r.slice(); }),
+      betas: a.betas.slice(),
+      r2: a.r2,
+      shapley: a.shapley.slice(),
+      means: a.means.slice(),
+      sds: a.sds.slice(),
+      shapleySum: a.shapley.reduce(function (x, y2) { return x + y2; }, 0),
+      additiveResidual: a.additiveResidual,
+      driverNames: DRIVERS.map(function (d) { return d.name; })
+    };
+    if (extra) for (var k in extra) o[k] = extra[k];
+    return o;
+  }
+  window.kdaDebug = {
+    demo: function () {
+      return exportAnalysis(DEMO, { n: DEMO_N, seed: DEMO_SEED, noise: DEMO_NOISE, shapleyShare: SHARE.slice() });
+    },
+    trio: function () {
+      var subsets = {};
+      for (var m = 0; m < 8; m++) subsets[m] = trio.r2of(m);
+      return { drivers: ['Taste', 'Price fairness', 'Speed of service'], interCorr: trio.R, correlations: trio.rxy, r2: trio.r2, shapley: trio.phi, subsetR2: subsets };
+    },
+    sandbox: function () {
+      if (!sandboxState) return null;
+      return exportAnalysis(sandboxState, {
+        trueWeights: sandboxState.trueWeights.slice(),
+        trueShare: sandboxState.trueShare.slice(),
+        recoveredShare: sandboxState.recShare.slice(),
+        n: sandboxState.n, seed: sandboxState.seed,
+        halo: sandboxState.halo, noise: sandboxState.noise
+      });
+    },
+    regenSandbox: function (seed) {
+      regenSandbox(seed);
+      return window.kdaDebug.sandbox();
+    },
+    quizState: function () {
+      return { total: quizTally.total, answered: quizTally.answered, correct: quizTally.correct };
+    },
+    stats: { pearson: pearson, corrMatrix: corrMatrix, solve: solve, fitSubset: fitSubset, shapleyLMG: shapleyLMG }
+  };
+})();
+</script>
+</body>
+</html>
