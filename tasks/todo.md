@@ -42,3 +42,24 @@ planning + review by main session. Commit and push to origin/main.
   restores 10.4%; Price fairness is the lone fix-first quadrant occupant.
 - Not verified: real-device mobile rendering (subagent probed 390px headless: no overflow; I did not
   independently re-shoot narrow), Google Fonts rendering (offline fallback stacks only), screen readers.
+
+## Revision: section 4 rewrite (2026-08-04, Jason: "the Regression section makes no sense")
+
+- Diagnosis: the section used regression without defining it — no mechanism for "asks all five at
+  once," no demonstration of "holding the others fixed," sd units with no reason for standardizing,
+  dumbbell chart before β was derived.
+- Same Opus 5 subagent rebuilt s4 as a four-beat arc: (4a) the fitted formula in plain survey points
+  with a respondent stepper (prediction vs actual, worst-miss jump); (4b) least squares as a literal
+  error bowl — drag the price weight off fit and watch average squared miss climb; (4c) "held fixed"
+  = matched comparison — staff-rating chips filter the cleanliness scatter, slope ladder
+  0.80 → 0.25 → 0.05 pts; (4d) standardization motivated by unequal spreads, closing the loop to β
+  (last column reproduces DEMO.betas exactly). Dumbbell/R²/bridge kept.
+- My review fixed one copy error the subagent shipped: 4d caption said price ratings are "spread over
+  1.75 standard deviations" — 1.75 IS the sd in points; reworded to "spread (standard deviation) of
+  1.75 points" / "one standard-deviation push."
+- Independent Node cross-check extended to kdaDebug.regression(): rawWeights (β·sdY/sdX), intercept
+  (−3.917), meanAbsMiss (0.702), all-customers slope (0.796), the four matched-group slopes, pooled
+  within-group slope (0.253) — all match to <1e-6 (worst overall diff still 4.9e-10). Zero errors
+  with every new control scripted (stepper, worst, bowl slider + snap, all five chips). Prose claim
+  "price scatters 1–10, taste huddles at top" verified against the data (price min 1, taste min 4,
+  80% of taste ≥ 8). Screenshots of 4a–4d at 1280px reviewed.

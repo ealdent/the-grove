@@ -343,6 +343,17 @@ td.muted { color: var(--rule-2); }
 .cheat .say { border-left: 3px solid #14b8a6; padding-left: 0.8rem; margin-top: 1rem; font-size: 0.88rem; color: #c9d6e0; }
 .cheat .say em { color: #fff; font-family: var(--serif); font-size: 1.02em; }
 
+/* ---------- section 4 formula line ---------- */
+.formula-line {
+  font-family: var(--mono); font-size: 0.78rem; line-height: 2;
+  color: var(--ink-2); letter-spacing: -0.01em;
+}
+.formula-line .ft { white-space: nowrap; }   /* break between terms, never inside one */
+.formula-line sub { font-size: 0.78em; color: var(--key); }
+tr.total td { background: var(--key-soft); color: var(--key); font-weight: 500; border-top: 1px solid var(--key); }
+tr.start td { color: var(--dim); }
+td.wnum { color: var(--key); }
+
 footer {
   margin-top: 3rem; padding-top: 1.2rem; border-top: 1px solid var(--rule);
   font-family: var(--mono); font-size: 0.7rem; color: var(--dim); letter-spacing: 0.04em;
@@ -469,14 +480,87 @@ footer {
   <section class="sec" id="s4">
     <div class="sec-head">
       <div class="sec-num">04 &middot; the fix, part one</div>
-      <h2>Multiple regression, held at arm's length</h2>
+      <h2>Multiple regression: one formula, five weights</h2>
     </div>
-    <p>Multiple regression asks all five drivers the question at once, so each one has to earn credit the others cannot already supply. The output we want is the <strong>standardized beta</strong>, written <code>&beta;</code>. Read it like this:</p>
+    <p class="lede">Forget the word &ldquo;regression&rdquo; for a moment. What we are about to build is a <strong>guessing formula</strong>: you tell it a customer's five ratings, it guesses their overall satisfaction. Nothing more mysterious than that.</p>
+    <p>The formula is just a starting number plus one weight per driver:</p>
+    <div class="panel tight">
+      <div class="formula-line"><span class="ft">predicted overall =</span> <span class="ft">b<sub>0</sub></span> + <span class="ft">b<sub>1</sub>&thinsp;&times;&thinsp;Taste</span> + <span class="ft">b<sub>2</sub>&thinsp;&times;&thinsp;Price</span> + <span class="ft">b<sub>3</sub>&thinsp;&times;&thinsp;Speed</span> + <span class="ft">b<sub>4</sub>&thinsp;&times;&thinsp;Staff</span> + <span class="ft">b<sub>5</sub>&thinsp;&times;&thinsp;Clean</span></div>
+    </div>
+    <p>Each weight <code>b</code> says: <em>if this rating goes up by one point, how many points does my guess of overall satisfaction go up?</em> That is the whole idea. The only question is what numbers to use for the six <code>b</code>s &mdash; and the computer picks those by trying to make the guesses miss as little as possible.</p>
+
+    <h3>The formula, running on one real customer</h3>
+    <p>Here are the fitted weights for our 240 respondents, applied to one customer at a time. Step through a few and watch the guess land near &mdash; but rarely on &mdash; their actual answer.</p>
+
+    <div class="panel">
+      <div class="panel-title">The fitted formula, in plain survey points</div>
+      <div class="btn-row" style="margin-top:0;margin-bottom:0.7rem">
+        <button class="btn ghost" id="resp-prev" type="button">&#9666; prev</button>
+        <span class="chip" id="resp-label" style="font-size:0.78rem;padding:0.35em 0.6em">respondent #1 of 240</span>
+        <button class="btn ghost" id="resp-next" type="button">next &#9656;</button>
+        <button class="btn ghost" id="resp-rand" type="button">random</button>
+      </div>
+      <div class="table-wrap" id="reg-terms"></div>
+      <p class="cap">Every column is rounded to two decimals for display, so adding the rows by hand can land a hundredth away from the predicted total, which is computed from the full-precision weights.</p>
+      <div class="chart-host" id="reg-miss" style="margin-top:0.8rem"></div>
+      <div class="readout" id="reg-readout" aria-live="polite"></div>
+      <p class="cap" id="reg-cap"></p>
+      <p class="nudge">jump to respondent <span class="num" id="worst-resp">#100</span> with the button below. That is the formula's worst customer &mdash; it misses by <span class="num" id="worst-miss">2.4</span> points. A regression is a decent guesser, never an oracle. <button class="btn ghost" id="resp-worst" type="button" style="font-size:0.72rem;padding:0.2em 0.5em;margin-left:0.3rem">show the worst miss</button></p>
+    </div>
+
+    <h3>Where the weights come from: the bottom of a bowl</h3>
+    <p>Nobody chose those weights by hand. Add up how badly the formula misses across all 240 customers and you get a single score for any set of weights. Change a weight and the score changes. The computer simply hunts for the weights with the lowest score &mdash; that is what &ldquo;fitting&rdquo; means, and it is called <strong>least squares</strong> because the misses get squared before they are added up (so a big miss hurts more than two small ones).</p>
+    <p>Take the price fairness weight off its fitted value and watch the score climb in both directions:</p>
+
+    <div class="panel">
+      <div class="panel-title">Move one weight, keep the other four pinned</div>
+      <div class="ctl">
+        <label for="bowl-slider"><span>Price fairness weight &mdash; points of overall per point of price</span><span class="val" id="bowl-w">0.383</span></label>
+        <input type="range" id="bowl-slider" min="-0.6" max="0.6" step="0.01" value="0" aria-describedby="bowl-readout">
+      </div>
+      <div class="btn-row" style="margin-top:0.2rem">
+        <button class="btn ghost" id="bowl-snap" type="button">Snap back to best fit</button>
+      </div>
+      <div class="chart-host" id="bowl" style="margin-top:0.8rem"></div>
+      <div class="readout" id="bowl-readout" aria-live="polite"></div>
+      <p class="cap">The marker at the bottom is the fitted weight. Every one of the six weights sits at the bottom of its own bowl simultaneously &mdash; that is all the fitting procedure guarantees, and all it needs to.</p>
+    </div>
+
+    <h3>What &ldquo;holding the others fixed&rdquo; actually means</h3>
+    <p>You will hear a regression weight described as the effect of one driver <em>with the others held fixed</em>. In data you merely observed, that sounds like magic &mdash; you never held anything fixed, you just handed out questionnaires.</p>
+    <p>It is not magic. It means: <strong>compare customers who gave the same ratings on everything else.</strong> You can do it by hand. Pick a single staff friendliness rating, keep only the customers who gave exactly that, and look at cleanliness against overall satisfaction inside that group alone.</p>
+
+    <div class="panel">
+      <div class="panel-title">Cleanliness vs. overall &mdash; among customers who agree about the staff</div>
+      <div class="chip-row" id="matched-buttons" role="group" aria-label="Choose which customers to compare"></div>
+      <div class="chart-host" id="matched" style="margin-top:0.8rem"></div>
+      <div class="readout" id="matched-readout" aria-live="polite"></div>
+      <p class="nudge">click through staff&nbsp;6, 7, 8 and 9. The steep line is everyone lumped together; the flat ones are like compared with like.</p>
+    </div>
+
+    <p>Across all 240 customers, one extra point of cleanliness comes with <span class="num" id="lad-all">0.80</span> more points of overall satisfaction. Hold staff friendliness still and that collapses:</p>
+    <div class="panel tight">
+      <div class="table-wrap" id="ladder-table"></div>
+      <p class="cap">Honest caveat: the middle row only holds <em>staff friendliness</em> still, which is why it has not fallen all the way. Staff is cleanliness's main partner, so it does most of the work &mdash; the bottom row is what happens when all four other drivers are held still at once, which is exactly what the fitted weight in the formula above already does. Regression does this for you, and it can hold ratings still at the fractions in between, which no hand-made group can.</p>
+    </div>
+
+    <h3>Why the weights get standardized</h3>
+    <p>The weights above are honest but not comparable, because the five drivers are not equally spread out. Price ratings scatter from 1 to 10; taste ratings huddle at the top. A weight of &ldquo;0.50 per point&rdquo; is worth more if the driver actually has points to move.</p>
+
+    <div class="panel">
+      <div class="panel-title">From points-per-point to standard deviations</div>
+      <div class="table-wrap" id="sd-table"></div>
+      <p class="cap" id="sd-cap"></p>
+    </div>
+
+    <p>That last column is the <strong>standardized beta</strong>, written <code>&beta;</code>. It is the same fitted weight, re-expressed so all five are on one ruler: <em>how far does overall satisfaction move, in its own standard deviations, per one standard deviation of push on this driver?</em> Now they can be ranked against each other.</p>
 
     <div class="callout key">
-      <b>&beta; for Price fairness = 0.37</b> means: nudge a customer's price rating up by one standard deviation &mdash; <em>while their four other ratings stay exactly where they are</em> &mdash; and their overall satisfaction goes up about 0.37 standard deviations.
+      <b>&beta; for Price fairness = 0.37</b> means: push a customer's price rating up by one standard deviation of price ratings &mdash; about <span class="num" id="price-sd">1.74</span> points &mdash; <em>while their four other ratings stay exactly where they are</em> &mdash; and the formula predicts about 0.37 standard deviations more overall satisfaction, which is about <span class="num" id="price-pts">0.67</span> of a point on the 0&ndash;10 scale.
     </div>
-    <p>The phrase carrying all the weight is <em>while the others stay fixed</em>. That is what a plain correlation cannot do, and it is the entire reason regression is here. Standardized means every driver is measured in its own standard deviations, so the five betas are comparable to each other even though price ratings are more spread out than taste ratings.</p>
+
+    <h3>What we gained</h3>
+    <p>Now put the five betas next to the five raw correlations from section 3 &mdash; the same drivers, judged alone and then judged together.</p>
 
     <div class="panel">
       <div class="panel-title">Raw correlation vs. standardized beta</div>
@@ -1240,6 +1324,457 @@ w(S) = |S|! &middot; (k &minus; |S| &minus; 1)! / k!       the weight each subse
     }
     register(draw);
     $('#sc-corr').textContent = f2(DEMO.interCorr[3][4]);
+  })();
+
+  /* =========================================================
+     SECTION 4 · the prediction machine
+     -----------------------------------------------------------
+     The raw (unstandardized) fit, in survey points per survey point.
+     b_j = beta_j * sd_y / sd_xj  and  b0 = mean_y - sum(b_j * mean_xj)
+     is exactly the least-squares solution in the original units, so the
+     bowl in 4b really does bottom out at the fitted weight.
+     ========================================================= */
+  var SDY = sd(DEMO.y);
+  var MEANY = mean(DEMO.y);
+  var RAWW = DEMO.betas.map(function (b, j) { return b * SDY / DEMO.sds[j]; });
+  function interceptFor(w) {
+    var s = MEANY;
+    for (var j = 0; j < K; j++) s -= w[j] * DEMO.means[j];
+    return s;
+  }
+  var RAWB0 = interceptFor(RAWW);
+  function predictRow(row, w, ic) {
+    var p = ic;
+    for (var j = 0; j < K; j++) p += w[j] * row[j];
+    return p;
+  }
+  function missStats(w, ic) {
+    var sa = 0, sq = 0, n = DEMO.y.length;
+    for (var i = 0; i < n; i++) {
+      var d = DEMO.y[i] - predictRow(DEMO.X[i], w, ic);
+      sa += Math.abs(d); sq += d * d;
+    }
+    return { abs: sa / n, sq: sq / n };
+  }
+  var FITMISS = missStats(RAWW, RAWB0);
+  var WORST = (function () {
+    var bi = 0, bv = -1;
+    for (var i = 0; i < DEMO.y.length; i++) {
+      var d = Math.abs(DEMO.y[i] - predictRow(DEMO.X[i], RAWW, RAWB0));
+      if (d > bv) { bv = d; bi = i; }
+    }
+    return { i: bi, miss: bv };
+  })();
+  function slopeOf(xs, ys) {
+    var mx = mean(xs), my = mean(ys), sxy = 0, sxx = 0;
+    for (var i = 0; i < xs.length; i++) { sxy += (xs[i] - mx) * (ys[i] - my); sxx += (xs[i] - mx) * (xs[i] - mx); }
+    return sxx === 0 ? null : sxy / sxx;
+  }
+
+  /* ---- 4a · step through respondents ---- */
+  (function predictionMachine() {
+    var termHost = $('#reg-terms'), missHost = $('#reg-miss');
+    var readout = $('#reg-readout'), label = $('#resp-label');
+    var idx = 0, randRng = mulberry32(90210);
+
+    function drawTerms() {
+      var row = DEMO.X[idx];
+      /* short driver names and headers on phones, so the predicted total stays on screen */
+      var narrow = ((termHost.clientWidth || 680) < 430);
+      var t = H('table'), thead = H('thead'), hr = H('tr');
+      (narrow ? ['term', 'weight', 'rating', 'adds'] : ['term', 'weight', 'their rating', 'contributes'])
+        .forEach(function (x) { hr.appendChild(H('th', null, x)); });
+      thead.appendChild(hr); t.appendChild(thead);
+      var tb = H('tbody');
+      var tr0 = H('tr', 'start');
+      tr0.appendChild(H('td', null, narrow ? 'start' : 'starting point'));
+      tr0.appendChild(H('td', null, f2(RAWB0)));
+      tr0.appendChild(H('td', null, String.fromCharCode(8212)));
+      tr0.appendChild(H('td', null, f2(RAWB0)));
+      tb.appendChild(tr0);
+      var total = RAWB0;
+      for (var j = 0; j < K; j++) {
+        var contrib = RAWW[j] * row[j];
+        total += contrib;
+        var tr = H('tr');
+        var td0 = H('td', null, narrow ? DRIVERS[j].short : DRIVERS[j].name);
+        td0.style.color = DRIVERS[j].color;
+        tr.appendChild(td0);
+        tr.appendChild(H('td', 'wnum', f3(RAWW[j])));
+        tr.appendChild(H('td', null, row[j]));
+        tr.appendChild(H('td', null, '+' + f2(contrib)));
+        tb.appendChild(tr);
+      }
+      var trt = H('tr', 'total');
+      trt.appendChild(H('td', null, narrow ? 'predicted' : 'predicted overall'));
+      trt.appendChild(H('td', null, ''));
+      trt.appendChild(H('td', null, ''));
+      trt.appendChild(H('td', null, f2(total)));
+      tb.appendChild(trt);
+      t.appendChild(tb);
+      clear(termHost); termHost.appendChild(t);
+      return total;
+    }
+
+    function drawMiss(pred) {
+      var w = hostWidth(missHost, 640, 260);
+      var pad = { l: 12, r: 12, t: 26, b: 24 };
+      var h = pad.t + 34 + pad.b;
+      var actual = DEMO.y[idx];
+      function sx(v) { return pad.l + (v / 10) * (w - pad.l - pad.r); }
+      var yc = pad.t + 12;
+      var svg = svgRoot(w, h, 'Predicted versus actual overall satisfaction on a 0 to 10 line');
+      svg.appendChild(E('line', { x1: sx(0), y1: yc, x2: sx(10), y2: yc, stroke: 'var(--rule-2)', 'stroke-width': 1.2 }));
+      for (var t = 0; t <= 10; t++) {
+        svg.appendChild(E('line', { x1: sx(t), y1: yc - 4, x2: sx(t), y2: yc + 4, stroke: 'var(--rule-2)', 'stroke-width': 0.8 }));
+        if (t % 2 === 0) svg.appendChild(axisText(sx(t), yc + 18, t, { size: 9 }));
+      }
+      var lo = Math.min(pred, actual), hi = Math.max(pred, actual);
+      svg.appendChild(E('line', {
+        x1: sx(lo), y1: yc, x2: sx(hi), y2: yc,
+        stroke: 'var(--alert)', 'stroke-width': 4, 'stroke-linecap': 'round', opacity: 0.55
+      }));
+      svg.appendChild(E('circle', { cx: sx(pred), cy: yc, r: 6, fill: '#fff', stroke: 'var(--key)', 'stroke-width': 2.4 }));
+      svg.appendChild(E('circle', { cx: sx(actual), cy: yc, r: 6, fill: 'var(--ink)', stroke: '#fff', 'stroke-width': 1.6 }));
+      var predRight = sx(pred) <= sx(actual);
+      svg.appendChild(axisText(sx(pred), yc - 12, 'guess ' + f2(pred), {
+        anchor: predRight ? 'end' : 'start', size: 9.5, fill: 'var(--key)', weight: 500
+      }));
+      svg.appendChild(axisText(sx(actual), yc - 12, 'actual ' + actual, {
+        anchor: predRight ? 'start' : 'end', size: 9.5, fill: 'var(--ink)', weight: 500
+      }));
+      clear(missHost); missHost.appendChild(svg);
+    }
+
+    function refresh() {
+      label.textContent = 'respondent #' + (idx + 1) + ' of ' + DEMO.y.length;
+      var pred = drawTerms();
+      drawMiss(pred);
+      var miss = DEMO.y[idx] - pred;
+      clear(readout);
+      readout.appendChild(H('span', null, 'The formula guessed '));
+      readout.appendChild(H('b', null, f2(pred)));
+      readout.appendChild(H('span', null, '. They actually answered '));
+      readout.appendChild(H('b', null, String(DEMO.y[idx])));
+      readout.appendChild(H('span', null, '. Miss: '));
+      var b = H('b', null, (miss >= 0 ? '+' : '') + f2(miss) + ' points');
+      b.style.color = Math.abs(miss) > 1.2 ? 'var(--alert)' : 'var(--key)';
+      readout.appendChild(b);
+      readout.appendChild(H('span', null, Math.abs(miss) < 0.35
+        ? '  —  almost exactly right, which does happen.'
+        : (miss > 0 ? '  —  this customer was happier than their five ratings suggest.'
+          : '  —  this customer was grumpier than their five ratings suggest.')));
+    }
+
+    $('#resp-prev').addEventListener('click', function () { idx = (idx - 1 + DEMO.y.length) % DEMO.y.length; refresh(); });
+    $('#resp-next').addEventListener('click', function () { idx = (idx + 1) % DEMO.y.length; refresh(); });
+    $('#resp-rand').addEventListener('click', function () { idx = Math.floor(randRng() * DEMO.y.length); refresh(); });
+    $('#resp-worst').addEventListener('click', function () { idx = WORST.i; refresh(); });
+    register(refresh);
+
+    $('#reg-cap').textContent =
+      'Averaged over all ' + DEMO.y.length + ' respondents the formula misses by ' + f2(FITMISS.abs) +
+      ' points. No other set of six weights does better on the squared misses — that is what "fitted" means.';
+    $('#worst-resp').textContent = '#' + (WORST.i + 1);
+    $('#worst-miss').textContent = f1(WORST.miss);
+  })();
+
+  /* ---- 4b · the error bowl ---- */
+  (function errorBowl() {
+    var host = $('#bowl'), slider = $('#bowl-slider');
+    var wLabel = $('#bowl-w'), readout = $('#bowl-readout');
+    var PJ = 1; /* price fairness */
+    var SPAN = 0.6, STEPS = 60;
+
+    function weightsAt(off) { var w = RAWW.slice(); w[PJ] = RAWW[PJ] + off; return w; }
+    function scoreAt(off) { var w = weightsAt(off); return missStats(w, interceptFor(w)); }
+
+    function draw() {
+      var off = parseFloat(slider.value);
+      var w = hostWidth(host, 640, 260);
+      var h = Math.round(Math.max(200, Math.min(260, w * 0.42)));
+      var pad = { l: 46, r: 16, t: 16, b: 42 };
+      var pts = [], i, maxS = 0, minS = Infinity;
+      for (i = 0; i <= STEPS; i++) {
+        var o = -SPAN + (2 * SPAN) * (i / STEPS);
+        var s = scoreAt(o).sq;
+        pts.push([o, s]);
+        if (s > maxS) maxS = s;
+        if (s < minS) minS = s;
+      }
+      var ylo = Math.max(0, minS - (maxS - minS) * 0.12), yhi = maxS + (maxS - minS) * 0.1;
+      function sx(v) { return pad.l + (v + SPAN) / (2 * SPAN) * (w - pad.l - pad.r); }
+      function sy(v) { return h - pad.b - (v - ylo) / (yhi - ylo) * (h - pad.t - pad.b); }
+      var svg = svgRoot(w, h, 'Error curve: average squared miss against the price fairness weight');
+      svg.appendChild(E('rect', { x: pad.l, y: pad.t, width: w - pad.l - pad.r, height: h - pad.t - pad.b, fill: 'var(--paper-2)', rx: 6 }));
+      /* x ticks in weight units */
+      var tickOffs = [-0.6, -0.3, 0, 0.3, 0.6];
+      for (i = 0; i < tickOffs.length; i++) {
+        var tx = sx(tickOffs[i]);
+        svg.appendChild(E('line', { x1: tx, y1: pad.t, x2: tx, y2: h - pad.b, stroke: 'var(--rule)', 'stroke-width': 0.7 }));
+        svg.appendChild(axisText(tx, h - pad.b + 14, f2(RAWW[PJ] + tickOffs[i]), { size: 9 }));
+      }
+      svg.appendChild(axisText(pad.l + (w - pad.l - pad.r) / 2, h - 6, 'price fairness weight', { size: 9.5 }));
+      var yl = axisText(0, 0, 'average squared miss', { size: 9.5 });
+      yl.setAttribute('transform', 'translate(12,' + ((h - pad.b + pad.t) / 2) + ') rotate(-90)');
+      svg.appendChild(yl);
+      /* the bowl */
+      var d = '';
+      for (i = 0; i < pts.length; i++) d += (i === 0 ? 'M' : 'L') + sx(pts[i][0]).toFixed(2) + ' ' + sy(pts[i][1]).toFixed(2);
+      svg.appendChild(E('path', { d: d, fill: 'none', stroke: 'var(--corr)', 'stroke-width': 2 }));
+      /* best-fit marker at the bottom */
+      svg.appendChild(E('line', { x1: sx(0), y1: sy(FITMISS.sq), x2: sx(0), y2: h - pad.b, stroke: 'var(--key)', 'stroke-width': 1.2, 'stroke-dasharray': '3 3' }));
+      svg.appendChild(E('circle', { cx: sx(0), cy: sy(FITMISS.sq), r: 4, fill: 'var(--key)' }));
+      svg.appendChild(axisText(sx(0), sy(FITMISS.sq) - 10, 'best fit ' + f3(RAWW[PJ]), { size: 9.5, fill: 'var(--key)', weight: 500 }));
+      /* current position */
+      var cur = scoreAt(off).sq;
+      if (Math.abs(off) > 1e-9) {
+        svg.appendChild(E('line', { x1: pad.l, y1: sy(cur), x2: sx(off), y2: sy(cur), stroke: 'var(--alert)', 'stroke-width': 1, 'stroke-dasharray': '3 3' }));
+        svg.appendChild(axisText(sx(off), sy(cur) - 11, f3(cur), { size: 9.5, fill: 'var(--alert)', weight: 500 }));
+      }
+      svg.appendChild(E('circle', { cx: sx(off), cy: sy(cur), r: 6, fill: 'var(--alert)', stroke: '#fff', 'stroke-width': 2 }));
+      clear(host); host.appendChild(svg);
+
+      wLabel.textContent = f3(RAWW[PJ] + off);
+      var st = scoreAt(off);
+      clear(readout);
+      readout.appendChild(H('span', null, 'average squared miss = '));
+      readout.appendChild(H('b', null, f3(st.sq)));
+      readout.appendChild(H('span', null, '   (best possible ' + f3(FITMISS.sq) + ')'));
+      readout.appendChild(document.createElement('br'));
+      readout.appendChild(H('span', null, 'average miss in points = '));
+      readout.appendChild(H('b', null, f2(st.abs)));
+      readout.appendChild(H('span', null, '   (best ' + f2(FITMISS.abs) + ')'));
+      if (Math.abs(off) < 1e-9) {
+        readout.appendChild(H('span', null, '  —  you are at the bottom of the bowl. This is the fitted weight.'));
+      } else {
+        readout.appendChild(H('span', null, '  —  ' + (off > 0 ? 'too much' : 'too little') +
+          ' credit to price: the formula is now ' + f1(100 * (st.sq / FITMISS.sq - 1)) + '% worse.'));
+      }
+    }
+    slider.addEventListener('input', draw);
+    $('#bowl-snap').addEventListener('click', function () { slider.value = '0'; draw(); });
+    register(draw);
+  })();
+
+  /* ---- 4c · matched customers ---- */
+  var MATCHED = null;
+  (function matchedCustomers() {
+    var host = $('#matched'), btnHost = $('#matched-buttons');
+    var readout = $('#matched-readout'), ladderHost = $('#ladder-table');
+    var CJ = 4, SJ = 3;   /* cleanliness on x, staff friendliness as the match key */
+    var GROUPS = [6, 7, 8, 9];
+    var cleanAll = col(DEMO.X, CJ);
+    var allSlope = slopeOf(cleanAll, DEMO.y);
+    var allInt = mean(DEMO.y) - allSlope * mean(cleanAll);
+    var groups = GROUPS.map(function (g) {
+      var idx = [];
+      for (var i = 0; i < DEMO.X.length; i++) if (DEMO.X[i][SJ] === g) idx.push(i);
+      var xs = idx.map(function (i) { return DEMO.X[i][CJ]; });
+      var ys = idx.map(function (i) { return DEMO.y[i]; });
+      var sl = idx.length > 1 ? slopeOf(xs, ys) : null;
+      return {
+        staffRating: g, n: idx.length, slope: sl, idx: idx,
+        intercept: sl === null ? null : mean(ys) - sl * mean(xs),
+        xlo: Math.min.apply(null, xs), xhi: Math.max.apply(null, xs)
+      };
+    });
+    /* pooled within-group slope over the groups the UI offers */
+    var pooled = (function () {
+      var num = 0, den = 0;
+      groups.forEach(function (g) {
+        if (g.n < 2) return;
+        var xs = g.idx.map(function (i) { return DEMO.X[i][CJ]; });
+        var ys = g.idx.map(function (i) { return DEMO.y[i]; });
+        var mx = mean(xs), my = mean(ys);
+        for (var k = 0; k < xs.length; k++) { num += (xs[k] - mx) * (ys[k] - my); den += (xs[k] - mx) * (xs[k] - mx); }
+      });
+      return den === 0 ? null : num / den;
+    })();
+    MATCHED = {
+      matched: groups.map(function (g) { return { staffRating: g.staffRating, n: g.n, slope: g.slope }; }),
+      allSlope: allSlope, pooledWithinSlope: pooled
+    };
+
+    /* stable, deterministic jitter so integer ratings do not stack into dots */
+    var JIT = (function () {
+      var r = mulberry32(31337), o = [];
+      for (var i = 0; i < DEMO.y.length; i++) o.push([(r() - 0.5) * 0.52, (r() - 0.5) * 0.52]);
+      return o;
+    })();
+
+    var sel = -1;   /* -1 = everyone */
+    var buttons = [];
+    function mkBtn(text, val) {
+      var b = H('button', 'btn ghost', text);
+      b.type = 'button';
+      b.style.fontFamily = 'var(--mono)';
+      b.style.fontSize = '0.7rem';
+      b.style.padding = '0.26em 0.55em';
+      b.setAttribute('aria-pressed', 'false');
+      b.addEventListener('click', function () { sel = val; draw(); });
+      btnHost.appendChild(b);
+      buttons.push({ el: b, val: val });
+    }
+    mkBtn('everyone (n=' + DEMO.y.length + ')', -1);
+    groups.forEach(function (g, gi) { mkBtn('staff = ' + g.staffRating + ' (n=' + g.n + ')', gi); });
+
+    function draw() {
+      buttons.forEach(function (b) { b.el.setAttribute('aria-pressed', b.val === sel ? 'true' : 'false'); });
+      var w = hostWidth(host, 640, 260);
+      var h = Math.round(Math.max(250, Math.min(340, w * 0.62)));
+      var pad = { l: 40, r: 14, t: 14, b: 40 };
+      var xlo = 3.6, xhi = 10.4, ylo = 1.6, yhi = 10.4;
+      function sx(v) { return pad.l + (v - xlo) / (xhi - xlo) * (w - pad.l - pad.r); }
+      function sy(v) { return h - pad.b - (v - ylo) / (yhi - ylo) * (h - pad.t - pad.b); }
+      var svg = svgRoot(w, h, 'Scatterplot of cleanliness against overall satisfaction');
+      svg.appendChild(E('rect', { x: pad.l, y: pad.t, width: w - pad.l - pad.r, height: h - pad.t - pad.b, fill: 'var(--paper-2)', rx: 6 }));
+      var t;
+      for (t = 4; t <= 10; t++) {
+        svg.appendChild(E('line', { x1: sx(t), y1: pad.t, x2: sx(t), y2: h - pad.b, stroke: 'var(--rule)', 'stroke-width': 0.7 }));
+        svg.appendChild(axisText(sx(t), h - pad.b + 14, t, { size: 9 }));
+      }
+      for (t = 2; t <= 10; t += 2) {
+        svg.appendChild(E('line', { x1: pad.l, y1: sy(t), x2: w - pad.r, y2: sy(t), stroke: 'var(--rule)', 'stroke-width': 0.7 }));
+        svg.appendChild(axisText(pad.l - 7, sy(t) + 3.5, t, { anchor: 'end', size: 9 }));
+      }
+      svg.appendChild(axisText(pad.l + (w - pad.l - pad.r) / 2, h - 6, 'cleanliness rating', { size: 9.5 }));
+      var yl = axisText(0, 0, 'overall satisfaction', { size: 9.5 });
+      yl.setAttribute('transform', 'translate(12,' + ((h - pad.b + pad.t) / 2) + ') rotate(-90)');
+      svg.appendChild(yl);
+
+      var inGroup = {};
+      if (sel >= 0) groups[sel].idx.forEach(function (i) { inGroup[i] = true; });
+      for (var i = 0; i < DEMO.y.length; i++) {
+        var hot = sel < 0 || inGroup[i];
+        svg.appendChild(E('circle', {
+          cx: sx(DEMO.X[i][CJ] + JIT[i][0]), cy: sy(DEMO.y[i] + JIT[i][1]),
+          r: hot ? 3.6 : 2.6,
+          fill: hot ? (sel < 0 ? 'var(--corr)' : 'var(--d5)') : 'var(--rule-2)',
+          opacity: hot ? 0.72 : 0.3,
+          stroke: hot ? '#fff' : 'none', 'stroke-width': 0.7
+        }));
+      }
+      /* everyone's line, always visible for comparison */
+      svg.appendChild(E('line', {
+        x1: sx(4), y1: sy(allInt + allSlope * 4), x2: sx(10), y2: sy(allInt + allSlope * 10),
+        stroke: 'var(--corr)', 'stroke-width': 2.6, opacity: sel < 0 ? 1 : 0.45
+      }));
+      /* a white halo keeps the slope labels readable where they cross the dots */
+      function halo(t) {
+        t.setAttribute('paint-order', 'stroke');
+        t.setAttribute('stroke', 'var(--paper)');
+        t.setAttribute('stroke-width', '3.5');
+        t.setAttribute('stroke-linejoin', 'round');
+        return t;
+      }
+      /* with a group selected, label everyone's line at its LEFT end so the two
+         slope labels cannot collide on a narrow screen */
+      if (sel < 0) {
+        svg.appendChild(halo(axisText(sx(10) - 4, sy(allInt + allSlope * 10) - 10, 'everyone: ' + f2(allSlope) + ' / point', {
+          anchor: 'end', size: 9.5, fill: 'var(--corr)', weight: 500
+        })));
+      } else {
+        svg.appendChild(halo(axisText(sx(4) + 4, sy(allInt + allSlope * 4) - 10, 'everyone: ' + f2(allSlope) + ' / point', {
+          anchor: 'start', size: 9.5, fill: 'var(--corr)', weight: 500
+        })));
+      }
+      if (sel >= 0 && groups[sel].slope !== null) {
+        var g = groups[sel], x0 = g.xlo - 0.3, x1 = g.xhi + 0.3;
+        svg.appendChild(E('line', {
+          x1: sx(x0), y1: sy(g.intercept + g.slope * x0), x2: sx(x1), y2: sy(g.intercept + g.slope * x1),
+          stroke: 'var(--key)', 'stroke-width': 3, 'stroke-linecap': 'round'
+        }));
+        svg.appendChild(halo(axisText(sx(x1) - 2, sy(g.intercept + g.slope * x1) + 19, 'staff = ' + g.staffRating + ': ' + f2(g.slope) + ' / point', {
+          anchor: 'end', size: 9.5, fill: 'var(--key)', weight: 500
+        })));
+      }
+      clear(host); host.appendChild(svg);
+
+      clear(readout);
+      if (sel < 0) {
+        readout.appendChild(H('span', null, 'All '));
+        readout.appendChild(H('b', null, String(DEMO.y.length)));
+        readout.appendChild(H('span', null, ' customers, nothing held still. One more point of cleanliness comes with '));
+        readout.appendChild(H('b', null, f2(allSlope)));
+        readout.appendChild(H('span', null, ' more points of overall satisfaction. Now pick a staff rating and watch that shrink.'));
+      } else {
+        var gg = groups[sel];
+        readout.appendChild(H('span', null, 'Only the '));
+        readout.appendChild(H('b', null, String(gg.n)));
+        readout.appendChild(H('span', null, ' customers who rated staff friendliness exactly '));
+        readout.appendChild(H('b', null, String(gg.staffRating)));
+        readout.appendChild(H('span', null, '. Inside this group cleanliness is worth '));
+        var b2 = H('b', null, f2(gg.slope));
+        b2.style.color = 'var(--key)';
+        readout.appendChild(b2);
+        readout.appendChild(H('span', null, ' points, against ' + f2(allSlope) + ' for everyone lumped together.'));
+      }
+    }
+
+    /* the three-step ladder */
+    function ladder() {
+      var narrow = ((ladderHost.clientWidth || 680) < 430);
+      var t = H('table'), thead = H('thead'), hr = H('tr');
+      hr.appendChild(H('th', null, narrow ? 'held still' : 'what is held still'));
+      hr.appendChild(H('th', null, narrow ? 'worth' : 'cleanliness is worth'));
+      thead.appendChild(hr); t.appendChild(thead);
+      var tb = H('tbody');
+      var rows = [
+        ['nothing', 'nothing — all ' + DEMO.y.length + ' customers', allSlope, false],
+        ['staff only', 'staff friendliness only — inside matched groups', pooled, false],
+        ['all four', 'all four other drivers — the fitted weight above', RAWW[CJ], true]
+      ];
+      rows.forEach(function (r) {
+        var tr = H('tr', r[3] ? 'total' : null);
+        tr.appendChild(H('td', null, narrow ? r[0] : r[1]));
+        tr.appendChild(H('td', null, f2(r[2]) + ' pts'));
+        tb.appendChild(tr);
+      });
+      t.appendChild(tb);
+      clear(ladderHost); ladderHost.appendChild(t);
+      $('#lad-all').textContent = f2(allSlope);
+    }
+
+    register(function () { draw(); ladder(); });
+  })();
+
+  /* ---- 4d · why standardize ---- */
+  (function standardize() {
+    var host = $('#sd-table');
+    function draw() {
+      var narrow = ((host.clientWidth || 680) < 430);
+      var t = H('table'), thead = H('thead'), hr = H('tr');
+      (narrow ? ['driver', 'sd', 'b', 'b × sd', 'β'] : ['driver', 'sd of ratings', 'weight b', 'b × sd', '÷ sd of overall = β'])
+        .forEach(function (x) { hr.appendChild(H('th', null, x)); });
+      thead.appendChild(hr); t.appendChild(thead);
+      var tb = H('tbody');
+      for (var j = 0; j < K; j++) {
+        var tr = H('tr');
+        var td0 = H('td', null, narrow ? DRIVERS[j].short : DRIVERS[j].name);
+        td0.style.color = DRIVERS[j].color;
+        tr.appendChild(td0);
+        tr.appendChild(H('td', null, f2(DEMO.sds[j])));
+        tr.appendChild(H('td', 'wnum', f3(RAWW[j])));
+        tr.appendChild(H('td', null, f3(RAWW[j] * DEMO.sds[j])));
+        var tdb = H('td', null, f3(RAWW[j] * DEMO.sds[j] / SDY));
+        tdb.style.color = 'var(--key)';
+        tdb.style.fontWeight = '500';
+        tr.appendChild(tdb);
+        tb.appendChild(tr);
+      }
+      t.appendChild(tb);
+      clear(host); host.appendChild(t);
+    }
+    register(draw);
+    $('#sd-cap').textContent =
+      'Read row two: price fairness buys ' + f3(RAWW[1]) + ' points of overall per point of price — less than taste’s ' +
+      f3(RAWW[0]) + '. But price ratings have a spread (standard deviation) of ' + f2(DEMO.sds[1]) + ' points against taste’s ' +
+      f2(DEMO.sds[0]) + ', so one standard-deviation push on price moves overall satisfaction ' + f3(RAWW[1] * DEMO.sds[1]) +
+      ' points against taste’s ' + f3(RAWW[0] * DEMO.sds[0]) + '. Divide by the spread of overall satisfaction itself (' +
+      f2(SDY) + ') and you get the last column. Price overtakes taste — that reversal is the whole reason for standardizing.';
+    $('#price-sd').textContent = f2(DEMO.sds[1]);
+    $('#price-pts').textContent = f2(RAWW[1] * DEMO.sds[1]);
   })();
 
   /* =========================================================
@@ -2034,6 +2569,20 @@ w(S) = |S|! &middot; (k &minus; |S| &minus; 1)! / k!       the weight each subse
   window.kdaDebug = {
     demo: function () {
       return exportAnalysis(DEMO, { n: DEMO_N, seed: DEMO_SEED, noise: DEMO_NOISE, shapleyShare: SHARE.slice() });
+    },
+    regression: function () {
+      return {
+        rawWeights: RAWW.slice(),
+        intercept: RAWB0,
+        sdY: SDY,
+        meanAbsMiss: FITMISS.abs,
+        meanSqMiss: FITMISS.sq,
+        worstMiss: { respondent: WORST.i + 1, miss: WORST.miss },
+        matched: MATCHED.matched.map(function (m) { return { staffRating: m.staffRating, n: m.n, slope: m.slope }; }),
+        allSlope: MATCHED.allSlope,
+        pooledWithinSlope: MATCHED.pooledWithinSlope,
+        driverNames: DRIVERS.map(function (d) { return d.name; })
+      };
     },
     trio: function () {
       var subsets = {};
