@@ -1,3 +1,22 @@
+# Gonka decentralized AI explainer (learn/)
+
+Goal: copy the self-contained Gonka explainer from `~/Downloads` into `learn/`, add an alphabetized tile to `learn/index.html`, verify the scoped changes, and commit/push to `origin/main`.
+
+## Plan
+
+- [x] Inspect repo rules, learn-page conventions, worktree, and the Downloads source
+- [x] Copy `gonka-decentralized-ai-explainer.html` into `learn/`
+- [x] Add the Gonka tile between “Freezing Water with Gas” and “Hist Gradient Boosting”
+- [x] Run repository checks and review the diff
+- [x] Commit the scoped changes and push to `origin/main`
+
+## Review
+
+- The copied page is byte-for-byte identical to the Downloads source.
+- The inline JavaScript parses, the tile target exists, and the tile is in the expected alphabetical slot.
+- `git diff --check` is clean.
+- `npm test -- --runInBand` remains red on the pre-existing `arcade/mother-os-defense/js/__tests__/gameplay.test.js` suite (`require is not defined` under the repo's ESM setup); Jest also reports the existing `redline-ascent` package-name collision.
+
 # Key Driver Analysis interactive tutorial (learn/)
 
 Goal: new single-file interactive tutorial `learn/key-driver-analysis.html` teaching Key Driver Analysis
