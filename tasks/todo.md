@@ -1,3 +1,22 @@
+# Gonka explainer review fixes (2026-08-11)
+
+Goal: resolve the three review findings in `learn/gonka-decentralized-ai-explainer.html`, verify the fixes, and push them to `origin/main`.
+
+## Plan
+
+- [x] Reproduce the motion, chart-grid, and source-map issues in the current page
+- [x] Fix SVG motion pausing, asymmetric chart padding, and source-section anchors
+- [x] Run focused checks and review the diff
+- [x] Commit and push the fixes to `origin/main`
+
+## Review
+
+- Inline JavaScript parses; all source-map fragment targets exist, with Governance mapped to section 12 and Consensus comparison mapped to the thesis section.
+- Extracted motion logic passes reduced-motion and pause/resume assertions using stubbed SVG animation methods.
+- Extracted chart-grid logic passes asymmetric-padding geometry assertions for all outer gridlines.
+- `git diff --check` is clean.
+- Not verified in a real browser because no local browser binary or connected browser tool was available; visual screenshot, console, and network checks remain outstanding.
+
 # Gonka decentralized AI explainer (learn/)
 
 Goal: copy the self-contained Gonka explainer from `~/Downloads` into `learn/`, add an alphabetized tile to `learn/index.html`, verify the scoped changes, and commit/push to `origin/main`.

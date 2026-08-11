@@ -1,3 +1,6 @@
+- SVG SMIL animations do not obey CSS `animation-play-state`; motion controls and reduced-motion handling must call `pauseAnimations()` / `unpauseAnimations()` on the owning SVG roots.
+- Canvas chart grid helpers must accept all four plot insets when the plotted axes use asymmetric padding; reusing one horizontal or vertical inset misaligns the outer gridlines.
+- Source-map links need real section anchors: verify every `href="#..."` target exists and points to the section that owns the cited content, especially when sections are intentionally unnumbered in markup.
 - Always properly dispose Three.js meshes, materials, and geometries when removing objects from the scene to prevent memory leaks in long-running apps.
 - When maintaining a finite number of positions for objects (like task slots), implement an array or stack of available indices and ensure indices are reclaimed when objects are removed.
 - For 2D canvas games, cache complex static vector layers (roads, pebbles, grass, decorations) onto an offscreen canvas. Recalculate buffs (like booster towers) statically when towers are placed, upgraded, or sold instead of doing O(N^2) calculations on every physics tick. Render numerous small particles using fillRect rather than beginPath/arc/fill path calls.
