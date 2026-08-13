@@ -1406,6 +1406,7 @@ const lattice = {
     this.fallback = true;
     els["stage-gl"].hidden = true;
     els["stage-fallback"].hidden = false;
+    els["stage-fallback"].classList.add("is-on");
     els.stage.classList.add("shader-off");
     els["stage-hint"].textContent = "click a vertex";
     els["stage-fallback"].addEventListener("pointerdown", (ev) => this.onFallbackClick(ev));
