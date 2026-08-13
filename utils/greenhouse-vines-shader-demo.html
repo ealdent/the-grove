@@ -1,0 +1,798 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Greenhouse Vines — Living Dialog Border Shader</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --gh-ink:        #e4efdc;
+      --gh-ink-dim:    #9db393;
+      --gh-ink-faint:  #6d8168;
+      --gh-leaf:       #8fd96a;
+      --gh-leaf-deep:  #4c8f3c;
+      --gh-lamp:       #ffc98a;
+      --gh-edge:       rgba(150, 206, 122, 0.20);
+      --gh-edge-lit:   rgba(196, 240, 168, 0.42);
+      --gh-well:       rgba(6, 12, 7, 0.55);
+      /* How far past the panel edge the vine canvas reaches, CSS px. Read back by the
+         JS, so this declaration is the only place it is stated. Not a free parameter:
+         the outermost lane sits 50px out, its two wobble harmonics add up to 22px more,
+         and a leaf hanging off that reaches another 24px — so anything under ~96 saws
+         the tips off the back strands. */
+      --overflow: 96px;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; }
+
+    html, body { min-height: 100%; margin: 0; }
+
+    body {
+      min-height: 100svh;
+      color: var(--gh-ink);
+      background:
+        radial-gradient(90% 55% at 50% -8%, rgba(255, 201, 138, 0.10), rgba(255, 201, 138, 0) 68%),
+        radial-gradient(120% 90% at 50% 42%, #0d1a0d 0%, #060c07 55%, #030604 100%),
+        #030604;
+      background-attachment: fixed;
+    }
+
+    .page {
+      width: min(1120px, calc(100% - 28px));
+      margin: 0 auto;
+      padding: clamp(28px, 6vw, 68px) 0 150px;
+    }
+
+    .eyebrow {
+      margin: 0 0 10px;
+      color: var(--gh-leaf);
+      font: 600 11px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+      letter-spacing: .19em;
+      text-transform: uppercase;
+    }
+
+    h1 {
+      max-width: 760px;
+      margin: 0;
+      font-size: clamp(32px, 6vw, 66px);
+      font-weight: 500;
+      line-height: .96;
+      letter-spacing: -.045em;
+    }
+
+    .lede {
+      max-width: 660px;
+      margin: 20px 0 0;
+      color: var(--gh-ink-dim);
+      font-size: 15px;
+      line-height: 1.65;
+    }
+
+    /* The stage exists to give the strands room. Its padding is deliberately a
+       shade larger than --overflow so nothing is clipped on a wide window; on a
+       narrow one the horizontal clip at the viewport edge is what keeps the page
+       from growing a scrollbar for a canvas nobody can interact with. */
+    .stage {
+      position: relative;
+      display: grid;
+      place-items: center;
+      margin-top: clamp(36px, 7vw, 64px);
+      padding: 112px 0;
+      overflow: hidden;
+    }
+
+    /* --- The dialog, lifted from the greenhouse to-do app --- */
+
+    .gh-panel {
+      position: relative;
+      width: 460px;
+      max-width: 100%;
+      border-radius: 18px;
+      /* Old glass over dark soil: a cool sheen from the top left, a warm one from
+         the lamp above, over a deep green-black body. */
+      background:
+        linear-gradient(147deg, rgba(206, 232, 198, 0.10) 0%, rgba(206, 232, 198, 0) 38%),
+        radial-gradient(90% 60% at 50% -10%, rgba(255, 201, 138, 0.16), rgba(255, 201, 138, 0) 70%),
+        linear-gradient(180deg, #16200f 0%, #0c130a 62%, #080d07 100%);
+      border: 1px solid var(--gh-edge);
+      box-shadow:
+        0 40px 90px -20px rgba(0, 0, 0, 0.85),
+        0 0 0 1px rgba(0, 0, 0, 0.5),
+        inset 0 1px 0 var(--gh-edge-lit);
+    }
+
+    .gh-vines {
+      position: absolute;
+      display: block;
+      pointer-events: none;
+      z-index: 1;
+      left: calc(-1 * var(--overflow));
+      top: calc(-1 * var(--overflow));
+      /* width/height are written by the JS every resize — deliberately not set
+         here. A canvas is a replaced element, so `width: auto` resolves to its
+         drawing-buffer size in CSS pixels, which is devicePixelRatio times too big. */
+    }
+
+    .gh-panel-inner { position: relative; z-index: 2; padding: 26px 28px 24px; }
+
+    .gh-eyebrow {
+      margin: 0 0 6px;
+      font-size: .72rem;
+      letter-spacing: .14em;
+      text-transform: uppercase;
+      color: var(--gh-ink-faint);
+    }
+
+    .gh-panel h2 { margin: 0; font-size: 1.5rem; font-weight: 600; }
+    .gh-sub { margin: 7px 0 0; font-size: .88rem; line-height: 1.5; color: var(--gh-ink-dim); }
+    .gh-head { margin: 0 0 20px; }
+
+    .gh-vitals {
+      margin: 0 0 20px;
+      padding: 14px 15px 12px;
+      border: 1px solid var(--gh-edge);
+      border-radius: 12px;
+      background: linear-gradient(180deg, rgba(255, 255, 255, .035), rgba(0, 0, 0, .2));
+    }
+
+    .gh-label-row { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
+
+    .gh-legend, .gh-vital-name {
+      font-size: .82rem; font-weight: 600; letter-spacing: .04em;
+      text-transform: uppercase; color: var(--gh-ink-dim);
+    }
+    .gh-legend { margin: 0 0 7px; }
+
+    .gh-vital-read { display: flex; align-items: baseline; gap: 8px; font-size: .9rem; }
+    .gh-vital-read strong { color: var(--gh-ink); font-weight: 600; }
+    .gh-vital-read span { font-size: .82rem; color: var(--gh-ink-faint); font-variant-numeric: tabular-nums; }
+
+    .gh-meter {
+      position: relative; height: 8px; border-radius: 999px; overflow: hidden;
+      background: rgba(0, 0, 0, .5); box-shadow: inset 0 1px 2px rgba(0, 0, 0, .6);
+    }
+    .gh-meter-fill {
+      position: absolute; inset: 0 auto 0 0; width: 78%; border-radius: 999px;
+      background: linear-gradient(90deg, var(--gh-leaf-deep), var(--gh-leaf));
+      box-shadow: 0 0 12px rgba(143, 217, 106, .35);
+    }
+
+    .gh-hint { margin: 7px 0 0; font-size: .78rem; color: var(--gh-ink-faint); }
+
+    .gh-field { margin: 0 0 18px; }
+    .gh-chip-row { display: flex; flex-wrap: wrap; gap: 8px; }
+
+    .gh-chip {
+      padding: 7px 11px;
+      font-family: inherit; font-size: .8rem; font-weight: 500; white-space: nowrap;
+      color: var(--gh-ink-dim); background: var(--gh-well);
+      border: 1px solid var(--gh-edge); border-radius: 999px; cursor: pointer;
+      transition: color 140ms ease, border-color 140ms ease, background 140ms ease;
+    }
+    .gh-chip:hover { color: var(--gh-ink); border-color: var(--gh-edge-lit); }
+    .gh-chip[aria-pressed="true"] {
+      color: #0a1207; font-weight: 600;
+      background: linear-gradient(180deg, var(--gh-leaf), var(--gh-leaf-deep));
+      border-color: transparent;
+    }
+
+    .gh-notes {
+      margin: 0 0 18px; padding: 12px 14px; border-radius: 10px;
+      border: 1px solid var(--gh-edge); background: var(--gh-well);
+      font-size: .85rem; line-height: 1.55; color: var(--gh-ink-dim);
+    }
+    .gh-notes[hidden] { display: none; }
+
+    .gh-more {
+      padding: 0; border: 0; background: none; cursor: pointer;
+      font-family: inherit; font-size: .8rem; color: var(--gh-leaf);
+      text-decoration: underline; text-underline-offset: 3px;
+    }
+
+    /* --- Controls --- */
+
+    .controls {
+      position: fixed; z-index: 10; left: 50%; bottom: max(16px, env(safe-area-inset-bottom));
+      width: min(960px, calc(100% - 24px)); transform: translateX(-50%);
+      display: grid; grid-template-columns: repeat(4, 1fr) auto auto auto;
+      align-items: end; gap: 10px;
+      padding: 12px; border: 1px solid rgba(150, 206, 122, .2); border-radius: 15px;
+      background: rgba(7, 14, 8, .78); box-shadow: 0 18px 55px rgba(0, 0, 0, .5);
+      backdrop-filter: blur(18px) saturate(130%);
+      -webkit-backdrop-filter: blur(18px) saturate(130%);
+    }
+    .control { min-width: 0; }
+    .control label {
+      display: flex; justify-content: space-between; gap: 8px; margin-bottom: 8px;
+      color: var(--gh-ink-faint); font: 600 9px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+      letter-spacing: .1em; text-transform: uppercase;
+    }
+    output { color: var(--gh-leaf); font-variant-numeric: tabular-nums; }
+
+    input[type="range"] {
+      width: 100%; height: 3px; margin: 7px 0; appearance: none; border: 0;
+      border-radius: 999px; outline: none;
+      background: linear-gradient(90deg, #23491c, var(--gh-leaf));
+    }
+    input[type="range"]::-webkit-slider-thumb {
+      width: 16px; height: 16px; appearance: none; border: 2px solid #c4f0a8;
+      border-radius: 50%; background: #10210c; box-shadow: 0 0 0 4px rgba(143, 217, 106, .12); cursor: pointer;
+    }
+    input[type="range"]::-moz-range-thumb {
+      width: 13px; height: 13px; border: 2px solid #c4f0a8;
+      border-radius: 50%; background: #10210c; box-shadow: 0 0 0 4px rgba(143, 217, 106, .12); cursor: pointer;
+    }
+
+    .controls button {
+      height: 39px; padding: 0 14px; border: 1px solid rgba(150, 206, 122, .24);
+      border-radius: 10px; background: rgba(143, 217, 106, .07); color: #dcecd2;
+      font: 600 10px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+      letter-spacing: .08em; text-transform: uppercase; cursor: pointer;
+    }
+    .controls button:hover { border-color: rgba(150, 206, 122, .45); background: rgba(143, 217, 106, .13); }
+    .controls button:active { transform: translateY(1px); }
+
+    .fallback {
+      display: none; position: absolute; inset: 0; z-index: 6; place-items: center;
+      padding: 20px; text-align: center; color: var(--gh-ink-dim); background: rgba(3, 8, 4, .9);
+    }
+
+    @media (max-width: 760px) {
+      .controls { grid-template-columns: 1fr 1fr 1fr; }
+      .controls button { width: 100%; }
+    }
+    @media (max-width: 520px) {
+      .controls { grid-template-columns: 1fr 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <p class="eyebrow">WebGL border experiment 03</p>
+    <h1>Greenhouse vines</h1>
+    <p class="lede">
+      The living border from the greenhouse to-do dialogs, pulled out on its own. One
+      fragment shader on one canvas grows five leafed strands around the panel — some
+      reading as in front of the glass, some behind it — so the frame weaves itself
+      together without a second context or a single texture.
+    </p>
+
+    <section class="stage">
+      <div class="gh-panel" id="panel" role="dialog" aria-labelledby="demo-title">
+        <canvas class="gh-vines" id="vines" aria-hidden="true"></canvas>
+        <div class="gh-panel-inner">
+          <header class="gh-head">
+            <p class="gh-eyebrow">Steady &middot; watered 3 hours ago</p>
+            <h2 id="demo-title">Repot the seedlings</h2>
+            <p class="gh-sub">It grows while you tend it, and wilts while you don&rsquo;t.</p>
+          </header>
+
+          <section class="gh-vitals" aria-labelledby="vitals-label">
+            <div class="gh-label-row">
+              <span id="vitals-label" class="gh-vital-name">Condition</span>
+              <span class="gh-vital-read"><strong>Thriving</strong><span>78%</span></span>
+            </div>
+            <div class="gh-meter" role="meter" aria-valuemin="0" aria-valuemax="100"
+                 aria-valuenow="78" aria-labelledby="vitals-label">
+              <div class="gh-meter-fill"></div>
+            </div>
+            <p class="gh-hint">Loses half its health every 2 days.</p>
+          </section>
+
+          <p class="gh-notes" id="notes" hidden>
+            The tray by the west bench is the one that dries out first — the vent above it
+            never quite closes, and by mid-afternoon the top inch of soil has gone pale.
+          </p>
+
+          <section class="gh-field">
+            <p class="gh-legend" id="status-legend">Where is it?</p>
+            <div class="gh-chip-row" role="group" aria-labelledby="status-legend" id="chips">
+              <button type="button" class="gh-chip" aria-pressed="false">Not started</button>
+              <button type="button" class="gh-chip" aria-pressed="false">Putting it off</button>
+              <button type="button" class="gh-chip" aria-pressed="true">In progress</button>
+              <button type="button" class="gh-chip" aria-pressed="false">Almost done</button>
+            </div>
+          </section>
+
+          <button type="button" class="gh-more" id="more" aria-expanded="false" aria-controls="notes">
+            Show notes
+          </button>
+        </div>
+      </div>
+      <div class="fallback" id="fallback">This demo requires WebGL.</div>
+    </section>
+  </main>
+
+  <section class="controls" aria-label="Shader controls">
+    <div class="control">
+      <label for="growth">Growth <output id="growthOut">1.00</output></label>
+      <input id="growth" type="range" min="0" max="1" value="1" step="0.01" />
+    </div>
+    <div class="control">
+      <label for="speed">Drift <output id="speedOut">1.00×</output></label>
+      <input id="speed" type="range" min="0" max="3" value="1" step="0.05" />
+    </div>
+    <div class="control">
+      <label for="strands">Strands <output id="strandsOut">5</output></label>
+      <input id="strands" type="range" min="1" max="5" value="5" step="1" />
+    </div>
+    <div class="control">
+      <label for="glow">Glow <output id="glowOut">1.00</output></label>
+      <input id="glow" type="range" min="0" max="2.5" value="1" step="0.05" />
+    </div>
+    <button type="button" id="pause">Pause</button>
+    <button type="button" id="regrow">Regrow</button>
+    <button type="button" id="reseed">Reseed</button>
+  </section>
+
+  <script>
+  (() => {
+    "use strict";
+
+    // The vine border from the greenhouse to-do dialogs (utils/greenhouse-todo/ui-vines.js),
+    // standing on its own. The shader below is that shader; the only additions are the
+    // three demo knobs at the end of the uniform list — uSeed, uStrands and uGlow — which
+    // at their defaults (0, 5, 1) reproduce the dialog exactly.
+    //
+    // Two geometric decisions carry the whole effect:
+    //
+    //   * Everything is parametrised by `s`, the arc length around the panel rectangle to
+    //     the point where a ray from the panel centre crosses it. A nearest-edge
+    //     parametrisation would be the obvious choice and is wrong: it is discontinuous all
+    //     the way along each corner diagonal (approaching the top-right corner diagonally,
+    //     the "top edge" branch and the "right edge" branch disagree by twice the inset
+    //     distance), which kinks every strand inside every corner. The ray version is a
+    //     function of the angle alone, so it is continuous everywhere except the exact
+    //     centre — which is nowhere near a vine.
+    //
+    //   * Every wobble frequency is an integer multiple of 2*pi/perimeter and the leaf
+    //     spacing divides the perimeter a whole number of times. Without that there is a
+    //     visible seam where s wraps from perimeter back to 0.
+
+    const OVERFLOW = 96;  // fallback only; --overflow in the CSS is the real source
+    const RADIUS = 18;    // panel corner radius, CSS px
+    const GROW_MS = 1100;
+
+    const canvas = document.getElementById("vines");
+    const panel = document.getElementById("panel");
+    const fallback = document.getElementById("fallback");
+    const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+    const gl = canvas.getContext("webgl", {
+      alpha: true,
+      premultipliedAlpha: true,
+      antialias: false,
+      depth: false,
+      stencil: false,
+      powerPreference: "high-performance"
+    });
+    if (!gl) { fallback.style.display = "grid"; return; }
+
+    const vertexSource = `
+      attribute vec2 aPos;
+      void main() { gl_Position = vec4(aPos, 0.0, 1.0); }
+    `;
+
+    const fragmentSource = `
+      precision highp float;
+
+      uniform vec2  uRes;      // canvas size, device px
+      uniform vec4  uPanel;    // panel centre.xy, half-size.xy — device px, y up
+      uniform float uRadius;   // panel corner radius, device px
+      uniform float uPx;       // device pixels per CSS pixel
+      uniform float uTime;     // seconds
+      uniform float uReveal;   // 0 closed .. 1 fully grown
+      uniform float uMotion;   // 1 normally, 0 under prefers-reduced-motion
+      uniform float uSeed;     // demo only: shifts every hash, 0 = the app's arrangement
+      uniform float uStrands;  // demo only: how many of the five strands to draw
+      uniform float uGlow;     // demo only: scales the emitted light, 1 = the app
+
+      #define TAU 6.28318530718
+
+      // Signed distance to a rounded rectangle. Negative inside.
+      float sdRoundBox(vec2 p, vec2 b, float r) {
+          vec2 q = abs(p) - b + r;
+          return min(max(q.x, q.y), 0.0) + length(max(q, 0.0)) - r;
+      }
+
+      // Arc length around the rectangle to where the ray from the centre through p
+      // crosses it. Measured counter-clockwise from the midpoint of the right edge.
+      // See the header for why this is a ray and not a nearest-edge projection.
+      float perimS(vec2 p, vec2 b) {
+          float ax = max(abs(p.x), 1e-5), ay = max(abs(p.y), 1e-5);
+          // Which pair of edges the ray leaves through.
+          if (ax * b.y >= ay * b.x) {
+              float t = ay * b.x / ax;                       // crossing height, 0..b.y
+              if (p.x > 0.0) return (p.y >= 0.0) ? t : (4.0 * b.y + 4.0 * b.x - t);
+              return (p.y >= 0.0) ? (2.0 * b.y + 2.0 * b.x - t)
+                                  : (2.0 * b.y + 2.0 * b.x + t);
+          }
+          float t = ax * b.y / ay;                           // crossing offset, 0..b.x
+          if (p.y > 0.0) return (p.x >= 0.0) ? (b.y + b.x - t) : (b.y + b.x + t);
+          return (p.x >= 0.0) ? (3.0 * b.y + 3.0 * b.x + t) : (3.0 * b.y + 3.0 * b.x - t);
+      }
+
+      float hash11(float n) { return fract(sin(n * 91.3458) * 47453.5453); }
+      vec2  hash21(float n) { return fract(sin(vec2(n, n + 4.7)) * vec2(43758.5453, 22578.1459)); }
+
+      void main() {
+          vec2 frag = gl_FragCoord.xy;
+          vec2 p = frag - uPanel.xy;
+          vec2 half_ = uPanel.zw;
+          float perim = 4.0 * (half_.x + half_.y);
+          if (perim < 1.0) { gl_FragColor = vec4(0.0); return; }
+
+          float d = sdRoundBox(p, half_, uRadius);   // < 0 inside the panel
+          float s = perimS(p, half_);
+          float sn = s / perim;
+          float t = uTime * uMotion;
+
+          // Accumulated premultiplied colour. Alpha is what hides the panel behind a
+          // strand; rgb carries light that is added on top, which is what makes the
+          // haloes read as glow rather than paint.
+          vec3 rgb = vec3(0.0);
+          float alpha = 0.0;
+
+          // Strand table. Each strand gets its own lane at a different distance from the
+          // border, rather than all of them oscillating through the same band — six
+          // vines sharing one band is not six vines, it is a hedge.
+          //
+          // Fields: lane offset from the border (px, positive = outside), two wobble
+          // harmonics as integer cycles around the perimeter, core half-width, whether
+          // it reads as in front of the glass, and where along the perimeter it starts.
+          for (int i = 0; i < 5; i++) {
+              float fi = float(i);
+              if (fi >= uStrands) break;
+              vec2 h = hash21(fi * 3.17 + 1.0 + uSeed);
+              bool front = (i == 1 || i == 3);
+
+              float m1 = 2.0 + floor(h.x * 3.0);             // 2..4 cycles
+              float m2 = 5.0 + floor(h.y * 4.0);             // 5..8 cycles
+              float amp1 = (7.0 + h.x * 9.0) * uPx;
+              float amp2 = (2.5 + h.y * 3.5) * uPx;
+              // Front strands ride the edge and only just break inside it; back strands
+              // fan outward into the dark. Distinct lanes, and one clear band of glass
+              // left free down the middle for the dialog's own contents.
+              float base = (front ? (2.0 + fi * 3.0) : (14.0 + fi * 9.0)) * uPx;
+              float halfW = (front ? 1.35 : 1.05) * uPx;
+              float dir = (mod(fi, 2.0) < 1.0) ? 1.0 : -1.0;
+
+              float k1 = TAU * m1 / perim;
+              float k2 = TAU * m2 / perim;
+              float ph = h.x * TAU;
+
+              // The strand's own offset from the border at this arc length.
+              float off = base
+                        + amp1 * sin(k1 * s + t * 0.13 * dir + ph)
+                        + amp2 * sin(k2 * s - t * 0.21 * dir + ph * 2.3);
+
+              // Growth: each strand creeps outward from its own start point in both
+              // directions as uReveal climbs, so the border knits itself together.
+              float start = h.y;
+              float away = abs(fract(sn - start + 0.5) - 0.5) * 2.0;   // 0..1 both ways
+              float grow = 1.0 - smoothstep(uReveal * 1.25 - 0.18, uReveal * 1.25, away);
+              if (grow <= 0.001) continue;
+
+              // Taper: thinner as it approaches its growing tip, and thinner at the far
+              // end from its root — a vine is not a constant-width tube.
+              float taper = mix(0.45, 1.0, 1.0 - away * 0.75);
+
+              float r = abs(d - off);
+              float core = 1.0 - smoothstep(halfW * taper * 0.6, halfW * taper * 1.9, r);
+              // Tight halo. A wide one reads as a lens effect rather than as damp air
+              // around a leaf, and five of them stacked wash the panel edge out entirely.
+              float halo = exp(-r * r / (52.0 * uPx * uPx));
+
+              // --- Leaves ---
+              // Spacing divides the perimeter a whole number of times, so the ring of
+              // leaves closes up instead of butting against a seam.
+              float target = 66.0 * uPx;
+              float count = max(3.0, floor(perim / target));
+              float spacing = perim / count;
+              float li = s / spacing;
+              float lid = floor(li) + fi * 71.0 + uSeed;
+              vec2 lh = hash21(lid);
+              float side = (hash11(lid * 1.7) < 0.5) ? -1.0 : 1.0;
+              float u = (fract(li) - 0.5) * spacing;                 // along the strand
+              float v = d - off - side * (5.0 + lh.x * 7.0) * uPx;   // across it
+              float ang = (lh.y - 0.5) * 1.5 + side * 0.7;
+              float ca = cos(ang), sa = sin(ang);
+              vec2 lp = vec2(u * ca - v * sa, u * sa + v * ca);
+              float lLen = (7.0 + lh.x * 5.5) * uPx;
+              float lWid = (3.2 + lh.y * 2.2) * uPx;
+              // Ellipse narrowed toward one end, so it reads as a leaf rather than a bead.
+              float tipx = clamp(lp.x / lLen, -1.0, 1.0);
+              float wid = lWid * (1.0 - tipx * tipx * 0.55) * (0.5 + 0.5 * (1.0 - abs(tipx)));
+              float leafD = length(vec2(lp.x / max(lLen, 1e-4), lp.y / max(wid, 1e-4)));
+              float leaf = (1.0 - smoothstep(0.72, 1.0, leafD)) * step(abs(lp.x), lLen);
+              // Midrib — a bright hairline that makes a blob read as foliage.
+              float rib = (1.0 - smoothstep(0.4 * uPx, 1.5 * uPx, abs(lp.y)))
+                        * step(abs(lp.x), lLen * 0.85) * 0.5;
+
+              float body = max(core, leaf * 0.9);
+              float lum = max(halo * 0.30, rib * leaf * 0.7);
+
+              // Colour: deep moss at the root, bright new growth at the tip, and leaves
+              // a shade yellower than the stem they hang off. The bright end stops well
+              // short of 1 — the glow supplies the vibrancy, and a stem already at full
+              // channel value has nowhere to go but flat neon.
+              vec3 stemCol = mix(vec3(0.10, 0.26, 0.12), vec3(0.30, 0.62, 0.24), 1.0 - away);
+              vec3 leafCol = mix(vec3(0.24, 0.48, 0.18), vec3(0.48, 0.76, 0.30), lh.x);
+              vec3 col = mix(stemCol, leafCol, leaf);
+
+              // Depth. A back strand is behind the glass: dimmer, hazier and pushed
+              // toward the panel's own colour once it crosses the edge. A front strand is
+              // unattenuated at the edge — that is what gives the weave — but fades as it
+              // reaches further in, so it never ends up lying across the dialog's text.
+              float inside = 1.0 - smoothstep(-2.0 * uPx, 2.0 * uPx, d);
+              float deep = smoothstep(12.0 * uPx, 38.0 * uPx, -d);
+              float depth = front ? (1.0 - deep * 0.9) : mix(1.0, 0.26, inside);
+              vec3 hazed = front ? col : mix(col, vec3(0.30, 0.44, 0.30), inside * 0.55);
+
+              // Aerial perspective, cheaply: a strand in an outer lane is further away,
+              // so it is dimmer and cooler. Without this the five lanes read as a flat
+              // decal of a frame rather than as vines at different depths.
+              float lane = base / uPx;
+              float far = 1.0 - clamp(lane / 70.0, 0.0, 1.0) * 0.45;
+              vec3 tint = mix(vec3(0.88, 1.0, 0.82), vec3(1.0, 0.94, 0.98), h.y);
+
+              float a = body * grow * depth * far * (front ? 0.9 : 0.62);
+              float glow = (lum + body * 0.14) * grow * depth * far * uGlow;
+
+              // Premultiplied over: alpha occludes, rgb adds.
+              rgb = rgb * (1.0 - a) + hazed * tint * a + hazed * tint * glow * 0.58;
+              alpha = alpha * (1.0 - a) + a;
+          }
+
+          // A faint breath of green light along the border, so the strands sit in an
+          // atmosphere instead of floating on nothing. Outside only — inside it fogs the
+          // top of the panel.
+          float rim = exp(-max(d, 0.0) / (20.0 * uPx))
+                    * (0.5 + 0.5 * sin(t * 0.5 + sn * TAU))
+                    * (1.0 - smoothstep(0.0, 6.0 * uPx, -d));
+          rgb += vec3(0.13, 0.32, 0.17) * rim * 0.16 * smoothstep(0.0, 0.35, uReveal) * uGlow;
+
+          if (alpha < 0.002 && length(rgb) < 0.002) discard;
+          gl_FragColor = vec4(rgb, alpha);
+      }
+    `;
+
+    function compile(type, source) {
+      const shader = gl.createShader(type);
+      gl.shaderSource(shader, source);
+      gl.compileShader(shader);
+      if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+        const message = gl.getShaderInfoLog(shader) || "Unknown shader compile error";
+        gl.deleteShader(shader);
+        throw new Error(message);
+      }
+      return shader;
+    }
+
+    function createProgram() {
+      const program = gl.createProgram();
+      const vertex = compile(gl.VERTEX_SHADER, vertexSource);
+      const fragment = compile(gl.FRAGMENT_SHADER, fragmentSource);
+      gl.attachShader(program, vertex);
+      gl.attachShader(program, fragment);
+      gl.linkProgram(program);
+      gl.deleteShader(vertex);
+      gl.deleteShader(fragment);
+      if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+        const message = gl.getProgramInfoLog(program) || "Unknown shader link error";
+        gl.deleteProgram(program);
+        throw new Error(message);
+      }
+      return program;
+    }
+
+    let program;
+    try {
+      program = createProgram();
+    } catch (error) {
+      console.error(error);
+      fallback.textContent = "The shader could not compile on this browser: " + error.message;
+      fallback.style.display = "grid";
+      return;
+    }
+
+    gl.useProgram(program);
+
+    const buffer = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+    // One oversized triangle rather than two: fewer vertices, no diagonal seam.
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
+    const aPos = gl.getAttribLocation(program, "aPos");
+    gl.enableVertexAttribArray(aPos);
+    gl.vertexAttribPointer(aPos, 2, gl.FLOAT, false, 0, 0);
+
+    const u = {};
+    for (const name of ["uRes", "uPanel", "uRadius", "uPx", "uTime", "uReveal",
+                        "uMotion", "uSeed", "uStrands", "uGlow"]) {
+      u[name] = gl.getUniformLocation(program, name);
+    }
+
+    // Premultiplied source: rgb is already scaled by alpha, so ONE is correct and it
+    // lets a fragment add light without occluding what is behind it.
+    gl.enable(gl.BLEND);
+    gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+    gl.clearColor(0, 0, 0, 0);
+
+    // --- Controls ---
+
+    const growthInput = document.getElementById("growth");
+    const speedInput = document.getElementById("speed");
+    const strandsInput = document.getElementById("strands");
+    const glowInput = document.getElementById("glow");
+    const growthOut = document.getElementById("growthOut");
+    const speedOut = document.getElementById("speedOut");
+    const strandsOut = document.getElementById("strandsOut");
+    const glowOut = document.getElementById("glowOut");
+    const pauseButton = document.getElementById("pause");
+    const regrowButton = document.getElementById("regrow");
+    const reseedButton = document.getElementById("reseed");
+
+    let speed = Number(speedInput.value);
+    let strands = Number(strandsInput.value);
+    let glow = Number(glowInput.value);
+    let seed = 0;
+    // Under prefers-reduced-motion the app freezes the wobble outright. Here the clock
+    // simply stops instead, so the strands hold the shape they already have rather than
+    // snapping back to t = 0, and the user can start it deliberately.
+    let paused = reducedMotion;
+    let elapsed = 0;
+    let last = performance.now();
+
+    // Growth runs off the same clock as the wobble, so pausing holds it mid-knit.
+    let growStart = reducedMotion ? -GROW_MS / 1000 : 0;
+    let pinnedReveal = null;
+    let reveal = reducedMotion ? 1 : 0;
+
+    if (paused) pauseButton.textContent = "Resume";
+
+    growthInput.addEventListener("input", () => {
+      pinnedReveal = Number(growthInput.value);
+      growthOut.value = pinnedReveal.toFixed(2);
+    });
+    speedInput.addEventListener("input", () => {
+      speed = Number(speedInput.value);
+      speedOut.value = speed.toFixed(2) + "×";
+    });
+    strandsInput.addEventListener("input", () => {
+      strands = Number(strandsInput.value);
+      strandsOut.value = String(strands);
+    });
+    glowInput.addEventListener("input", () => {
+      glow = Number(glowInput.value);
+      glowOut.value = glow.toFixed(2);
+    });
+    pauseButton.addEventListener("click", () => {
+      paused = !paused;
+      pauseButton.textContent = paused ? "Resume" : "Pause";
+      last = performance.now();
+    });
+    regrowButton.addEventListener("click", () => {
+      pinnedReveal = null;
+      growStart = elapsed;
+      if (paused) { paused = false; pauseButton.textContent = "Pause"; }
+    });
+    reseedButton.addEventListener("click", () => { seed = Math.random() * 90 + 1; });
+
+    // --- Panel chrome, so the dialog behaves like one ---
+
+    document.getElementById("chips").addEventListener("click", (event) => {
+      const chip = event.target.closest(".gh-chip");
+      if (!chip) return;
+      for (const other of document.querySelectorAll("#chips .gh-chip")) {
+        other.setAttribute("aria-pressed", String(other === chip));
+      }
+    });
+
+    // The dialog changes height as content swaps in, and the vines have to follow or
+    // they wrap the wrong rectangle — which is exactly what this button demonstrates.
+    const notes = document.getElementById("notes");
+    const moreButton = document.getElementById("more");
+    moreButton.addEventListener("click", () => {
+      const open = notes.hidden;
+      notes.hidden = !open;
+      moreButton.setAttribute("aria-expanded", String(open));
+      moreButton.textContent = open ? "Hide notes" : "Show notes";
+    });
+
+    // --- Sizing ---
+
+    let dirty = true;
+    let px = 1;
+    let size = [1, 1];
+    let panelUniform = [0, 0, 0, 0];
+
+    function overflow() {
+      // Read back from the stylesheet, which positions the canvas with the same value —
+      // two independent copies of this number would drift and de-centre the panel.
+      const declared = getComputedStyle(document.documentElement).getPropertyValue("--overflow");
+      const parsed = parseFloat(declared);
+      return Number.isFinite(parsed) ? parsed : OVERFLOW;
+    }
+
+    function resize() {
+      // offsetWidth/offsetHeight, NOT getBoundingClientRect(). The bounding rect
+      // includes transforms; these are the panel's own untransformed coordinates, which
+      // is the right space anyway since the canvas is a child of the panel and inherits
+      // the same transform.
+      //
+      // The padding box specifically (client*, not offset*), because `left`/`top` on an
+      // absolutely positioned child are resolved against the padding box. That makes the
+      // canvas exactly centred on it, which is what the shader assumes when it puts the
+      // panel at the canvas centre.
+      const panelW = panel.clientWidth;
+      const panelH = panel.clientHeight;
+      if (panelW < 1) return false;
+      const over = overflow();
+      // A shader this cheap does not need 3x; capping keeps a large dialog on a retina
+      // phone from allocating a needlessly big drawing buffer.
+      px = Math.min(devicePixelRatio || 1, 2);
+      const cssW = panelW + over * 2;
+      const cssH = panelH + over * 2;
+      const w = Math.max(1, Math.round(cssW * px));
+      const h = Math.max(1, Math.round(cssH * px));
+      if (canvas.width !== w || canvas.height !== h) {
+        canvas.width = w;
+        canvas.height = h;
+      }
+      // The CSS size has to be stated, not inferred: a canvas is a replaced element, so
+      // an auto width resolves to the drawing-buffer size, which is `px` times too large
+      // on a retina display — and the vines then sprawl at double scale.
+      canvas.style.width = `${cssW}px`;
+      canvas.style.height = `${cssH}px`;
+      gl.viewport(0, 0, w, h);
+      size = [w, h];
+      // gl_FragCoord has its origin at the bottom left, the DOM at the top left, and the
+      // panel is centred in the canvas either way — so only the half extents and the
+      // pixel ratio actually matter here.
+      panelUniform = [w * 0.5, h * 0.5, panelW * 0.5 * px, panelH * 0.5 * px];
+      dirty = false;
+      return true;
+    }
+
+    new ResizeObserver(() => { dirty = true; }).observe(panel);
+    addEventListener("resize", () => { dirty = true; }, { passive: true });
+
+    function frame(now) {
+      requestAnimationFrame(frame);
+      const delta = Math.min(0.05, Math.max(0, (now - last) / 1000));
+      last = now;
+      if (!paused) elapsed += delta * speed;
+      if (dirty && !resize()) return;
+
+      // ~1.1 s to knit the border together, ease-out so the last strands settle rather
+      // than snapping into place.
+      if (pinnedReveal !== null) {
+        reveal = pinnedReveal;
+      } else {
+        const k = Math.min(1, (elapsed - growStart) / (GROW_MS / 1000));
+        reveal = 1 - Math.pow(1 - k, 3);
+        growthInput.value = String(reveal);
+        growthOut.value = reveal.toFixed(2);
+      }
+
+      gl.uniform2f(u.uRes, size[0], size[1]);
+      gl.uniform4f(u.uPanel, panelUniform[0], panelUniform[1], panelUniform[2], panelUniform[3]);
+      gl.uniform1f(u.uRadius, RADIUS * px);
+      gl.uniform1f(u.uPx, px);
+      gl.uniform1f(u.uTime, elapsed);
+      gl.uniform1f(u.uReveal, reveal);
+      gl.uniform1f(u.uMotion, 1);
+      gl.uniform1f(u.uSeed, seed);
+      gl.uniform1f(u.uStrands, strands);
+      gl.uniform1f(u.uGlow, glow);
+      gl.clear(gl.COLOR_BUFFER_BIT);
+      gl.drawArrays(gl.TRIANGLES, 0, 3);
+    }
+
+    requestAnimationFrame(frame);
+  })();
+  </script>
+</body>
+</html>

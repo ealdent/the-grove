@@ -1,3 +1,39 @@
+# Greenhouse vine border as a standalone shader demo (2026-08-13)
+
+Goal: lift the vine border shader out of the greenhouse to-do dialogs into its own page under
+`utils/`, matching the existing shader demos there, then push to `origin/main`.
+
+## Plan
+
+- [x] Locate the shader — `utils/greenhouse-todo/ui-vines.js`, one fullscreen-quad fragment shader
+- [x] Copy the GLSL verbatim into a standalone page modelled on the other two shader demos
+- [x] Port `VineFrame`'s canvas sizing (the parts that are load-bearing, not just the maths)
+- [x] Add demo controls, and a mock dialog for the vines to wrap
+- [x] Verify in a browser: render, sizing, reflow, every control
+- [x] List it on the utils index and push
+
+## Review
+
+- New page: `utils/greenhouse-vines-shader-demo.html`, self-contained, no imports (works over
+  `file://` like its neighbours). Listed on `utils/index.html` as the third shader card.
+- Fragment shader is byte-identical to the app's apart from six lines implementing three demo-only
+  uniforms — `uSeed`, `uStrands`, `uGlow`. At their defaults (0, 5, 1) the page reproduces the
+  dialog exactly; verified by diffing the extracted GLSL from both files.
+- Ported deliberately, not just pasted: `clientWidth`/`clientHeight` rather than
+  `getBoundingClientRect()`, explicit CSS width/height on the canvas (a canvas is a replaced
+  element, so `width: auto` resolves to the drawing buffer and doubles the scale at DPR 2), DPR
+  capped at 2, premultiplied `ONE, ONE_MINUS_SRC_ALPHA` blending.
+- `--overflow` is stated once in the CSS and read back by the JS. It is not a free parameter: the
+  outermost lane sits 50px out, its harmonics add 22px, a leaf on that reaches 24px more. An early
+  draft cut it to 72px on narrow windows, which sawed the tips off the back strands.
+- Pause freezes the clock rather than zeroing `uMotion` as the app does — same visual hold, but the
+  strands keep their current shape instead of snapping back to t=0. Reduced motion starts paused.
+- Verified at DPR 2: buffer = CSS × 2 and canvas offset = −overflow; expanding the panel's notes
+  grew it 342 → 449px with the canvas tracking exactly (+192 = 2 × overflow), which exercises the
+  ResizeObserver path; growth pin, drift, strands, glow, pause, regrow and reseed all confirmed;
+  no console errors. Screenshots reviewed at full growth and pinned at 0.40.
+- Not verified: Firefox and Safari (Chromium only), and real-device mobile.
+
 # Gonka explainer review fixes (2026-08-11)
 
 Goal: resolve the three review findings in `learn/gonka-decentralized-ai-explainer.html`, verify the fixes, and push them to `origin/main`.
