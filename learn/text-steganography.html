@@ -142,7 +142,6 @@ em { color: var(--ink); }
   position: relative;
   margin: 1.8rem 0 0.4rem;
   aspect-ratio: 16 / 8;
-  min-height: 240px;
   border: 1px solid var(--line-2);
   border-radius: 4px;
   overflow: hidden;
@@ -347,8 +346,12 @@ textarea { line-height: 1.7; min-height: 4.5rem; }
 
 /* finale */
 .finale { position: relative; margin-top: 2.5rem; }
-.finale-stage { position: relative; aspect-ratio: 16/5; min-height: 150px; border-radius: 4px; overflow: hidden;
+.finale-stage { position: relative; aspect-ratio: 16/5; border-radius: 4px; overflow: hidden;
   border: 1px solid var(--line-2); background: var(--paper); cursor: none; }
+@media (max-width: 640px) {
+  .lamp-stage { aspect-ratio: 4 / 3; }
+  .finale-stage { aspect-ratio: 16 / 9; }
+}
 .finale-stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
 .finale-fallback { position: absolute; inset: 0; display:grid; place-items:center; text-align:center; padding: 1rem;
   font-family: var(--type); color: var(--fluor-ink); font-size: clamp(1rem,4vw,1.8rem); letter-spacing: 0.1em; }
@@ -433,12 +436,12 @@ footer.page-foot a { color: var(--stamp); text-decoration: none; }
         </div>
         <div class="vs-card stego">
           <h4>Steganography</h4>
-          <p style="font-size:0.9rem;margin:0">Tucks it inside a chatty note. Nothing looks off.</p>
+          <p style="font-size:0.9rem;margin:0">Slips it <em>invisibly</em> into a chatty note. Your message really is in there.</p>
           <div class="blob" id="idea-stego" style="color:var(--ink);background:rgba(22,138,116,0.08)"></div>
           <div class="vs-verdict">A guard sees: "just a friendly letter."</div>
         </div>
       </div>
-      <div class="hint">The two are best friends: encrypt first, then hide the result. Hiding protects the <em>fact</em> of the message; encryption protects its <em>contents</em>.</div>
+      <div class="hint">The note on the right genuinely carries your message — Exhibit 04 shows the trick. And the two approaches are best friends: encrypt first, <em>then</em> hide the result.</div>
     </div>
   </section>
 
@@ -646,6 +649,18 @@ footer.page-foot a { color: var(--stamp); text-decoration: none; }
   var $ = function (s, r) { return (r || document).querySelector(s); };
   var $$ = function (s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)); };
 
+  // zero-width alphabet shared by the encoder, decoder, and scanner
+  var ZW0 = "\u200B";   // zero width space          -> bit 0
+  var ZW1 = "\u200C";   // zero width non-joiner     -> bit 1
+  var ZWSET = "\u200B\u200C\u200D\uFEFF\u2060";
+  function zwEncode(cover, secret) {
+    var bytes = new TextEncoder().encode(secret), bits = "";
+    for (var i = 0; i < bytes.length; i++) { var b = bytes[i].toString(2); while (b.length < 8) b = "0" + b; bits += b; }
+    var zw = ""; for (var j = 0; j < bits.length; j++) zw += bits[j] === "1" ? ZW1 : ZW0;
+    var sp = cover.indexOf(" ");
+    return sp >= 0 ? cover.slice(0, sp) + zw + cover.slice(sp) : cover + zw;
+  }
+
   /* ---------- reading progress rail ---------- */
   var prog = $("#rail-progress");
   function onScroll() {
@@ -671,12 +686,11 @@ footer.page-foot a { color: var(--stamp); text-decoration: none; }
       }
       return out || "—";
     }
-    // cover-text hide: put the secret's words as the first letters of a chatty line's clauses
+    // genuinely hide the secret in the note with invisible characters (see Exhibit 04)
     function coverWrap(s) {
       var clean = s.replace(/\s+/g, " ").trim();
       if (!clean) return "—";
-      return "“Lovely weather! " + clean.charAt(0).toUpperCase() + clean.slice(1) +
-             "… anyway, write soon.”";
+      return zwEncode("“Lovely weather this week! The garden is coming along nicely. Write soon.”", clean);
     }
     function upd() {
       cryptoOut.textContent = scramble(input.value);
@@ -872,29 +886,15 @@ footer.page-foot a { color: var(--stamp); text-decoration: none; }
   })();
 
   /* ================= §4 zero-width encode/decode ================= */
-  var ZW0 = "​"; // zero-width space  -> 0
-  var ZW1 = "‌"; // zero-width non-joiner -> 1
-  var ZWSET = "​‌‍﻿⁠";
   (function () {
     var cover = $("#zw-cover"), secret = $("#zw-secret");
     var plainEl = $("#zw-plain"), xrayEl = $("#zw-xray");
     var encodedCache = "";
 
-    function toBits(str) {
-      var bytes = new TextEncoder().encode(str), bits = "";
-      for (var i = 0; i < bytes.length; i++) {
-        var b = bytes[i].toString(2); while (b.length < 8) b = "0" + b; bits += b;
-      }
-      return bits;
-    }
     function encode() {
       var c = cover.value, s = secret.value;
-      var bits = toBits(s);
-      var zw = "";
-      for (var i = 0; i < bits.length; i++) zw += bits[i] === "1" ? ZW1 : ZW0;
-      // insert after first space (between first and second word), else append
-      var sp = c.indexOf(" ");
-      var result = sp >= 0 ? c.slice(0, sp) + zw + c.slice(sp) : c + zw;
+      var bits = s.length * 8;
+      var result = zwEncode(c, s);
       encodedCache = result;
       plainEl.textContent = result || "—";
 
@@ -907,7 +907,7 @@ footer.page-foot a { color: var(--stamp); text-decoration: none; }
         else xray += ch.replace(/&/g,"&amp;").replace(/</g,"&lt;");
       }
       xrayEl.innerHTML = xray + '<div class="hint" style="margin-top:0.5rem">' +
-        bits.length + ' hidden bits = ' + (bits.length/8) + ' character' + (bits.length/8===1?'':'s') + '. Nothing above the x-ray line takes up any space.</div>';
+        bits + ' hidden bits = ' + (bits/8) + ' character' + (bits/8===1?'':'s') + '. Nothing above the x-ray line takes up any space.</div>';
     }
     cover.addEventListener("input", encode);
     secret.addEventListener("input", encode);
@@ -998,17 +998,10 @@ footer.page-foot a { color: var(--stamp); text-decoration: none; }
   (function () {
     var inEl = $("#scan-in"), report = $("#scan-report"), stamp = $("#scan-stamp");
 
-    // build specimen B (zero-width) at runtime so it's genuinely encoded
-    function encodeZW(cover, secret) {
-      var bytes = new TextEncoder().encode(secret), bits = "";
-      for (var i=0;i<bytes.length;i++){ var b=bytes[i].toString(2); while(b.length<8)b="0"+b; bits+=b; }
-      var zw=""; for (var j=0;j<bits.length;j++) zw += bits[j]==="1"?ZW1:ZW0;
-      var sp = cover.indexOf(" ");
-      return sp>=0 ? cover.slice(0,sp)+zw+cover.slice(sp) : cover+zw;
-    }
+    // specimen B is genuinely encoded at runtime with the shared encoder
     var SPECIMENS = {
       clean: "Thanks for the update. I'll review the report and send notes by Friday. — Dana",
-      zw: encodeZW("Great catch on the numbers today, talk soon.", "wire the funds at 5"),
+      zw: zwEncode("Great catch on the numbers today, talk soon.", "wire the funds at 5"),
       // homoglyphs: Cyrillic а(0430) е(0435) о(043e) mixed into Latin words
       homo: "Pleаse verify your аccount аt the bank pоrtal by tоmorrow."
     };
@@ -1215,13 +1208,18 @@ function makeLamp(stageSel, canvasSel, opts) {
     [coverCanvas, secretCanvas].forEach(c => { c.width = w; c.height = h; });
     const face = fontReady ? '"Special Elite", "Courier New", monospace' : '"Courier New", monospace';
 
-    // cover letter
+    // cover letter (font scaled by height, then measured and shrunk so the longest line fits)
     const cc = coverCanvas.getContext("2d");
     cc.clearRect(0, 0, w, h);
     cc.fillStyle = "#000";
     cc.textBaseline = "middle";
-    const fs = Math.round(h * 0.088);
+    let fs = Math.round(h * 0.088);
     cc.font = fs + "px " + face;
+    const coverMax = Math.max(1, ...opts.cover.map(l => cc.measureText(l).width));
+    if (coverMax > w * 0.86) {
+      fs = Math.max(8, Math.floor(fs * (w * 0.86) / coverMax));
+      cc.font = fs + "px " + face;
+    }
     const mx = Math.round(w * 0.07);
     opts.cover.forEach((line, i) => {
       cc.fillText(line, mx, h * opts.coverY[i]);
@@ -1233,8 +1231,13 @@ function makeLamp(stageSel, canvasSel, opts) {
     sc.clearRect(0, 0, w, h);
     sc.fillStyle = "#000";
     sc.textBaseline = "middle";
-    const sfs = Math.round(h * (opts.secretSize || 0.11));
+    let sfs = Math.round(h * (opts.secretSize || 0.11));
     sc.font = (opts.secretBold ? "bold " : "") + sfs + "px " + face;
+    const secretMax = Math.max(1, ...opts.secret.map(l => sc.measureText(l).width));
+    if (secretMax > w * 0.9) {
+      sfs = Math.max(8, Math.floor(sfs * (w * 0.9) / secretMax));
+      sc.font = (opts.secretBold ? "bold " : "") + sfs + "px " + face;
+    }
     if (opts.secretCenter) sc.textAlign = "center";
     opts.secret.forEach((line, i) => {
       sc.fillText(line, opts.secretCenter ? w / 2 : mx, h * opts.secretY[i]);
