@@ -34,6 +34,37 @@ Goal: lift the vine border shader out of the greenhouse to-do dialogs into its o
   no console errors. Screenshots reviewed at full growth and pinned at 0.40.
 - Not verified: Firefox and Safari (Chromium only), and real-device mobile.
 
+## Revision: leaves that actually attach (2026-08-13, Jason: "some of the leaves don't properly
+attach to the vines")
+
+- Diagnosed before touching anything: replicated the leaf maths in Node with the shader's own hash
+  functions and measured the gap from each blade to its stem. 88% of leaves were detached, median
+  gap 2.1px, worst 8.9px. Not an occasional glitch — the construction could not do better.
+- Root cause: the blade was an ellipse centred 5–12px off the stem and rotated about its own
+  middle, so it only reached back when lLen * sin(angle) exceeded the offset. Offset and length
+  both came from lh.x while the angle came from lh.y, so the condition was near-uncorrelated with
+  the thing it had to beat, and a blade lying along the strand could never touch it at all.
+- Fix: build the leaf in a frame whose origin is ON the stem centre-line and grow it outward —
+  attachment becomes structural rather than coincidental. Blade profile t^0.55 * (1 - t) (widest a
+  third of the way up, pinched at both ends, peak normalised to lWid), with a 0.6px stalk floor so
+  the join does not go sub-pixel exactly where it meets the stem, and edges antialiased in real
+  pixels instead of blade-normalised units.
+- Re-measured: 900 leaves over 6 seeds, all touching, worst gap 0.00px. Weakest join opacity 0.64
+  at the centre-line, where the stem core is already solid.
+- Ported the same fix back into `utils/greenhouse-todo/ui-vines.js` — the demo's whole claim is that
+  it is the app's shader, so fixing only the copy would have left the real dialog wrong and the two
+  quietly divergent. A comment-stripped diff confirms the only executable difference is still the
+  three demo knobs.
+- Two self-inflicted breakages caught in verification, both worth remembering: a backtick in a GLSL
+  comment (around a variable name) silently terminated the JS template literal holding the shader
+  and killed the whole page with no console output; and `vec2 dir` collided with the strand loop's
+  existing `float dir`. Added a check that greps the shader literals for backticks, looks for
+  redeclarations in the strand loop, and node --checks the extracted script.
+- Verified the app's copy compiles by inlining its exact VERT/FRAG into a throwaway WebGL harness:
+  vertex, fragment and link all OK. Harness deleted.
+- Not verified: the jest suite could not run — `node_modules` is absent and `npm install` fails on a
+  root-owned npm cache (`sudo chown -R 501:20 ~/.npm`). No test references the vine shader.
+
 # Gonka explainer review fixes (2026-08-11)
 
 Goal: resolve the three review findings in `learn/gonka-decentralized-ai-explainer.html`, verify the fixes, and push them to `origin/main`.

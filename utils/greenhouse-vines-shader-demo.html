@@ -19,8 +19,8 @@
       /* How far past the panel edge the vine canvas reaches, CSS px. Read back by the
          JS, so this declaration is the only place it is stated. Not a free parameter:
          the outermost lane sits 50px out, its two wobble harmonics add up to 22px more,
-         and a leaf hanging off that reaches another 24px — so anything under ~96 saws
-         the tips off the back strands. */
+         a leaf on top of that reaches 15px further, and the halo tails off over roughly
+         another 10 — so anything much under 96 saws the tips off the back strands. */
       --overflow: 96px;
       font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
     }
@@ -336,7 +336,7 @@
     // three demo knobs at the end of the uniform list — uSeed, uStrands and uGlow — which
     // at their defaults (0, 5, 1) reproduce the dialog exactly.
     //
-    // Two geometric decisions carry the whole effect:
+    // Three geometric decisions carry the whole effect:
     //
     //   * Everything is parametrised by `s`, the arc length around the panel rectangle to
     //     the point where a ray from the panel centre crosses it. A nearest-edge
@@ -350,6 +350,13 @@
     //   * Every wobble frequency is an integer multiple of 2*pi/perimeter and the leaf
     //     spacing divides the perimeter a whole number of times. Without that there is a
     //     visible seam where s wraps from perimeter back to 0.
+    //
+    //   * A leaf is built in a frame whose origin sits on the stem centre-line and grows
+    //     outward, rather than as an ellipse centred beside the stem. The second
+    //     construction only touches the stem when its half-length times the sine of its
+    //     angle happens to exceed its offset — which, with those drawn from unrelated
+    //     hashes, is the minority of the time, so most leaves float clear of the vine
+    //     they belong to.
 
     const OVERFLOW = 96;  // fallback only; --overflow in the CSS is the real source
     const RADIUS = 18;    // panel corner radius, CSS px
@@ -495,21 +502,42 @@
               float lid = floor(li) + fi * 71.0 + uSeed;
               vec2 lh = hash21(lid);
               float side = (hash11(lid * 1.7) < 0.5) ? -1.0 : 1.0;
-              float u = (fract(li) - 0.5) * spacing;                 // along the strand
-              float v = d - off - side * (5.0 + lh.x * 7.0) * uPx;   // across it
-              float ang = (lh.y - 0.5) * 1.5 + side * 0.7;
-              float ca = cos(ang), sa = sin(ang);
-              vec2 lp = vec2(u * ca - v * sa, u * sa + v * ca);
-              float lLen = (7.0 + lh.x * 5.5) * uPx;
-              float lWid = (3.2 + lh.y * 2.2) * uPx;
-              // Ellipse narrowed toward one end, so it reads as a leaf rather than a bead.
-              float tipx = clamp(lp.x / lLen, -1.0, 1.0);
-              float wid = lWid * (1.0 - tipx * tipx * 0.55) * (0.5 + 0.5 * (1.0 - abs(tipx)));
-              float leafD = length(vec2(lp.x / max(lLen, 1e-4), lp.y / max(wid, 1e-4)));
-              float leaf = (1.0 - smoothstep(0.72, 1.0, leafD)) * step(abs(lp.x), lLen);
-              // Midrib — a bright hairline that makes a blob read as foliage.
-              float rib = (1.0 - smoothstep(0.4 * uPx, 1.5 * uPx, abs(lp.y)))
-                        * step(abs(lp.x), lLen * 0.85) * 0.5;
+
+              // The blade's frame has its origin ON the stem centre-line: u runs along
+              // the strand, v across it, and the leaf grows outward from (0, 0). The
+              // obvious construction — centre an ellipse a few px off the stem, rotate
+              // it about its own middle — cannot guarantee the blade ever reaches back,
+              // because that needs lLen * sin(angle) to exceed the offset, and the two
+              // are drawn from unrelated hashes. Any leaf lying along the strand then
+              // floats free of it. Growing from the stem outward makes the join
+              // structural instead of coincidental.
+              float u = (fract(li) - 0.5) * spacing;   // along the strand
+              float v = d - off;                       // across it, 0 on the stem
+
+              // Which way the blade grows: out from the stem on its own side, leaning along it.
+              float lean = (hash11(lid * 2.9) - 0.5) * 1.5;
+              vec2 lDir = vec2(sin(lean), side * cos(lean));    // not dir: that is the strand's
+              float lLen = (9.0 + lh.x * 6.0) * uPx;
+              float lWid = (2.6 + lh.y * 1.9) * uPx;
+
+              float lx = dot(vec2(u, v), lDir);                   // 0 at the stem, lLen at the tip
+              float ly = dot(vec2(u, v), vec2(-lDir.y, lDir.x));  // across the blade
+              float tx = clamp(lx / max(lLen, 1e-4), 0.0, 1.0);
+              // Widest a third of the way up, pinched at both ends: t^0.55 * (1 - t),
+              // scaled so its peak is exactly lWid. The floor is a stalk — without it
+              // the blade tapers to nothing precisely where it meets the stem, and the
+              // join goes sub-pixel and reads as a gap all over again.
+              float wid = lWid * 2.74 * pow(max(tx, 1e-4), 0.55) * (1.0 - tx);
+              wid = max(wid, (1.0 - smoothstep(0.0, 0.3, tx)) * 0.6 * uPx);
+              // Antialiased in real pixels rather than in blade-normalised units, so the
+              // narrow ends stay smooth instead of stippling.
+              float ends = smoothstep(-0.6 * uPx, 0.4 * uPx, lx)
+                         * (1.0 - smoothstep(lLen - 0.6 * uPx, lLen + 0.4 * uPx, lx));
+              float leaf = (1.0 - smoothstep(-0.7 * uPx, 0.7 * uPx, abs(ly) - wid)) * ends;
+              // Midrib — a bright hairline that makes a blob read as foliage. It runs
+              // from the stalk to just short of the tip.
+              float rib = (1.0 - smoothstep(0.4 * uPx, 1.5 * uPx, abs(ly)))
+                        * (1.0 - smoothstep(lLen * 0.72, lLen * 0.92, lx)) * ends * 0.5;
 
               float body = max(core, leaf * 0.9);
               float lum = max(halo * 0.30, rib * leaf * 0.7);
