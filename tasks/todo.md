@@ -65,6 +65,26 @@ attach to the vines")
 - Not verified: the jest suite could not run — `node_modules` is absent and `npm install` fails on a
   root-owned npm cache (`sudo chown -R 501:20 ~/.npm`). No test references the vine shader.
 
+## Revision: generic panel content (2026-08-13, Jason: "make the content of the dialog box more
+generic for a demo and without buttons so it doesn't look like another part of configuration")
+
+- Replaced the mock greenhouse to-do dialog with neutral copy about what the border does. Zero
+  interactive elements inside the panel now (asserted: 0 button/input/select/a in its subtree), and
+  `role="dialog"` dropped for a plain labelled section — it was never a real dialog.
+- The removed "Show notes" button had been the one-click demo of the ResizeObserver reflow. Rather
+  than lose that, the reflow moved to a Panel width slider in the controls bar, which is where
+  controls belong and is exactly the user's point. Say the word to drop it.
+- Its readout reports the width the panel actually reached (`offsetWidth`), not the width requested:
+  on a narrow screen the panel's own max-width overrides the top of the slider's range, and a
+  readout insisting on 460px next to a 345px panel would be a lie.
+- Fixed a pre-existing narrow-viewport bug found while testing this: `.stage` used the implicit auto
+  grid column, which refuses to shrink below the panel's min-content, so a 460px panel kept its full
+  width at 375px and overflowed (clipped, not scrolled, so it never showed as a scrollbar).
+  `grid-template-columns: minmax(0, 1fr)` lets the panel's max-width apply.
+- Verified: canvas tracks the panel at 240/300/460/520px (CSS = panel + 192, buffer = CSS x 2 at
+  every step), no horizontal scroll, panel fits the viewport at 375px, shader still compiles, and
+  the shader parity check against the app still shows only the three demo knobs.
+
 # Gonka explainer review fixes (2026-08-11)
 
 Goal: resolve the three review findings in `learn/gonka-decentralized-ai-explainer.html`, verify the fixes, and push them to `origin/main`.
