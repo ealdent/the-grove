@@ -1,0 +1,826 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="theme-color" content="#07091a">
+  <title>CAMEWOOD — The Leaded Vespers</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel+Decorative:wght@700;900&family=Cormorant+Garamond:ital,wght@0,500;0,600;1,500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --vault: #07091a;
+      --lead: #14161c;
+      --gold: #d4b24a;
+      --ruby: #b4183a;
+      --cobalt: #2348c8;
+    }
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    html, body {
+      margin: 0;
+      width: 100%;
+      height: 100%;
+      height: 100dvh;
+      overflow: hidden;
+      background: var(--vault);
+      color: #f3e6c4;
+      font-family: "Cormorant Garamond", Georgia, serif;
+      touch-action: none;
+      overscroll-behavior: none;
+      user-select: none;
+      -webkit-user-select: none;
+      -webkit-touch-callout: none;
+      position: fixed;
+      inset: 0;
+    }
+    #wrap {
+      position: fixed;
+      inset: 0;
+      overflow: hidden;
+      background: #07091a;
+    }
+    #stage {
+      width: 100%;
+      height: 100%;
+      display: block;
+      touch-action: none;
+      cursor: grab;
+    }
+    #stage.is-drag { cursor: grabbing; }
+    .chrome {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      z-index: 4;
+    }
+    .plaque {
+      position: absolute;
+      top: max(14px, env(safe-area-inset-top));
+      left: 50%;
+      transform: translateX(-50%);
+      text-align: center;
+      padding: 0.35rem 1.1rem 0.5rem;
+      background: linear-gradient(180deg, rgba(12, 10, 22, 0.72), rgba(12, 10, 22, 0.4));
+      border: 1px solid rgba(212, 178, 74, 0.45);
+      box-shadow: 0 10px 28px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255, 236, 180, 0.12);
+    }
+    .plaque h1 {
+      margin: 0;
+      font-family: "Cinzel Decorative", Cinzel, serif;
+      font-size: clamp(1.05rem, 3.4vw, 1.7rem);
+      letter-spacing: 0.18em;
+      font-weight: 900;
+      color: #f0d78a;
+      text-shadow: 0 0 18px rgba(180, 24, 58, 0.45);
+    }
+    .plaque p {
+      margin: 0.05rem 0 0;
+      font-size: clamp(0.72rem, 2vw, 0.92rem);
+      letter-spacing: 0.22em;
+      text-transform: uppercase;
+      color: rgba(243, 230, 196, 0.72);
+    }
+    .compass {
+      position: absolute;
+      top: max(16px, env(safe-area-inset-top));
+      right: max(14px, env(safe-area-inset-right));
+      width: 64px;
+      height: 64px;
+      border-radius: 50%;
+      border: 1px solid rgba(212, 178, 74, 0.55);
+      background: radial-gradient(circle at 40% 32%, rgba(80, 30, 50, 0.55), rgba(8, 10, 24, 0.82));
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: "Cinzel Decorative", serif;
+      font-size: 0.95rem;
+      color: #f0d78a;
+    }
+    .hint {
+      position: absolute;
+      left: 50%;
+      bottom: max(168px, calc(env(safe-area-inset-bottom) + 148px));
+      transform: translateX(-50%);
+      width: min(92vw, 520px);
+      text-align: center;
+      font-size: clamp(0.86rem, 2.4vw, 1.05rem);
+      color: rgba(243, 230, 196, 0.88);
+      text-shadow: 0 2px 10px #07091a;
+      transition: opacity 0.8s ease;
+    }
+    .hint.is-gone { opacity: 0; }
+    .hint kbd {
+      display: inline-block;
+      padding: 0 0.35em;
+      border: 1px solid rgba(212, 178, 74, 0.45);
+      color: #f0d78a;
+      font-family: inherit;
+      font-size: 0.92em;
+    }
+    .joy {
+      position: absolute;
+      bottom: max(18px, env(safe-area-inset-bottom));
+      z-index: 8;
+      width: min(42vw, 158px);
+      height: min(42vw, 158px);
+      pointer-events: auto;
+      touch-action: none;
+      display: none;
+    }
+    .joy-l { left: max(12px, env(safe-area-inset-left)); }
+    .joy-r { right: max(12px, env(safe-area-inset-right)); }
+    .joy-base {
+      position: absolute;
+      inset: 8%;
+      border-radius: 50%;
+      border: 2px solid rgba(212, 178, 74, 0.42);
+      background:
+        radial-gradient(circle at 50% 50%, rgba(36, 22, 48, 0.18), rgba(7, 9, 26, 0.55)),
+        repeating-conic-gradient(from 0deg, rgba(212,178,74,0.08) 0 8deg, transparent 8deg 16deg);
+      box-shadow: inset 0 0 24px rgba(0,0,0,0.45), 0 8px 20px rgba(0,0,0,0.35);
+    }
+    .joy-knob {
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      width: 42%;
+      height: 42%;
+      border-radius: 50%;
+      transform: translate(-50%, -50%);
+      background: radial-gradient(circle at 35% 30%, #f0d78a, #9a6b22 62%, #4a2a12);
+      border: 1px solid rgba(255, 236, 180, 0.55);
+      box-shadow: 0 6px 16px rgba(0,0,0,0.4);
+      pointer-events: none;
+    }
+    .joy-label {
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: -2px;
+      text-align: center;
+      font-size: 0.68rem;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      color: rgba(240, 215, 138, 0.7);
+      pointer-events: none;
+    }
+    @media (pointer: coarse), (max-width: 900px) {
+      .joy { display: block; }
+      .hint-desk { display: none; }
+    }
+    @media (hover: hover) and (pointer: fine) and (min-width: 901px) {
+      .hint-mob { display: none; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .hint { transition: none; }
+    }
+  </style>
+</head>
+<body>
+  <div id="wrap">
+    <svg id="stage" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" role="img" aria-label="Camewood first-person stained glass forest">
+      <defs>
+        <linearGradient id="gSky" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stop-color="#070614"/>
+          <stop offset="0.42" stop-color="#14102c"/>
+          <stop offset="0.72" stop-color="#3a1840"/>
+          <stop offset="1" stop-color="#6a2a3c"/>
+        </linearGradient>
+        <linearGradient id="gGround" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stop-color="#2a1424"/>
+          <stop offset="0.18" stop-color="#16101c"/>
+          <stop offset="1" stop-color="#07080f"/>
+        </linearGradient>
+        <linearGradient id="gHaze" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stop-color="#6a2a3c" stop-opacity="0"/>
+          <stop offset="0.45" stop-color="#4a2040" stop-opacity="0.42"/>
+          <stop offset="1" stop-color="#07091a" stop-opacity="0"/>
+        </linearGradient>
+        <radialGradient id="gVig" cx="50%" cy="48%" r="72%">
+          <stop offset="0.55" stop-color="#000" stop-opacity="0"/>
+          <stop offset="1" stop-color="#000" stop-opacity="0.55"/>
+        </radialGradient>
+        <radialGradient id="gGlow" cx="50%" cy="50%" r="50%">
+          <stop offset="0" stop-color="#f0d78a" stop-opacity="0.55"/>
+          <stop offset="0.45" stop-color="#b4183a" stop-opacity="0.18"/>
+          <stop offset="1" stop-color="#b4183a" stop-opacity="0"/>
+        </radialGradient>
+        <linearGradient id="gShaft" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stop-color="#e8c86a" stop-opacity="0.22"/>
+          <stop offset="1" stop-color="#e8c86a" stop-opacity="0"/>
+        </linearGradient>
+        <filter id="fSoft" x="-20%" y="-20%" width="140%" height="140%">
+          <feGaussianBlur stdDeviation="1.1"/>
+        </filter>
+
+        <symbol id="sym-tree" viewBox="0 0 100 160">
+          <ellipse cx="50" cy="154" rx="24" ry="6" fill="#000" opacity="0.38"/>
+          <path d="M47 154 L43 78 Q50 70 57 78 L53 154 Z" fill="#1a1c24"/>
+          <path d="M49 154 L47.5 78 L51 74 L52.5 154 Z" fill="#c9a24a" opacity="0.55"/>
+          <g stroke="#12141c" stroke-width="1.7" stroke-linejoin="round">
+            <polygon points="50,10 62,32 38,32" fill="#b4183a"/>
+            <polygon points="38,32 50,52 26,54" fill="#1d3dad"/>
+            <polygon points="62,32 74,54 50,52" fill="#c48912"/>
+            <polygon points="26,54 40,76 16,82" fill="#0d6b58"/>
+            <polygon points="40,76 50,52 60,76" fill="#6b1f8a"/>
+            <polygon points="60,76 84,82 74,54" fill="#b4183a"/>
+            <polygon points="16,82 36,104 10,112" fill="#2348c8"/>
+            <polygon points="36,104 50,78 64,104" fill="#c48912"/>
+            <polygon points="64,104 90,112 84,82" fill="#0d6b58"/>
+            <polygon points="22,112 50,128 78,112" fill="#8b1538"/>
+          </g>
+          <circle cx="50" cy="22" r="3.2" fill="#f0d78a" opacity="0.85"/>
+        </symbol>
+
+        <symbol id="sym-rose" viewBox="0 0 100 160">
+          <ellipse cx="50" cy="154" rx="16" ry="5" fill="#000" opacity="0.35"/>
+          <path d="M48 154 L50 78 L52 154 Z" fill="#1a1c24"/>
+          <path d="M49.2 154 L50 78 L50.8 154 Z" fill="#c9a24a" opacity="0.7"/>
+          <circle cx="50" cy="52" r="38" fill="#0c0e18" stroke="#c9a24a" stroke-width="2.4"/>
+          <g stroke="#12141c" stroke-width="1.4">
+            <polygon points="50,18 61,40 50,52 39,40" fill="#b4183a"/>
+            <polygon points="61,40 82,40 68,56 50,52" fill="#1d3dad"/>
+            <polygon points="82,40 82,64 64,70 68,56" fill="#c48912"/>
+            <polygon points="82,64 61,86 50,52 64,70" fill="#0d6b58"/>
+            <polygon points="61,86 50,86 39,86 50,52" fill="#6b1f8a"/>
+            <polygon points="39,86 18,64 36,70 50,52" fill="#2348c8"/>
+            <polygon points="18,64 18,40 32,56 36,70" fill="#b4183a"/>
+            <polygon points="18,40 39,40 50,52 32,56" fill="#c48912"/>
+          </g>
+          <circle cx="50" cy="52" r="11" fill="#b4183a" stroke="#f0d78a" stroke-width="1.6"/>
+          <circle cx="50" cy="52" r="4.5" fill="#f8e7a8"/>
+        </symbol>
+
+        <symbol id="sym-spire" viewBox="0 0 100 160">
+          <ellipse cx="50" cy="154" rx="22" ry="6" fill="#000" opacity="0.4"/>
+          <path d="M50 6 L84 48 L80 154 L20 154 L16 48 Z" fill="#161820" stroke="#c9a24a" stroke-width="1.8"/>
+          <path d="M50 6 L58 48 L54 154 L46 154 L42 48 Z" fill="#c9a24a" opacity="0.18"/>
+          <path d="M50 28 L66 52 L34 52 Z" fill="#b4183a" stroke="#12141c" stroke-width="1.3"/>
+          <rect x="38" y="58" width="24" height="36" rx="12" fill="#1d3dad" stroke="#12141c" stroke-width="1.3"/>
+          <rect x="40" y="102" width="20" height="28" rx="10" fill="#0d6b58" stroke="#12141c" stroke-width="1.3"/>
+          <path d="M50 6 L53 16 L50 14 L47 16 Z" fill="#f0d78a"/>
+        </symbol>
+
+        <symbol id="sym-moth" viewBox="0 0 100 160">
+          <g>
+            <polygon points="50,58 18,36 22,70 42,74" fill="#2348c8" stroke="#f0d78a" stroke-width="1.1" opacity="0.92"/>
+            <polygon points="50,58 82,36 78,70 58,74" fill="#b4183a" stroke="#f0d78a" stroke-width="1.1" opacity="0.92"/>
+            <polygon points="50,70 28,92 44,86" fill="#c48912" opacity="0.85"/>
+            <polygon points="50,70 72,92 56,86" fill="#0d6b58" opacity="0.85"/>
+          </g>
+          <ellipse cx="50" cy="68" rx="6" ry="16" fill="#f8e7a8"/>
+          <ellipse cx="50" cy="58" rx="4" ry="6" fill="#fff6d2"/>
+          <path d="M48 52 Q40 32 34 28" fill="none" stroke="#f0d78a" stroke-width="1.1"/>
+          <path d="M52 52 Q60 32 66 28" fill="none" stroke="#f0d78a" stroke-width="1.1"/>
+        </symbol>
+      </defs>
+
+      <rect width="1600" height="900" fill="url(#gSky)"/>
+      <g id="sky-stars"></g>
+      <g id="sky-rose"></g>
+      <g id="sky-shafts" opacity="0.85">
+        <polygon points="800,168 620,900 740,900" fill="url(#gShaft)"/>
+        <polygon points="800,168 780,900 840,900" fill="url(#gShaft)"/>
+        <polygon points="800,168 980,900 860,900" fill="url(#gShaft)"/>
+      </g>
+      <ellipse cx="800" cy="392" rx="900" ry="28" fill="#6a2a3c" opacity="0.55"/>
+      <g id="world">
+        <path id="nave" d="M0 900 L0 398 Q800 372 1600 398 L1600 900 Z" fill="url(#gGround)"/>
+        <g id="ground"></g>
+        <g id="sprites"></g>
+      </g>
+      <rect x="0" y="330" width="1600" height="160" fill="url(#gHaze)" pointer-events="none"/>
+      <rect width="1600" height="900" fill="url(#gVig)" pointer-events="none"/>
+      <g id="reticle" opacity="0.7">
+        <circle cx="800" cy="455" r="11" fill="none" stroke="#f0d78a" stroke-width="1.1" opacity="0.55"/>
+        <path d="M800 442 V430 M800 468 V480 M787 455 H775 M813 455 H825" stroke="#f0d78a" stroke-width="1.2"/>
+      </g>
+    </svg>
+
+    <div class="chrome">
+      <div class="plaque">
+        <h1>CAMEWOOD</h1>
+        <p>The Leaded Vespers</p>
+      </div>
+      <div class="compass" id="compass" aria-live="polite">N</div>
+      <p class="hint" id="hint">
+        <span class="hint-desk">Walk with <kbd>WASD</kbd> or arrows · drag to look</span>
+        <span class="hint-mob">Left stick walks · right stick turns · use both at once</span>
+      </p>
+    </div>
+
+    <div class="joy joy-l" id="joyMove" aria-label="Walk joystick">
+      <div class="joy-base"></div>
+      <div class="joy-knob" id="joyMoveKnob"></div>
+      <div class="joy-label">Walk</div>
+    </div>
+    <div class="joy joy-r" id="joyLook" aria-label="Turn joystick">
+      <div class="joy-base"></div>
+      <div class="joy-knob" id="joyLookKnob"></div>
+      <div class="joy-label">Turn</div>
+    </div>
+  </div>
+
+  <script>
+  (function () {
+    const SVG_NS = "http://www.w3.org/2000/svg";
+    const W = 1600, H = 900, CX = 800;
+    const HORIZON = 392, FOCAL = 560, EYE = 1.62;
+    const NEAR = 1.2, FAR = 88;
+    const CHUNK = 16, CHUNK_R = 4;
+    const TILE = 3.4;
+    const WALK = 8.6, STRAFE = 6.4, TURN = 1.55;
+    const MOUSE = 0.0048, JOY_TURN = 2.15;
+    const SPRITE_POOL = 68, TILE_POOL = 52;
+    const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+    const stage = document.getElementById("stage");
+    const skyStars = document.getElementById("sky-stars");
+    const skyRose = document.getElementById("sky-rose");
+    const skyShafts = document.getElementById("sky-shafts");
+    const worldG = document.getElementById("world");
+    const groundG = document.getElementById("ground");
+    const spritesG = document.getElementById("sprites");
+    const compassEl = document.getElementById("compass");
+    const hintEl = document.getElementById("hint");
+
+    const player = { x: 0, z: 0, yaw: 0 };
+    const keys = Object.create(null);
+    const moveStick = { id: null, nx: 0, ny: 0 };
+    const lookStick = { id: null, nx: 0, ny: 0 };
+    let dragging = false, dragId = null, dragX = 0;
+    let bobPhase = 0, bobX = 0, bobY = 0;
+    let hinted = false, lastT = 0, tSec = 0;
+    const chunks = new Map();
+    const DIR = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"];
+
+    function el(name, attrs, parent) {
+      const n = document.createElementNS(SVG_NS, name);
+      for (const k in attrs) n.setAttribute(k, attrs[k]);
+      if (parent) parent.appendChild(n);
+      return n;
+    }
+    function hash(a, b, c) {
+      let n = (Math.imul(a | 0, 374761393) + Math.imul(b | 0, 668265263) + Math.imul(c | 0, 144737)) | 0;
+      n = Math.imul(n ^ (n >>> 13), 1274126177);
+      return ((n ^ (n >>> 16)) >>> 0) / 4294967296;
+    }
+    function hideHint() {
+      if (hinted) return;
+      hinted = true;
+      hintEl.classList.add("is-gone");
+    }
+
+    for (let i = 0; i < 70; i++) {
+      const layer = 1 + (i % 3);
+      el("circle", {
+        cx: String(hash(i, 3, 1) * 2400 - 400),
+        cy: String(18 + hash(i, 7, 2) * 310),
+        r: String(0.5 + hash(i, 9, 3) * 1.6),
+        fill: hash(i, 4, 5) > 0.82 ? "#f0d78a" : "#f7f1de",
+        opacity: String(0.28 + layer * 0.18),
+        "data-layer": String(layer)
+      }, skyStars);
+    }
+
+    (function buildRose() {
+      const cx = 800, cy = 168, R = 118;
+      el("circle", { cx: cx, cy: cy, r: R + 10, fill: "url(#gGlow)" }, skyRose);
+      el("circle", { cx: cx, cy: cy, r: R, fill: "#0a0c18", stroke: "#c9a24a", "stroke-width": "3.2" }, skyRose);
+      const pal = ["#b4183a", "#1d3dad", "#0d6b58", "#c48912", "#6b1f8a", "#2348c8"];
+      const n = 12;
+      for (let i = 0; i < n; i++) {
+        const a0 = (i / n) * Math.PI * 2 - Math.PI / 2;
+        const a1 = ((i + 1) / n) * Math.PI * 2 - Math.PI / 2;
+        const am = (a0 + a1) / 2;
+        const ri = R * 0.22, ro = R * 0.93;
+        const p = function (ang, r) { return (cx + Math.cos(ang) * r) + "," + (cy + Math.sin(ang) * r); };
+        el("polygon", {
+          points: [p(a0, ri), p(a0, ro * 0.86), p(am, ro), p(a1, ro * 0.86), p(a1, ri)].join(" "),
+          fill: pal[i % pal.length],
+          stroke: "#12141c",
+          "stroke-width": "1.4"
+        }, skyRose);
+        el("circle", {
+          cx: String(cx + Math.cos(am) * R * 0.62),
+          cy: String(cy + Math.sin(am) * R * 0.62),
+          r: "6.5",
+          fill: pal[(i + 2) % pal.length],
+          stroke: "#c9a24a",
+          "stroke-width": "1"
+        }, skyRose);
+      }
+      el("circle", { cx: cx, cy: cy, r: R * 0.22, fill: "#b4183a", stroke: "#f0d78a", "stroke-width": "2.2" }, skyRose);
+      el("circle", { cx: cx, cy: cy, r: R * 0.08, fill: "#f8e7a8" }, skyRose);
+    })();
+
+    const groundPolys = [];
+    for (let i = 0; i < TILE_POOL; i++) {
+      groundPolys.push(el("polygon", {
+        fill: "#14141c",
+        stroke: "#c9a24a",
+        "stroke-width": "0.55",
+        "stroke-opacity": "0.28",
+        points: "",
+        opacity: "0"
+      }, groundG));
+    }
+
+    const spritePool = [];
+    for (let i = 0; i < SPRITE_POOL; i++) {
+      const g = el("g", { opacity: "0", transform: "translate(-9999 0)" }, spritesG);
+      const use = el("use", { href: "#sym-tree" }, g);
+      spritePool.push({ g: g, use: use });
+    }
+
+    const landmarks = [];
+    for (let i = 0; i < 8; i++) {
+      const a = (i / 8) * Math.PI * 2;
+      landmarks.push({
+        x: Math.cos(a) * 7.5,
+        z: 16 + Math.sin(a) * 7.5,
+        type: i % 2 ? "rose" : "tree",
+        h: i % 2 ? 2.7 : 4.1,
+        seed: 0.1 * i,
+        s: 1
+      });
+    }
+    landmarks.push({ x: 0, z: 16, type: "spire", h: 7.4, seed: 0.4, s: 1.2 });
+    landmarks.push({ x: -3.2, z: 11.5, type: "moth", h: 1.3, seed: 0.22, s: 1 });
+    landmarks.push({ x: 3.4, z: 12.2, type: "moth", h: 1.15, seed: 0.81, s: 1 });
+
+    function chunkKey(cx, cz) { return cx + "," + cz; }
+
+    function spawnChunk(cx, cz) {
+      const key = chunkKey(cx, cz);
+      if (chunks.has(key)) return;
+      const list = [];
+      if (Math.abs(cx) <= 1 && Math.abs(cz) <= 1) {
+        chunks.set(key, list);
+        return;
+      }
+      const n = 2 + (hash(cx, cz, 1) * 3) | 0;
+      for (let i = 0; i < n; i++) {
+        const u = hash(cx, cz, i * 5 + 2);
+        const v = hash(cx, cz, i * 5 + 3);
+        const t = hash(cx, cz, i * 5 + 4);
+        let type = "tree";
+        if (t > 0.84) type = "moth";
+        else if (t > 0.66) type = "rose";
+        else if (t > 0.5) type = "spire";
+        const h = type === "moth" ? 1.15 + u * 0.4
+          : type === "rose" ? 2.15 + u * 0.9
+          : type === "spire" ? 4.6 + v * 2.6
+          : 3.1 + u * 3.2;
+        list.push({
+          x: (cx + 0.12 + u * 0.76) * CHUNK,
+          z: (cz + 0.12 + v * 0.76) * CHUNK,
+          type: type,
+          h: h,
+          seed: u,
+          s: 0.78 + v * 0.5
+        });
+      }
+      chunks.set(key, list);
+    }
+
+    function syncChunks() {
+      const pcx = Math.floor(player.x / CHUNK);
+      const pcz = Math.floor(player.z / CHUNK);
+      for (let z = pcz - CHUNK_R; z <= pcz + CHUNK_R; z++) {
+        for (let x = pcx - CHUNK_R; x <= pcx + CHUNK_R; x++) spawnChunk(x, z);
+      }
+      chunks.forEach(function (_, key) {
+        if (key.indexOf(",") < 0) return;
+        const p = key.split(",");
+        const dx = (p[0] | 0) - pcx, dz = (p[1] | 0) - pcz;
+        if (dx > CHUNK_R + 1 || dx < -CHUNK_R - 1 || dz > CHUNK_R + 1 || dz < -CHUNK_R - 1) {
+          chunks.delete(key);
+        }
+      });
+    }
+
+    const _prj = { x: 0, y: 0, z: 0, ok: false };
+    function projectInto(wx, wz, out) {
+      const dx = wx - player.x;
+      const dz = wz - player.z;
+      const c = Math.cos(player.yaw), s = Math.sin(player.yaw);
+      const relX = dx * c - dz * s;
+      const relZ = dx * s + dz * c;
+      if (relZ < 0.45) { out.ok = false; return out; }
+      out.x = CX + relX * FOCAL / relZ;
+      out.y = HORIZON + EYE * FOCAL / relZ;
+      out.z = relZ;
+      out.ok = true;
+      return out;
+    }
+
+    const P00 = { x: 0, y: 0, z: 0, ok: false };
+    const P10 = { x: 0, y: 0, z: 0, ok: false };
+    const P01 = { x: 0, y: 0, z: 0, ok: false };
+    const P11 = { x: 0, y: 0, z: 0, ok: false };
+    const TILE_COLORS = ["#12141f", "#1a1230", "#0e1a22", "#1a1018", "#101820", "#16101c"];
+
+    function renderGround() {
+      const bx = Math.floor(player.x / TILE);
+      const bz = Math.floor(player.z / TILE);
+      const range = 6;
+      const bag = [];
+      for (let iz = -range; iz <= range; iz++) {
+        for (let ix = -range; ix <= range; ix++) {
+          const x0 = (bx + ix) * TILE, z0 = (bz + iz) * TILE;
+          projectInto(x0, z0, P00);
+          projectInto(x0 + TILE, z0, P10);
+          projectInto(x0, z0 + TILE, P01);
+          projectInto(x0 + TILE, z0 + TILE, P11);
+          if (!P00.ok || !P10.ok || !P01.ok || !P11.ok) continue;
+          const z = (P00.z + P10.z + P01.z + P11.z) * 0.25;
+          if (z > 62) continue;
+          const minX = Math.min(P00.x, P10.x, P01.x, P11.x);
+          const maxX = Math.max(P00.x, P10.x, P01.x, P11.x);
+          if (maxX < -80 || minX > W + 80) continue;
+          bag.push({
+            z: z,
+            points: P00.x.toFixed(1) + "," + P00.y.toFixed(1) + " " +
+                    P10.x.toFixed(1) + "," + P10.y.toFixed(1) + " " +
+                    P11.x.toFixed(1) + "," + P11.y.toFixed(1) + " " +
+                    P01.x.toFixed(1) + "," + P01.y.toFixed(1),
+            fill: TILE_COLORS[(hash(bx + ix, bz + iz, 9) * TILE_COLORS.length) | 0],
+            op: String((0.62 * (1 - z / 62)).toFixed(3))
+          });
+        }
+      }
+      bag.sort(function (a, b) { return b.z - a.z; });
+      const n = Math.min(bag.length, TILE_POOL);
+      for (let i = 0; i < TILE_POOL; i++) {
+        const poly = groundPolys[i];
+        if (i < n) {
+          poly.setAttribute("points", bag[i].points);
+          poly.setAttribute("fill", bag[i].fill);
+          poly.setAttribute("opacity", bag[i].op);
+        } else if (poly.getAttribute("opacity") !== "0") {
+          poly.setAttribute("opacity", "0");
+          poly.setAttribute("points", "");
+        }
+      }
+    }
+
+    const vis = [];
+    function collect(list) {
+      for (let i = 0; i < list.length; i++) {
+        const o = list[i];
+        let wx = o.x, wz = o.z;
+        if (o.type === "moth") {
+          wx += Math.sin(tSec * 0.45 + o.seed * 12) * 1.7;
+          wz += Math.cos(tSec * 0.33 + o.seed * 9) * 1.7;
+        }
+        projectInto(wx, wz, _prj);
+        if (!_prj.ok || _prj.z > FAR || _prj.z < NEAR) continue;
+        if (Math.abs(_prj.x - CX) > W * 0.72 + 220 * (12 / _prj.z)) continue;
+        vis.push({
+          type: o.type, h: o.h, s: o.s, seed: o.seed,
+          sx: _prj.x, sy: _prj.y, z: _prj.z, wx: wx, wz: wz
+        });
+      }
+    }
+
+    function renderSprites() {
+      vis.length = 0;
+      collect(landmarks);
+      chunks.forEach(function (list) { collect(list); });
+      vis.sort(function (a, b) { return b.z - a.z; });
+      const n = Math.min(vis.length, SPRITE_POOL);
+      for (let i = 0; i < SPRITE_POOL; i++) {
+        const slot = spritePool[i];
+        if (i >= n) {
+          if (slot.g.getAttribute("opacity") !== "0") {
+            slot.g.setAttribute("opacity", "0");
+            slot.g.setAttribute("transform", "translate(-9999 0)");
+          }
+          continue;
+        }
+        const o = vis[i];
+        const href = o.type === "rose" ? "#sym-rose"
+          : o.type === "spire" ? "#sym-spire"
+          : o.type === "moth" ? "#sym-moth"
+          : "#sym-tree";
+        if (slot.use.getAttribute("href") !== href) {
+          slot.use.setAttribute("href", href);
+          slot.use.setAttributeNS("http://www.w3.org/1999/xlink", "href", href);
+        }
+        const worldH = o.h * o.s;
+        const sc = Math.min(9.2, (worldH / 160) * FOCAL / o.z);
+        let y = o.sy;
+        if (o.type === "moth") {
+          y -= (1.15 + Math.abs(Math.sin(tSec * 1.3 + o.seed * 8)) * 0.45) * FOCAL / o.z;
+        }
+        const flap = o.type === "moth" ? Math.sin(tSec * 7 + o.seed * 20) * 9 : 0;
+        const fog = o.z < 22 ? 1 : Math.max(0, 1 - (o.z - 22) / (FAR - 22));
+        let op = fog;
+        if (o.z < 2.1) op *= Math.max(0, (o.z - NEAR) / (2.1 - NEAR));
+        slot.g.setAttribute("opacity", op.toFixed(3));
+        slot.g.setAttribute(
+          "transform",
+          "translate(" + o.sx.toFixed(2) + " " + y.toFixed(2) + ") scale(" + sc.toFixed(3) + ") rotate(" + flap.toFixed(1) + ") translate(-50 -160)"
+        );
+      }
+    }
+
+    function blocked(x, z) {
+      for (let i = 0; i < landmarks.length; i++) {
+        const o = landmarks[i];
+        if (o.type === "moth") continue;
+        const dx = x - o.x, dz = z - o.z;
+        const r = o.type === "spire" ? 1.15 : 0.72;
+        if (dx * dx + dz * dz < r * r) return true;
+      }
+      const pcx = Math.floor(x / CHUNK), pcz = Math.floor(z / CHUNK);
+      for (let iz = -1; iz <= 1; iz++) {
+        for (let ix = -1; ix <= 1; ix++) {
+          const list = chunks.get(chunkKey(pcx + ix, pcz + iz));
+          if (!list) continue;
+          for (let i = 0; i < list.length; i++) {
+            const o = list[i];
+            if (o.type === "moth") continue;
+            const dx = x - o.x, dz = z - o.z;
+            const r = o.type === "spire" ? 1.05 : 0.68;
+            if (dx * dx + dz * dz < r * r) return true;
+          }
+        }
+      }
+      return false;
+    }
+
+    function tryMove(nx, nz) {
+      if (!blocked(nx, nz)) { player.x = nx; player.z = nz; return; }
+      if (!blocked(nx, player.z)) { player.x = nx; return; }
+      if (!blocked(player.x, nz)) player.z = nz;
+    }
+
+    function updatePlayer(dt) {
+      let fwd = 0, strafe = 0, turn = 0;
+      if (keys.KeyW || keys.ArrowUp) fwd += 1;
+      if (keys.KeyS || keys.ArrowDown) fwd -= 1;
+      if (keys.KeyA || keys.ArrowLeft || keys.KeyQ) turn -= 1;
+      if (keys.KeyD || keys.ArrowRight || keys.KeyE) turn += 1;
+      fwd += -moveStick.ny;
+      strafe += moveStick.nx;
+      turn += lookStick.nx;
+      if (fwd > 1) fwd = 1; if (fwd < -1) fwd = -1;
+      if (strafe > 1) strafe = 1; if (strafe < -1) strafe = -1;
+      if (turn > 1) turn = 1; if (turn < -1) turn = -1;
+
+      player.yaw += turn * TURN * dt;
+      player.yaw += lookStick.nx * (JOY_TURN - TURN) * dt;
+
+      const c = Math.cos(player.yaw), s = Math.sin(player.yaw);
+      const fx = s, fz = c;
+      const rx = c, rz = -s;
+      tryMove(
+        player.x + (fx * fwd * WALK + rx * strafe * STRAFE) * dt,
+        player.z + (fz * fwd * WALK + rz * strafe * STRAFE) * dt
+      );
+
+      const moving = Math.abs(fwd) + Math.abs(strafe) > 0.04;
+      if (moving && !reduceMotion) {
+        bobPhase += dt * (8.4 + Math.abs(fwd) * 2.2);
+        bobY = Math.sin(bobPhase) * 6.5;
+        bobX = Math.cos(bobPhase * 0.5) * 2.8;
+      } else {
+        bobY *= Math.pow(0.001, dt);
+        bobX *= Math.pow(0.001, dt);
+      }
+      worldG.setAttribute("transform", "translate(" + bobX.toFixed(2) + " " + (bobY * 0.35).toFixed(2) + ")");
+
+      const parallax = ((-player.yaw * 140) % 1600 + 1600) % 1600;
+      skyStars.setAttribute("transform", "translate(" + (parallax - 400).toFixed(1) + " 0)");
+      skyRose.setAttribute("transform", "rotate(" + (-player.yaw * 12).toFixed(2) + " 800 168)");
+      skyShafts.setAttribute("transform", "rotate(" + (-player.yaw * 6).toFixed(2) + " 800 168)");
+
+      let a = player.yaw % (Math.PI * 2);
+      if (a < 0) a += Math.PI * 2;
+      compassEl.textContent = DIR[Math.round(a / (Math.PI / 4)) % 8];
+    }
+
+    function frame(now) {
+      if (!lastT) lastT = now;
+      const dt = Math.min(0.05, (now - lastT) / 1000);
+      lastT = now;
+      tSec = now * 0.001;
+      if (!document.hidden) {
+        updatePlayer(dt);
+        syncChunks();
+        renderGround();
+        renderSprites();
+      }
+      requestAnimationFrame(frame);
+    }
+
+    window.addEventListener("keydown", function (e) {
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      const tag = e.target && e.target.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || (e.target && e.target.isContentEditable)) return;
+      keys[e.code] = true;
+      if (e.code === "ArrowUp" || e.code === "ArrowDown" || e.code === "ArrowLeft" || e.code === "ArrowRight" ||
+          e.code === "Space") e.preventDefault();
+      hideHint();
+    });
+    window.addEventListener("keyup", function (e) { keys[e.code] = false; });
+    window.addEventListener("blur", function () {
+      for (const k in keys) keys[k] = false;
+      dragging = false;
+    });
+
+    stage.addEventListener("pointerdown", function (e) {
+      if (e.target.closest && e.target.closest(".joy")) return;
+      dragging = true;
+      dragId = e.pointerId;
+      dragX = e.clientX;
+      stage.classList.add("is-drag");
+      try { stage.setPointerCapture(e.pointerId); } catch (err) {}
+      hideHint();
+    });
+    stage.addEventListener("pointermove", function (e) {
+      if (!dragging || e.pointerId !== dragId) return;
+      player.yaw += (e.clientX - dragX) * MOUSE;
+      dragX = e.clientX;
+    });
+    function endDrag(e) {
+      if (e && dragId !== null && e.pointerId !== dragId) return;
+      dragging = false;
+      dragId = null;
+      stage.classList.remove("is-drag");
+    }
+    stage.addEventListener("pointerup", endDrag);
+    stage.addEventListener("pointercancel", endDrag);
+    stage.addEventListener("lostpointercapture", endDrag);
+
+    function bindStick(zone, knob, state, mode) {
+      const radius = function () { return zone.getBoundingClientRect().width * 0.32; };
+      function center() {
+        const r = zone.getBoundingClientRect();
+        return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+      }
+      function apply(x, y) {
+        const c = center(), R = radius();
+        let dx = x - c.x, dy = y - c.y;
+        if (mode === "move") dx = 0;
+        else dy = 0;
+        const len = Math.hypot(dx, dy) || 1;
+        if (len > R) { dx = dx / len * R; dy = dy / len * R; }
+        const nx = dx / R, ny = dy / R;
+        const dead = 0.12;
+        state.nx = Math.abs(nx) < dead ? 0 : nx;
+        state.ny = Math.abs(ny) < dead ? 0 : ny;
+        knob.style.transform = "translate(calc(-50% + " + dx.toFixed(1) + "px), calc(-50% + " + dy.toFixed(1) + "px))";
+      }
+      function reset() {
+        state.id = null;
+        state.nx = 0;
+        state.ny = 0;
+        knob.style.transform = "translate(-50%, -50%)";
+      }
+      zone.addEventListener("pointerdown", function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        state.id = e.pointerId;
+        try { zone.setPointerCapture(e.pointerId); } catch (err) {}
+        apply(e.clientX, e.clientY);
+        hideHint();
+      });
+      zone.addEventListener("pointermove", function (e) {
+        if (e.pointerId !== state.id) return;
+        e.preventDefault();
+        apply(e.clientX, e.clientY);
+      });
+      function up(e) {
+        if (e.pointerId !== state.id) return;
+        reset();
+      }
+      zone.addEventListener("pointerup", up);
+      zone.addEventListener("pointercancel", up);
+      zone.addEventListener("lostpointercapture", function (e) {
+        if (e.pointerId === state.id) reset();
+      });
+    }
+    bindStick(document.getElementById("joyMove"), document.getElementById("joyMoveKnob"), moveStick, "move");
+    bindStick(document.getElementById("joyLook"), document.getElementById("joyLookKnob"), lookStick, "look");
+
+    const trap = { capture: true, passive: false };
+    function eat(e) { e.preventDefault(); }
+    document.addEventListener("gesturestart", eat, trap);
+    document.addEventListener("gesturechange", eat, trap);
+    document.addEventListener("gestureend", eat, trap);
+    document.addEventListener("touchmove", eat, trap);
+    document.addEventListener("dblclick", eat, trap);
+    window.addEventListener("wheel", function (e) { e.preventDefault(); }, { passive: false });
+
+    syncChunks();
+    requestAnimationFrame(frame);
+  })();
+  </script>
+</body>
+</html>
