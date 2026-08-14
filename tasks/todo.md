@@ -1,21 +1,38 @@
-# Shaders section + Greenhouse promotion
+# Tower Defense — Greenfield Build
 
-## Plan
+## Task
+Build a single-file, dependency-free tower defense game + tile in the arcade.
 
-- [x] `git mv` the three shader demos from `utils/` into a new `shaders/` directory
-- [x] `git mv utils/greenhouse-todo` → `greenhouse-todo/` (top level); untracked dot-scripts moved with it
-- [x] Update `.gitignore`, `jest.config.mjs`, and the ui-vines path comment in the vines demo
-- [x] Create `shaders/typewriter-letter-drift.html` — standalone page for the learn/ tile border shader (WebGL border experiment 04), with controls (glyphs, drift, ink, aura, card width, pause, re-ink)
-- [x] Create `shaders/index.html` — shader-heavy gallery: one fullscreen WebGL canvas, domain-warped iridescent background + four live scissored preview shaders (ember / holo / vines / typewriter), hover excitation, live HUD, reduced-motion stills, no-WebGL fallback
-- [x] Main `index.html`: Shaders badge with its own live spectral WebGL border around just that tile; Greenhouse To-Do badge with inline greenhouse SVG icon
-- [x] `utils/index.html`: removed greenhouse + 3 shader cards and their CSS
-- [x] `README.md`: Shaders section (4 entries), Greenhouse To-Do top level, Utils pruned
-- [x] Jest: greenhouse suite passes from new path (`npm test` pattern; the arcade/mother-os-defense failure is pre-existing and unrelated)
-- [x] Headless-verified with swiftshader WebGL: main index (both new tiles render, border shader live), shaders gallery (all 5 programs compile, previews render, HUD live), typewriter page (drift renders, fallback hidden), utils index clean
+## Spec (from user)
+- Single HTML file, no deps, opens in browser directly
+- Random (procedural) track each game
+- 5 tower kinds × 4 upgrades each
+- Enemies with different speeds/strengths
+- 20+ waves (target: 24)
+- Upgrade between waves
+- Professional UI, responsive, quirky/innovative appearance
+- Meaningful lore woven in
+
+## Theme decision
+**INK & ASH — The Last Codex.** Defend the last living book from "the Redaction"
+(un-writing force). Scriptorium towers (Quill, Inkwell, Red Pen, Illuminator, Press).
+Enemies are manifestations of deletion: Scribbles, Smudges, Censors, White-Outs,
+Plot Holes, and the boss "Final Draft." Parchment/ink/gold/red palette.
+
+## Steps
+- [x] Inspect index.html tile format + naming convention
+- [x] Develop lore/backstory (intro modal + per-wave blurbs)
+- [x] Write game file `deepseek-v4-pro-0813-xhigh-tower-def.html`
+- [x] Add tile to `tower-def/index.html` (alphabetical by model)
+- [x] Syntax-check JS (node --check)
+- [x] Runtime smoke test (vm harness: spawn/move/leak/kill, all 24 waves, boss draw)
 - [x] Commit + push to main
 
 ## Review
-
-- `shaders/` now holds the three moved demos plus two new pages. The gallery renders its background and all four card previews on a single WebGL context via scissored viewports — 5 fragment programs, one canvas.
-- Greenhouse To-Do lives at `greenhouse-todo/` top level; jest config, .gitignore, and the vines demo comment all updated. Its local probe dot-scripts moved with the directory.
-- Screenshots verified via headless Chrome + swiftshader (see memory note reference_headless_verify). Two visual iterations: typewriter preview rewritten from border-frame glyphs (read as a starburst) to upright perimeter-scattered type; vines fireflies quieted at rest.
+- Built **Ink & Ash — The Last Codex**: defend a living book from "the Redaction".
+- 5 towers (Quill, Inkwell, Red Pen, Illuminator, Press) × 4 upgrades; chapter-bond synergy.
+- 6 enemy kinds (Scribble/Smudge/Censor/White-Out/Plot Hole/Final Draft boss) with distinct abilities.
+- 24 named waves with lore blurbs; intermission upgrades; random winding track per game.
+- Offline single file (no fonts/deps), Web Audio sfx, responsive letterboxed canvas + touch.
+- Verified: node --check + vm harness (all checks passed); fixed spawn-timer unit bug
+  (ms vs s) and an `ang` scoping bug caught by the harness.

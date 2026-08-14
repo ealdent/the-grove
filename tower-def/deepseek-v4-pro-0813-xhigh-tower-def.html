@@ -1,0 +1,1481 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Ink &amp; Ash — The Last Codex</title>
+<style>
+  :root{
+    --ink:#14100a;
+    --ink-2:#1d1810;
+    --ink-3:#262019;
+    --paper:#f0e4c3;
+    --paper-2:#e6d5ac;
+    --paper-3:#d9c491;
+    --edge:#c3ab76;
+    --gold:#c8962e;
+    --gold-bright:#e8c05a;
+    --gold-pale:#f3d98c;
+    --red:#b3261e;
+    --red-bright:#d4433a;
+    --muted:#8a7a58;
+    --mono: ui-monospace, "SF Mono", "Cascadia Mono", Consolas, "Courier New", monospace;
+    --serif: Georgia, "Times New Roman", "Palatino Linotype", serif;
+  }
+  *{margin:0;padding:0;box-sizing:border-box;}
+  html,body{height:100%;}
+  body{
+    background:
+      radial-gradient(1200px 600px at 50% -10%, rgba(200,150,46,.08), transparent 60%),
+      radial-gradient(900px 500px at 100% 100%, rgba(179,38,30,.06), transparent 55%),
+      var(--ink);
+    color:var(--paper);
+    font-family:var(--mono);
+    min-height:100vh;
+    min-height:-webkit-fill-available;
+    -webkit-tap-highlight-color:transparent;
+    overflow-x:hidden;
+    display:flex;
+    flex-direction:column;
+  }
+
+  /* ---------- header / HUD ---------- */
+  header{
+    display:flex;
+    align-items:center;
+    gap:14px;
+    flex-wrap:wrap;
+    padding:10px 16px;
+    border-bottom:1px solid rgba(200,150,46,.25);
+    background:linear-gradient(180deg, rgba(29,24,16,.9), rgba(20,16,10,.9));
+    position:sticky;top:0;z-index:30;
+    box-shadow:0 4px 24px rgba(0,0,0,.4);
+  }
+  .brand{display:flex;flex-direction:column;line-height:1;margin-right:6px;}
+  .brand h1{
+    font-family:var(--serif);
+    font-weight:700;
+    font-size:clamp(1.1rem, 2.6vw, 1.5rem);
+    letter-spacing:.12em;
+    color:var(--gold-pale);
+    text-shadow:0 0 18px rgba(200,150,46,.5);
+    white-space:nowrap;
+  }
+  .brand small{
+    font-family:var(--serif);
+    font-style:italic;
+    color:var(--muted);
+    font-size:.72rem;
+    letter-spacing:.06em;
+    white-space:nowrap;
+  }
+  .stat{
+    display:flex;flex-direction:column;gap:1px;
+    padding:4px 12px;
+    border:1px solid rgba(200,150,46,.3);
+    border-radius:6px;
+    background:rgba(0,0,0,.25);
+    min-width:74px;
+  }
+  .stat .lbl{font-size:.6rem;letter-spacing:.2em;text-transform:uppercase;color:var(--muted);}
+  .stat .val{font-size:1.05rem;color:var(--gold-pale);font-weight:700;line-height:1.1;}
+  .stat .val.lives{color:#e8b8b0;}
+  .stat.wave{min-width:120px;}
+  .stat.wave .val{font-size:.95rem;}
+  .wave-name{color:var(--muted);font-size:.68rem;font-style:italic;font-family:var(--serif);}
+  .hud-right{margin-left:auto;display:flex;align-items:center;gap:6px;flex-wrap:wrap;}
+  button{
+    font-family:var(--mono);
+    cursor:pointer;
+    border:1px solid rgba(200,150,46,.4);
+    background:linear-gradient(180deg, rgba(38,32,25,.9), rgba(26,22,16,.9));
+    color:var(--paper);
+    border-radius:6px;
+    padding:7px 12px;
+    font-size:.78rem;
+    letter-spacing:.04em;
+    transition:transform .06s ease, background .15s ease, border-color .15s ease, box-shadow .15s ease;
+    touch-action:manipulation;
+  }
+  button:hover{border-color:var(--gold);box-shadow:0 0 12px rgba(200,150,46,.3);}
+  button:active{transform:translateY(1px);}
+  button.primary{
+    background:linear-gradient(180deg, #8a2b22, #6c1f18);
+    border-color:var(--red-bright);
+    color:#ffe9d8;
+    font-weight:700;
+    box-shadow:0 0 16px rgba(179,38,30,.35);
+  }
+  button.primary:hover{border-color:#ff7a6b;box-shadow:0 0 20px rgba(179,38,30,.6);}
+  button.ghost{background:transparent;border-color:transparent;color:var(--muted);}
+  button.ghost:hover{color:var(--gold-pale);box-shadow:none;border-color:transparent;}
+  button.on{border-color:var(--gold-bright);color:var(--gold-pale);box-shadow:0 0 10px rgba(200,150,46,.4);}
+
+  /* ---------- layout ---------- */
+  main{
+    flex:1 1 auto;
+    display:flex;
+    gap:16px;
+    padding:14px 16px 18px;
+    align-items:stretch;
+    min-height:0;
+  }
+  #boardWrap{
+    flex:1 1 auto;
+    position:relative;
+    display:flex;align-items:center;justify-content:center;
+    border:1px solid rgba(200,150,46,.3);
+    border-radius:10px;
+    background:rgba(0,0,0,.3);
+    box-shadow:inset 0 0 60px rgba(0,0,0,.5), 0 8px 40px rgba(0,0,0,.45);
+    overflow:hidden;
+    min-height:0;
+  }
+  canvas{
+    width:100%;
+    height:100%;
+    display:block;
+    cursor:crosshair;
+  }
+  #banner{
+    position:absolute;top:50%;left:50%;
+    transform:translate(-50%,-50%);
+    pointer-events:none;
+    text-align:center;
+    max-width:86%;
+    z-index:20;
+    opacity:0;
+    transition:opacity .35s ease;
+    font-family:var(--serif);
+  }
+  #banner.show{opacity:1;}
+  #banner .bn-title{
+    font-size:clamp(1.4rem, 4vw, 2.4rem);
+    color:var(--gold-pale);
+    letter-spacing:.1em;
+    text-shadow:0 2px 0 rgba(0,0,0,.6), 0 0 30px rgba(200,150,46,.6);
+  }
+  #banner .bn-sub{
+    font-style:italic;
+    color:var(--paper);
+    font-size:clamp(.85rem, 2.4vw, 1.15rem);
+    text-shadow:0 1px 0 rgba(0,0,0,.7);
+    margin-top:6px;
+    padding:0 8px;
+  }
+  #startWave{
+    position:absolute;left:50%;bottom:16px;transform:translateX(-50%);
+    z-index:21;
+    padding:11px 22px;
+    font-size:.95rem;
+    letter-spacing:.1em;
+  }
+  #startWave.hidden{display:none;}
+
+  /* ---------- side panel ---------- */
+  #panel{
+    flex:0 0 330px;
+    display:flex;flex-direction:column;gap:12px;
+    max-height:100%;
+    overflow-y:auto;
+    scrollbar-width:thin;
+    scrollbar-color:rgba(200,150,46,.4) transparent;
+  }
+  .panel-card{
+    border:1px solid rgba(200,150,46,.28);
+    border-radius:10px;
+    background:linear-gradient(180deg, rgba(29,24,16,.92), rgba(20,16,10,.94));
+    padding:12px;
+  }
+  .panel-card h2{
+    font-family:var(--serif);
+    font-size:.82rem;
+    letter-spacing:.18em;
+    text-transform:uppercase;
+    color:var(--gold);
+    margin-bottom:10px;
+  }
+  #palette{display:flex;flex-direction:column;gap:8px;}
+  .tower-btn{
+    display:flex;align-items:center;gap:10px;
+    width:100%;text-align:left;
+    padding:9px 10px;
+    border:1px solid rgba(200,150,46,.3);
+    background:rgba(0,0,0,.25);
+    color:var(--paper);
+    border-radius:8px;
+  }
+  .tower-btn .em{font-size:1.4rem;line-height:1;width:26px;text-align:center;}
+  .tower-btn .tb-body{flex:1;min-width:0;}
+  .tower-btn .tb-name{font-size:.85rem;font-weight:700;color:var(--gold-pale);}
+  .tower-btn .tb-desc{font-size:.68rem;color:var(--muted);font-family:var(--serif);font-style:italic;white-space:normal;}
+  .tower-btn .tb-cost{font-size:.72rem;color:var(--gold-pale);font-weight:700;white-space:nowrap;}
+  .tower-btn.disabled{opacity:.45;cursor:not-allowed;}
+  .tower-btn.selected{border-color:var(--gold-bright);box-shadow:0 0 14px rgba(200,150,46,.45);background:rgba(200,150,46,.08);}
+
+  #towerInfo .ti-head{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:8px;}
+  #towerInfo .ti-name{font-size:1rem;font-weight:700;color:var(--gold-pale);}
+  #towerInfo .ti-lvl{font-size:.7rem;color:var(--muted);}
+  #towerInfo .ti-stats{font-size:.72rem;color:var(--paper-2);line-height:1.6;margin-bottom:8px;font-family:var(--mono);}
+  .upg-btn{
+    display:flex;align-items:center;gap:10px;
+    width:100%;text-align:left;
+    margin-top:6px;
+    padding:8px 10px;
+    border:1px solid rgba(200,150,46,.28);
+    background:rgba(0,0,0,.25);
+    color:var(--paper);
+    border-radius:8px;
+  }
+  .upg-btn .ub-body{flex:1;min-width:0;}
+  .upg-btn .ub-name{font-size:.78rem;font-weight:700;color:var(--paper);}
+  .upg-btn .ub-desc{font-size:.66rem;color:var(--muted);font-family:var(--serif);font-style:italic;}
+  .upg-btn .ub-cost{font-size:.7rem;color:var(--gold-pale);font-weight:700;white-space:nowrap;}
+  .upg-btn.done{border-color:rgba(200,150,46,.6);background:rgba(200,150,46,.12);}
+  .upg-btn.done .ub-name{color:var(--gold-pale);}
+  .upg-btn.locked{opacity:.45;cursor:not-allowed;}
+  .sell-row{display:flex;gap:8px;margin-top:10px;}
+  .sell-row button{flex:1;}
+  #hint{font-size:.7rem;color:var(--muted);font-family:var(--serif);font-style:italic;line-height:1.5;}
+
+  /* ---------- modals ---------- */
+  .modal{
+    position:fixed;inset:0;z-index:100;
+    display:flex;align-items:center;justify-content:center;
+    background:rgba(10,7,3,.82);
+    backdrop-filter:blur(3px);
+    padding:18px;
+  }
+  .modal.hidden{display:none;}
+  .modal-card{
+    max-width:560px;width:100%;
+    max-height:88vh;overflow-y:auto;
+    border:1px solid rgba(200,150,46,.45);
+    border-radius:12px;
+    background:linear-gradient(180deg, #241d12, #17120b);
+    padding:26px 26px 22px;
+    box-shadow:0 0 60px rgba(200,150,46,.2), 0 20px 60px rgba(0,0,0,.6);
+  }
+  .modal-card .rule{height:1px;background:linear-gradient(90deg, transparent, rgba(200,150,46,.5), transparent);margin:14px 0;}
+  .modal-card h2{
+    font-family:var(--serif);
+    font-size:1.7rem;letter-spacing:.08em;color:var(--gold-pale);
+    text-shadow:0 0 20px rgba(200,150,46,.5);margin-bottom:4px;
+  }
+  .modal-card .subtitle{font-family:var(--serif);font-style:italic;color:var(--muted);font-size:.95rem;margin-bottom:12px;}
+  .lore{font-family:var(--serif);font-size:.98rem;line-height:1.75;color:var(--paper);}
+  .lore p{margin-bottom:12px;}
+  .lore p.lead::first-letter{
+    font-size:2.6rem;float:left;line-height:.9;padding-right:8px;padding-top:3px;
+    color:var(--gold);font-weight:700;
+  }
+  .lore .inset{font-style:italic;color:var(--gold-pale);}
+  .modal-actions{display:flex;gap:10px;margin-top:18px;justify-content:center;flex-wrap:wrap;}
+  .modal-actions button{font-size:.92rem;padding:11px 26px;letter-spacing:.08em;}
+  .credits{font-size:.68rem;color:var(--muted);text-align:center;margin-top:14px;font-family:var(--serif);font-style:italic;}
+
+  /* ---------- responsive ---------- */
+  @media (max-width:860px){
+    main{flex-direction:column;padding:10px 10px 14px;}
+    #boardWrap{width:100%;aspect-ratio:3/2;flex:0 0 auto;}
+    #panel{flex:0 0 auto;max-height:none;overflow:visible;}
+    #palette{flex-direction:row;flex-wrap:wrap;}
+    .tower-btn{flex:1 1 160px;}
+    header{position:static;}
+  }
+  @media (max-width:520px){
+    header{gap:8px;padding:8px 10px;}
+    .brand h1{font-size:1.05rem;}
+    .stat{padding:3px 8px;min-width:58px;}
+    .stat .val{font-size:.9rem;}
+    .stat.wave{min-width:96px;}
+    .hud-right{width:100%;justify-content:flex-start;}
+    button{padding:6px 9px;font-size:.72rem;}
+    .modal-card{padding:18px 16px 16px;}
+    .modal-card h2{font-size:1.3rem;}
+    .lore{font-size:.9rem;line-height:1.6;}
+  }
+</style>
+</head>
+<body>
+<header id="hud">
+  <div class="brand">
+    <h1>INK &amp; ASH</h1>
+    <small>The Last Codex</small>
+  </div>
+  <div class="stat"><span class="lbl">Ink</span><span class="val" id="money">140</span></div>
+  <div class="stat"><span class="lbl">Pages</span><span class="val lives" id="lives">20</span></div>
+  <div class="stat wave">
+    <span class="lbl">Wave</span>
+    <span class="val" id="waveLabel">0 / 24</span>
+    <span class="wave-name" id="waveName">Prepare the margin</span>
+  </div>
+  <div class="hud-right">
+    <button id="btnSpeed" title="Toggle speed (F)">1&times;</button>
+    <button id="btnPause" title="Pause (Space)">&#10074;&#10074;</button>
+    <button id="btnMute" title="Mute (M)">&#9835;</button>
+    <button id="btnRestart" title="Restart">&#8635;</button>
+  </div>
+</header>
+
+<main>
+  <div id="boardWrap">
+    <canvas id="game"></canvas>
+    <div id="banner"><div class="bn-title"></div><div class="bn-sub"></div></div>
+    <button id="startWave" class="primary hidden">Begin Wave 1</button>
+  </div>
+
+  <aside id="panel">
+    <div class="panel-card">
+      <h2>Scriptorium</h2>
+      <div id="palette"></div>
+    </div>
+
+    <div class="panel-card" id="towerInfo">
+      <h2>Selected Relic</h2>
+      <div id="towerInfoBody"><p id="hint">Choose a tower from the Scriptorium, then click the page to draw it into being. You may build and upgrade at any time &mdash; the calm between waves is best spent gilding.</p></div>
+    </div>
+
+    <div class="panel-card">
+      <h2>Codex Axioms</h2>
+      <div id="hint">
+        <p>&bull; Enemies march from the torn margin (west) toward the <b>Codex</b> (east). Each that arrives tears a page.</p>
+        <p>&bull; Towers within a handspan of one another bind into a <b>chapter</b>, sharpening each other's ink.</p>
+        <p>&bull; <b>Censors</b> wear black bars that blunt your words; <b>White-Out</b> undoes your damage; <b>Plot Holes</b> skip ahead through gaps in the story.</p>
+        <p>&bull; Sell returns 70% of the ink spent. Right-click a tower to sell it.</p>
+      </div>
+    </div>
+  </aside>
+</main>
+
+<div id="intro" class="modal">
+  <div class="modal-card">
+    <h2>Ink &amp; Ash</h2>
+    <div class="subtitle">The Last Codex</div>
+    <div class="rule"></div>
+    <div class="lore">
+      <p class="lead">The Great Library of Lumen kept one treasure above all others: the <b>Codex Anima</b>, a living book whose pages held every story ever told. Not ink on paper, but memory made manifest. As long as the Codex remembered, the world remembered &mdash; the name of a first love, the recipe for bread, the exact blue of a certain river, the shape of a friend's laughter.</p>
+      <p>Then came <span class="inset">the Redaction</span>. No one can say whether it is a censor-god, a glitch in the world, or simply the universe's long sigh of forgetting. It sends its servants to un-write existence: <b>Scribbles</b> that smear the ink of ordinary days, <b>Smudges</b> thick as regret, <b>Censors</b> that strike whole names with black bars, <b>White-Outs</b> that erase the small tender moments, and <b>Plot Holes</b> that swallow causes and their effects.</p>
+      <p>You are the last <span class="inset">Archivist</span>. The Scriptorium &mdash; a circle of enchanted desks and instruments &mdash; is all that stands between the Codex and total erasure. Draw your towers. Hold the margin. Do not let the last story end.</p>
+    </div>
+    <div class="modal-actions">
+      <button class="primary" id="btnBegin">Begin the Vigil</button>
+    </div>
+    <div class="credits">A fresh manuscript &middot; no dependencies &middot; opens in any browser</div>
+  </div>
+</div>
+
+<div id="end" class="modal hidden">
+  <div class="modal-card">
+    <h2 id="endTitle">The Page Is Torn</h2>
+    <div class="subtitle" id="endSub"></div>
+    <div class="rule"></div>
+    <div class="lore" id="endLore"></div>
+    <div class="modal-actions">
+      <button class="primary" id="btnAgain">Write a New Chapter</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+'use strict';
+
+/* ============================================================
+   INK & ASH — The Last Codex
+   A single-file tower defense. No dependencies.
+   ============================================================ */
+
+/* ---------- board geometry ---------- */
+const W = 960, H = 640;
+const COLS = 16, ROWS = 10;
+const CELL = Math.floor(Math.min((W - 120) / COLS, (H - 110) / ROWS));
+const boardW = CELL * COLS, boardH = CELL * ROWS;
+const OFFX = (W - boardW) / 2, OFFY = (H - boardH) / 2;
+const MARGIN_X = OFFX - 30;
+
+/* ---------- palette ---------- */
+const PAL = {
+  paper:'#f0e4c3', paper2:'#e6d5ac', paper3:'#dcc79a', edge:'#c3ab76',
+  ink:'#17130c', ink2:'#2a2418', graphite:'#3a3527',
+  gold:'#c8962e', goldB:'#e8c05a', goldP:'#f3d98c',
+  red:'#b3261e', redB:'#d4433a', whiteout:'#f2efe6', purple:'#5b3a6e'
+};
+
+/* ---------- enemy definitions ---------- */
+const ENEMIES = {
+  scribble:  { name:'Scribble',  hp:24,  speed:76, reward:6,  r:8,  color:PAL.ink },
+  smudge:    { name:'Smudge',    hp:120, speed:34, reward:13, r:14, color:PAL.graphite },
+  censor:    { name:'Censor',    hp:62,  speed:47, reward:16, r:11, color:'#0c0a06', shield:0.4 },
+  whiteout:  { name:'White-Out', hp:50,  speed:54, reward:18, r:9,  color:PAL.whiteout, heals:true },
+  plothole:  { name:'Plot Hole', hp:60,  speed:64, reward:20, r:9,  color:PAL.purple, blink:true },
+  finaldraft:{ name:'Final Draft', hp:4400, speed:23, reward:700, r:26, color:'#0d0a05', shield:0.25, boss:true }
+};
+
+/* ---------- tower definitions ---------- */
+const TOWERS = {
+  quill: {
+    name:'Quill', cost:50, em:'&#128421;', color:PAL.gold,
+    desc:'Flicks ink darts at the nearest erasure.',
+    base:{ dmg:11, rate:1.7, range:118, projSpeed:340 },
+    upgrades:[
+      { name:'Sharpened Nib', cost:40, desc:'+7 damage.', apply:t=>{t.stats.dmg+=7;} },
+      { name:'Swift Hand',    cost:45, desc:'+38% fire rate.', apply:t=>{t.stats.rate*=1.38;} },
+      { name:'Long Reach',    cost:40, desc:'+38 range.', apply:t=>{t.stats.range+=38;} },
+      { name:'Double-Scribe', cost:95, desc:'Fires a second quill.', apply:t=>{t.stats.multi=(t.stats.multi||1)+1;} }
+    ]
+  },
+  inkwell: {
+    name:'Inkwell', cost:90, em:'&#128230;', color:PAL.red,
+    desc:'Hurled inkwells that burst into staining pools.',
+    base:{ dmg:17, rate:0.9, range:104, projSpeed:280, splash:52 },
+    upgrades:[
+      { name:'Deeper Ink',   cost:60, desc:'+10 damage, wider pool.', apply:t=>{t.stats.dmg+=10;t.stats.splash+=10;} },
+      { name:'Weighted Glass', cost:70, desc:'+14 damage, wider pool.', apply:t=>{t.stats.dmg+=14;t.stats.splash+=12;} },
+      { name:'Slow Stain',   cost:80, desc:'Pools now slow enemies 32%.', apply:t=>{t.stats.slow=0.32;t.stats.slowDur=1.5;} },
+      { name:'The Spill',    cost:145, desc:'+20 damage, pool +60% larger.', apply:t=>{t.stats.dmg+=20;t.stats.splash*=1.6;} }
+    ]
+  },
+  redpen: {
+    name:'Red Pen', cost:70, em:'&#9998;', color:PAL.redB,
+    desc:'The Editor\u2019s crimson pen corrects enemies into slowness.',
+    base:{ dmg:4, rate:1.0, range:100, projSpeed:300, slow:0.40, slowDur:2.0 },
+    upgrades:[
+      { name:'Strikethrough', cost:50, desc:'Slow +15% stronger.', apply:t=>{t.stats.slow+=0.15;} },
+      { name:'Margin Notes',  cost:45, desc:'Slow lasts +1.5s.', apply:t=>{t.stats.slowDur+=1.5;} },
+      { name:'Red Lines',     cost:55, desc:'+8 damage.', apply:t=>{t.stats.dmg+=8;} },
+      { name:'The Rejection', cost:120, desc:'Slow +20%, 15% chance to freeze.', apply:t=>{t.stats.slow+=0.20;t.stats.stun=0.15;t.stats.stunDur=0.8;} }
+    ]
+  },
+  illuminator: {
+    name:'Illuminator', cost:80, em:'&#128367;', color:PAL.goldB,
+    desc:'Gilds nearby towers with gold leaf, boosting their power.',
+    base:{ aura:95, buffDmg:0.18, buffRange:0.12 },
+    upgrades:[
+      { name:'Gilded Edge', cost:60, desc:'Buff +12% damage.', apply:t=>{t.stats.buffDmg+=0.12;} },
+      { name:'Wider Halo',  cost:55, desc:'Aura +38 range.', apply:t=>{t.stats.aura+=38;} },
+      { name:'Second Coat', cost:70, desc:'Buff +15% damage, +8% range.', apply:t=>{t.stats.buffDmg+=0.15;t.stats.buffRange+=0.08;} },
+      { name:'The Gilding', cost:135, desc:'Buff +25% damage, +15% range.', apply:t=>{t.stats.buffDmg+=0.25;t.stats.buffRange+=0.15;} }
+    ]
+  },
+  press: {
+    name:'Press', cost:130, em:'&#128214;', color:PAL.ink2,
+    desc:'The great press hurls a bound tome with crushing force.',
+    base:{ dmg:64, rate:0.5, range:152, projSpeed:240 },
+    upgrades:[
+      { name:'Heavier Type',  cost:90, desc:'+38 damage.', apply:t=>{t.stats.dmg+=38;} },
+      { name:'Longer Bar',    cost:80, desc:'+42 range.', apply:t=>{t.stats.range+=42;} },
+      { name:'Second Edition', cost:115, desc:'Tomes burst on impact.', apply:t=>{t.stats.splash=(t.stats.splash||0)+50;} },
+      { name:'The Encyclopedia', cost:200, desc:'Damage &times;1.8, blast +30.', apply:t=>{t.stats.dmg*=1.8;t.stats.splash=(t.stats.splash||0)+30;} }
+    ]
+  }
+};
+const TOWER_ORDER = ['quill','inkwell','redpen','illuminator','press'];
+
+/* ---------- waves ---------- */
+// each: name, lore, optional mod {speedMul|hpMul}, spawns [[type, count, gapMs]...]
+const WAVES = [
+  { name:'First Smudge', lore:'A single smudge creeps onto the margin. It is almost apologetic.', spawns:[['scribble',7,720]] },
+  { name:'Careless Scrawl', lore:'The haste of an idle hand, scrawling over the morning.', spawns:[['scribble',11,520]] },
+  { name:'Heavier Hand', lore:'The pencil leans in. The page grows darker.', spawns:[['scribble',9,560],['smudge',2,1000]] },
+  { name:'The Margin Trembles', lore:'Slow weights settle on the paper.', spawns:[['smudge',5,1100],['scribble',6,700]] },
+  { name:'Errata', lore:'A swarm of mistakes, hurrying to correct themselves into you.', mod:{speedMul:1.15}, spawns:[['scribble',16,380]] },
+  { name:'Crossed Out', lore:'Something is striking through the names of the living.', spawns:[['censor',4,1200],['scribble',6,700]] },
+  { name:'The First Censor', lore:'Black bars come to hide what must not be read.', spawns:[['censor',7,900],['smudge',3,1200]] },
+  { name:'Wite-Out', lore:'It dabs the page clean, undoing what you have written.', spawns:[['whiteout',4,1400],['scribble',8,600]] },
+  { name:'A Page Torn', lore:'Somewhere, a chapter goes missing.', spawns:[['smudge',7,900],['censor',4,1200]] },
+  { name:'Margin Note', lore:'A desperate little annotation, repeated until it deafens.', spawns:[['scribble',22,330],['whiteout',3,1500]] },
+  { name:'Strikethrough', lore:'The Redaction tests its pen on the story\u2019s spine.', mod:{hpMul:1.25}, spawns:[['censor',8,850],['smudge',5,1100]] },
+  { name:'The Plot Thickens', lore:'Gaps open in the narrative. Causality loosens its grip.', spawns:[['plothole',4,1300],['censor',5,1100]] },
+  { name:'Lacuna', lore:'Holes in the prose, and cold blank spots where feeling was.', spawns:[['plothole',6,1000],['whiteout',5,1300]] },
+  { name:'Heavy Pencil', lore:'The graphite leans its whole weight on the page.', mod:{speedMul:1.2}, spawns:[['smudge',10,800],['scribble',10,500]] },
+  { name:'Redaction Wave', lore:'Whole sentences vanish under a red line.', spawns:[['censor',9,750],['plothole',5,1000],['whiteout',4,1300]] },
+  { name:'The Long Erase', lore:'A slow, patient un-writing. It has all the time in the world.', spawns:[['smudge',8,800],['censor',6,900],['whiteout',5,1200]] },
+  { name:'Footnote Frenzy', lore:'A thousand tiny annotations, swarming up from the bottom of the page.', spawns:[['scribble',30,260],['plothole',6,1000]] },
+  { name:'Blackout', lore:'The censors come in rows, blotting the light out line by line.', spawns:[['censor',12,700],['plothole',6,900]] },
+  { name:'The Unwritten', lore:'The blank places grow fingers and stand up.', spawns:[['whiteout',8,900],['smudge',10,800]] },
+  { name:'Censorship Legion', lore:'An army sworn to silence, marching in perfect bar-shaped ranks.', mod:{hpMul:1.25}, spawns:[['censor',14,650],['whiteout',8,850],['plothole',6,900]] },
+  { name:'The Redaction Approaches', lore:'The air grows thin. Names begin to fade from your memory.', spawns:[['smudge',12,700],['censor',10,700],['plothole',8,800]] },
+  { name:'Inkless', lore:'The well runs dry and the erasers come to finish the job.', spawns:[['whiteout',12,700],['scribble',26,300],['smudge',8,900]] },
+  { name:'The Final Erasure', lore:'Everything you have ever written holds its breath.', spawns:[['censor',12,650],['plothole',10,750],['whiteout',8,850],['smudge',10,800]] },
+  { name:'The Final Draft', lore:'The Redaction itself, come to write the closing line of the world.', spawns:[['finaldraft',1,1500],['censor',4,1200],['whiteout',4,1400]] }
+];
+
+/* ---------- DOM ---------- */
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+const wrap = document.getElementById('boardWrap');
+// roundRect polyfill for older engines
+if(typeof CanvasRenderingContext2D !== 'undefined' && !CanvasRenderingContext2D.prototype.roundRect){
+  CanvasRenderingContext2D.prototype.roundRect = function(x,y,w,h,r){
+    r = Math.min(r, Math.abs(w)/2, Math.abs(h)/2);
+    this.moveTo(x+r, y);
+    this.arcTo(x+w, y, x+w, y+h, r);
+    this.arcTo(x+w, y+h, x, y+h, r);
+    this.arcTo(x, y+h, x, y, r);
+    this.arcTo(x, y, x+w, y, r);
+    this.closePath();
+    return this;
+  };
+}
+const elMoney = document.getElementById('money');
+const elLives = document.getElementById('lives');
+const elWave = document.getElementById('waveLabel');
+const elWaveName = document.getElementById('waveName');
+const banner = document.getElementById('banner');
+const bnTitle = banner.querySelector('.bn-title');
+const bnSub = banner.querySelector('.bn-sub');
+const startBtn = document.getElementById('startWave');
+const paletteEl = document.getElementById('palette');
+const towerInfoBody = document.getElementById('towerInfoBody');
+const btnSpeed = document.getElementById('btnSpeed');
+const btnPause = document.getElementById('btnPause');
+const btnMute = document.getElementById('btnMute');
+const btnRestart = document.getElementById('btnRestart');
+
+/* ---------- state ---------- */
+let money, lives, waveNumber, phase, speed, paused, muted;
+let pathCells, waypoints, segLen, totalLen;
+let enemies, towers, projectiles, particles;
+let spawnQueue, spawnTimer;
+let selectedType, selectedTower, hover, hoverValid;
+let bgLayer, now;
+let view = { scale:1, ox:0, oy:0 };
+let speedIdx = 0; const SPEEDS = [1, 2, 3];
+
+/* ---------- audio ---------- */
+let actx = null, master = null, lastShootAt = 0;
+function ensureAudio(){
+  if(!actx){
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if(!AC) return;
+    actx = new AC();
+    master = actx.createGain();
+    master.gain.value = 0.14;
+    master.connect(actx.destination);
+  }
+  if(actx.state === 'suspended') actx.resume();
+}
+function tone(f, d, type, g, slide){
+  if(muted || !actx) return;
+  try{
+    const o = actx.createOscillator(), gn = actx.createGain();
+    o.type = type || 'sine';
+    o.frequency.setValueAtTime(Math.max(1, f), actx.currentTime);
+    if(slide) o.frequency.exponentialRampToValueAtTime(Math.max(1, f + slide), actx.currentTime + d);
+    gn.gain.setValueAtTime(g, actx.currentTime);
+    gn.gain.exponentialRampToValueAtTime(0.0008, actx.currentTime + d);
+    o.connect(gn); gn.connect(master);
+    o.start(); o.stop(actx.currentTime + d);
+  }catch(e){}
+}
+const rnd = (a,b)=>a + Math.random()*(b-a);
+function sfx(name){
+  if(muted) return; ensureAudio(); if(!actx) return;
+  switch(name){
+    case 'shoot': { const t = now*1000; if(t - lastShootAt < 45) return; lastShootAt = t; tone(rnd(380,520), 0.07, 'square', 0.05); break; }
+    case 'thud':  tone(rnd(140,180), 0.14, 'square', 0.12, -60); break;
+    case 'splat': tone(rnd(180,240), 0.18, 'triangle', 0.14, -100); break;
+    case 'coin':  tone(660, 0.09, 'triangle', 0.1, 220); break;
+    case 'place': tone(300, 0.08, 'sine', 0.12, 90); break;
+    case 'upg':   tone(520, 0.1, 'triangle', 0.12, 240); setTimeout(()=>tone(780,0.12,'triangle',0.1,180), 70); break;
+    case 'wave':  tone(392, 0.16, 'triangle', 0.12); setTimeout(()=>tone(523,0.2,'triangle',0.12), 140); break;
+    case 'lose':  tone(220, 0.3, 'sawtooth', 0.14, -140); break;
+    case 'win':   [523,659,784,1047].forEach((f,i)=>setTimeout(()=>tone(f,0.22,'triangle',0.12), i*130)); break;
+  }
+}
+
+/* ---------- path generation (random track) ---------- */
+function generatePath(){
+  pathCells = new Set();
+  const pts = [];
+  let row = 1 + Math.floor(Math.random()*(ROWS-2));
+  let col = 0;
+  pts.push([col,row]);
+  while(col < COLS-1){
+    if(Math.random() < 0.34){
+      const dir = Math.random() < 0.5 ? -1 : 1;
+      const steps = 1 + Math.floor(Math.random()*3);
+      for(let i=0;i<steps;i++){
+        row = Math.max(1, Math.min(ROWS-2, row + dir));
+        pts.push([col,row]);
+      }
+    }
+    col += 1;
+    if(Math.random() < 0.5) row = Math.max(1, Math.min(ROWS-2, row + (Math.random()<0.5?-1:1)));
+    pts.push([col,row]);
+  }
+  waypoints = pts.map(([c,r]) => [OFFX + c*CELL + CELL/2, OFFY + r*CELL + CELL/2]);
+  pts.forEach(([c,r])=>pathCells.add(c+','+r));
+  segLen = [0];
+  for(let i=1;i<waypoints.length;i++){
+    const dx = waypoints[i][0]-waypoints[i-1][0], dy = waypoints[i][1]-waypoints[i-1][1];
+    segLen.push(segLen[i-1] + Math.hypot(dx,dy));
+  }
+  totalLen = segLen[segLen.length-1];
+}
+function posAt(d){
+  d = Math.max(0, Math.min(totalLen, d));
+  let i = 1;
+  while(i < segLen.length && segLen[i] < d) i++;
+  const s0 = segLen[i-1], s1 = segLen[i];
+  const t = s1 === s0 ? 0 : (d - s0)/(s1 - s0);
+  const a = waypoints[i-1], b = waypoints[i];
+  return [a[0] + (b[0]-a[0])*t, a[1] + (b[1]-a[1])*t];
+}
+
+/* ---------- static background layer ---------- */
+function buildStaticLayer(){
+  bgLayer = document.createElement('canvas');
+  bgLayer.width = W; bgLayer.height = H;
+  const g = bgLayer.getContext('2d');
+  // parchment
+  g.fillStyle = PAL.paper;
+  g.fillRect(0,0,W,H);
+  // subtle gradient
+  const gr = g.createRadialGradient(W/2,H/2,40, W/2,H/2,600);
+  gr.addColorStop(0,'rgba(255,248,225,0.35)');
+  gr.addColorStop(1,'rgba(190,164,120,0.18)');
+  g.fillStyle = gr; g.fillRect(0,0,W,H);
+  // flecks (deterministic-ish random)
+  for(let i=0;i<900;i++){
+    const x = Math.random()*W, y = Math.random()*H;
+    g.fillStyle = Math.random()<0.5 ? 'rgba(150,125,85,0.12)' : 'rgba(255,252,240,0.25)';
+    g.fillRect(x,y, Math.random()*1.6+0.4, Math.random()*1.6+0.4);
+  }
+  // ruled lines (faint notebook feel)
+  g.strokeStyle = 'rgba(150,125,85,0.12)';
+  g.lineWidth = 1;
+  for(let y=OFFY+CELL; y<OFFY+boardH; y+=CELL){
+    g.beginPath(); g.moveTo(OFFX, y); g.lineTo(OFFX+boardW, y); g.stroke();
+  }
+  for(let x=OFFX+CELL; x<OFFX+boardW; x+=CELL){
+    g.beginPath(); g.moveTo(x, OFFY); g.lineTo(x, OFFY+boardH); g.stroke();
+  }
+  // red margin line
+  g.strokeStyle = 'rgba(179,38,30,0.55)';
+  g.lineWidth = 2;
+  g.beginPath(); g.moveTo(MARGIN_X, 12); g.lineTo(MARGIN_X, H-12); g.stroke();
+  g.strokeStyle = 'rgba(179,38,30,0.22)';
+  g.lineWidth = 1;
+  g.beginPath(); g.moveTo(MARGIN_X+5, 12); g.lineTo(MARGIN_X+5, H-12); g.stroke();
+  // path: torn paper strip
+  g.lineJoin = 'round'; g.lineCap = 'round';
+  g.strokeStyle = 'rgba(255,252,240,0.55)';
+  g.lineWidth = CELL*0.96;
+  g.beginPath();
+  waypoints.forEach((p,i)=> i===0 ? g.moveTo(p[0],p[1]) : g.lineTo(p[0],p[1]));
+  g.stroke();
+  g.strokeStyle = 'rgba(190,160,110,0.55)';
+  g.lineWidth = CELL*0.9;
+  g.beginPath();
+  waypoints.forEach((p,i)=> i===0 ? g.moveTo(p[0],p[1]) : g.lineTo(p[0],p[1]));
+  g.stroke();
+  // dashed ink trail down the middle
+  g.strokeStyle = 'rgba(23,19,12,0.25)';
+  g.lineWidth = 2;
+  g.setLineDash([8, 12]);
+  g.beginPath();
+  waypoints.forEach((p,i)=> i===0 ? g.moveTo(p[0],p[1]) : g.lineTo(p[0],p[1]));
+  g.stroke();
+  g.setLineDash([]);
+  // ink spatter along path
+  for(const [x,y] of waypoints){
+    for(let k=0;k<4;k++){
+      const a = Math.random()*Math.PI*2, r = CELL*(0.4+Math.random()*0.5);
+      g.fillStyle = 'rgba(23,19,12,' + (0.08+Math.random()*0.12) + ')';
+      g.beginPath(); g.arc(x+Math.cos(a)*r, y+Math.sin(a)*r, Math.random()*1.6+0.3, 0, Math.PI*2); g.fill();
+    }
+  }
+  // spawn rift (west end)
+  const s0 = waypoints[0];
+  const rift = g.createRadialGradient(s0[0], s0[1], 2, s0[0], s0[1], CELL*1.3);
+  rift.addColorStop(0,'rgba(20,15,8,0.85)');
+  rift.addColorStop(1,'rgba(20,15,8,0)');
+  g.fillStyle = rift; g.beginPath(); g.arc(s0[0], s0[1], CELL*1.3, 0, Math.PI*2); g.fill();
+  // codex (east end)
+  drawCodexStatic(g, waypoints[waypoints.length-1]);
+}
+
+function drawCodexStatic(g, p){
+  const [x,y] = p;
+  const glow = g.createRadialGradient(x,y,2, x,y,CELL*1.7);
+  glow.addColorStop(0,'rgba(200,150,46,0.5)');
+  glow.addColorStop(1,'rgba(200,150,46,0)');
+  g.fillStyle = glow; g.beginPath(); g.arc(x,y,CELL*1.7,0,Math.PI*2); g.fill();
+  // book
+  g.save(); g.translate(x,y);
+  g.fillStyle = '#4a3418'; g.strokeStyle = PAL.goldP; g.lineWidth = 2;
+  g.beginPath(); g.moveTo(-14,-12); g.quadraticCurveTo(-20,0,-14,12); g.lineTo(0,13); g.lineTo(14,12); g.quadraticCurveTo(20,0,14,-12); g.lineTo(0,-11); g.closePath();
+  g.fill(); g.stroke();
+  g.beginPath(); g.moveTo(0,-11); g.lineTo(0,13); g.stroke();
+  g.strokeStyle = 'rgba(243,217,140,0.6)'; g.lineWidth = 1;
+  for(let i=0;i<3;i++){ g.beginPath(); g.moveTo(-10,-7+i*5); g.lineTo(-2,-6+i*5); g.stroke(); g.beginPath(); g.moveTo(2,-7+i*5); g.lineTo(10,-6+i*5); g.stroke(); }
+  g.restore();
+}
+
+/* ---------- game lifecycle ---------- */
+function newGame(){
+  money = 140; lives = 20; waveNumber = 0;
+  enemies = []; towers = []; projectiles = []; particles = [];
+  spawnQueue = []; spawnTimer = 0;
+  selectedType = null; selectedTower = null; hover = null; hoverValid = false;
+  generatePath();
+  buildStaticLayer();
+  phase = 'build';
+  updateHUD();
+  startBtn.classList.remove('hidden');
+  startBtn.textContent = 'Begin Wave 1';
+  setPaused(false);
+  renderPalette();
+  renderTowerInfo();
+}
+
+function hpScale(w){ return 1 + (w-1)*0.15 + Math.max(0, w-14)*0.08; }
+function rewardScale(w){ return 1 + (w-1)*0.02; }
+
+function startWave(){
+  if(phase !== 'build') return;
+  waveNumber++;
+  const wdef = WAVES[waveNumber-1];
+  phase = 'wave';
+  spawnQueue = [];
+  const hps = hpScale(waveNumber), rws = rewardScale(waveNumber);
+  wdef.spawns.forEach(([type,count,gap])=>{
+    for(let i=0;i<count;i++) spawnQueue.push({ type, hpMult:hps*(wdef.mod&&wdef.mod.hpMul?wdef.mod.hpMul:1), speedMult:(wdef.mod&&wdef.mod.speedMul?wdef.mod.speedMul:1), rwMult:rws, gap });
+  });
+  spawnTimer = 0.4;
+  startBtn.classList.add('hidden');
+  showBanner('Wave ' + waveNumber + ' \u2014 ' + wdef.name, wdef.lore + (wdef.mod ? ('  [' + (wdef.mod.speedMul?'haste':wdef.mod.hpMul?'armored':'') + ']') : ''));
+  sfx('wave');
+  updateHUD();
+}
+
+function spawnEnemy(spec){
+  const base = ENEMIES[spec.type];
+  const e = {
+    type: spec.type, name: base.name,
+    hp: Math.round(base.hp * spec.hpMult), maxHp: Math.round(base.hp * spec.hpMult),
+    speed: base.speed * spec.speedMult, baseSpeed: base.speed,
+    reward: Math.round(base.reward * spec.rwMult),
+    r: base.r, color: base.color,
+    shield: base.shield||0, heals: !!base.heals, blink: !!base.blink, boss: !!base.boss,
+    dist: 0, x: waypoints[0][0], y: waypoints[0][1],
+    slowUntil: 0, slowFactor: 0, stunUntil: 0,
+    healTimer: rnd(1.2,2.5), blinkTimer: rnd(2.5,3.5),
+    wob: Math.random()*Math.PI*2
+  };
+  enemies.push(e);
+}
+
+function damageEnemy(e, dmg, opts){
+  if(e.hp <= 0) return false;
+  let d = dmg * (1 - e.shield);
+  if(opts && opts.slow){
+    e.slowFactor = Math.max(e.slowFactor, opts.slow);
+    e.slowUntil = Math.max(e.slowUntil, now + opts.slowDur);
+  }
+  if(opts && opts.stun && Math.random() < opts.stun){
+    e.stunUntil = Math.max(e.stunUntil, now + opts.stunDur);
+  }
+  e.hp -= d;
+  addParticle(e.x, e.y, PAL.ink, 4, 60, 0.5);
+  if(e.hp <= 0){
+    money += e.reward;
+    addParticle(e.x, e.y, PAL.goldP, 10, 120, 0.7);
+    if(e.boss){
+      for(let i=0;i<6;i++) spawnQueue.push({ type:'scribble', hpMult:hpScale(waveNumber), speedMult:1, rwMult:1, gap:900 });
+    }
+    sfx('coin');
+    return true;
+  }
+  return false;
+}
+
+/* ---------- particles ---------- */
+function addParticle(x,y,color,n,speed,life){
+  for(let i=0;i<n;i++){
+    const a = Math.random()*Math.PI*2, v = rnd(10,speed);
+    particles.push({ x,y, vx:Math.cos(a)*v, vy:Math.sin(a)*v - rnd(0,20), life:rnd(life*0.4,life), t:0, color, r:rnd(1,2.6) });
+  }
+}
+
+/* ---------- targeting / combat ---------- */
+function towerPos(t){ return [t.x, t.y]; }
+function effectiveRange(t){ return t.stats.range * (1 + (t._rangeBuff||0)); }
+function acquireTarget(t){
+  const r = effectiveRange(t);
+  let best = null, bd = -1;
+  for(const e of enemies){
+    if(e.hp<=0) continue;
+    const dx = e.x - t.x, dy = e.y - t.y;
+    if(dx*dx + dy*dy <= r*r && e.dist > bd){ bd = e.dist; best = e; }
+  }
+  return best;
+}
+function computeBuffs(){
+  for(const t of towers){ t._dmgBuff = 0; t._rangeBuff = 0; }
+  for(const t of towers){
+    if(t.type === 'illuminator'){
+      for(const o of towers){
+        if(o === t) continue;
+        const dx = o.x-t.x, dy = o.y-t.y;
+        if(dx*dx+dy*dy <= t.stats.aura*t.stats.aura){
+          o._dmgBuff += t.stats.buffDmg;
+          o._rangeBuff += t.stats.buffRange;
+        }
+      }
+    }
+  }
+  for(const t of towers){
+    let n = 0;
+    const bind = CELL*2.15;
+    for(const o of towers){
+      if(o === t) continue;
+      const dx = o.x-t.x, dy = o.y-t.y;
+      if(Math.abs(dx)<=bind && Math.abs(dy)<=bind) n++;
+    }
+    t._chapter = 1 + Math.min(3,n)*0.08;
+  }
+}
+function fire(t, target){
+  const multi = t.stats.multi || 1;
+  const dmg = t.stats.dmg * (1 + (t._dmgBuff||0)) * (t._chapter||1);
+  const speed = t.stats.projSpeed;
+  const baseAng = Math.atan2(target.y - t.y, target.x - t.x);
+  for(let k=0;k<multi;k++){
+    const ang = baseAng + (k - (multi-1)/2)*0.12;
+    projectiles.push({
+      x: t.x, y: t.y, tx: target.x, ty: target.y, ang,
+      speed, dmg, target,
+      splash: t.stats.splash||0, slow: t.stats.slow||0, slowDur: t.stats.slowDur||0,
+      stun: t.stats.stun||0, stunDur: t.stats.stunDur||0,
+      color: t.color, life: 3, dead: false
+    });
+  }
+  t.angle = baseAng;
+  sfx('shoot');
+}
+
+/* ---------- update ---------- */
+function update(dt){
+  now += dt;
+  // update enemies
+  for(const e of enemies){
+    if(e.hp <= 0) continue;
+    let sp = e.baseSpeed;
+    if(now < e.stunUntil) sp = 0;
+    else if(now < e.slowUntil) sp *= (1 - e.slowFactor);
+    e.dist += sp * dt;
+    const p = posAt(e.dist);
+    e.x = p[0]; e.y = p[1];
+    e.wob += dt*6;
+    if(e.heals){
+      e.healTimer -= dt;
+      if(e.healTimer <= 0){
+        e.healTimer = 2.4;
+        for(const o of enemies){
+          if(o===e || o.hp<=0 || o.hp>=o.maxHp) continue;
+          const dx = o.x-e.x, dy = o.y-e.y;
+          if(dx*dx+dy*dy <= 90*90){ o.hp = Math.min(o.maxHp, o.hp + 10 + waveNumber); addParticle(o.x,o.y,'#ffffff',3,40,0.5); }
+        }
+      }
+    }
+    if(e.blink){
+      e.blinkTimer -= dt;
+      if(e.blinkTimer <= 0){
+        e.blinkTimer = 3.2;
+        addParticle(e.x, e.y, PAL.purple, 6, 70, 0.6);
+        e.dist += 88;
+        const q = posAt(e.dist);
+        e.x = q[0]; e.y = q[1];
+        addParticle(e.x, e.y, PAL.purple, 6, 70, 0.6);
+      }
+    }
+    if(e.dist >= totalLen - 1){
+      e.hp = 0;
+      lives -= (e.boss ? 3 : 1);
+      addParticle(e.x, e.y, PAL.redB, 14, 130, 0.8);
+      sfx('lose');
+      updateHUD();
+      if(lives <= 0){ lives = 0; updateHUD(); endGame(false); return; }
+    }
+  }
+  enemies = enemies.filter(e=>e.hp > 0);
+
+  // spawn
+  if(phase === 'wave'){
+    spawnTimer -= dt;
+    if(spawnQueue.length && spawnTimer <= 0){
+      const spec = spawnQueue.shift();
+      spawnEnemy(spec);
+      spawnTimer = (spec.gap || 800) / 1000;
+    }
+    if(!spawnQueue.length && !enemies.length){
+      // wave cleared
+      phase = 'build';
+      const bonus = 40 + waveNumber*12;
+      money += bonus;
+      addParticle(W/2, H/2, PAL.goldP, 24, 160, 1);
+      if(waveNumber >= WAVES.length){
+        endGame(true);
+      } else {
+        startBtn.classList.remove('hidden');
+        startBtn.textContent = 'Begin Wave ' + (waveNumber+1);
+        showBanner('Chapter cleared', '+' + bonus + ' ink \u2014 gild the Scriptorium before the next assault.');
+        sfx('coin');
+      }
+      updateHUD();
+    }
+  }
+
+  // towers
+  computeBuffs();
+  for(const t of towers){
+    if(t.type === 'illuminator'){ t.pulse = (t.pulse||0)+dt; continue; }
+    t.cool -= dt;
+    if(t.cool <= 0){
+      const target = acquireTarget(t);
+      if(target){
+        t.cool = 1/t.stats.rate;
+        fire(t, target);
+      } else {
+        t.cool = 0.05;
+      }
+    }
+  }
+
+  // projectiles
+  for(const p of projectiles){
+    if(p.dead) continue;
+    p.life -= dt;
+    let tx, ty;
+    if(p.target && p.target.hp > 0){ tx = p.target.x; ty = p.target.y; }
+    else { tx = p.tx; ty = p.ty; }
+    const dx = tx - p.x, dy = ty - p.y;
+    const d = Math.hypot(dx,dy);
+    const step = p.speed * dt;
+    if(d <= Math.max(step, 8)){
+      p.dead = true;
+      if(p.splash){
+        sfx('splat');
+        for(const e of enemies){
+          if(e.hp<=0) continue;
+          const ex = e.x-p.x, ey = e.y-p.y;
+          if(ex*ex+ey*ey <= p.splash*p.splash) damageEnemy(e, p.dmg, {slow:p.slow, slowDur:p.slowDur, stun:p.stun, stunDur:p.stunDur});
+        }
+        addParticle(p.x, p.y, p.color, 10, 90, 0.6);
+      } else if(p.target && p.target.hp > 0){
+        damageEnemy(p.target, p.dmg, {slow:p.slow, slowDur:p.slowDur, stun:p.stun, stunDur:p.stunDur});
+        addParticle(p.x, p.y, p.color, 3, 60, 0.4);
+      }
+    } else {
+      p.x += (dx/d)*step; p.y += (dy/d)*step;
+      p.ang = Math.atan2(dy,dx);
+    }
+    if(p.life <= 0) p.dead = true;
+  }
+  projectiles = projectiles.filter(p=>!p.dead);
+
+  // particles
+  for(const p of particles){
+    p.t += dt; p.life -= dt;
+    p.x += p.vx*dt; p.y += p.vy*dt;
+    p.vx *= 0.96; p.vy = p.vy*0.96 + 30*dt;
+  }
+  particles = particles.filter(p=>p.life > 0);
+
+  enemies = enemies.filter(e=>e.hp > 0);
+}
+
+/* ---------- drawing ---------- */
+function draw(){
+  ctx.clearRect(0,0,W,H);
+  if(bgLayer) ctx.drawImage(bgLayer,0,0);
+
+  // codex glow pulse (dynamic)
+  const cw = waypoints[waypoints.length-1];
+  const pulse = 0.5 + 0.5*Math.sin(now*2.2);
+  const cg = ctx.createRadialGradient(cw[0],cw[1],4, cw[0],cw[1],CELL*(1.2+pulse*0.5));
+  cg.addColorStop(0,'rgba(200,150,46,'+(0.25+0.2*pulse)+')');
+  cg.addColorStop(1,'rgba(200,150,46,0)');
+  ctx.fillStyle = cg; ctx.beginPath(); ctx.arc(cw[0],cw[1],CELL*(1.2+pulse*0.5),0,Math.PI*2); ctx.fill();
+
+  // chapter bindings
+  ctx.lineWidth = 1.5;
+  ctx.strokeStyle = 'rgba(200,150,46,0.35)';
+  const bind = CELL*2.15;
+  for(let i=0;i<towers.length;i++){
+    for(let j=i+1;j<towers.length;j++){
+      const a=towers[i], b=towers[j];
+      if(Math.abs(a.x-b.x)<=bind && Math.abs(a.y-b.y)<=bind){
+        ctx.beginPath(); ctx.moveTo(a.x,a.y); ctx.lineTo(b.x,b.y); ctx.stroke();
+      }
+    }
+  }
+
+  // towers
+  for(const t of towers) drawTower(t);
+
+  // enemies
+  for(const e of enemies) drawEnemy(e);
+
+  // projectiles
+  for(const p of projectiles) drawProjectile(p);
+
+  // particles
+  for(const p of particles){
+    ctx.globalAlpha = Math.max(0, p.life/(p.t+p.life));
+    ctx.fillStyle = p.color;
+    ctx.beginPath(); ctx.arc(p.x,p.y,p.r,0,Math.PI*2); ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+
+  // selected tower range + hover ghost
+  if(selectedTower){
+    drawRange(selectedTower.x, selectedTower.y, effectiveRange(selectedTower), 'rgba(200,150,46,0.5)');
+  }
+  if(hover){
+    if(hoverValid){
+      const [hx,hy] = cellCenter(hover[0],hover[1]);
+      drawRange(hx, hy, TOWERS[selectedType].base.range, 'rgba(200,150,46,0.35)');
+      drawTowerGhost(hx, hy);
+    } else {
+      ctx.fillStyle = 'rgba(179,38,30,0.25)';
+      ctx.fillRect(OFFX + hover[0]*CELL, OFFY + hover[1]*CELL, CELL, CELL);
+    }
+  }
+}
+
+function drawRange(x,y,r,color){
+  ctx.fillStyle = color;
+  ctx.beginPath(); ctx.arc(x,y,r,0,Math.PI*2); ctx.fill();
+  ctx.strokeStyle = 'rgba(200,150,46,0.7)';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.arc(x,y,r,0,Math.PI*2); ctx.stroke();
+}
+
+function drawTowerGhost(x,y){
+  ctx.globalAlpha = 0.55;
+  drawTowerShape(x,y,selectedType,now,0);
+  ctx.globalAlpha = 1;
+}
+
+function drawTower(t){
+  // base ring
+  ctx.fillStyle = 'rgba(120,90,45,0.5)';
+  ctx.beginPath(); ctx.ellipse(t.x, t.y, CELL*0.34, CELL*0.2, 0, 0, Math.PI*2); ctx.fill();
+  ctx.strokeStyle = 'rgba(200,150,46,0.6)';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.ellipse(t.x, t.y, CELL*0.36, CELL*0.22, 0, 0, Math.PI*2); ctx.stroke();
+  drawTowerShape(t.x, t.y, t.type, now, t.angle||0, t);
+  // level pips
+  if(t.level > 0){
+    ctx.fillStyle = PAL.goldP;
+    for(let i=0;i<t.level;i++){
+      ctx.beginPath(); ctx.arc(t.x - CELL*0.3 + i*5, t.y - CELL*0.34, 2, 0, Math.PI*2); ctx.fill();
+    }
+  }
+}
+
+function drawTowerShape(x,y,type,time,ang,t){
+  ctx.save(); ctx.translate(x,y);
+  if(type === 'quill'){
+    ctx.rotate(ang);
+    ctx.fillStyle = PAL.ink;
+    ctx.beginPath();
+    ctx.moveTo(6,0); ctx.quadraticCurveTo(0,-9,-14,-7); ctx.quadraticCurveTo(-16,0,-14,7); ctx.quadraticCurveTo(0,9,6,0); ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = PAL.goldP; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(-4,0); ctx.lineTo(-14,0); ctx.stroke();
+  } else if(type === 'inkwell'){
+    ctx.fillStyle = '#2a2418';
+    ctx.beginPath(); ctx.moveTo(-8,-8); ctx.lineTo(8,-8); ctx.lineTo(6,8); ctx.lineTo(-6,8); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = PAL.ink;
+    ctx.beginPath(); ctx.ellipse(0,-8,8,3,0,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle = PAL.red; ctx.beginPath(); ctx.arc(0,0,3+Math.sin(time*3)*0.8,0,Math.PI*2); ctx.fill();
+  } else if(type === 'redpen'){
+    ctx.rotate(ang);
+    ctx.strokeStyle = PAL.redB; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.moveTo(-12,0); ctx.lineTo(10,0); ctx.stroke();
+    ctx.fillStyle = PAL.redB;
+    ctx.beginPath(); ctx.moveTo(10,-4); ctx.lineTo(16,0); ctx.lineTo(10,4); ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,0.5)'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(-8,-2); ctx.lineTo(6,-2); ctx.stroke();
+  } else if(type === 'illuminator'){
+    const p = 0.5 + 0.5*Math.sin(time*4 + (t?t.pulse:0));
+    const glow = ctx.createRadialGradient(0,0,2, 0,0,CELL*(0.6+p*0.2));
+    glow.addColorStop(0,'rgba(243,217,140,'+(0.5+0.3*p)+')');
+    glow.addColorStop(1,'rgba(243,217,140,0)');
+    ctx.fillStyle = glow; ctx.beginPath(); ctx.arc(0,0,CELL*(0.6+p*0.2),0,Math.PI*2); ctx.fill();
+    ctx.fillStyle = PAL.goldB;
+    ctx.beginPath(); ctx.moveTo(0,-4); ctx.ellipse(0,-8,4,6,0,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle = '#fff7dc';
+    ctx.beginPath(); ctx.arc(0,-8,2,0,Math.PI*2); ctx.fill();
+    ctx.strokeStyle = PAL.gold; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(-8,6); ctx.lineTo(8,6); ctx.stroke();
+  } else if(type === 'press'){
+    ctx.rotate(ang*0.3);
+    ctx.fillStyle = '#3a3527';
+    ctx.beginPath(); ctx.roundRect(-11,-9,22,18,3); ctx.fill();
+    ctx.strokeStyle = PAL.goldP; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.roundRect(-11,-9,22,18,3); ctx.stroke();
+    ctx.fillStyle = PAL.goldP;
+    ctx.font = 'bold 12px ' + 'Georgia, serif';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('\u201C\u201D', 0, 1);
+  }
+  ctx.restore();
+}
+
+function drawEnemy(e){
+  ctx.save(); ctx.translate(e.x, e.y);
+  const wob = Math.sin(e.wob)*2;
+  if(e.type === 'scribble'){
+    ctx.strokeStyle = e.color; ctx.lineWidth = 3; ctx.lineCap='round';
+    ctx.beginPath();
+    ctx.moveTo(-6, wob); ctx.quadraticCurveTo(-2,-4+wob, 2, 2+wob); ctx.quadraticCurveTo(6, 6+wob, 8, -2+wob);
+    ctx.stroke();
+  } else if(e.type === 'smudge'){
+    const g = ctx.createRadialGradient(0,0,1,0,0,e.r);
+    g.addColorStop(0, e.color); g.addColorStop(1, 'rgba(58,53,39,0.2)');
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.ellipse(0,0,e.r + Math.sin(e.wob)*2, e.r*0.8, 0, 0, Math.PI*2); ctx.fill();
+  } else if(e.type === 'censor'){
+    ctx.fillStyle = e.color;
+    ctx.beginPath(); ctx.roundRect(-e.r, -e.r*0.55, e.r*2, e.r*1.1, 2); ctx.fill();
+    ctx.strokeStyle = '#7a2018'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(-e.r*0.7,-e.r*0.4); ctx.lineTo(e.r*0.7,e.r*0.4); ctx.stroke();
+  } else if(e.type === 'whiteout'){
+    ctx.fillStyle = e.color;
+    ctx.beginPath(); ctx.arc(0,0,e.r,0,Math.PI*2); ctx.fill();
+    ctx.strokeStyle = 'rgba(120,110,95,0.5)'; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.arc(0,0,e.r,0,Math.PI*2); ctx.stroke();
+    ctx.fillStyle = 'rgba(120,110,95,0.6)';
+    ctx.beginPath(); ctx.arc(3,2,2.5,0,Math.PI*2); ctx.fill();
+  } else if(e.type === 'plothole'){
+    const p = 0.5+0.5*Math.sin(e.wob*2);
+    ctx.strokeStyle = e.color; ctx.lineWidth = 4;
+    ctx.beginPath(); ctx.arc(0,0,e.r + p*3,0,Math.PI*2); ctx.stroke();
+    ctx.fillStyle = 'rgba(0,0,0,0.8)';
+    ctx.beginPath(); ctx.arc(0,0,e.r*0.6 + p*2,0,Math.PI*2); ctx.fill();
+  } else if(e.boss){
+    const g = ctx.createRadialGradient(0,0,2,0,0,e.r);
+    g.addColorStop(0,'#1c1609'); g.addColorStop(1,'rgba(13,10,5,0.15)');
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.ellipse(0,0,e.r+Math.sin(e.wob)*2, e.r*0.85, 0, 0, Math.PI*2); ctx.fill();
+    ctx.strokeStyle = PAL.redB; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.arc(0,0,e.r*0.7,0,Math.PI*2); ctx.stroke();
+    ctx.fillStyle = PAL.redB;
+    ctx.font = 'bold ' + (e.r*0.8) + 'px Georgia, serif';
+    ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillText('\u00B6', 0, 1);
+  }
+  // hp bar
+  if(e.hp < e.maxHp){
+    const w = e.r*2;
+    ctx.fillStyle = 'rgba(0,0,0,0.55)';
+    ctx.fillRect(-w/2, -e.r-8, w, 4);
+    ctx.fillStyle = e.boss ? PAL.redB : '#8a2b22';
+    ctx.fillRect(-w/2, -e.r-8, w * Math.max(0,e.hp/e.maxHp), 4);
+  }
+  ctx.restore();
+}
+
+function drawProjectile(p){
+  ctx.save(); ctx.translate(p.x,p.y); ctx.rotate(p.ang);
+  if(p.splash){
+    ctx.fillStyle = '#2a2418';
+    ctx.beginPath(); ctx.arc(0,0,5,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle = PAL.red;
+    ctx.beginPath(); ctx.arc(1,-1,2.5,0,Math.PI*2); ctx.fill();
+  } else if(p.slow && p.dmg < 10){
+    ctx.strokeStyle = PAL.redB; ctx.lineWidth = 3; ctx.lineCap='round';
+    ctx.beginPath(); ctx.moveTo(-5,0); ctx.lineTo(4,0); ctx.stroke();
+  } else {
+    ctx.fillStyle = p.color;
+    ctx.beginPath(); ctx.ellipse(0,0,4,2,0,0,Math.PI*2); ctx.fill();
+  }
+  ctx.restore();
+}
+
+/* ---------- UI rendering ---------- */
+function cellCenter(c,r){ return [OFFX + c*CELL + CELL/2, OFFY + r*CELL + CELL/2]; }
+function pointToCell(x,y){
+  const c = Math.floor((x - OFFX)/CELL), r = Math.floor((y - OFFY)/CELL);
+  if(c<0||r<0||c>=COLS||r>=ROWS) return null;
+  return [c,r];
+}
+function cellFree(c,r){
+  if(pathCells.has(c+','+r)) return false;
+  return !towers.some(t=>t.col===c && t.row===r);
+}
+function updateHUD(){
+  elMoney.textContent = money;
+  elLives.textContent = lives;
+  elWave.textContent = waveNumber + ' / ' + WAVES.length;
+  elWaveName.textContent = phase==='wave' && waveNumber>=1 ? WAVES[waveNumber-1].name : (waveNumber===0 ? 'Prepare the margin' : 'Between chapters');
+}
+
+function renderPalette(){
+  paletteEl.innerHTML = '';
+  TOWER_ORDER.forEach(type=>{
+    const t = TOWERS[type];
+    const btn = document.createElement('button');
+    btn.className = 'tower-btn' + (selectedType===type ? ' selected' : '') + (money < t.cost ? ' disabled' : '');
+    btn.innerHTML = '<span class="em">' + t.em + '</span>' +
+      '<span class="tb-body"><span class="tb-name">' + t.name + '</span><br><span class="tb-desc">' + t.desc + '</span></span>' +
+      '<span class="tb-cost">' + t.cost + ' \u00A2</span>';
+    btn.addEventListener('click', ()=>{
+      if(money < t.cost) return;
+      selectedType = selectedType===type ? null : type;
+      selectedTower = null;
+      renderPalette(); renderTowerInfo();
+      sfx('place');
+    });
+    paletteEl.appendChild(btn);
+  });
+}
+
+function renderTowerInfo(){
+  if(!selectedTower){
+    towerInfoBody.innerHTML = '<p id="hint">Choose a tower from the Scriptorium, then click the page to draw it into being. You may build and upgrade at any time &mdash; the calm between waves is best spent gilding.</p>';
+    return;
+  }
+  const t = selectedTower, def = TOWERS[t.type];
+  const effDmg = t.stats.dmg * (1 + (t._dmgBuff||0)) * (t._chapter||1);
+  const effRange = effectiveRange(t);
+  let html = '<div class="ti-head"><span class="ti-name">' + def.name + '</span><span class="ti-lvl">Lv ' + t.level + ' / 4</span></div>';
+  html += '<div class="ti-stats">';
+  if(t.type === 'illuminator'){
+    html += 'Aura ' + Math.round(t.stats.aura) + 'px<br>Buff +' + Math.round(t.stats.buffDmg*100) + '% dmg, +' + Math.round(t.stats.buffRange*100) + '% range';
+  } else {
+    html += 'Dmg ' + Math.round(effDmg) + ' &middot; ' + t.stats.rate.toFixed(1) + '/s &middot; Rng ' + Math.round(effRange) +
+      (t.stats.splash ? '<br>Splash ' + Math.round(t.stats.splash) + 'px' : '') +
+      (t.stats.slow ? '<br>Slow ' + Math.round(t.stats.slow*100) + '%' : '') +
+      (t._chapter>1 ? '<br>Chapter bond &times;' + t._chapter.toFixed(2) : '');
+  }
+  html += '</div>';
+  def.upgrades.forEach((u,i)=>{
+    const done = i < t.level;
+    const affordable = money >= u.cost;
+    const next = i === t.level;
+    html += '<button class="upg-btn ' + (done?'done':(next?(affordable?'':'locked'):'locked')) + '" data-upg="'+i+'">' +
+      '<span class="ub-body"><span class="ub-name">' + u.name + '</span><br><span class="ub-desc">' + u.desc + '</span></span>' +
+      '<span class="ub-cost">' + (done ? '\u2713' : u.cost + ' \u00A2') + '</span></button>';
+  });
+  html += '<div class="sell-row"><button id="btnSell">Sell (' + Math.round(t.spent*0.7) + ' \u00A2)</button><button id="btnDeselect" class="ghost">Done</button></div>';
+  towerInfoBody.innerHTML = html;
+  const sellBtn = document.getElementById('btnSell');
+  if(sellBtn) sellBtn.addEventListener('click', ()=>{ sellTower(t); });
+  const doneBtn = document.getElementById('btnDeselect');
+  if(doneBtn) doneBtn.addEventListener('click', ()=>{ selectedTower=null; renderTowerInfo(); });
+  towerInfoBody.querySelectorAll('.upg-btn[data-upg]').forEach(b=>{
+    b.addEventListener('click', ()=>{
+      const i = parseInt(b.dataset.upg,10);
+      if(i !== t.level) return;
+      const u = def.upgrades[i];
+      if(money < u.cost) return;
+      money -= u.cost;
+      t.spent += u.cost;
+      u.apply(t);
+      t.level++;
+      sfx('upg');
+      renderTowerInfo(); updateHUD(); renderPalette();
+    });
+  });
+}
+
+function placeTower(c,r){
+  const def = TOWERS[selectedType];
+  if(money < def.cost) return;
+  if(!cellFree(c,r)) return;
+  money -= def.cost;
+  const [x,y] = cellCenter(c,r);
+  const t = {
+    type: selectedType, col:c, row:r, x, y,
+    level:0, spent:def.cost, cool:0, angle:0, pulse:0,
+    stats: Object.assign({}, def.base)
+  };
+  towers.push(t);
+  sfx('place');
+  addParticle(x,y,PAL.goldP,6,70,0.5);
+  updateHUD(); renderPalette();
+}
+
+function sellTower(t){
+  money += Math.round(t.spent*0.7);
+  towers = towers.filter(o=>o!==t);
+  if(selectedTower===t) selectedTower = null;
+  addParticle(t.x,t.y,PAL.paper2,8,80,0.6);
+  sfx('coin');
+  renderTowerInfo(); updateHUD(); renderPalette();
+}
+
+let bannerTimer = null;
+function showBanner(title, sub){
+  bnTitle.textContent = title;
+  bnSub.textContent = sub;
+  banner.classList.add('show');
+  if(bannerTimer) clearTimeout(bannerTimer);
+  bannerTimer = setTimeout(()=>banner.classList.remove('show'), 3600);
+}
+
+function endGame(win){
+  phase = win ? 'win' : 'over';
+  startBtn.classList.add('hidden');
+  const end = document.getElementById('end');
+  const title = document.getElementById('endTitle');
+  const sub = document.getElementById('endSub');
+  const lore = document.getElementById('endLore');
+  if(win){
+    title.textContent = 'The Codex Endures';
+    sub.textContent = 'You held the margin. The last story lives.';
+    lore.innerHTML = '<p>The Redaction recoils, unable to finish its sentence. Across the world, half-forgotten things return: a street name, a song, the smell of rain on a certain Tuesday. The <span class="inset">Codex Anima</span> glows a little brighter, and somewhere a child remembers how to laugh.</p><p>You survived all ' + WAVES.length + ' waves of the Redaction\u2019s assault. The Library of Lumen will remember the Archivist who would not let it end.</p>';
+    sfx('win');
+  } else {
+    title.textContent = 'The Page Is Torn';
+    sub.textContent = 'The Redaction has finished its sentence.';
+    lore.innerHTML = '<p>The last page tears. The Codex Anima dims, and with it the world forgets: first the taste of honey, then the word for <span class="inset">home</span>, then everything.</p><p>But stories are stubborn. They rewrite themselves when no one is looking. Take up the pen again &mdash; the margin is still yours to hold.</p><p><span class="inset">You reached wave ' + waveNumber + ' of ' + WAVES.length + '.</span></p>';
+  }
+  end.classList.remove('hidden');
+}
+
+function setPaused(p){
+  paused = p;
+  btnPause.textContent = paused ? '\u25B6' : '\u10074\u10074';
+  btnPause.classList.toggle('on', paused);
+}
+
+/* ---------- input ---------- */
+function screenToLogical(cx, cy){
+  const rect = canvas.getBoundingClientRect();
+  return [ (cx - rect.left - view.ox)/view.scale, (cy - rect.top - view.oy)/view.scale ];
+}
+function logicalPoint(e){ return screenToLogical(e.clientX, e.clientY); }
+
+canvas.addEventListener('mousemove', e=>{
+  const [x,y] = logicalPoint(e);
+  const cell = pointToCell(x,y);
+  hover = cell;
+  hoverValid = cell && selectedType && cellFree(cell[0],cell[1]) && money >= TOWERS[selectedType].cost;
+});
+canvas.addEventListener('mouseleave', ()=>{ hover = null; });
+canvas.addEventListener('mousedown', e=>{
+  ensureAudio();
+  const [x,y] = logicalPoint(e);
+  const cell = pointToCell(x,y);
+  if(!cell) return;
+  if(e.button === 2){
+    const t = towers.find(t=>t.col===cell[0] && t.row===cell[1]);
+    if(t) sellTower(t);
+    return;
+  }
+  const existing = towers.find(t=>t.col===cell[0] && t.row===cell[1]);
+  if(existing){
+    selectedTower = existing; selectedType = null;
+    renderTowerInfo(); renderPalette();
+    return;
+  }
+  if(selectedType){
+    if(cellFree(cell[0],cell[1]) && money >= TOWERS[selectedType].cost){
+      placeTower(cell[0],cell[1]);
+    }
+  } else {
+    selectedTower = null; renderTowerInfo();
+  }
+});
+canvas.addEventListener('contextmenu', e=>e.preventDefault());
+
+/* touch */
+let touchMoved = false;
+canvas.addEventListener('touchstart', e=>{
+  ensureAudio();
+  touchMoved = false;
+}, {passive:true});
+canvas.addEventListener('touchmove', ()=>{ touchMoved = true; }, {passive:true});
+canvas.addEventListener('touchend', e=>{
+  if(touchMoved) return;
+  const t0 = e.changedTouches[0];
+  const [x, y] = screenToLogical(t0.clientX, t0.clientY);
+  const cell = pointToCell(x,y);
+  if(!cell) return;
+  const existing = towers.find(t=>t.col===cell[0] && t.row===cell[1]);
+  if(existing){ selectedTower = existing; selectedType = null; renderTowerInfo(); renderPalette(); return; }
+  if(selectedType && cellFree(cell[0],cell[1]) && money >= TOWERS[selectedType].cost){
+    placeTower(cell[0],cell[1]);
+  }
+}, {passive:true});
+
+/* keyboard */
+window.addEventListener('keydown', e=>{
+  if(e.key >= '1' && e.key <= '5'){
+    const type = TOWER_ORDER[parseInt(e.key,10)-1];
+    if(type && money >= TOWERS[type].cost){
+      selectedType = type; selectedTower = null; renderPalette(); renderTowerInfo();
+    }
+  } else if(e.key === 'Escape'){
+    selectedType = null; selectedTower = null; renderPalette(); renderTowerInfo();
+  } else if(e.key === ' '){
+    e.preventDefault();
+    if(phase === 'build'){ startWave(); }
+    else if(phase === 'wave'){ setPaused(!paused); }
+  } else if(e.key === 'f' || e.key === 'F'){
+    speedIdx = (speedIdx+1) % SPEEDS.length; speed = SPEEDS[speedIdx];
+    btnSpeed.textContent = speed + '\u00D7';
+  } else if(e.key === 'm' || e.key === 'M'){
+    muted = !muted; btnMute.classList.toggle('on', !muted); btnMute.textContent = muted ? '\u2715' : '\u266A';
+  }
+});
+
+/* buttons */
+btnSpeed.addEventListener('click', ()=>{ speedIdx=(speedIdx+1)%SPEEDS.length; speed=SPEEDS[speedIdx]; btnSpeed.textContent = speed + '\u00D7'; });
+btnPause.addEventListener('click', ()=>{ setPaused(!paused); });
+btnMute.addEventListener('click', ()=>{ muted=!muted; btnMute.classList.toggle('on', !muted); btnMute.textContent = muted ? '\u2715' : '\u266A'; });
+btnRestart.addEventListener('click', ()=>{ document.getElementById('end').classList.add('hidden'); newGame(); });
+startBtn.addEventListener('click', startWave);
+document.getElementById('btnBegin').addEventListener('click', ()=>{ document.getElementById('intro').classList.add('hidden'); ensureAudio(); sfx('wave'); });
+document.getElementById('btnAgain').addEventListener('click', ()=>{ document.getElementById('end').classList.add('hidden'); newGame(); });
+
+/* ---------- resize (crisp, letterboxed) ---------- */
+function resize(){
+  const dpr = window.devicePixelRatio || 1;
+  const rect = wrap.getBoundingClientRect();
+  const cssW = rect.width, cssH = rect.height;
+  if(cssW <= 0 || cssH <= 0) return;
+  canvas.width = Math.round(cssW * dpr);
+  canvas.height = Math.round(cssH * dpr);
+  view.scale = Math.min(cssW / W, cssH / H);
+  view.ox = (cssW - W * view.scale) / 2;
+  view.oy = (cssH - H * view.scale) / 2;
+  ctx.setTransform(dpr*view.scale, 0, 0, dpr*view.scale, dpr*view.ox, dpr*view.oy);
+}
+window.addEventListener('resize', resize);
+
+/* ---------- main loop ---------- */
+let lastTs = 0;
+function loop(ts){
+  requestAnimationFrame(loop);
+  if(!lastTs) lastTs = ts;
+  let dt = (ts - lastTs)/1000;
+  lastTs = ts;
+  if(dt > 0.1) dt = 0.1;
+  if(!paused && (phase === 'wave' || phase === 'build')){
+    update(dt * speed);
+  }
+  draw();
+}
+
+/* ---------- init ---------- */
+speed = SPEEDS[0];
+muted = false;
+now = 0;
+resize();
+newGame();
+// ensure resize after layout settles
+setTimeout(resize, 50);
+requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
