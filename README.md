@@ -115,11 +115,23 @@ A collection of games, tools, and experiments built with AI — hosted on GitHub
 
 - **[App Adoption & Usage Model](utils/app-adoption-model.html)** — Cohort calculator for subscription-app growth — trial funnel, month-over-month retention, and how a heavy-using few drive most usage. Tuned with real fitness-app benchmarks. (*calculator*)
 - **[AI Design Palette](utils/ai_design_palette_catalog.html)** — Catalog of AI app and agentic tool design systems — typography, colors, and UI patterns from leading products. (*catalog*)
-- **[Greenhouse To-Do](utils/greenhouse-todo/index.html)** — Cultivate your tasks in a virtual greenhouse — completed items bloom into flowers with local-storage persistence. (*productivity*)
 - **[Burpee Form Lab](utils/burpee-form.html)** — Interactive 3D form trainer showing burpee positions, cues, checklist steps, reps, and speed controls. (*fitness*)
 - **[Sky & Weather](utils/sky_weather_infographic.html)** — Interactive weather and sky conditions infographic with real-time data visualization. (*infographic*)
-- **[Archive Ember](utils/archive-ember-shader-demo.html)** — Procedural WebGL study — a single fragment shader builds paper grain, foxing, ink, charring, embers, smoke, and an advancing burn front on antique paper. (*shader*)
-- **[Holographic Formula Drift](utils/holographic-formula-drift-shader-demo.html)** — WebGL border experiment — procedural numerals and formula marks float, switch, and leave blue phosphor afterimages around a table perimeter, with no texture atlas. (*shader*)
+
+### [Shaders](shaders/)
+
+*Fragment-shader border experiments, computed live — the index page renders its background and all four previews on a single WebGL canvas*
+
+- **[Archive Ember](shaders/archive-ember-shader-demo.html)** — Procedural WebGL study — a single fragment shader builds paper grain, foxing, ink, charring, embers, smoke, and an advancing burn front on antique paper. (*experiment 01*)
+- **[Holographic Formula Drift](shaders/holographic-formula-drift-shader-demo.html)** — WebGL border experiment — procedural numerals and formula marks float, switch, and leave blue phosphor afterimages around a table perimeter, with no texture atlas. (*experiment 02*)
+- **[Greenhouse Vines](shaders/greenhouse-vines-shader-demo.html)** — The living dialog border from the Greenhouse To-Do app, standalone — one fragment shader grows five leafed strands around a panel, weaving in front of the glass and behind it. (*experiment 03*)
+- **[Typewriter Letter Drift](shaders/typewriter-letter-drift.html)** — The border that types itself around the Learn index — atlas-rasterized typewriter letters bob through sepia haze, morphing with a double-strike ghost. (*experiment 04*)
+
+### [Greenhouse To-Do](greenhouse-todo/)
+
+*A to-do list grown in a WebGL greenhouse*
+
+- **[Greenhouse To-Do](greenhouse-todo/index.html)** — Cultivate your tasks in a virtual greenhouse — completed items bloom into flowers with local-storage persistence. (*productivity*)
 
 ### [Learn](learn/)
 

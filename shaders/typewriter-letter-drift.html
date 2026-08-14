@@ -1,0 +1,736 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Typewriter Letter Drift — Border Shader</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Special+Elite&family=Courier+Prime:wght@400;700&display=swap');
+
+    :root {
+      color-scheme: light;
+      --paper: #f4edda;
+      --paper-deep: #e9dec2;
+      --card: #fbf5e6;
+      --card-deep: #f2e9d1;
+      --ink: #2e2416;
+      --ink-soft: #5d4e38;
+      --muted: #8a7a5e;
+      --accent: #8f6227;
+      --line: rgba(88, 66, 34, 0.28);
+      /* How far past the card edge the drift canvas reaches, CSS px. Read back by
+         the JS. The farthest anchor sits ~25px out, tangential drift adds ~11 more,
+         a rocked quad's corner another ~14 at full size — 64 leaves the haze room. */
+      --overflow: 64px;
+      font-family: 'Courier Prime', 'Courier New', monospace;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; }
+
+    html, body { min-height: 100%; margin: 0; }
+
+    body {
+      min-height: 100svh;
+      color: var(--ink);
+      background:
+        radial-gradient(ellipse at 50% -10%, rgba(255, 250, 235, 0.75) 0%, transparent 55%),
+        linear-gradient(180deg, var(--paper) 0%, var(--paper-deep) 100%);
+      background-attachment: fixed;
+      overflow-x: hidden;
+    }
+
+    .grain {
+      position: fixed;
+      inset: 0;
+      z-index: 0;
+      pointer-events: none;
+      opacity: 0.13;
+      mix-blend-mode: multiply;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+      background-size: 200px;
+    }
+
+    .vignette {
+      position: fixed;
+      inset: 0;
+      z-index: 0;
+      pointer-events: none;
+      background: radial-gradient(ellipse at 50% 42%, transparent 55%, rgba(94, 72, 40, 0.16) 100%);
+    }
+
+    .page {
+      position: relative;
+      z-index: 1;
+      width: min(1120px, calc(100% - 28px));
+      margin: 0 auto;
+      padding: clamp(28px, 6vw, 68px) 0 170px;
+    }
+
+    .eyebrow {
+      margin: 0 0 10px;
+      color: var(--accent);
+      font: 700 11px/1 'Courier Prime', ui-monospace, monospace;
+      letter-spacing: .19em;
+      text-transform: uppercase;
+    }
+
+    h1 {
+      max-width: 760px;
+      margin: 0;
+      font-family: 'Special Elite', 'Courier New', monospace;
+      font-size: clamp(32px, 6vw, 62px);
+      font-weight: 400;
+      line-height: 1.02;
+      letter-spacing: .01em;
+      text-shadow: 0 1px 0 rgba(255, 255, 255, 0.5);
+    }
+
+    .lede {
+      max-width: 680px;
+      margin: 20px 0 0;
+      color: var(--ink-soft);
+      font-size: 15px;
+      line-height: 1.7;
+    }
+
+    /* Room for the drift. Padding runs a shade past --overflow so nothing clips
+       on a wide window; on a narrow one the viewport edge does the clipping. */
+    .stage {
+      position: relative;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr);
+      place-items: center;
+      margin-top: clamp(36px, 7vw, 64px);
+      padding: 84px 0;
+      overflow: hidden;
+    }
+
+    /* --- The filing card, lifted from the Learn index --- */
+
+    .card {
+      position: relative;
+      width: 460px;
+      max-width: 100%;
+      border-radius: 5px;
+      background: linear-gradient(175deg, var(--card) 0%, var(--card-deep) 100%);
+      border: 1px solid var(--line);
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.55),
+        0 16px 34px -20px rgba(80, 58, 28, 0.5);
+    }
+
+    .drift {
+      position: absolute;
+      display: block;
+      pointer-events: none;
+      z-index: 1;
+      left: calc(-1 * var(--overflow));
+      top: calc(-1 * var(--overflow));
+      /* width/height written by the JS each resize — a canvas is a replaced
+         element, so `width: auto` would resolve to the drawing-buffer size. */
+    }
+
+    .card-inner { position: relative; z-index: 2; padding: 26px 28px 24px; }
+
+    .card-tag {
+      margin: 0 0 6px;
+      font-size: .66rem;
+      font-weight: 700;
+      letter-spacing: .22em;
+      text-transform: uppercase;
+      color: var(--accent);
+    }
+    .card-tag::before { content: "[ "; }
+    .card-tag::after { content: " ]"; }
+
+    .card h2 {
+      margin: 0;
+      font-family: 'Special Elite', 'Courier New', monospace;
+      font-weight: 400;
+      font-size: 1.45rem;
+      letter-spacing: .02em;
+    }
+
+    .card-sub {
+      margin: 8px 0 0;
+      font-size: .85rem;
+      line-height: 1.6;
+      color: var(--ink-soft);
+    }
+
+    .card-body {
+      margin: 16px 0 0;
+      font-size: .84rem;
+      line-height: 1.65;
+      color: var(--ink-soft);
+    }
+
+    .card-meta {
+      margin: 18px 0 0;
+      padding-top: 14px;
+      border-top: 1px solid var(--line);
+      font-size: .68rem;
+      letter-spacing: .12em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    /* --- Controls: an ink-ruled console on the same paper --- */
+
+    .controls {
+      position: fixed; z-index: 10; left: 50%; bottom: max(16px, env(safe-area-inset-bottom));
+      width: min(1060px, calc(100% - 24px)); transform: translateX(-50%);
+      display: grid; grid-template-columns: repeat(5, 1fr) auto auto;
+      align-items: end; gap: 10px;
+      padding: 12px; border: 1px solid var(--line); border-radius: 6px;
+      background: rgba(251, 245, 230, .92);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.6), 0 18px 45px -18px rgba(80, 58, 28, .55);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+    }
+    .control { min-width: 0; }
+    .control label {
+      display: flex; justify-content: space-between; gap: 8px; margin-bottom: 8px;
+      color: var(--muted); font: 700 9px/1 'Courier Prime', ui-monospace, monospace;
+      letter-spacing: .12em; text-transform: uppercase;
+    }
+    output { color: var(--accent); font-variant-numeric: tabular-nums; }
+
+    input[type="range"] {
+      width: 100%; height: 3px; margin: 7px 0; appearance: none; border: 0;
+      border-radius: 999px; outline: none;
+      background: linear-gradient(90deg, rgba(88, 66, 34, .25), var(--accent));
+    }
+    input[type="range"]::-webkit-slider-thumb {
+      width: 16px; height: 16px; appearance: none; border: 2px solid var(--accent);
+      border-radius: 50%; background: var(--card); box-shadow: 0 0 0 4px rgba(143, 98, 39, .12); cursor: pointer;
+    }
+    input[type="range"]::-moz-range-thumb {
+      width: 13px; height: 13px; border: 2px solid var(--accent);
+      border-radius: 50%; background: var(--card); box-shadow: 0 0 0 4px rgba(143, 98, 39, .12); cursor: pointer;
+    }
+
+    .controls button {
+      height: 39px; padding: 0 14px; border: 1px solid var(--line);
+      border-radius: 5px; background: rgba(143, 98, 39, .06); color: var(--ink);
+      font: 700 10px/1 'Courier Prime', ui-monospace, monospace;
+      letter-spacing: .1em; text-transform: uppercase; cursor: pointer;
+    }
+    .controls button:hover { border-color: var(--accent); background: rgba(143, 98, 39, .12); }
+    .controls button:active { transform: translateY(1px); }
+
+    .fallback {
+      display: none; position: absolute; inset: 0; z-index: 6; place-items: center;
+      padding: 20px; text-align: center; color: var(--ink-soft); background: rgba(244, 237, 218, .9);
+    }
+
+    @media (max-width: 760px) {
+      .controls { grid-template-columns: 1fr 1fr 1fr; }
+      .controls button { width: 100%; }
+    }
+    @media (max-width: 520px) {
+      .controls { grid-template-columns: 1fr 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="grain" aria-hidden="true"></div>
+  <div class="vignette" aria-hidden="true"></div>
+
+  <main class="page">
+    <p class="eyebrow">WebGL border experiment 04</p>
+    <h1>Typewriter letter drift</h1>
+    <p class="lede">
+      The border that types itself around every card on the Learn index, pulled out on
+      its own. Letters from a typewriter face are rasterized once into a texture atlas,
+      then scattered as quads around the card&rsquo;s perimeter — swaying along the edge,
+      bobbing on a virtual z-axis (near&nbsp;=&nbsp;dark, sharp ink; far&nbsp;=&nbsp;sepia
+      haze), and now and then morphing into a new letter with a faint offset
+      double-strike ghost, like an old Underwood hitting the ribbon twice.
+    </p>
+
+    <section class="stage">
+      <section class="card" id="panel" aria-labelledby="demo-title">
+        <canvas class="drift" id="drift" aria-hidden="true"></canvas>
+        <div class="card-inner">
+          <header>
+            <p class="card-tag">Specimen</p>
+            <h2 id="demo-title">A filing card, re-typed nightly</h2>
+            <p class="card-sub">
+              The border knows nothing about what it wraps — only this card&rsquo;s
+              rectangle and how far past each edge the canvas may reach.
+            </p>
+          </header>
+
+          <p class="card-body">
+            Two draw passes share the canvas: a faint sepia aura hugging the card&rsquo;s
+            edge (a rounded-box signed-distance field, mottled by value noise), then one
+            quad per letter, every position, wobble, size, rock and re-strike derived in
+            the vertex shader from a single per-glyph seed. Nothing is stored between
+            frames; the whole drift is a pure function of time.
+          </p>
+
+          <p class="card-meta">Two passes &middot; one 64-glyph atlas &middot; no state</p>
+        </div>
+      </section>
+      <div class="fallback" id="fallback">This demo requires WebGL.</div>
+    </section>
+  </main>
+
+  <section class="controls" aria-label="Shader controls">
+    <div class="control">
+      <label for="glyphs">Glyphs <output id="glyphsOut">118</output></label>
+      <input id="glyphs" type="range" min="16" max="170" value="118" step="2" />
+    </div>
+    <div class="control">
+      <label for="speed">Drift <output id="speedOut">1.00&times;</output></label>
+      <input id="speed" type="range" min="0" max="3" value="1" step="0.05" />
+    </div>
+    <div class="control">
+      <label for="ink">Ink <output id="inkOut">1.00</output></label>
+      <input id="ink" type="range" min="0.3" max="1.8" value="1" step="0.05" />
+    </div>
+    <div class="control">
+      <label for="glow">Aura <output id="glowOut">1.00</output></label>
+      <input id="glow" type="range" min="0" max="2.5" value="1" step="0.05" />
+    </div>
+    <div class="control">
+      <label for="panelW">Card <output id="panelWOut">460px</output></label>
+      <input id="panelW" type="range" min="260" max="520" value="460" step="1" />
+    </div>
+    <button type="button" id="pause">Pause</button>
+    <button type="button" id="reseed">Re-ink</button>
+  </section>
+
+  <script>
+  (() => {
+    "use strict";
+
+    // The letter-drift border from learn/index.html, standing on its own. The two
+    // shaders below are those shaders; the only additions are the demo knobs —
+    // uInk on the glyph pass, and the glyph count / drift speed handled host-side —
+    // which at their defaults (1.0, 118, 1.0) reproduce the Learn tiles exactly.
+
+    const CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz&%$§¶.,;:'!?";
+    const COLS = 16, ROWS = 4, CELL = 128;
+    const MAX_GLYPHS = 170;
+    const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+    function waitForTypeFont() {
+      if (!document.fonts || !document.fonts.load) return Promise.resolve();
+      const wanted = Promise.all([
+        document.fonts.load('80px "Special Elite"'),
+        document.fonts.load('80px "Courier Prime"')
+      ]).catch(() => {});
+      return Promise.race([wanted, new Promise(resolve => setTimeout(resolve, 2600))]);
+    }
+
+    function buildAtlas() {
+      const atlas = document.createElement("canvas");
+      atlas.width = COLS * CELL;
+      atlas.height = ROWS * CELL;
+      const ctx = atlas.getContext("2d");
+      ctx.clearRect(0, 0, atlas.width, atlas.height);
+      ctx.fillStyle = "#000";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.font = Math.round(CELL * 0.60) + 'px "Special Elite", "Courier Prime", "Courier New", monospace';
+      for (let i = 0; i < CHARS.length; i++) {
+        const x = ((i % COLS) + 0.5) * CELL;
+        const y = (Math.floor(i / COLS) + 0.54) * CELL;
+        ctx.fillText(CHARS[i], x, y);
+      }
+      return atlas;
+    }
+
+    // Pass 1: faint sepia aura and hairline ink rule hugging the card edge.
+    const auraVertexSource = `
+      attribute vec2 aPosition;
+      void main() { gl_Position = vec4(aPosition, 0.0, 1.0); }
+    `;
+    const auraFragmentSource = `
+      precision highp float;
+      uniform vec2 uCenter;
+      uniform vec2 uHalf;
+      uniform float uTime;
+      uniform float uGlow;
+      uniform float uDpr;
+      float hash21(vec2 p) { p = fract(p * vec2(123.34, 456.21)); p += dot(p, p + 45.32); return fract(p.x * p.y); }
+      float noise(vec2 p) {
+        vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
+        float a = hash21(i), b = hash21(i + vec2(1.0, 0.0)), c = hash21(i + vec2(0.0, 1.0)), d = hash21(i + vec2(1.0, 1.0));
+        return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+      }
+      float sdRoundBox(vec2 p, vec2 b, float r) { vec2 q = abs(p) - b + r; return min(max(q.x, q.y), 0.0) + length(max(q, 0.0)) - r; }
+      void main() {
+        float sd = sdRoundBox(gl_FragCoord.xy - uCenter, uHalf + vec2(1.5 * uDpr), 5.0 * uDpr);
+        float rule = exp(-abs(sd) * (2.6 / uDpr)) * .075;
+        float contact = exp(-abs(sd) * (.55 / uDpr)) * .06;
+        float aura = exp(-abs(sd) * (.075 / uDpr)) * .05;
+        aura *= .5 + .5 * noise(gl_FragCoord.xy * (.10 / uDpr) + vec2(uTime * .16, -uTime * .10));
+        float alpha = (rule + contact + aura) * uGlow;
+        gl_FragColor = vec4(vec3(.38, .26, .12) * alpha, alpha);
+      }
+    `;
+
+    // Pass 2: one quad per letter, anchored around the card perimeter.
+    const glyphVertexSource = `
+      precision highp float;
+      attribute vec2 aCorner;
+      attribute float aSeed;
+      uniform vec2 uResolution;
+      uniform vec2 uCenter;
+      uniform vec2 uHalf;
+      uniform float uTime;
+      uniform float uSeed;
+      uniform float uDpr;
+      varying vec2 vP;
+      varying float vZ;
+      varying float vC0;
+      varying float vC1;
+      varying float vMorph;
+      varying float vInk;
+      varying float vPhase;
+      float hash11(float p) { p = fract(p * 0.1031); p *= p + 33.33; p *= p + p; return fract(p); }
+      void main() {
+        float h0 = hash11(aSeed * 7.31 + uSeed * .63);
+        float h1 = hash11(aSeed * 3.97 + uSeed * 1.27);
+        float h2 = hash11(aSeed * 9.13 + uSeed * 2.03);
+        float h3 = hash11(aSeed * 5.77 + uSeed * .13);
+        float h4 = hash11(aSeed * 4.19 + uSeed * 1.71);
+
+        float t = fract(aSeed * .6180339887 + uSeed * .1 + (h0 - .5) * .06);
+        float w = uHalf.x * 2.0, h = uHalf.y * 2.0;
+        float d = t * (2.0 * (w + h));
+        vec2 base, nrm;
+        if (d < w) { base = vec2(-uHalf.x + d, uHalf.y); nrm = vec2(0.0, 1.0); }
+        else if (d < w + h) { base = vec2(uHalf.x, uHalf.y - (d - w)); nrm = vec2(1.0, 0.0); }
+        else if (d < 2.0 * w + h) { base = vec2(uHalf.x - (d - w - h), -uHalf.y); nrm = vec2(0.0, -1.0); }
+        else { base = vec2(-uHalf.x, -uHalf.y + (d - 2.0 * w - h)); nrm = vec2(-1.0, 0.0); }
+        vec2 tng = vec2(nrm.y, -nrm.x);
+
+        float u = h1 * 2.0 - 1.0;
+        float offN = sign(u) * pow(abs(u), 1.7) * mix(9.0, 19.0, h2);
+        if (offN < 0.0) offN *= .5;
+        offN += mix(1.5, 6.5, h3);
+        float phA = h2 * 6.2831853, phB = h3 * 6.2831853;
+        float driftN = sin(uTime * (.14 + h3 * .18) + phA) * (3.5 + 3.5 * h0);
+        float driftT = sin(uTime * (.10 + h0 * .15) + phB) * (6.0 + 5.0 * h1);
+        vec2 wobble = vec2(sin(uTime * .61 + phB), cos(uTime * .53 + phA)) * 1.6;
+
+        vZ = .5 + .5 * sin(uTime * (.17 + h1 * .22) + h0 * 6.2831853);
+        float size = (7.0 + 4.5 * h2) * mix(.78, 1.22, vZ) * uDpr;
+
+        float rot = (h4 - .5) * .42 + sin(uTime * (.21 + h0 * .17) + phA) * .07;
+        float rc = cos(rot), rs = sin(rot);
+        vec2 corner = vec2(aCorner.x * rc - aCorner.y * rs, aCorner.x * rs + aCorner.y * rc);
+
+        vec2 pos = uCenter + base + (nrm * (offN + driftN) + tng * driftT + wobble) * uDpr + corner * size;
+        vP = aCorner;
+        vInk = .55 + .45 * h3;
+        vPhase = phA;
+
+        float id0 = aSeed + uSeed * 37.0;
+        float cycle = uTime * .07 + hash11(id0 * 3.13) * 11.0;
+        float epoch = floor(cycle);
+        vMorph = smoothstep(.78, .98, fract(cycle));
+        vC0 = floor(hash11(id0 + epoch * 17.0) * 64.0);
+        vC1 = floor(hash11(id0 + (epoch + 1.0) * 17.0) * 64.0);
+
+        gl_Position = vec4(pos / uResolution * 2.0 - 1.0, 0.0, 1.0);
+      }
+    `;
+    const glyphFragmentSource = `
+      precision highp float;
+      uniform sampler2D uAtlas;
+      uniform float uTime;
+      uniform float uGlow;
+      uniform float uInk;
+      varying vec2 vP;
+      varying float vZ;
+      varying float vC0;
+      varying float vC1;
+      varying float vMorph;
+      varying float vInk;
+      varying float vPhase;
+      float hash21(vec2 p) { p = fract(p * vec2(123.34, 456.21)); p += dot(p, p + 45.32); return fract(p.x * p.y); }
+      float strike(float idx, vec2 uv) {
+        float col = mod(idx, 16.0);
+        float row = floor(idx / 16.0);
+        return texture2D(uAtlas, vec2((col + uv.x) / 16.0, 1.0 - (row + 1.0 - uv.y) / 4.0)).a;
+      }
+      void main() {
+        vec2 uv = vP * .41 + .5;
+        float a = mix(strike(vC0, uv), strike(vC1, uv), vMorph);
+
+        // organic ink mottling
+        vec2 np = floor(vP * 3.0 + vC0 * 1.7);
+        a *= mix(.72, 1.05, (hash21(np) + hash21(np + 7.31)) * .5) * vInk;
+
+        // typewriter double-strike ghost
+        float g = mix(strike(vC0, uv + vec2(.030, -.022)), strike(vC1, uv + vec2(.030, -.022)), vMorph);
+        a += g * .16 * vInk;
+
+        // soft blurred halo
+        float hb = (strike(vC0, uv + vec2(.05, 0.0)) + strike(vC0, uv - vec2(.05, 0.0))
+                  + strike(vC0, uv + vec2(0.0, .05)) + strike(vC0, uv - vec2(0.0, .05))) * .25;
+
+        float clarity = vZ * vZ * (3.0 - 2.0 * vZ);
+        float alive = .55 + .45 * pow(.5 + .5 * sin(uTime * .42 + vPhase * 3.1), 1.4);
+        float mask = smoothstep(1.05, .62, length(vP));
+        float alpha = (a * mix(.34, .95, clarity) + hb * mix(.03, .10, clarity) * uGlow) * alive * mask * uInk;
+
+        vec3 color = mix(vec3(.46, .35, .22), vec3(.20, .13, .07), clarity);
+        alpha = clamp(alpha, 0.0, 1.0);
+        gl_FragColor = vec4(color * alpha, alpha);
+      }
+    `;
+
+    function compile(gl, type, source) {
+      const shader = gl.createShader(type);
+      gl.shaderSource(shader, source);
+      gl.compileShader(shader);
+      if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+        const message = gl.getShaderInfoLog(shader) || "Unknown shader compile error";
+        gl.deleteShader(shader);
+        throw new Error(message);
+      }
+      return shader;
+    }
+    function createProgram(gl, vertexSource, fragmentSource) {
+      const program = gl.createProgram();
+      const vertex = compile(gl, gl.VERTEX_SHADER, vertexSource);
+      const fragment = compile(gl, gl.FRAGMENT_SHADER, fragmentSource);
+      gl.attachShader(program, vertex);
+      gl.attachShader(program, fragment);
+      gl.linkProgram(program);
+      gl.deleteShader(vertex);
+      gl.deleteShader(fragment);
+      if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+        const message = gl.getProgramInfoLog(program) || "Unknown shader link error";
+        gl.deleteProgram(program);
+        throw new Error(message);
+      }
+      return program;
+    }
+
+    const panel = document.getElementById("panel");
+    const canvas = document.getElementById("drift");
+    const fallback = document.getElementById("fallback");
+    const overflow = parseFloat(
+      getComputedStyle(document.documentElement).getPropertyValue("--overflow")
+    ) || 64;
+
+    const gl = canvas.getContext("webgl", {
+      alpha: true, antialias: false, depth: false, stencil: false,
+      premultipliedAlpha: true, powerPreference: "high-performance"
+    });
+    if (!gl) { fallback.style.display = "grid"; return; }
+
+    const controls = {
+      glyphs: document.getElementById("glyphs"),
+      speed: document.getElementById("speed"),
+      ink: document.getElementById("ink"),
+      glow: document.getElementById("glow"),
+      panelW: document.getElementById("panelW"),
+      pause: document.getElementById("pause"),
+      reseed: document.getElementById("reseed"),
+      outs: {
+        glyphs: document.getElementById("glyphsOut"),
+        speed: document.getElementById("speedOut"),
+        ink: document.getElementById("inkOut"),
+        glow: document.getElementById("glowOut"),
+        panelW: document.getElementById("panelWOut")
+      }
+    };
+    const state = {
+      glyphs: 118, speed: 1, ink: 1, glow: 1,
+      seed: Math.random() * 1000,
+      paused: false
+    };
+
+    waitForTypeFont().then(() => {
+      const atlas = buildAtlas();
+
+      let auraProgram, glyphProgram;
+      try {
+        auraProgram = createProgram(gl, auraVertexSource, auraFragmentSource);
+        glyphProgram = createProgram(gl, glyphVertexSource, glyphFragmentSource);
+      } catch (error) {
+        console.error("Letter drift shader:", error);
+        fallback.style.display = "grid";
+        return;
+      }
+
+      gl.enable(gl.BLEND);
+      gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+
+      const quadBuffer = gl.createBuffer();
+      gl.bindBuffer(gl.ARRAY_BUFFER, quadBuffer);
+      gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, -1, 1, 1, -1, 1, 1]), gl.STATIC_DRAW);
+
+      const glyphVertices = new Float32Array(MAX_GLYPHS * 6 * 3);
+      const corners = [-1, -1, 1, -1, -1, 1, -1, 1, 1, -1, 1, 1];
+      for (let g = 0, i = 0; g < MAX_GLYPHS; g++) {
+        for (let v = 0; v < 6; v++) {
+          glyphVertices[i++] = corners[v * 2];
+          glyphVertices[i++] = corners[v * 2 + 1];
+          glyphVertices[i++] = g;
+        }
+      }
+      const glyphBuffer = gl.createBuffer();
+      gl.bindBuffer(gl.ARRAY_BUFFER, glyphBuffer);
+      gl.bufferData(gl.ARRAY_BUFFER, glyphVertices, gl.STATIC_DRAW);
+
+      const texture = gl.createTexture();
+      gl.bindTexture(gl.TEXTURE_2D, texture);
+      gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, atlas);
+      gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+
+      const aura = {
+        position: gl.getAttribLocation(auraProgram, "aPosition"),
+        center: gl.getUniformLocation(auraProgram, "uCenter"),
+        half: gl.getUniformLocation(auraProgram, "uHalf"),
+        time: gl.getUniformLocation(auraProgram, "uTime"),
+        glow: gl.getUniformLocation(auraProgram, "uGlow"),
+        dpr: gl.getUniformLocation(auraProgram, "uDpr")
+      };
+      const glyph = {
+        corner: gl.getAttribLocation(glyphProgram, "aCorner"),
+        seed: gl.getAttribLocation(glyphProgram, "aSeed"),
+        resolution: gl.getUniformLocation(glyphProgram, "uResolution"),
+        center: gl.getUniformLocation(glyphProgram, "uCenter"),
+        half: gl.getUniformLocation(glyphProgram, "uHalf"),
+        time: gl.getUniformLocation(glyphProgram, "uTime"),
+        seedU: gl.getUniformLocation(glyphProgram, "uSeed"),
+        dpr: gl.getUniformLocation(glyphProgram, "uDpr"),
+        glow: gl.getUniformLocation(glyphProgram, "uGlow"),
+        ink: gl.getUniformLocation(glyphProgram, "uInk"),
+        atlas: gl.getUniformLocation(glyphProgram, "uAtlas")
+      };
+      gl.useProgram(glyphProgram);
+      gl.uniform1i(glyph.atlas, 0);
+
+      function render(elapsed) {
+        const dpr = Math.min(window.devicePixelRatio || 1, 2);
+        const rect = panel.getBoundingClientRect();
+        const cssW = rect.width + overflow * 2;
+        const cssH = rect.height + overflow * 2;
+        const width = Math.max(1, Math.round(cssW * dpr));
+        const height = Math.max(1, Math.round(cssH * dpr));
+        if (canvas.width !== width || canvas.height !== height) {
+          canvas.width = width;
+          canvas.height = height;
+          canvas.style.width = cssW + "px";
+          canvas.style.height = cssH + "px";
+          gl.viewport(0, 0, width, height);
+        }
+
+        const centerX = width * .5;
+        const centerY = height * .5;
+        const halfX = rect.width * .5 * dpr;
+        const halfY = rect.height * .5 * dpr;
+
+        gl.clearColor(0, 0, 0, 0);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+
+        gl.useProgram(auraProgram);
+        gl.bindBuffer(gl.ARRAY_BUFFER, quadBuffer);
+        gl.enableVertexAttribArray(aura.position);
+        gl.vertexAttribPointer(aura.position, 2, gl.FLOAT, false, 0, 0);
+        if (glyph.seed !== aura.position) gl.disableVertexAttribArray(glyph.seed);
+        gl.uniform2f(aura.center, centerX, centerY);
+        gl.uniform2f(aura.half, halfX, halfY);
+        gl.uniform1f(aura.time, elapsed);
+        gl.uniform1f(aura.glow, state.glow);
+        gl.uniform1f(aura.dpr, dpr);
+        gl.drawArrays(gl.TRIANGLES, 0, 6);
+
+        gl.useProgram(glyphProgram);
+        gl.bindBuffer(gl.ARRAY_BUFFER, glyphBuffer);
+        gl.enableVertexAttribArray(glyph.corner);
+        gl.vertexAttribPointer(glyph.corner, 2, gl.FLOAT, false, 12, 0);
+        gl.enableVertexAttribArray(glyph.seed);
+        gl.vertexAttribPointer(glyph.seed, 1, gl.FLOAT, false, 12, 8);
+        gl.uniform2f(glyph.resolution, width, height);
+        gl.uniform2f(glyph.center, centerX, centerY);
+        gl.uniform2f(glyph.half, halfX, halfY);
+        gl.uniform1f(glyph.time, elapsed);
+        gl.uniform1f(glyph.seedU, state.seed);
+        gl.uniform1f(glyph.dpr, dpr);
+        gl.uniform1f(glyph.glow, state.glow);
+        gl.uniform1f(glyph.ink, state.ink);
+        gl.drawArrays(gl.TRIANGLES, 0, state.glyphs * 6);
+      }
+
+      // --- Controls wiring ---
+      let elapsed = 20; // start mid-drift so the first paint already feels settled
+      const STATIC_TIME = 47;
+
+      function renderOnce() { render(reducedMotion ? STATIC_TIME : elapsed); }
+
+      controls.glyphs.addEventListener("input", () => {
+        state.glyphs = +controls.glyphs.value;
+        controls.outs.glyphs.textContent = state.glyphs;
+        if (reducedMotion || state.paused) renderOnce();
+      });
+      controls.speed.addEventListener("input", () => {
+        state.speed = +controls.speed.value;
+        controls.outs.speed.textContent = state.speed.toFixed(2) + "×";
+      });
+      controls.ink.addEventListener("input", () => {
+        state.ink = +controls.ink.value;
+        controls.outs.ink.textContent = state.ink.toFixed(2);
+        if (reducedMotion || state.paused) renderOnce();
+      });
+      controls.glow.addEventListener("input", () => {
+        state.glow = +controls.glow.value;
+        controls.outs.glow.textContent = state.glow.toFixed(2);
+        if (reducedMotion || state.paused) renderOnce();
+      });
+      controls.panelW.addEventListener("input", () => {
+        panel.style.width = controls.panelW.value + "px";
+        controls.outs.panelW.textContent = controls.panelW.value + "px";
+        if (reducedMotion || state.paused) renderOnce();
+      });
+      controls.pause.addEventListener("click", () => {
+        state.paused = !state.paused;
+        controls.pause.textContent = state.paused ? "Resume" : "Pause";
+      });
+      controls.reseed.addEventListener("click", () => {
+        state.seed = Math.random() * 1000;
+        if (reducedMotion || state.paused) renderOnce();
+      });
+
+      if (reducedMotion) {
+        renderOnce();
+        let resizeQueued = false;
+        addEventListener("resize", () => {
+          if (resizeQueued) return;
+          resizeQueued = true;
+          requestAnimationFrame(() => { resizeQueued = false; renderOnce(); });
+        }, { passive: true });
+        return;
+      }
+
+      let last = performance.now();
+      function frame(now) {
+        const delta = Math.min(.05, Math.max(0, (now - last) / 1000));
+        last = now;
+        if (!document.hidden && !state.paused) {
+          elapsed += delta * state.speed;
+          render(elapsed);
+        }
+        requestAnimationFrame(frame);
+      }
+      requestAnimationFrame(frame);
+    });
+  })();
+  </script>
+</body>
+</html>
