@@ -1,3 +1,38 @@
+# SynthID-Text Interactive Learning Experience (2026-08-15)
+
+## Task packet
+
+- Goal: create a comprehensive, source-grounded tutorial under `learn/` that teaches SynthID-Text and adjacent provenance/detection methods through progressive explanation, hands-on simulations, and an expressive WebGL/Three.js experience; add it to the Learn index.
+- Project: The Grove (personal).
+- Repo/path: `learn/synthid-text.html`, companion public-behavior modules/tests, `learn/index.html`, and this task record.
+- Constraints: static GitHub Pages deployment; primary sources only for technical claims; explain tokens/probabilities before watermark jargon; clearly distinguish a faithful toy model from Google’s keyed production detector; one bounded WebGL context with accessible fallbacks, reduced-motion support, keyboard/touch behavior, and mobile-safe canvas sizing.
+- Non-goals: claiming to detect Gemini output, shipping Google’s production key/configuration, running an LLM in-browser, copying paper figures, or presenting watermarks as complete AI-authorship proof.
+- Proof required: red-green public-interface tests for the simulations, deterministic scientific invariants, module/HTML syntax checks, source-link/anchor checks, all interactive flows in a real browser, desktop/mobile/DPR2 layout, reduced motion and WebGL fallback, console/network inspection, screenshot proof, independent skeptical review, clean exact-path commit, and deployed-page verification.
+- Risks: mathematically misleading toy behavior, confusing marginal non-distortion with identical outputs, overstating robustness or provenance, WebGL resource/retina sizing bugs, CDN failure, and too much spectacle obscuring the lesson.
+
+## Plan
+
+- [x] Inspect repository state, prior lessons, Learn conventions, and deployment shape.
+- [x] Research the paper, official implementation, evaluation, limitations, and adjacent methods from primary sources.
+- [x] Define public simulation behavior and complete vertical red-green test slices.
+- [x] Hand off a bounded first meaningful preview with the hero and first probability interaction.
+- [x] Build the complete progressive tutorial, labs, source map, WebGL/Three.js layer, and Learn index entry.
+- [x] Verify scientific invariants, syntax, sources, accessibility, responsiveness, performance, browser behavior, console, and network state.
+- [x] Complete independent skeptical review, resolve blockers, document results, and prepare the exact publication scope.
+
+## Review
+
+- Built an eleven-chapter paper guide with eight inspectable labs covering next-token probability, context-keyed g-values, tournament sampling, the paper's exact vectorized fruit example, marginal non-distortion, repeated-context-aware detection, length/entropy separation, calibrated thresholds and abstention, edit robustness, adjacent methods, and hard verification limits.
+- Added a deterministic pure simulation module and red-green coverage for probability normalization, literal and vectorized tournaments, generator- and detector-side repeated-context masking, matching/wrong-key ensembles, low-entropy null behavior, marginal preservation, evidence statistics, edit propagation, and threshold confusion accounting.
+- Fixed the skeptical review's release blocker: repeated contexts now bypass tournament watermarking during generation, the detector excludes the same contexts, and each simulated population member receives an independent prompt seed. At 64 tokens the open-distribution means are `0.662` marked / `0.504` null / `0.499` wrong-key; the nearly-certain distribution separates by only `0.016`.
+- Grounded mechanism, equations, evaluation numbers, implementation caveats, and related-method comparisons in the Nature article and supplement, DeepMind's pinned reference code, Google's responsible-AI guidance, pinned Hugging Face source, original greenlist/robust-watermark papers, and the C2PA specification. The page explicitly states that neither it nor StegScan is a Gemini/SynthID verifier.
+- Added one bounded Three.js custom-shader field with deterministic particles, capped DPR, resize handling, visibility/document/pause gating, disposal, a static reduced-motion render, and a content-complete fallback when the CDN or WebGL is unavailable.
+- Automated proof: `node --test tests/*.test.mjs` passes all 23 repository tests (14 SynthID-specific), both new JavaScript modules pass `node --check`, page IDs/anchors/source boundaries/index ordering are asserted, and `git diff --check` passes.
+- Live browser proof: all labs changed state as expected; local HTML/modules/Three/fonts returned HTTP 200 with no failed requests or console warnings; the Three-blocked fallback kept all 22 controls working; reduced-motion switched to a static field; DPR2 and 390px layouts had no horizontal overflow; every input had a label and every button/nav target measured at least 44px. The Learn hub rendered all 14 shader tiles without context loss or warnings in the tested Chrome session.
+- Independent scientific and code reviewers approved after the repeated-context fix. Residual risk: the existing Learn hub architecture now opens 14 eager WebGL contexts, which passed Chrome verification but remains close to common per-browser limits and was not separately tested in Safari.
+
+---
+
 # StegScan Forensic Detection Upgrade (2026-08-15)
 
 ## Task packet
