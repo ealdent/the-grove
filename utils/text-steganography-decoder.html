@@ -1119,6 +1119,9 @@
           <button class="tab-btn" data-tab="tab-matrix">
             <span>📊</span> Forensic Matrix
           </button>
+          <button class="tab-btn" data-tab="tab-stats">
+            <span>📈</span> Statistics
+          </button>
           <button class="tab-btn" data-tab="tab-studio">
             <span>🧪</span> Stego Studio
           </button>
@@ -1175,7 +1178,18 @@
           </div>
         </div>
 
-        <!-- Tab 4: Stego Studio (Encoder Lab) -->
+        <!-- Tab 4: Statistical Analysis -->
+        <div class="tab-pane" id="tab-stats">
+          <div id="stats-content" style="display:flex; flex-direction:column; gap:1rem;">
+            <div class="empty-state">
+              <div class="empty-icon">📈</div>
+              <div style="font-family:var(--display); font-weight:700; color:#fff;">NO STATISTICAL DATA YET</div>
+              <div>Run a Deep Multi-Scan to build a letter &amp; word frequency profile.</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tab 5: Stego Studio (Encoder Lab) -->
         <div class="tab-pane" id="tab-studio">
           <div class="studio-form">
             <div class="form-group">
@@ -1564,6 +1578,52 @@
         ".....":"5", "-....":"6", "--...":"7", "---..":"8", "----.":"9"
       };
 
+      // Dash / hyphen character variants (hyphen = 0, non-ASCII dash = 1)
+      const DASH_VARIANTS = {
+        "\u002D": { name: "HYPHEN-MINUS", bit: "0" },
+        "\u2010": { name: "HYPHEN", bit: "0" },
+        "\u2011": { name: "NON-BREAKING HYPHEN", bit: "0" },
+        "\u2012": { name: "FIGURE DASH", bit: "1" },
+        "\u2013": { name: "EN DASH", bit: "1" },
+        "\u2014": { name: "EM DASH", bit: "1" },
+        "\u2015": { name: "HORIZONTAL BAR", bit: "1" },
+        "\u2212": { name: "MINUS SIGN", bit: "1" },
+        "\u2E3A": { name: "TWO-EM DASH", bit: "1" },
+        "\u2E3B": { name: "THREE-EM DASH", bit: "1" },
+        "\uFE58": { name: "SMALL EM DASH", bit: "1" }
+      };
+
+      // Smart quotes / apostrophes / prime marks (straight = 0, curly = 1)
+      const QUOTE_VARIANTS = {
+        "\u0027": { name: "APOSTROPHE", bit: "0" },
+        "\u0022": { name: "QUOTATION MARK", bit: "0" },
+        "\u2018": { name: "LEFT SINGLE QUOTE", bit: "1" },
+        "\u2019": { name: "RIGHT SINGLE QUOTE", bit: "1" },
+        "\u201A": { name: "LOW-9 SINGLE QUOTE", bit: "1" },
+        "\u201B": { name: "HIGH-REV-9 QUOTE", bit: "1" },
+        "\u201C": { name: "LEFT DOUBLE QUOTE", bit: "1" },
+        "\u201D": { name: "RIGHT DOUBLE QUOTE", bit: "1" },
+        "\u201E": { name: "LOW-9 DOUBLE QUOTE", bit: "1" },
+        "\u201F": { name: "HIGH-REV-9 DOUBLE QUOTE", bit: "1" },
+        "\u00AB": { name: "LEFT GUILLEMET", bit: "1" },
+        "\u00BB": { name: "RIGHT GUILLEMET", bit: "1" },
+        "\u2039": { name: "SINGLE GUILLEMET", bit: "1" },
+        "\u203A": { name: "SINGLE GUILLEMET", bit: "1" },
+        "\u2032": { name: "PRIME", bit: "1" },
+        "\u2033": { name: "DOUBLE PRIME", bit: "1" },
+        "\u02BC": { name: "MODIFIER APOSTROPHE", bit: "1" }
+      };
+
+      // Common English bigrams (lowercase) for plausibility scoring
+      const COMMON_BIGRAMS = new Set("th he in er an re nd at on nt ha es st en ed to it ou ea hi is or ti as te et ng of al de se le sa si ar ve ra ld ur gh ee me ow co be ll ce ri ic ro li io us ne ma ta wo ak il ca ct ty im ay os wa na do ss pa ol iv di mo wh nc la um ad op lo we ex fi ge ag no fa ki su ut mu ni ga ap ac av ul ba ho va ia fo fe po pl el od om am em un ir mp pr rd rk rn rr rt ru ry sh so sp sw sy tr ts tt tw ug ui un ur ut vi wa wi wr".split(" "));
+
+      // English letter frequencies (percent) for chi-square anomaly detection
+      const ENGLISH_LETTER_FREQ = {
+        a:8.17, b:1.49, c:2.78, d:4.25, e:12.70, f:2.23, g:2.02, h:6.09, i:6.97, j:0.15,
+        k:0.77, l:4.03, m:2.41, n:6.75, o:7.51, p:1.93, q:0.10, r:5.99, s:6.33, t:9.06,
+        u:2.76, v:0.98, w:2.36, x:0.15, y:1.97, z:0.07
+      };
+
       // Homoglyphs dictionary (Cyrillic, Greek, Math Latin -> standard Latin)
       const HOMOGLYPHS = {
         // Cyrillic Lowercase
@@ -1642,6 +1702,11 @@
         return !/[\u0000-\u0008\u000B\u000C\u000E-\u001F\uFFFD]/.test(text);
       }
 
+      // Heuristic: is this a clean, printable decode (allows short payloads)?
+      function isCleanDecode(text) {
+        return !!text && printableRatio(text) >= 0.7 && !/[\u0000-\u001F\u007F\uFFFD]/.test(text);
+      }
+
       function bitsToText(bits) {
         if (!bits || bits.length < 7) return null;
         let utf8 = null;
@@ -1695,12 +1760,65 @@
         return out;
       }
 
+      // Ratio of common English bigrams (0..1); higher = more English-like
+      function englishBigramScore(text) {
+        const letters = text.toLowerCase().replace(/[^a-z]/g, '');
+        if (letters.length < 2) return 0;
+        let common = 0, total = 0;
+        for (let i = 0; i + 1 < letters.length; i++) {
+          total++;
+          if (COMMON_BIGRAMS.has(letters.slice(i, i + 2))) common++;
+        }
+        return total ? common / total : 0;
+      }
+
+      // Chi-square of letter frequency vs English baseline (lower = more natural)
+      function letterFrequencyChiSquare(text) {
+        const freq = {};
+        let total = 0;
+        for (const ch of text.toLowerCase()) {
+          if (ENGLISH_LETTER_FREQ[ch]) { freq[ch] = (freq[ch] || 0) + 1; total++; }
+        }
+        if (total === 0) return 0;
+        let chi = 0;
+        for (const [letter, pct] of Object.entries(ENGLISH_LETTER_FREQ)) {
+          const expected = pct / 100 * total;
+          const observed = freq[letter] || 0;
+          chi += (observed - expected) * (observed - expected) / expected;
+        }
+        return chi;
+      }
+
+      // Full statistical profile of a text block
+      function analyzeStatistics(text) {
+        const letters = text.replace(/[^A-Za-z]/g, '');
+        const words = text.match(/[A-Za-z']+/g) || [];
+        const vowelCount = (letters.match(/[aeiouAEIOU]/g) || []).length;
+        const punctCount = (text.replace(/[A-Za-z0-9\s]/g, '') || '').length;
+        const freq = {};
+        words.forEach(w => { const k = w.toLowerCase(); freq[k] = (freq[k] || 0) + 1; });
+        const topWords = Object.entries(freq).sort((a, b) => b[1] - a[1]).slice(0, 6);
+        const uniqueRatio = words.length ? Object.keys(freq).length / words.length : 0;
+        return {
+          totalChars: text.length,
+          totalLetters: letters.length,
+          totalWords: words.length,
+          avgWordLength: words.length ? letters.length / words.length : 0,
+          vowelRatio: letters.length ? vowelCount / letters.length : 0,
+          punctRatio: text.length ? punctCount / text.length : 0,
+          uniqueWordRatio: uniqueRatio,
+          bigramScore: englishBigramScore(text),
+          chiSquare: letterFrequencyChiSquare(text),
+          topWords
+        };
+      }
+
       // Helper to evaluate text intelligibility score (0 to 100)
       function scoreIntelligibility(text) {
         if (!text || text.length === 0) return 0;
         let score = 0;
 
-        // 1. Ratio of printable ASCII / UTF-8 chars
+        // 1. Printable ratio, weighted by how English-like the letter flow is
         let printable = 0;
         for (let i = 0; i < text.length; i++) {
           const code = text.charCodeAt(i);
@@ -1708,10 +1826,11 @@
             printable++;
           }
         }
-        const printableRatio = printable / text.length;
-        if (printableRatio < 0.7) return Math.floor(printableRatio * 20);
+        const pr = printable / text.length;
+        if (pr < 0.7) return Math.floor(pr * 20);
 
-        score += Math.floor(printableRatio * 35);
+        const bg = englishBigramScore(text);
+        score += Math.floor(pr * (12 + 23 * bg)); // 12..35, scaled by bigram plausibility
 
         // 2. Word matching in English dictionary
         const words = text.toUpperCase().match(/[A-Z0-9_]{2,}/g) || [];
@@ -1721,13 +1840,17 @@
             if (COMMON_WORDS.has(w)) matched++;
           });
           const matchRatio = matched / words.length;
-          score += Math.floor(matchRatio * 50);
-          if (matched >= 2) score += 15;
+          score += Math.floor(matchRatio * 45);
+          if (matched >= 2) score += 10;
         }
 
-        // 3. CTF flag / secret keyword boost
-        if (/FLAG\{|KEY:|PASS:|SECRET:|CONFIDENTIAL|AGENT|PERSHING|RENDEZVOUS/i.test(text)) {
+        // 3. Strong keyword / flag / secret boosts
+        if (/FLAG\{|KEY:|PASS:|SECRET:|PASSWORD/i.test(text)) {
+          score += 35;
+        } else if (/CONFIDENTIAL|AGENT|PERSHING|RENDEZVOUS|OPERATION|COORDINATES|EXTRACTION|PROTOCOL/i.test(text)) {
           score += 25;
+        } else if (/\b(GRID|GPS|COORD|LAT|LON|LONG|IP):/i.test(text) || /\b\d{1,3}(\.\d{1,3}){3}\b/.test(text)) {
+          score += 20;
         }
 
         return Math.min(100, Math.max(0, score));
@@ -1759,7 +1882,7 @@
           }
           if (bitsA.length >= 8) {
             const txt = bitsToText(bitsA);
-            if (txt) {
+            if (isCleanDecode(txt)) {
               results.push({
                 method: "Zero-Width Binary (ZWSP=0, ZWNJ=1)",
                 type: "Invisible Unicode",
@@ -1779,7 +1902,7 @@
           }
           if (bitsB.length >= 8) {
             const txt = bitsToText(bitsB);
-            if (txt) {
+            if (isCleanDecode(txt)) {
               results.push({
                 method: "Zero-Width Binary (ZWSP=1, ZWNJ=0) [Inverted]",
                 type: "Invisible Unicode",
@@ -1799,7 +1922,7 @@
           }
           if (bitsC.length >= 8) {
             const txt = bitsToText(bitsC);
-            if (txt) {
+            if (isCleanDecode(txt)) {
               results.push({
                 method: "Zero-Width Binary (ZWSP=0, ZWJ=1)",
                 type: "Invisible Unicode",
@@ -2111,7 +2234,7 @@
           });
 
           // 5e. Line-Based Acrostic (First letter of each line)
-          const lineAcrostic = lines.map(l => l.trim()).filter(l => l.length > 0).map(l => l[0]).join('');
+          const lineAcrostic = lines.map(l => l.trim()).filter(l => l.length > 0).map(l => (l.match(/[A-Za-z]/) || [""])[0]).join('');
           if (lineAcrostic.length >= 3) {
             results.push({
               method: "Line Acrostic (1st Letter of Each Line)",
@@ -2179,7 +2302,7 @@
           caseStreams.forEach(cs => {
             const dec26 = bestBaconDecode(cs.bits, BACON_26);
             const dec24 = bestBaconDecode(cs.bits, BACON_24);
-            if (dec26.text && dec26.score > 0 && !/^\?+$/.test(dec26.text) && dec26.text.replace(/\?/g, '').length >= 2) {
+            if (dec26.text && dec26.score > 0 && !/^\?+$/.test(dec26.text) && dec26.text.replace(/\?/g, '').length >= 3) {
               results.push({
                 method: `${cs.label} (26-letter)`,
                 type: "Case Modulation",
@@ -2189,7 +2312,7 @@
                 details: `5-bit Baconian alphabet case modulation (modern 26-letter table).`
               });
             }
-            if (dec24.text && dec24.score > 0 && !/^\?+$/.test(dec24.text) && dec24.text !== dec26.text && dec24.text.replace(/\?/g, '').length >= 2) {
+            if (dec24.text && dec24.score > 0 && !/^\?+$/.test(dec24.text) && dec24.text !== dec26.text && dec24.text.replace(/\?/g, '').length >= 3) {
               results.push({
                 method: `${cs.label} (24-letter)`,
                 type: "Case Modulation",
@@ -2304,17 +2427,44 @@
           }
         }
 
-        // 7c. Raw punctuation stream (low-confidence anomaly signal)
-        const punctOnly = carrier.replace(/[a-zA-Z0-9\s]/g, '');
-        if (punctOnly.length >= 3) {
-          results.push({
-            method: "Punctuation Stream Extraction",
-            type: "Punctuation Cipher",
-            payload: punctOnly,
-            rawBits: `Punctuation count: ${punctOnly.length}`,
-            confidence: 25,
-            details: `Extracted punctuation sequence: ${punctOnly.slice(0, 32)}`
-          });
+        // 7c. Terminal punctuation channel (line-ending punctuation → symbol stream)
+        const termPunct = lines.map(line => {
+          const t = line.trim();
+          const m = t.match(/([.,;:!?\u2013\u2014])$/);
+          return m ? m[1] : "";
+        });
+        const termBits = termPunct.map(p => (p ? "1" : "0")).join("");
+        const punctTypeSet = {};
+        termPunct.forEach(p => { if (p) punctTypeSet[p] = (punctTypeSet[p] || 0) + 1; });
+        const distinctTypes = Object.keys(punctTypeSet).length;
+        if (termBits.length >= 8) {
+          const txt = bitsToText(termBits);
+          if (txt && looksLikeText(txt)) {
+            results.push({
+              method: "Terminal Punctuation Binary (has=1, none=0)",
+              type: "Punctuation Cipher",
+              payload: txt,
+              rawBits: termBits,
+              confidence: Math.max(scoreIntelligibility(txt), 40),
+              details: `Line-ending punctuation presence treated as a binary channel across ${termPunct.length} lines.`
+            });
+          }
+        }
+        if (termPunct.length >= 4) {
+          const typeStream = termPunct.map(p => p || "\u00B7").join("");
+          const nonEmpty = termPunct.filter(Boolean).length;
+          const ent = calculateEntropy(typeStream);
+          if (distinctTypes >= 3 && nonEmpty >= 4) {
+            const conf = Math.max(15, Math.round(45 - ent * 15));
+            results.push({
+              method: "Terminal Punctuation Type Stream",
+              type: "Punctuation Cipher",
+              payload: typeStream,
+              rawBits: `${termPunct.length} lines, ${distinctTypes} distinct types`,
+              confidence: conf,
+              details: `Line-ending punctuation types (\u00B7 = none): ${typeStream.slice(0, 48)}`
+            });
+          }
         }
 
         /* --------------------------------------------------
@@ -2437,6 +2587,132 @@
             rawBits: `Count: ${bidiCount}`,
             confidence: bidiCount >= 4 ? 55 : 30,
             details: `Detected ${bidiCount} bidi control characters (U+202A\u2013U+202E / U+2066\u2013U+2069), often used to spoof text direction or hide payloads.`
+          });
+        }
+
+        /* --------------------------------------------------
+           METHOD 10: NON-ASCII PUNCTUATION & SMART TYPOGRAPHY
+           -------------------------------------------------- */
+        const smartPunct = [];
+        for (let i = 0; i < carrier.length; i++) {
+          const cp = carrier.codePointAt(i);
+          const ch = String.fromCodePoint(cp);
+          const isLetter = /^\p{L}$/u.test(ch);
+          const isNumber = /^\p{N}$/u.test(ch);
+          const isSpace = /\s/.test(ch);
+          if (cp > 0x7F && !isLetter && !isNumber && !isSpace &&
+              !ALL_ZW_SET.has(ch) && !BIDI_CONTROLS.has(ch) && !VS_SET.has(ch) &&
+              !SPACE_VARIANTS[ch] && !(cp >= 0xE0000 && cp <= 0xE007F)) {
+            smartPunct.push({ ch, cp, pos: i });
+          }
+          if (cp > 0xFFFF) i++;
+        }
+        if (smartPunct.length > 0) {
+          const uniq = [...new Set(smartPunct.map(s => `U+${s.cp.toString(16).toUpperCase()}`))];
+          results.push({
+            method: "Smart Typography / Non-ASCII Punctuation",
+            type: "Punctuation Variant",
+            payload: `${smartPunct.length} non-ASCII punctuation mark(s): ${uniq.join(", ")}`,
+            rawBits: `Count: ${smartPunct.length}`,
+            confidence: smartPunct.length >= 3 ? 65 : (smartPunct.length === 2 ? 50 : 40),
+            details: `Detected non-ASCII punctuation/symbols (smart dashes, curly quotes, ellipsis, etc.) that can watermark text.`
+          });
+        }
+
+        /* --------------------------------------------------
+           METHOD 11: DASH VARIANT CHANNEL (HYPHEN vs NON-ASCII DASH)
+           -------------------------------------------------- */
+        let dashBits = "";
+        let dashCount = 0;
+        for (let i = 0; i < carrier.length; i++) {
+          const ch = carrier[i];
+          if (DASH_VARIANTS[ch]) {
+            dashCount++;
+            dashBits += DASH_VARIANTS[ch].bit;
+          }
+        }
+        const nonAsciiDashes = [...new Set([...carrier].filter(c => DASH_VARIANTS[c] && DASH_VARIANTS[c].bit === "1").map(c => DASH_VARIANTS[c].name))];
+        if (nonAsciiDashes.length > 0) {
+          results.push({
+            method: "Dash Variant Detection (Non-ASCII Dashes)",
+            type: "Punctuation Variant",
+            payload: `Non-ASCII dash(es): ${nonAsciiDashes.join(", ")}`,
+            rawBits: `Count: ${nonAsciiDashes.length}`,
+            confidence: nonAsciiDashes.length >= 3 ? 60 : 45,
+            details: `Non-ASCII dashes (en/em/horizontal/minus) can act as a covert typographic channel.`
+          });
+        }
+        if (dashBits.length >= 8 && dashCount >= 8) {
+          const txt = bitsToText(dashBits);
+          if (txt && looksLikeText(txt)) {
+            results.push({
+              method: "Dash Variant Binary (Hyphen=0, Dash=1)",
+              type: "Punctuation Variant",
+              payload: txt,
+              rawBits: dashBits,
+              confidence: Math.max(scoreIntelligibility(txt), 40),
+              details: `Mapped hyphen vs non-ASCII dash characters to binary digits.`
+            });
+          }
+        }
+
+        /* --------------------------------------------------
+           METHOD 12: QUOTE / APOSTROPHE VARIANT CHANNEL
+           -------------------------------------------------- */
+        let quoteBits = "";
+        let quoteCount = 0;
+        for (let i = 0; i < carrier.length; i++) {
+          const ch = carrier[i];
+          if (QUOTE_VARIANTS[ch]) {
+            quoteCount++;
+            quoteBits += QUOTE_VARIANTS[ch].bit;
+          }
+        }
+        const curlyQuotes = [...new Set([...carrier].filter(c => QUOTE_VARIANTS[c] && QUOTE_VARIANTS[c].bit === "1").map(c => QUOTE_VARIANTS[c].name))];
+        if (curlyQuotes.length > 0) {
+          results.push({
+            method: "Quote/Apostrophe Variant Detection (Curly vs Straight)",
+            type: "Punctuation Variant",
+            payload: `Curly quote mark(s): ${curlyQuotes.join(", ")}`,
+            rawBits: `Count: ${curlyQuotes.length}`,
+            confidence: curlyQuotes.length >= 3 ? 55 : 40,
+            details: `Curly (smart) quotes/apostrophes mixed with straight ones can watermark text.`
+          });
+        }
+        if (quoteBits.length >= 8) {
+          const txt = bitsToText(quoteBits);
+          if (txt && looksLikeText(txt)) {
+            results.push({
+              method: "Quote Variant Binary (Straight=0, Curly=1)",
+              type: "Punctuation Variant",
+              payload: txt,
+              rawBits: quoteBits,
+              confidence: Math.max(scoreIntelligibility(txt), 40),
+              details: `Mapped straight vs curly quote/apostrophe characters to binary digits.`
+            });
+          }
+        }
+
+        /* --------------------------------------------------
+           METHOD 13: STATISTICAL LETTER/WORD ANOMALY ANALYSIS
+           -------------------------------------------------- */
+        const stats = analyzeStatistics(carrier);
+        const chi2 = stats.chiSquare;
+        const chiAnomaly = stats.totalLetters > 50 && chi2 > 120;
+        const bigramAnomaly = stats.totalLetters > 40 && stats.bigramScore < 0.35;
+        const vowelAnomaly = stats.totalLetters > 40 && (stats.vowelRatio < 0.30 || stats.vowelRatio > 0.48);
+        const anomalies = [];
+        if (chiAnomaly) anomalies.push(`letter frequency chi\u00B2=${chi2.toFixed(0)} (deviates from English)`);
+        if (bigramAnomaly) anomalies.push(`bigram plausibility ${(stats.bigramScore * 100).toFixed(0)}%`);
+        if (vowelAnomaly) anomalies.push(`vowel ratio ${(stats.vowelRatio * 100).toFixed(0)}%`);
+        if (anomalies.length > 0) {
+          results.push({
+            method: "Statistical Letter/Word Anomaly",
+            type: "Statistical Watermark",
+            payload: anomalies.join("; "),
+            rawBits: `${stats.totalLetters} letters, ${stats.totalWords} words`,
+            confidence: Math.min(70, 40 + anomalies.length * 8),
+            details: `Unusual statistical fingerprint possibly indicating synonym/letter-frequency watermarking.`
           });
         }
 
@@ -2613,6 +2889,7 @@
       const badgePayloads = $('#badge-payloads');
       const xrayContent = $('#xray-content');
       const matrixTbody = $('#matrix-tbody');
+      const statsContent = $('#stats-content');
 
       // Populate Presets
       SPECIMENS.forEach((spec, idx) => {
@@ -2711,6 +2988,9 @@
 
         // Render Forensic Matrix
         renderMatrix(results);
+
+        // Render Statistical Analysis
+        renderStats(text);
 
         if (results.length > 0 && results[0].confidence >= 40) {
           playSuccessChime();
@@ -2815,6 +3095,10 @@
             out += `<span class="xray-pill xray-zwsp" title="U+${cp.toString(16).toUpperCase()} Invisible Format Character">[${zwLabels[ch]}]</span>`;
           } else if (SPACE_VARIANTS[ch] && ch !== "\u0020") {
             out += `<span class="xray-pill xray-space" title="U+${cp.toString(16).toUpperCase()} ${SPACE_VARIANTS[ch].name}">[${SPACE_VARIANTS[ch].name}]</span>`;
+          } else if (DASH_VARIANTS[ch] && DASH_VARIANTS[ch].bit === "1") {
+            out += `<span class="xray-pill xray-homo" title="U+${cp.toString(16).toUpperCase()} ${DASH_VARIANTS[ch].name} (non-ASCII dash variant)">[${DASH_VARIANTS[ch].name}]</span>`;
+          } else if (QUOTE_VARIANTS[ch] && QUOTE_VARIANTS[ch].bit === "1") {
+            out += `<span class="xray-pill xray-homo" title="U+${cp.toString(16).toUpperCase()} ${QUOTE_VARIANTS[ch].name} (curly quote variant)">[${QUOTE_VARIANTS[ch].name}]</span>`;
           } else if (cp > 0xFFFF) {
             const norm = fullCh.normalize('NFKC');
             if (norm !== fullCh && norm.length === 1) {
@@ -2857,6 +3141,11 @@
           { name: "Binary Case Modulation", type: "Case Modulation", match: results.find(r => r.method.includes("Binary Case")) },
           { name: "Vowel/Consonant Binary", type: "Phonetic Modulation", match: results.find(r => r.method.includes("Vowel/Consonant")) },
           { name: "Morse Code (Punctuation)", type: "Punctuation", match: results.find(r => r.method.includes("Morse Code")) },
+          { name: "Terminal Punctuation Channel", type: "Punctuation", match: results.find(r => r.method.includes("Terminal Punctuation")) },
+          { name: "Smart Typography (Non-ASCII Punct)", type: "Punctuation Variant", match: results.find(r => r.method.includes("Smart Typography")) },
+          { name: "Dash Variants", type: "Punctuation Variant", match: results.find(r => r.method.includes("Dash Variant")) },
+          { name: "Quote/Apostrophe Variants", type: "Punctuation Variant", match: results.find(r => r.method.includes("Quote")) },
+          { name: "Statistical Letter/Word Anomaly", type: "Statistical Watermark", match: results.find(r => r.method.includes("Statistical")) },
           { name: "Embedded Encodings (B64/Hex/Bin)", type: "Encoding", match: results.find(r => r.method.includes("Embedded")) }
         ];
 
@@ -2891,6 +3180,78 @@
         });
 
         matrixTbody.innerHTML = html;
+      }
+
+      function renderStats(text) {
+        if (!statsContent) return;
+        if (!text || text.trim().length === 0) {
+          statsContent.innerHTML = `
+            <div class="empty-state">
+              <div class="empty-icon">📈</div>
+              <div style="font-family:var(--display); font-weight:700; color:#fff;">NO STATISTICAL DATA YET</div>
+              <div>Run a Deep Multi-Scan to build a letter &amp; word frequency profile.</div>
+            </div>
+          `;
+          return;
+        }
+
+        const st = analyzeStatistics(text);
+
+        // Letter frequency vs English baseline
+        const freq = {};
+        let total = 0;
+        for (const ch of text.toLowerCase()) {
+          if (ENGLISH_LETTER_FREQ[ch]) { freq[ch] = (freq[ch] || 0) + 1; total++; }
+        }
+        const letters = "etaoinshrdlcumwfgypbvkjxqz".split("");
+        let bars = "";
+        letters.forEach(l => {
+          const obs = (freq[l] || 0) / (total || 1) * 100;
+          const exp = ENGLISH_LETTER_FREQ[l];
+          const delta = obs - exp;
+          const color = Math.abs(delta) > 2.5 ? 'var(--red)' : (Math.abs(delta) > 1.2 ? 'var(--amber)' : 'var(--green)');
+          bars += `
+            <div style="display:flex; align-items:center; gap:0.5rem; font-size:0.7rem;">
+              <span style="width:12px; font-weight:700; color:var(--cyan);">${l.toUpperCase()}</span>
+              <div style="flex:1; background:rgba(255,255,255,0.06); border-radius:3px; height:14px; position:relative; overflow:hidden;">
+                <div style="height:100%; width:${Math.min(100, obs * 8)}%; background:${color}; opacity:0.7;"></div>
+                <div style="position:absolute; left:${Math.min(100, exp * 8)}%; top:0; bottom:0; width:1px; background:rgba(255,255,255,0.4);"></div>
+              </div>
+              <span style="width:44px; text-align:right; color:var(--text-dim);">${obs.toFixed(1)}%</span>
+            </div>
+          `;
+        });
+
+        const topWordRows = st.topWords.map(([w, n]) =>
+          `<tr><td style="color:#fff;">${escapeHtml(w)}</td><td>${n}</td></tr>`
+        ).join('');
+
+        const chiLabel = st.totalLetters > 50 && st.chiSquare > 120 ? 'style="color:var(--red);"' : 'style="color:var(--text);"';
+        const bgLabel = st.bigramScore < 0.35 ? 'style="color:var(--red);"' : 'style="color:var(--green);"';
+
+        statsContent.innerHTML = `
+          <div class="telemetry-grid" style="margin-top:0;">
+            <div class="stat-card"><div class="stat-lbl">Letters</div><div class="stat-val">${st.totalLetters}</div></div>
+            <div class="stat-card"><div class="stat-lbl">Words</div><div class="stat-val">${st.totalWords}</div></div>
+            <div class="stat-card"><div class="stat-lbl">Avg Word Len</div><div class="stat-val">${st.avgWordLength.toFixed(1)}</div></div>
+            <div class="stat-card"><div class="stat-lbl">Vowel Ratio</div><div class="stat-val">${(st.vowelRatio * 100).toFixed(0)}%</div></div>
+          </div>
+          <div class="telemetry-grid" style="margin-top:0;">
+            <div class="stat-card"><div class="stat-lbl">Punct Ratio</div><div class="stat-val">${(st.punctRatio * 100).toFixed(1)}%</div></div>
+            <div class="stat-card"><div class="stat-lbl">Unique Words</div><div class="stat-val">${(st.uniqueWordRatio * 100).toFixed(0)}%</div></div>
+            <div class="stat-card"><div class="stat-lbl">Bigram Plausibility</div><div class="stat-val" ${bgLabel}>${(st.bigramScore * 100).toFixed(0)}%</div></div>
+            <div class="stat-card"><div class="stat-lbl">Chi² vs English</div><div class="stat-val" ${chiLabel}>${st.chiSquare.toFixed(0)}</div></div>
+          </div>
+          <div class="finding-card">
+            <div class="finding-method"><span>🔤</span> Letter Frequency vs English Baseline</div>
+            <div style="display:flex; flex-direction:column; gap:0.35rem;">${bars}</div>
+            <div class="finding-desc">White tick = expected English frequency. Red/amber bars deviate from baseline and may indicate letter-level or synonym-substitution watermarking.</div>
+          </div>
+          <div class="finding-card">
+            <div class="finding-method"><span>🔝</span> Top Words</div>
+            <table class="forensic-table"><thead><tr><th>Word</th><th>Count</th></tr></thead><tbody>${topWordRows || '<tr><td colspan="2">—</td></tr>'}</tbody></table>
+          </div>
+        `;
       }
 
       scanBtn.addEventListener('click', triggerScan);
