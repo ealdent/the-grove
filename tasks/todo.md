@@ -1,4 +1,38 @@
-# Text Steganography Decoder (utils/text-steganography-decoder.html)
+# StegScan Forensic Detection Upgrade (2026-08-15)
+
+## Task packet
+
+- Goal: make StegScan surface the known watermark in the supplied `Nigredo` specimen while reducing noisy false-positive "payloads".
+- Project: The Grove (personal).
+- Repo/path: `utils/text-steganography-decoder.html` plus focused regression tooling/documentation.
+- Constraints: entirely client-side and static-hostable; preserve the existing visual language; explain evidence rather than claiming certainty; do not damage existing curated specimen decoding.
+- Non-goals: identifying authorship, asserting that stylistic imitation itself is steganography, or adding a remote/LLM dependency.
+- Proof required: deterministic regression cases, inline-script syntax check, clean-control/noise checks, and live browser verification with the supplied poem at desktop and narrow viewport.
+- Risks: overfitting one poem, combinatorial extraction noise, and presenting probabilistic signals as decoded payloads.
+
+## Plan
+
+- [x] Inspect production behavior, repository state, prior lessons, and current detector architecture.
+- [x] Reproduce the supplied specimen and establish the hidden channel independently.
+- [x] Add high-signal structural/textual watermark checks with explicit evidence and bounded search.
+- [x] Separate decoded payloads from leads/anomalies so raw gibberish does not masquerade as a match.
+- [x] Add deterministic regression coverage for the new channel, existing specimens, and clean controls.
+- [x] Verify syntax, regressions, desktop/narrow UI, console, and production-equivalent local behavior.
+- [x] Review the diff skeptically, document results here, and prepare the exact commit scope.
+
+## Review
+
+- Established the structural channel from the authored poem body: Unicode-aware line word-count parity across six quatrains produces the raw ring `#3A7D10`. The carrier's cycle/backward and explicit blue cues bound one right RGB-byte rotation to the likely watermark `#103A7D`; the `7D1` window equals hexadecimal 2001 on the line containing “year”. The UI retains the raw/inverted evidence and labels this an extraction lead, not a confirmed decode.
+- Added a pure client-side engine for repeated-block structural analysis, exact 7/8-bit decoding, finding classification (`decoded`, `lead`, `observation`), deduplication, score clamping, and low-information noise suppression.
+- Reduced the supplied specimen from 10 misleading “matches” (ordinary em dashes, punctuation Morse, and raw null streams) to 0 decoded payloads, 1 structural lead, and 1 typography observation.
+- Hardened Unicode and punctuation checks: isolated invisible-character inventory, supplementary variation selectors, strict mixed-symbol dash/quote decoding, dedicated-run Morse only, and contextual typography/statistics observations. The UI now states the limitation of keyless detection for keyed model watermarks.
+- Regression proof: `node --test tests/text-steganography-engine.test.mjs` passes 9/9, including the full fixture, scope isolation, mutation/flattening controls, arbitrary-quatrain control, short deterministic payloads, and exact bit-group consumption. Standalone engine and extracted page-module syntax checks pass.
+- Live browser proof: all eight curated specimens retain their intended semantics; the clean control reports 0 / 0; a zero-width `OK` Studio roundtrip produces exactly one decode and copies exactly two characters. At 1440px and 390px, the grid changes from two columns to one without horizontal overflow. The supplied specimen renders `#103A7D` with its dark-blue swatch and full stanza evidence. The page and engine return HTTP 200 with no relevant console or network failures.
+- Independent skeptical review found and verified fixes for deterministic short-payload suppression, truncated 7-bit fallback, and whitespace-contaminated copy output; final verdict: no remaining code blockers.
+
+---
+
+# Text Steganography Decoder (initial implementation)
 
 ## Plan
 - [x] Inspect existing `utils/` index and styling tokens
