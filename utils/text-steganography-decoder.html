@@ -1,0 +1,2637 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>StegScan — Deep Text Steganography Forensic Station</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,300;0,400;0,600;0,800;1,400&family=Orbitron:wght@500;700;900&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #070a12;
+      --bg-alt: #0d121f;
+      --panel: rgba(13, 19, 32, 0.78);
+      --panel-solid: #0d1320;
+      --panel-border: rgba(0, 240, 255, 0.18);
+      --panel-border-glow: rgba(0, 240, 255, 0.4);
+      --cyan: #00f0ff;
+      --cyan-dim: rgba(0, 240, 255, 0.15);
+      --green: #00ff88;
+      --green-dim: rgba(0, 255, 136, 0.15);
+      --amber: #ffaa00;
+      --amber-dim: rgba(255, 170, 0, 0.15);
+      --red: #ff3366;
+      --red-dim: rgba(255, 51, 102, 0.15);
+      --purple: #b55fe6;
+      --purple-dim: rgba(181, 95, 230, 0.15);
+      --text: #d8e8f8;
+      --text-dim: #7d96b3;
+      --mono: 'JetBrains Mono', 'Share Tech Mono', monospace;
+      --display: 'Orbitron', monospace, sans-serif;
+      --radius: 8px;
+    }
+
+    *, *::before, *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    html, body {
+      min-height: 100vh;
+      background-color: var(--bg);
+      color: var(--text);
+      font-family: var(--mono);
+      font-size: 14px;
+      line-height: 1.55;
+      overflow-x: hidden;
+    }
+
+    /* WebGL background canvas */
+    #bg-canvas {
+      position: fixed;
+      inset: 0;
+      width: 100vw;
+      height: 100vh;
+      z-index: 0;
+      pointer-events: none;
+      opacity: 0.85;
+    }
+
+    /* Scanline overlay */
+    .scanlines {
+      position: fixed;
+      inset: 0;
+      z-index: 1;
+      pointer-events: none;
+      background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%);
+      background-size: 100% 4px;
+      opacity: 0.45;
+    }
+
+    /* Vignette */
+    .vignette {
+      position: fixed;
+      inset: 0;
+      z-index: 1;
+      pointer-events: none;
+      background: radial-gradient(circle at center, transparent 40%, rgba(4, 6, 11, 0.8) 100%);
+    }
+
+    /* Main layout container */
+    .app-container {
+      position: relative;
+      z-index: 2;
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: clamp(1rem, 2.5vw, 2rem);
+      display: flex;
+      flex-direction: column;
+      gap: 1.25rem;
+    }
+
+    /* Top Navigation / Header */
+    header {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+      padding: 1rem 1.25rem;
+      background: var(--panel);
+      border: 1px solid var(--panel-border);
+      border-radius: var(--radius);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 0.9rem;
+    }
+
+    .brand-radar {
+      position: relative;
+      width: 38px;
+      height: 38px;
+      border-radius: 50%;
+      border: 1.5px solid var(--cyan);
+      background: rgba(0, 240, 255, 0.05);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 0 15px rgba(0, 240, 255, 0.25);
+    }
+
+    .brand-radar::before {
+      content: '';
+      position: absolute;
+      inset: 4px;
+      border-radius: 50%;
+      border: 1px dashed rgba(0, 240, 255, 0.5);
+      animation: spinRadar 8s linear infinite;
+    }
+
+    .brand-radar::after {
+      content: '';
+      position: absolute;
+      width: 4px;
+      height: 4px;
+      background: var(--green);
+      border-radius: 50%;
+      box-shadow: 0 0 8px var(--green);
+      animation: pulseDot 1.6s ease-in-out infinite;
+    }
+
+    @keyframes spinRadar {
+      100% { transform: rotate(360deg); }
+    }
+
+    @keyframes pulseDot {
+      0%, 100% { transform: scale(1); opacity: 0.8; }
+      50% { transform: scale(1.6); opacity: 1; }
+    }
+
+    .brand-text h1 {
+      font-family: var(--display);
+      font-size: clamp(1.15rem, 2.5vw, 1.5rem);
+      font-weight: 900;
+      letter-spacing: 0.12em;
+      color: #fff;
+      text-transform: uppercase;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .brand-text h1 span.accent {
+      color: var(--cyan);
+      text-shadow: 0 0 12px rgba(0, 240, 255, 0.6);
+    }
+
+    .brand-text h1 span.ver {
+      font-size: 0.65rem;
+      padding: 0.15rem 0.4rem;
+      border: 1px solid var(--cyan);
+      border-radius: 3px;
+      color: var(--cyan);
+      letter-spacing: 0.05em;
+      vertical-align: middle;
+    }
+
+    .brand-text p {
+      font-size: 0.78rem;
+      color: var(--text-dim);
+      letter-spacing: 0.06em;
+    }
+
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      flex-wrap: wrap;
+    }
+
+    .nav-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      padding: 0.45rem 0.85rem;
+      background: rgba(0, 240, 255, 0.06);
+      border: 1px solid rgba(0, 240, 255, 0.25);
+      border-radius: 4px;
+      color: var(--text);
+      font-family: var(--mono);
+      font-size: 0.8rem;
+      text-decoration: none;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .nav-btn:hover {
+      background: rgba(0, 240, 255, 0.15);
+      border-color: var(--cyan);
+      color: #fff;
+      box-shadow: 0 0 10px rgba(0, 240, 255, 0.25);
+    }
+
+    .nav-btn.active {
+      background: var(--cyan);
+      color: #000;
+      border-color: var(--cyan);
+      font-weight: 600;
+      box-shadow: 0 0 14px rgba(0, 240, 255, 0.5);
+    }
+
+    /* Specimen / Puzzle Bar */
+    .preset-bar {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.65rem 1rem;
+      background: var(--panel);
+      border: 1px solid var(--panel-border);
+      border-radius: var(--radius);
+      backdrop-filter: blur(10px);
+      overflow-x: auto;
+      scrollbar-width: thin;
+    }
+
+    .preset-label {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--cyan);
+      white-space: nowrap;
+      font-weight: 600;
+    }
+
+    .preset-chips {
+      display: flex;
+      gap: 0.4rem;
+      flex-wrap: nowrap;
+    }
+
+    .chip-btn {
+      padding: 0.35rem 0.7rem;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 4px;
+      color: var(--text-dim);
+      font-family: var(--mono);
+      font-size: 0.75rem;
+      white-space: nowrap;
+      cursor: pointer;
+      transition: all 0.18s ease;
+    }
+
+    .chip-btn:hover {
+      background: rgba(0, 240, 255, 0.12);
+      border-color: var(--cyan);
+      color: #fff;
+    }
+
+    .chip-btn.active-preset {
+      border-color: var(--green);
+      background: rgba(0, 255, 136, 0.15);
+      color: var(--green);
+      font-weight: 600;
+      box-shadow: 0 0 10px rgba(0, 255, 136, 0.2);
+    }
+
+    /* Main Grid */
+    .main-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1.25rem;
+      align-items: start;
+    }
+
+    @media (max-width: 1024px) {
+      .main-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    /* Panels */
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--panel-border);
+      border-radius: var(--radius);
+      padding: 1.25rem;
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+      position: relative;
+    }
+
+    .panel-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid rgba(0, 240, 255, 0.12);
+      padding-bottom: 0.75rem;
+    }
+
+    .panel-title {
+      font-family: var(--display);
+      font-size: 0.95rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: #fff;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .panel-title .icon {
+      color: var(--cyan);
+    }
+
+    /* Input section */
+    .input-wrapper {
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      gap: 0.6rem;
+    }
+
+    .dropzone {
+      position: relative;
+      border: 1px dashed rgba(0, 240, 255, 0.28);
+      border-radius: 6px;
+      background: rgba(7, 12, 22, 0.6);
+      transition: all 0.2s ease;
+    }
+
+    .dropzone.dragover {
+      border-color: var(--green);
+      background: rgba(0, 255, 136, 0.08);
+      box-shadow: inset 0 0 20px rgba(0, 255, 136, 0.2);
+    }
+
+    textarea#carrier-input {
+      width: 100%;
+      height: 220px;
+      background: transparent;
+      border: none;
+      padding: 0.85rem;
+      color: #e6f1fc;
+      font-family: var(--mono);
+      font-size: 0.85rem;
+      line-height: 1.6;
+      resize: vertical;
+      outline: none;
+    }
+
+    textarea#carrier-input::placeholder {
+      color: rgba(125, 150, 179, 0.5);
+    }
+
+    .input-tools {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      font-size: 0.75rem;
+      color: var(--text-dim);
+    }
+
+    .tool-group {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+    }
+
+    .action-btn {
+      padding: 0.35rem 0.7rem;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      border-radius: 4px;
+      color: var(--text);
+      font-family: var(--mono);
+      font-size: 0.75rem;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      transition: all 0.18s ease;
+    }
+
+    .action-btn:hover {
+      background: rgba(0, 240, 255, 0.15);
+      border-color: var(--cyan);
+      color: #fff;
+    }
+
+    /* Primary Scan Trigger */
+    .scan-btn-container {
+      margin-top: 0.5rem;
+    }
+
+    .primary-scan-btn {
+      width: 100%;
+      padding: 0.85rem 1.5rem;
+      background: linear-gradient(135deg, rgba(0, 240, 255, 0.2), rgba(0, 255, 136, 0.2));
+      border: 1px solid var(--cyan);
+      border-radius: 6px;
+      color: #fff;
+      font-family: var(--display);
+      font-size: 0.95rem;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.6rem;
+      box-shadow: 0 0 20px rgba(0, 240, 255, 0.25);
+      transition: all 0.25s ease;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .primary-scan-btn::before {
+      content: '';
+      position: absolute;
+      inset: -50% -50%;
+      background: linear-gradient(45deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+      transform: rotate(45deg) translateY(-100%);
+      transition: transform 0.6s ease;
+    }
+
+    .primary-scan-btn:hover {
+      background: linear-gradient(135deg, rgba(0, 240, 255, 0.35), rgba(0, 255, 136, 0.35));
+      box-shadow: 0 0 30px rgba(0, 240, 255, 0.5);
+      transform: translateY(-2px);
+    }
+
+    .primary-scan-btn:hover::before {
+      transform: rotate(45deg) translateY(100%);
+    }
+
+    .primary-scan-btn:active {
+      transform: translateY(0);
+    }
+
+    /* Quick Telemetry Grid */
+    .telemetry-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 0.6rem;
+      margin-top: 0.5rem;
+    }
+
+    @media (max-width: 600px) {
+      .telemetry-grid {
+        grid-template-columns: repeat(2, 1fr);
+      }
+    }
+
+    .stat-card {
+      background: rgba(7, 12, 22, 0.6);
+      border: 1px solid rgba(0, 240, 255, 0.12);
+      border-radius: 5px;
+      padding: 0.6rem 0.75rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.2rem;
+    }
+
+    .stat-card.alert {
+      border-color: var(--red);
+      background: rgba(255, 51, 102, 0.08);
+    }
+
+    .stat-card.alert .stat-val {
+      color: var(--red);
+      text-shadow: 0 0 8px rgba(255, 51, 102, 0.4);
+    }
+
+    .stat-card.success {
+      border-color: var(--green);
+      background: rgba(0, 255, 136, 0.08);
+    }
+
+    .stat-card.success .stat-val {
+      color: var(--green);
+      text-shadow: 0 0 8px rgba(0, 255, 136, 0.4);
+    }
+
+    .stat-lbl {
+      font-size: 0.68rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--text-dim);
+    }
+
+    .stat-val {
+      font-family: var(--display);
+      font-size: 1.15rem;
+      font-weight: 700;
+      color: var(--cyan);
+      line-height: 1.2;
+    }
+
+    /* Tabs Bar */
+    .tab-bar {
+      display: flex;
+      gap: 0.4rem;
+      border-bottom: 1px solid rgba(0, 240, 255, 0.15);
+      padding-bottom: 0.6rem;
+      overflow-x: auto;
+    }
+
+    .tab-btn {
+      padding: 0.5rem 0.9rem;
+      background: transparent;
+      border: 1px solid transparent;
+      border-radius: 4px;
+      color: var(--text-dim);
+      font-family: var(--mono);
+      font-size: 0.78rem;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: all 0.2s ease;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+    }
+
+    .tab-btn:hover {
+      color: #fff;
+      background: rgba(0, 240, 255, 0.06);
+    }
+
+    .tab-btn.active {
+      background: rgba(0, 240, 255, 0.12);
+      border-color: var(--cyan);
+      color: var(--cyan);
+      font-weight: 600;
+      box-shadow: 0 0 12px rgba(0, 240, 255, 0.2);
+    }
+
+    .badge-count {
+      font-size: 0.65rem;
+      padding: 0.1rem 0.35rem;
+      border-radius: 99px;
+      background: var(--cyan);
+      color: #000;
+      font-weight: 700;
+    }
+
+    .badge-count.zero {
+      background: rgba(255, 255, 255, 0.1);
+      color: var(--text-dim);
+    }
+
+    /* Tab Content Areas */
+    .tab-pane {
+      display: none;
+      flex-direction: column;
+      gap: 1rem;
+      animation: fadeIn 0.2s ease;
+    }
+
+    .tab-pane.active {
+      display: flex;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(4px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* Findings / Decoded Cards */
+    .finding-card {
+      background: rgba(9, 14, 25, 0.85);
+      border: 1px solid rgba(0, 240, 255, 0.18);
+      border-radius: 6px;
+      padding: 1rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.6rem;
+      position: relative;
+      transition: all 0.2s ease;
+    }
+
+    .finding-card.high-confidence {
+      border-color: var(--green);
+      background: linear-gradient(180deg, rgba(0, 255, 136, 0.08), rgba(9, 14, 25, 0.9));
+      box-shadow: 0 0 20px rgba(0, 255, 136, 0.15);
+    }
+
+    .finding-card.medium-confidence {
+      border-color: var(--amber);
+      background: linear-gradient(180deg, rgba(255, 170, 0, 0.06), rgba(9, 14, 25, 0.9));
+    }
+
+    .finding-card.anomaly {
+      border-color: var(--purple);
+      background: linear-gradient(180deg, rgba(181, 95, 230, 0.06), rgba(9, 14, 25, 0.9));
+    }
+
+    .finding-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+    }
+
+    .finding-method {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-family: var(--display);
+      font-size: 0.85rem;
+      font-weight: 700;
+      color: #fff;
+      letter-spacing: 0.05em;
+    }
+
+    .confidence-pill {
+      font-size: 0.7rem;
+      padding: 0.2rem 0.5rem;
+      border-radius: 4px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+
+    .confidence-pill.high {
+      background: rgba(0, 255, 136, 0.2);
+      border: 1px solid var(--green);
+      color: var(--green);
+    }
+
+    .confidence-pill.med {
+      background: rgba(255, 170, 0, 0.2);
+      border: 1px solid var(--amber);
+      color: var(--amber);
+    }
+
+    .confidence-pill.low {
+      background: rgba(181, 95, 230, 0.2);
+      border: 1px solid var(--purple);
+      color: var(--purple);
+    }
+
+    .finding-desc {
+      font-size: 0.78rem;
+      color: var(--text-dim);
+    }
+
+    .payload-box {
+      background: rgba(0, 0, 0, 0.6);
+      border: 1px solid rgba(0, 240, 255, 0.2);
+      border-radius: 4px;
+      padding: 0.75rem 0.9rem;
+      font-size: 0.92rem;
+      color: var(--green);
+      font-weight: 600;
+      word-break: break-all;
+      white-space: pre-wrap;
+      max-height: 160px;
+      overflow-y: auto;
+      position: relative;
+    }
+
+    .payload-box.raw {
+      color: var(--cyan);
+      font-size: 0.8rem;
+    }
+
+    .finding-meta {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 0.72rem;
+      color: var(--text-dim);
+      padding-top: 0.3rem;
+      border-top: 1px solid rgba(255, 255, 255, 0.06);
+    }
+
+    .copy-btn {
+      padding: 0.25rem 0.55rem;
+      background: rgba(0, 240, 255, 0.1);
+      border: 1px solid rgba(0, 240, 255, 0.3);
+      border-radius: 3px;
+      color: var(--cyan);
+      font-family: var(--mono);
+      font-size: 0.7rem;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.25rem;
+      transition: all 0.15s ease;
+    }
+
+    .copy-btn:hover {
+      background: var(--cyan);
+      color: #000;
+    }
+
+    /* X-Ray Lens Viewer */
+    .xray-container {
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+    }
+
+    .xray-legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.6rem;
+      padding: 0.6rem 0.8rem;
+      background: rgba(7, 12, 22, 0.7);
+      border: 1px solid rgba(0, 240, 255, 0.12);
+      border-radius: 4px;
+      font-size: 0.72rem;
+    }
+
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 0.35rem;
+    }
+
+    .legend-badge {
+      display: inline-block;
+      padding: 0.1rem 0.35rem;
+      border-radius: 3px;
+      font-size: 0.65rem;
+      font-weight: 700;
+    }
+
+    .xray-display {
+      background: rgba(4, 7, 14, 0.95);
+      border: 1px solid rgba(0, 240, 255, 0.25);
+      border-radius: 6px;
+      padding: 1rem;
+      max-height: 420px;
+      overflow-y: auto;
+      font-family: var(--mono);
+      font-size: 0.88rem;
+      line-height: 2;
+      color: #e2efff;
+      word-break: break-word;
+      white-space: pre-wrap;
+    }
+
+    /* X-Ray Pills in Text */
+    .xray-pill {
+      display: inline-block;
+      margin: 0 1px;
+      padding: 0 4px;
+      border-radius: 3px;
+      font-size: 0.7rem;
+      font-weight: 700;
+      line-height: 1.3;
+      vertical-align: baseline;
+      cursor: help;
+    }
+
+    .xray-zwsp {
+      background: rgba(0, 240, 255, 0.25);
+      border: 1px solid var(--cyan);
+      color: var(--cyan);
+    }
+
+    .xray-zwnj {
+      background: rgba(0, 255, 136, 0.25);
+      border: 1px solid var(--green);
+      color: var(--green);
+    }
+
+    .xray-zwj {
+      background: rgba(255, 170, 0, 0.25);
+      border: 1px solid var(--amber);
+      color: var(--amber);
+    }
+
+    .xray-tag {
+      background: rgba(255, 51, 102, 0.25);
+      border: 1px solid var(--red);
+      color: var(--red);
+    }
+
+    .xray-homo {
+      background: rgba(181, 95, 230, 0.3);
+      border: 1px solid var(--purple);
+      color: #e5b3ff;
+      text-decoration: underline dotted var(--purple);
+    }
+
+    .xray-space {
+      background: rgba(255, 255, 255, 0.15);
+      border: 1px solid rgba(255, 255, 255, 0.3);
+      color: #fff;
+    }
+
+    .xray-acrostic {
+      background: rgba(255, 215, 0, 0.2);
+      border-bottom: 2px solid gold;
+      color: #fff;
+      font-weight: 800;
+    }
+
+    /* Forensic Table */
+    .forensic-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.78rem;
+    }
+
+    .forensic-table th, .forensic-table td {
+      padding: 0.6rem 0.75rem;
+      text-align: left;
+      border-bottom: 1px solid rgba(0, 240, 255, 0.1);
+    }
+
+    .forensic-table th {
+      font-family: var(--display);
+      font-size: 0.7rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--cyan);
+      background: rgba(0, 240, 255, 0.04);
+    }
+
+    .forensic-table tr:hover td {
+      background: rgba(0, 240, 255, 0.03);
+    }
+
+    .status-dot {
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      margin-right: 0.35rem;
+    }
+
+    .status-dot.active {
+      background: var(--green);
+      box-shadow: 0 0 6px var(--green);
+    }
+
+    .status-dot.idle {
+      background: var(--text-dim);
+      opacity: 0.4;
+    }
+
+    /* Stego Studio / Encoder Tab */
+    .studio-form {
+      display: flex;
+      flex-direction: column;
+      gap: 0.85rem;
+    }
+
+    .form-group {
+      display: flex;
+      flex-direction: column;
+      gap: 0.35rem;
+    }
+
+    .form-label {
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--cyan);
+      font-weight: 600;
+    }
+
+    .form-input, .form-select {
+      width: 100%;
+      background: rgba(7, 12, 22, 0.8);
+      border: 1px solid rgba(0, 240, 255, 0.25);
+      border-radius: 4px;
+      padding: 0.6rem 0.8rem;
+      color: #fff;
+      font-family: var(--mono);
+      font-size: 0.82rem;
+      outline: none;
+    }
+
+    .form-input:focus, .form-select:focus {
+      border-color: var(--cyan);
+      box-shadow: 0 0 10px rgba(0, 240, 255, 0.25);
+    }
+
+    .studio-result {
+      background: rgba(4, 7, 14, 0.9);
+      border: 1px solid var(--panel-border);
+      border-radius: 6px;
+      padding: 0.85rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+
+    /* Empty state */
+    .empty-state {
+      padding: 2.5rem 1rem;
+      text-align: center;
+      color: var(--text-dim);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.6rem;
+    }
+
+    .empty-icon {
+      font-size: 2.2rem;
+      opacity: 0.6;
+      color: var(--cyan);
+    }
+
+    /* Scan animation overlay */
+    .scanning-active {
+      position: relative;
+    }
+
+    .scanning-active::after {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0; height: 2px;
+      background: var(--cyan);
+      box-shadow: 0 0 15px var(--cyan), 0 0 30px var(--green);
+      animation: scanSweep 1.2s ease-in-out infinite;
+      pointer-events: none;
+    }
+
+    @keyframes scanSweep {
+      0% { top: 0; opacity: 0.9; }
+      50% { top: 100%; opacity: 0.6; }
+      100% { top: 0; opacity: 0.9; }
+    }
+
+    /* Footer */
+    footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+      padding: 0.75rem 1.25rem;
+      background: var(--panel);
+      border: 1px solid var(--panel-border);
+      border-radius: var(--radius);
+      font-size: 0.75rem;
+      color: var(--text-dim);
+    }
+
+    footer a {
+      color: var(--cyan);
+      text-decoration: none;
+    }
+
+    footer a:hover {
+      text-decoration: underline;
+    }
+
+    /* Toast Notification */
+    #toast {
+      position: fixed;
+      bottom: 2rem;
+      right: 2rem;
+      background: #0f1c2e;
+      border: 1px solid var(--cyan);
+      box-shadow: 0 0 20px rgba(0, 240, 255, 0.4);
+      color: #fff;
+      padding: 0.6rem 1.1rem;
+      border-radius: 6px;
+      font-family: var(--mono);
+      font-size: 0.8rem;
+      z-index: 100;
+      opacity: 0;
+      transform: translateY(10px);
+      transition: all 0.25s ease;
+      pointer-events: none;
+    }
+
+    #toast.show {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  </style>
+</head>
+<body>
+
+  <!-- WebGL Shader Background Canvas -->
+  <canvas id="bg-canvas"></canvas>
+  <div class="scanlines"></div>
+  <div class="vignette"></div>
+
+  <div class="app-container">
+    <!-- Header -->
+    <header>
+      <div class="brand">
+        <div class="brand-radar" title="System Status: Operational"></div>
+        <div class="brand-text">
+          <h1>STEG<span class="accent">·SCAN</span> <span class="ver">v3.4-PRO</span></h1>
+          <p>Deep Text Steganography Forensic Station &amp; Cryptanalytic Decoder</p>
+        </div>
+      </div>
+
+      <div class="header-actions">
+        <button id="sfx-toggle-btn" class="nav-btn" title="Toggle Sound FX">
+          <span id="sfx-icon">🔊</span> AUDIO: <span id="sfx-status">ON</span>
+        </button>
+        <button id="shader-mode-btn" class="nav-btn" title="Toggle Shader Intensity">
+          <span>✨</span> GL SHADER: <span id="shader-status">HYPER</span>
+        </button>
+        <a href="index.html" class="nav-btn" title="Return to Utils Hub">
+          &larr; UTILS HUB
+        </a>
+      </div>
+    </header>
+
+    <!-- Presets / Puzzles Bar -->
+    <div class="preset-bar">
+      <div class="preset-label">
+        <span>⚡</span> Specimens:
+      </div>
+      <div class="preset-chips" id="preset-chips">
+        <!-- Built via JS -->
+      </div>
+    </div>
+
+    <!-- Main Grid -->
+    <div class="main-grid">
+      
+      <!-- Left Column: Input & Telemetry -->
+      <div class="panel" id="input-panel">
+        <div class="panel-header">
+          <div class="panel-title">
+            <span class="icon">📡</span> Carrier Stream Analysis
+          </div>
+          <div class="tool-group">
+            <button id="clear-btn" class="action-btn" title="Clear input text">Clear</button>
+            <button id="paste-btn" class="action-btn" title="Paste from clipboard">Paste</button>
+            <label class="action-btn" title="Load text file" style="cursor: pointer;">
+              Upload <input type="file" id="file-input" accept=".txt,.md,.json,.html" style="display:none;">
+            </label>
+          </div>
+        </div>
+
+        <div class="input-wrapper">
+          <div class="dropzone" id="dropzone">
+            <textarea id="carrier-input" placeholder="Paste or drag-and-drop suspicious text here to extract hidden zero-width unicode, homoglyphs, whitespace snow ciphers, null ciphers, or baconian payloads..."></textarea>
+          </div>
+
+          <div class="input-tools">
+            <div>
+              <span id="char-count">0</span> chars · <span id="word-count">0</span> words · <span id="line-count">0</span> lines
+            </div>
+            <div id="byte-size">0 bytes</div>
+          </div>
+        </div>
+
+        <div class="scan-btn-container">
+          <button id="scan-trigger-btn" class="primary-scan-btn">
+            <span>⚡</span> RUN DEEP MULTI-SCAN
+          </button>
+        </div>
+
+        <!-- Telemetry Meters -->
+        <div class="telemetry-grid">
+          <div class="stat-card" id="card-entropy">
+            <div class="stat-lbl">Shannon Entropy</div>
+            <div class="stat-val" id="val-entropy">0.00</div>
+          </div>
+          <div class="stat-card" id="card-invis">
+            <div class="stat-lbl">Invisible Chars</div>
+            <div class="stat-val" id="val-invis">0</div>
+          </div>
+          <div class="stat-card" id="card-homo">
+            <div class="stat-lbl">Homoglyphs</div>
+            <div class="stat-val" id="val-homo">0</div>
+          </div>
+          <div class="stat-card" id="card-matches">
+            <div class="stat-lbl">Matches Found</div>
+            <div class="stat-val" id="val-matches">0</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Right Column: Results & Interactive Tools -->
+      <div class="panel" id="results-panel">
+        <div class="tab-bar">
+          <button class="tab-btn active" data-tab="tab-payloads">
+            <span>🎯</span> Decoded Payloads <span class="badge-count zero" id="badge-payloads">0</span>
+          </button>
+          <button class="tab-btn" data-tab="tab-xray">
+            <span>🔬</span> Unicode X-Ray Lens
+          </button>
+          <button class="tab-btn" data-tab="tab-matrix">
+            <span>📊</span> Forensic Matrix
+          </button>
+          <button class="tab-btn" data-tab="tab-studio">
+            <span>🧪</span> Stego Studio
+          </button>
+        </div>
+
+        <!-- Tab 1: Decoded Payloads -->
+        <div class="tab-pane active" id="tab-payloads">
+          <div id="payloads-container">
+            <div class="empty-state">
+              <div class="empty-icon">🔍</div>
+              <div style="font-family:var(--display); font-weight:700; color:#fff;">NO PAYLOADS EXTRACTED YET</div>
+              <div>Select a specimen puzzle above or paste suspicious text and trigger a Deep Multi-Scan.</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tab 2: Unicode X-Ray Lens -->
+        <div class="tab-pane" id="tab-xray">
+          <div class="xray-container">
+            <div class="xray-legend">
+              <div class="legend-item"><span class="legend-badge xray-zwsp">ZWSP</span> U+200B</div>
+              <div class="legend-item"><span class="legend-badge xray-zwnj">ZWNJ</span> U+200C</div>
+              <div class="legend-item"><span class="legend-badge xray-zwj">ZWJ</span> U+200D</div>
+              <div class="legend-item"><span class="legend-badge xray-tag">TAG</span> U+E0000+</div>
+              <div class="legend-item"><span class="legend-badge xray-homo">HOMO</span> Cyrillic/Greek</div>
+              <div class="legend-item"><span class="legend-badge xray-space">NBSP</span> Space Mod</div>
+              <div class="legend-item"><span class="legend-badge xray-acrostic">ACRO</span> Null/Acrostic</div>
+            </div>
+            <div class="xray-display" id="xray-content">
+              <span style="color:var(--text-dim)">[ X-Ray view will highlight all invisible code points, disguised homoglyphs, and spacing channels here... ]</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tab 3: Forensic Matrix -->
+        <div class="tab-pane" id="tab-matrix">
+          <div style="overflow-x: auto;">
+            <table class="forensic-table">
+              <thead>
+                <tr>
+                  <th>Method</th>
+                  <th>Channel Type</th>
+                  <th>Extracted Size</th>
+                  <th>Intelligibility</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody id="matrix-tbody">
+                <!-- Populated dynamically -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Tab 4: Stego Studio (Encoder Lab) -->
+        <div class="tab-pane" id="tab-studio">
+          <div class="studio-form">
+            <div class="form-group">
+              <label class="form-label">Steganography Technique</label>
+              <select class="form-select" id="studio-method">
+                <option value="zw-binary">Zero-Width Binary (ZWSP + ZWNJ) [Stealthy]</option>
+                <option value="zw-tag">Unicode Language Tag Watermark (U+E0000) [AI Tagging]</option>
+                <option value="homoglyph">Homoglyph Substitution (Cyrillic swap) [Phishing/Canary]</option>
+                <option value="bacon">Bacon's 5-bit Case Modulation (Upper/Lower) [Historical]</option>
+                <option value="snow">Whitespace SNOW (Trailing Spaces &amp; Tabs) [Document Steg]</option>
+                <option value="acrostic">Sentence Acrostic Generator (Line bank)</option>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Secret Payload to Hide</label>
+              <input type="text" class="form-input" id="studio-secret" placeholder="e.g. rendezvous at 0400" value="rendezvous at 0400">
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Cover Carrier Text</label>
+              <textarea class="form-input" id="studio-cover" rows="3" placeholder="Cover message...">The quarterly financial report looks complete. All teams have met their targets for this cycle.</textarea>
+            </div>
+
+            <div style="display:flex; gap:0.5rem;">
+              <button id="studio-encode-btn" class="action-btn" style="flex:1; justify-content:center; padding:0.6rem; background:rgba(0,240,255,0.15); border-color:var(--cyan); font-weight:700; color:#fff;">
+                ⚡ ENCODE SECRET PAYLOAD
+              </button>
+              <button id="studio-send-btn" class="action-btn" style="padding:0.6rem 0.9rem;" title="Load encoded text into decoder">
+                &rarr; Send to Decoder
+              </button>
+            </div>
+
+            <div class="studio-result">
+              <div style="display:flex; justify-content:space-between; align-items:center;">
+                <span style="font-size:0.72rem; color:var(--cyan); font-weight:700; text-transform:uppercase;">Encoded Stego Output</span>
+                <button class="copy-btn" id="studio-copy-btn">📋 Copy</button>
+              </div>
+              <div class="payload-box" id="studio-output" style="max-height:100px; color:#fff; font-size:0.82rem;">
+                (Click encode above to generate steganographic carrier)
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+    </div>
+
+    <!-- Footer -->
+    <footer>
+      <div>
+        STEG·SCAN Forensic Tool &middot; Part of <a href="../">The Grove</a>
+      </div>
+      <div>
+        Engine: Multi-pass Heuristic Scorer &middot; WebGL2 Shader Core
+      </div>
+    </footer>
+  </div>
+
+  <!-- Toast Notification -->
+  <div id="toast">Copied to clipboard</div>
+
+  <!-- Main JavaScript Application -->
+  <script>
+    (function () {
+      "use strict";
+
+      /* =========================================================
+         1. UTILITIES & AUDIO SYNTHESIZER
+         ========================================================= */
+      const $ = (sel, el = document) => el.querySelector(sel);
+      const $$ = (sel, el = document) => Array.from(el.querySelectorAll(sel));
+
+      let audioCtx = null;
+      let sfxEnabled = true;
+
+      function initAudio() {
+        if (!audioCtx) {
+          const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+          if (AudioContextClass) {
+            audioCtx = new AudioContextClass();
+          }
+        }
+        if (audioCtx && audioCtx.state === 'suspended') {
+          audioCtx.resume();
+        }
+      }
+
+      function playTone(freq, type = 'sine', duration = 0.08, gainVal = 0.05) {
+        if (!sfxEnabled) return;
+        try {
+          initAudio();
+          if (!audioCtx) return;
+          const osc = audioCtx.createOscillator();
+          const gain = audioCtx.createGain();
+          osc.type = type;
+          osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+          gain.gain.setValueAtTime(gainVal, audioCtx.currentTime);
+          gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + duration);
+          osc.connect(gain);
+          gain.connect(audioCtx.destination);
+          osc.start();
+          osc.stop(audioCtx.currentTime + duration);
+        } catch (e) {}
+      }
+
+      function playScanSfx() {
+        if (!sfxEnabled) return;
+        try {
+          initAudio();
+          if (!audioCtx) return;
+          const now = audioCtx.currentTime;
+          const osc = audioCtx.createOscillator();
+          const gain = audioCtx.createGain();
+          osc.type = 'sawtooth';
+          osc.frequency.setValueAtTime(220, now);
+          osc.frequency.exponentialRampToValueAtTime(1400, now + 0.35);
+          gain.gain.setValueAtTime(0.04, now);
+          gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.38);
+          osc.connect(gain);
+          gain.connect(audioCtx.destination);
+          osc.start(now);
+          osc.stop(now + 0.38);
+        } catch (e) {}
+      }
+
+      function playSuccessChime() {
+        if (!sfxEnabled) return;
+        playTone(587.33, 'sine', 0.12, 0.06); // D5
+        setTimeout(() => playTone(880, 'sine', 0.18, 0.08), 90); // A5
+        setTimeout(() => playTone(1174.66, 'sine', 0.28, 0.08), 180); // D6
+      }
+
+      function showToast(msg) {
+        const t = $('#toast');
+        t.textContent = msg;
+        t.classList.add('show');
+        setTimeout(() => t.classList.remove('show'), 2200);
+      }
+
+      /* =========================================================
+         2. WEBGL BACKGROUND SHADER CORE
+         ========================================================= */
+      const canvas = $('#bg-canvas');
+      let gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
+      let shaderIntensity = 1.0; // 1.0 = hyper, 0.5 = subtle, 0.0 = off
+      let scanPulse = 0.0;
+      let mouseX = 0.5, mouseY = 0.5;
+
+      const VS_SOURCE = `
+        attribute vec2 aPosition;
+        void main() {
+          gl_Position = vec4(aPosition, 0.0, 1.0);
+        }
+      `;
+
+      // GLSL Fragment Shader: Cybernetic sonar grid, phosphor particles & pulse waves
+      const FS_SOURCE = `
+        precision highp float;
+        uniform vec2 uResolution;
+        uniform float uTime;
+        uniform float uPulse;
+        uniform vec2 uMouse;
+        uniform float uIntensity;
+
+        // Hash helper
+        float hash(vec2 p) {
+          p = fract(p * vec2(123.34, 456.21));
+          p += dot(p, p + 45.32);
+          return fract(p.x * p.y);
+        }
+
+        void main() {
+          if (uIntensity < 0.05) {
+            gl_FragColor = vec4(0.027, 0.039, 0.070, 1.0);
+            return;
+          }
+
+          vec2 uv = gl_FragCoord.xy / uResolution.xy;
+          vec2 p = (gl_FragCoord.xy * 2.0 - uResolution.xy) / min(uResolution.x, uResolution.y);
+
+          // Dark cybernetic deep backdrop
+          vec3 col = vec3(0.027, 0.039, 0.070);
+
+          // Grid coordinates
+          vec2 gridUv = fract(p * 5.0) - 0.5;
+          float gridLine = smoothstep(0.48, 0.5, abs(gridUv.x)) + smoothstep(0.48, 0.5, abs(gridUv.y));
+          col += vec3(0.0, 0.15, 0.22) * gridLine * 0.18 * uIntensity;
+
+          // Polar coordinates for radar sweep
+          float r = length(p);
+          float theta = atan(p.y, p.x);
+          float sweepAngle = mod(uTime * 1.5 - theta, 6.2831853);
+          float sweep = smoothstep(6.0, 0.0, sweepAngle) * exp(-r * 0.85);
+
+          // Concentric target rings
+          float rings = abs(sin(r * 12.0 - uTime * 0.4));
+          rings = smoothstep(0.97, 1.0, rings) * exp(-r * 0.6);
+
+          col += vec3(0.0, 0.8, 1.0) * sweep * 0.22 * uIntensity;
+          col += vec3(0.0, 1.0, 0.55) * rings * 0.12 * uIntensity;
+
+          // Scanning Pulse wave
+          if (uPulse > 0.01) {
+            float wave = abs(r - uPulse * 2.8);
+            float waveEdge = smoothstep(0.12, 0.0, wave);
+            col += vec3(0.0, 1.0, 0.6) * waveEdge * 0.5 * uIntensity;
+          }
+
+          // Floating matrix particles
+          vec2 pGrid = floor(p * 18.0 + vec2(0.0, uTime * 2.0));
+          float pHash = hash(pGrid);
+          if (pHash > 0.94) {
+            float pDist = length(fract(p * 18.0 + vec2(0.0, uTime * 2.0)) - 0.5);
+            float pGlow = smoothstep(0.4, 0.0, pDist);
+            col += vec3(0.0, 0.9, 0.6) * pGlow * 0.25 * uIntensity;
+          }
+
+          // Mouse proximity glow
+          vec2 mPos = (uMouse * 2.0 - 1.0) * vec2(uResolution.x / min(uResolution.x, uResolution.y), uResolution.y / min(uResolution.x, uResolution.y));
+          float mDist = length(p - mPos);
+          col += vec3(0.0, 0.5, 0.8) * exp(-mDist * 3.5) * 0.18 * uIntensity;
+
+          // Subtle vignette
+          col *= clamp(1.4 - length(uv - 0.5) * 1.1, 0.0, 1.0);
+
+          gl_FragColor = vec4(col, 1.0);
+        }
+      `;
+
+      let program, posLoc, uResLoc, uTimeLoc, uPulseLoc, uMouseLoc, uIntensityLoc;
+      let glInit = false;
+
+      function initWebGL() {
+        if (!gl) return;
+        try {
+          const vs = gl.createShader(gl.VERTEX_SHADER);
+          gl.shaderSource(vs, VS_SOURCE);
+          gl.compileShader(vs);
+
+          const fs = gl.createShader(gl.FRAGMENT_SHADER);
+          gl.shaderSource(fs, FS_SOURCE);
+          gl.compileShader(fs);
+
+          program = gl.createProgram();
+          gl.attachShader(program, vs);
+          gl.attachShader(program, fs);
+          gl.linkProgram(program);
+
+          if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+            console.warn("WebGL link error:", gl.getProgramInfoLog(program));
+            return;
+          }
+
+          posLoc = gl.getAttribLocation(program, "aPosition");
+          uResLoc = gl.getUniformLocation(program, "uResolution");
+          uTimeLoc = gl.getUniformLocation(program, "uTime");
+          uPulseLoc = gl.getUniformLocation(program, "uPulse");
+          uMouseLoc = gl.getUniformLocation(program, "uMouse");
+          uIntensityLoc = gl.getUniformLocation(program, "uIntensity");
+
+          const posBuf = gl.createBuffer();
+          gl.bindBuffer(gl.ARRAY_BUFFER, posBuf);
+          gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
+            -1, -1, 1, -1, -1, 1,
+            -1, 1, 1, -1, 1, 1
+          ]), gl.STATIC_DRAW);
+
+          gl.enableVertexAttribArray(posLoc);
+          gl.vertexAttribPointer(posLoc, 2, gl.FLOAT, false, 0, 0);
+
+          glInit = true;
+          resizeCanvas();
+        } catch (e) {
+          console.warn("WebGL initialization skipped:", e);
+        }
+      }
+
+      function resizeCanvas() {
+        if (!canvas) return;
+        const dpr = Math.min(window.devicePixelRatio || 1, 2);
+        const w = window.innerWidth;
+        const h = window.innerHeight;
+        canvas.width = Math.floor(w * dpr);
+        canvas.height = Math.floor(h * dpr);
+        canvas.style.width = w + "px";
+        canvas.style.height = h + "px";
+        if (gl) gl.viewport(0, 0, canvas.width, canvas.height);
+      }
+
+      window.addEventListener("resize", resizeCanvas);
+      window.addEventListener("mousemove", (e) => {
+        mouseX = e.clientX / window.innerWidth;
+        mouseY = 1.0 - (e.clientY / window.innerHeight);
+      });
+
+      let startTime = null;
+      function renderFrame(now) {
+        if (startTime === null) startTime = now;
+        const elapsed = (now - startTime) * 0.001;
+
+        if (scanPulse > 0.0) {
+          scanPulse += 0.025;
+          if (scanPulse > 1.2) scanPulse = 0.0;
+        }
+
+        if (gl && glInit) {
+          gl.useProgram(program);
+          gl.uniform2f(uResLoc, canvas.width, canvas.height);
+          gl.uniform1f(uTimeLoc, elapsed);
+          gl.uniform1f(uPulseLoc, scanPulse);
+          gl.uniform2f(uMouseLoc, mouseX, mouseY);
+          gl.uniform1f(uIntensityLoc, shaderIntensity);
+          gl.drawArrays(gl.TRIANGLES, 0, 6);
+        }
+        requestAnimationFrame(renderFrame);
+      }
+
+      initWebGL();
+      requestAnimationFrame(renderFrame);
+
+      /* =========================================================
+         3. STEGANOGRAPHY ENGINE CORE ALGORITHMS
+         ========================================================= */
+
+      // Unicode Zero-Width character dictionary
+      const ZW = {
+        ZWSP: "\u200B",   // Zero-Width Space
+        ZWNJ: "\u200C",   // Zero-Width Non-Joiner
+        ZWJ:  "\u200D",   // Zero-Width Joiner
+        LRM:  "\u200E",   // Left-to-Right Mark
+        RLM:  "\u200F",   // Right-to-Left Mark
+        BOM:  "\uFEFF",   // Zero-Width No-Break Space / BOM
+        WJ:   "\u2060",   // Word Joiner
+        SHY:  "\u00AD",   // Soft Hyphen
+        ZW_INVIS_PLUS: "\u2062", // Invisible Times
+        ZW_INVIS_SEP:  "\u2063", // Invisible Separator
+        ZW_INVIS_PLUS2:"\u2064"  // Invisible Plus
+      };
+
+      const ALL_ZW_SET = new Set([
+        ZW.ZWSP, ZW.ZWNJ, ZW.ZWJ, ZW.LRM, ZW.RLM, ZW.BOM, ZW.WJ, ZW.SHY,
+        ZW.ZW_INVIS_PLUS, ZW.ZW_INVIS_SEP, ZW.ZW_INVIS_PLUS2
+      ]);
+
+      // Homoglyphs dictionary (Cyrillic, Greek, Math Latin -> standard Latin)
+      const HOMOGLYPHS = {
+        // Cyrillic Lowercase
+        'а':'a', 'с':'c', 'е':'e', 'о':'o', 'р':'p', 'х':'x', 'у':'y', 'і':'i', 'ј':'j', 'ѕ':'s',
+        // Cyrillic Uppercase
+        'А':'A', 'В':'B', 'С':'C', 'Е':'E', 'Н':'H', 'І':'I', 'Ј':'J', 'К':'K', 'М':'M', 'О':'O', 'Р':'P', 'Ѕ':'S', 'Т':'T', 'Х':'X',
+        // Greek
+        'Α':'A', 'Β':'B', 'Ε':'E', 'Ζ':'Z', 'Η':'H', 'Ι':'I', 'Κ':'K', 'Μ':'M', 'Ν':'N', 'Ο':'O', 'Ρ':'P', 'Τ':'T', 'Υ':'Y', 'Χ':'X',
+        'α':'a', 'ο':'o', 'ν':'v'
+      };
+
+      // Bacon's Cipher translation tables (Standard 24-letter and modern 26-letter)
+      const BACON_24 = {
+        "AAAAA": "A", "AAAAB": "B", "AAABA": "C", "AAABB": "D", "AABAA": "E",
+        "AABAB": "F", "AABBA": "G", "AABBB": "H", "ABAAA": "I", "ABAAB": "K",
+        "ABABA": "L", "ABABB": "M", "ABBAA": "N", "ABBAB": "O", "ABBBA": "P",
+        "ABBBB": "Q", "BAAAA": "R", "BAAAB": "S", "BAABA": "T", "BAABB": "U",
+        "BABAA": "W", "BABAB": "X", "BABBA": "Y", "BABBB": "Z"
+      };
+
+      const BACON_26 = {
+        "AAAAA": "A", "AAAAB": "B", "AAABA": "C", "AAABB": "D", "AABAA": "E",
+        "AABAB": "F", "AABBA": "G", "AABBB": "H", "ABAAA": "I", "ABAAB": "J",
+        "ABABA": "K", "ABABB": "L", "ABBAA": "M", "ABBAB": "N", "ABBBA": "O",
+        "ABBBB": "P", "BAAAA": "Q", "BAAAB": "R", "BAABA": "S", "BAABB": "T",
+        "BAABA": "T", "BAABB": "U", "BABAA": "V", "BABAB": "W", "BABBA": "X",
+        "BABBB": "Y", "BBBBB": "Z"
+      };
+
+      // English common words dictionary for heuristic intelligibility evaluation
+      const COMMON_WORDS = new Set([
+        "THE","BE","TO","OF","AND","A","IN","THAT","HAVE","I","IT","FOR","NOT","ON","WITH","HE","AS","YOU",
+        "DO","AT","THIS","BUT","HIS","BY","FROM","THEY","WE","SAY","HER","SHE","OR","AN","WILL","MY","ONE",
+        "ALL","WOULD","THERE","THEIR","WHAT","SO","UP","OUT","IF","ABOUT","WHO","GET","WHICH","GO","ME",
+        "WHEN","MAKE","CAN","LIKE","TIME","NO","JUST","HIM","KNOW","TAKE","PEOPLE","INTO","YEAR","YOUR","GOOD",
+        "SOME","COULD","THEM","SEE","OTHER","THAN","THEN","NOW","LOOK","ONLY","COME","ITS","OVER","THINK","ALSO",
+        "BACK","AFTER","USE","TWO","HOW","OUR","WORK","FIRST","WELL","WAY","EVEN","NEW","WANT","BECAUSE","ANY",
+        "THESE","GIVE","DAY","MOST","US","ATTACK","SECRET","KEY","FLAG","PORTAL","WIRE","FUNDS","MEET","DAWN",
+        "DOCK","AGENT","PASS","PASSWORD","CODE","FLEET","CONVOY","PERSHING","SAILS","JUNE","REPORT","STATUS",
+        "CONFIRM","OPERATION","LOCATION","COORDINATES","DROP","SAFE","MISSION","TARGET","ORDERS","SYSTEM","SECURITY",
+        "NORTH","SOUTH","EAST","WEST","RENDEZVOUS","EXTRACTION","CARRIER","EMERGENCY","PROTOCOL","PACKAGE"
+      ]);
+
+      // Calculate Shannon Entropy of a string
+      function calculateEntropy(str) {
+        if (!str || str.length === 0) return 0;
+        const freq = {};
+        for (let i = 0; i < str.length; i++) {
+          const ch = str[i];
+          freq[ch] = (freq[ch] || 0) + 1;
+        }
+        let entropy = 0;
+        const len = str.length;
+        for (const ch in freq) {
+          const p = freq[ch] / len;
+          entropy -= p * Math.log2(p);
+        }
+        return entropy;
+      }
+
+      // Helper to convert bitstring to UTF-8 / ASCII text
+      function bitsToText(bits) {
+        if (!bits || bits.length < 8) return null;
+        const bytes = [];
+        for (let i = 0; i + 8 <= bits.length; i += 8) {
+          bytes.push(parseInt(bits.slice(i, i + 8), 2));
+        }
+        try {
+          const decoded = new TextDecoder('utf-8', { fatal: false }).decode(new Uint8Array(bytes));
+          // Strip null bytes if trailing
+          return decoded.replace(/\0+$/, '');
+        } catch (e) {
+          return null;
+        }
+      }
+
+      // Helper to evaluate text intelligibility score (0 to 100)
+      function scoreIntelligibility(text) {
+        if (!text || text.length === 0) return 0;
+        let score = 0;
+
+        // 1. Ratio of printable ASCII / UTF-8 chars
+        let printable = 0;
+        for (let i = 0; i < text.length; i++) {
+          const code = text.charCodeAt(i);
+          if ((code >= 32 && code <= 126) || code === 10 || code === 13) {
+            printable++;
+          }
+        }
+        const printableRatio = printable / text.length;
+        if (printableRatio < 0.7) return Math.floor(printableRatio * 20);
+
+        score += Math.floor(printableRatio * 35);
+
+        // 2. Word matching in English dictionary
+        const words = text.toUpperCase().match(/[A-Z0-9_]{2,}/g) || [];
+        if (words.length > 0) {
+          let matched = 0;
+          words.forEach(w => {
+            if (COMMON_WORDS.has(w)) matched++;
+          });
+          const matchRatio = matched / words.length;
+          score += Math.floor(matchRatio * 50);
+          if (matched >= 2) score += 15;
+        }
+
+        // 3. CTF flag / secret keyword boost
+        if (/FLAG\{|KEY:|PASS:|SECRET:|CONFIDENTIAL|AGENT|PERSHING|RENDEZVOUS/i.test(text)) {
+          score += 25;
+        }
+
+        return Math.min(100, Math.max(0, score));
+      }
+
+      /* =========================================================
+         4. MULTI-METHOD DECODING ENGINE
+         ========================================================= */
+      function runAllDecoders(carrier) {
+        const results = [];
+        if (!carrier || carrier.length === 0) return results;
+
+        /* --------------------------------------------------
+           METHOD 1: ZERO-WIDTH INVISIBLE UNICODE CHANNELS
+           -------------------------------------------------- */
+        const foundZw = [];
+        for (let i = 0; i < carrier.length; i++) {
+          if (ALL_ZW_SET.has(carrier[i])) {
+            foundZw.push(carrier[i]);
+          }
+        }
+
+        if (foundZw.length >= 8) {
+          // Channel 1a: ZWSP (0) & ZWNJ (1)
+          let bitsA = "";
+          for (let ch of foundZw) {
+            if (ch === ZW.ZWSP) bitsA += "0";
+            else if (ch === ZW.ZWNJ) bitsA += "1";
+          }
+          if (bitsA.length >= 8) {
+            const txt = bitsToText(bitsA);
+            if (txt) {
+              results.push({
+                method: "Zero-Width Binary (ZWSP=0, ZWNJ=1)",
+                type: "Invisible Unicode",
+                payload: txt,
+                rawBits: bitsA,
+                confidence: scoreIntelligibility(txt),
+                details: `${foundZw.length} zero-width code points decoded via standard binary stream.`
+              });
+            }
+          }
+
+          // Channel 1b: ZWSP (1) & ZWNJ (0) [Inverted]
+          let bitsB = "";
+          for (let ch of foundZw) {
+            if (ch === ZW.ZWSP) bitsB += "1";
+            else if (ch === ZW.ZWNJ) bitsB += "0";
+          }
+          if (bitsB.length >= 8) {
+            const txt = bitsToText(bitsB);
+            if (txt) {
+              results.push({
+                method: "Zero-Width Binary (ZWSP=1, ZWNJ=0) [Inverted]",
+                type: "Invisible Unicode",
+                payload: txt,
+                rawBits: bitsB,
+                confidence: scoreIntelligibility(txt),
+                details: `Inverted binary interpretation of zero-width space characters.`
+              });
+            }
+          }
+
+          // Channel 1c: ZWSP (0) & ZWJ (1)
+          let bitsC = "";
+          for (let ch of foundZw) {
+            if (ch === ZW.ZWSP) bitsC += "0";
+            else if (ch === ZW.ZWJ) bitsC += "1";
+          }
+          if (bitsC.length >= 8) {
+            const txt = bitsToText(bitsC);
+            if (txt) {
+              results.push({
+                method: "Zero-Width Binary (ZWSP=0, ZWJ=1)",
+                type: "Invisible Unicode",
+                payload: txt,
+                rawBits: bitsC,
+                confidence: scoreIntelligibility(txt),
+                details: `Zero-width joiner binary channel.`
+              });
+            }
+          }
+
+          // Channel 1d: Base-4 Quaternary (ZWSP=00, ZWNJ=01, ZWJ=10, BOM=11)
+          let bitsQuat = "";
+          for (let ch of foundZw) {
+            if (ch === ZW.ZWSP) bitsQuat += "00";
+            else if (ch === ZW.ZWNJ) bitsQuat += "01";
+            else if (ch === ZW.ZWJ) bitsQuat += "10";
+            else if (ch === ZW.BOM || ch === ZW.WJ) bitsQuat += "11";
+          }
+          if (bitsQuat.length >= 8) {
+            const txt = bitsToText(bitsQuat);
+            if (txt && scoreIntelligibility(txt) > 30) {
+              results.push({
+                method: "Zero-Width Quaternary (Base-4)",
+                type: "Invisible Unicode",
+                payload: txt,
+                rawBits: bitsQuat,
+                confidence: scoreIntelligibility(txt),
+                details: `4-symbol zero-width stream (2 bits per character).`
+              });
+            }
+          }
+        }
+
+        /* --------------------------------------------------
+           METHOD 2: UNICODE LANGUAGE TAGS (U+E0000..U+E007F)
+           Modern AI watermarks and hidden ASCII bytes
+           -------------------------------------------------- */
+        let tagChars = [];
+        for (let i = 0; i < carrier.length; i++) {
+          const cp = carrier.codePointAt(i);
+          if (cp >= 0xE0000 && cp <= 0xE007F) {
+            // Subtract 0xE0000 to recover original ASCII code
+            tagChars.push(String.fromCharCode(cp - 0xE0000));
+          }
+          // If surrogate pair, skip next index
+          if (cp > 0xFFFF) i++;
+        }
+
+        if (tagChars.length > 0) {
+          const tagMsg = tagChars.join('');
+          results.push({
+            method: "Unicode Language Tag Watermark (U+E0000)",
+            type: "Invisible Tags",
+            payload: tagMsg,
+            rawBits: `${tagChars.length} bytes extracted`,
+            confidence: scoreIntelligibility(tagMsg) + 30,
+            details: `Extracted ${tagChars.length} hidden Unicode Plane 14 tag characters (used in synthetic AI watermarks).`
+          });
+        }
+
+        /* --------------------------------------------------
+           METHOD 3: HOMOGLYPH & CONFUSABLE INFILTRATION
+           -------------------------------------------------- */
+        let homoCount = 0;
+        let homoBinary = "";
+        let homoSwaps = [];
+        for (let i = 0; i < carrier.length; i++) {
+          const ch = carrier[i];
+          if (HOMOGLYPHS[ch]) {
+            homoCount++;
+            homoBinary += "1";
+            homoSwaps.push({ pos: i, char: ch, orig: HOMOGLYPHS[ch] });
+          } else if (/[a-zA-Z]/.test(ch)) {
+            homoBinary += "0";
+          }
+        }
+
+        if (homoCount > 0) {
+          // 3a. Normalized replacement
+          let sanitized = "";
+          for (let i = 0; i < carrier.length; i++) {
+            sanitized += HOMOGLYPHS[carrier[i]] || carrier[i];
+          }
+
+          // 3b. Binary stream from homoglyphs
+          let homoDecoded = null;
+          if (homoBinary.length >= 8) {
+            homoDecoded = bitsToText(homoBinary);
+          }
+
+          results.push({
+            method: "Homoglyph Unicode Scanner",
+            type: "Confusable Characters",
+            payload: homoDecoded ? `[Binary Stream]: ${homoDecoded}\n[Normalized Text]: ${sanitized}` : `[Disguised Letters Found: ${homoCount}]\n[Normalized Text]: ${sanitized}`,
+            rawBits: homoBinary.slice(0, 64) + (homoBinary.length > 64 ? "..." : ""),
+            confidence: homoDecoded ? scoreIntelligibility(homoDecoded) + 20 : (homoCount >= 3 ? 75 : 45),
+            details: `Detected ${homoCount} disguised Cyrillic/Greek characters injected into Latin words.`
+          });
+        }
+
+        /* --------------------------------------------------
+           METHOD 4: WHITESPACE & SNOW STEGANOGRAPHY
+           -------------------------------------------------- */
+        const lines = carrier.split(/\r?\n/);
+        let trailingBits = "";
+        lines.forEach(line => {
+          const match = line.match(/[ \t]+$/);
+          if (match) {
+            const ws = match[0];
+            for (let ch of ws) {
+              if (ch === " ") trailingBits += "0";
+              else if (ch === "\t") trailingBits += "1";
+            }
+          }
+        });
+
+        if (trailingBits.length >= 8) {
+          const snowText = bitsToText(trailingBits);
+          if (snowText) {
+            results.push({
+              method: "Whitespace SNOW (Trailing Spaces & Tabs)",
+              type: "Whitespace Steganography",
+              payload: snowText,
+              rawBits: trailingBits,
+              confidence: scoreIntelligibility(snowText) + 15,
+              details: `Extracted ${trailingBits.length} bits from line-end trailing whitespace modulation.`
+            });
+          }
+        }
+
+        // Inter-word double spacing binary
+        const doubleSpaceBits = [];
+        const wordsWithSpaces = carrier.split(/(\s+)/);
+        for (let i = 1; i < wordsWithSpaces.length; i += 2) {
+          const sp = wordsWithSpaces[i];
+          if (sp === " ") doubleSpaceBits.push("0");
+          else if (sp === "  " || sp.indexOf("\u00A0") !== -1) doubleSpaceBits.push("1");
+        }
+        if (doubleSpaceBits.length >= 8) {
+          const dsBitsStr = doubleSpaceBits.join('');
+          const dsText = bitsToText(dsBitsStr);
+          if (dsText && scoreIntelligibility(dsText) > 20) {
+            results.push({
+              method: "Inter-Word Spacing Binary (Single=0, Double=1)",
+              type: "Whitespace Steganography",
+              payload: dsText,
+              rawBits: dsBitsStr,
+              confidence: scoreIntelligibility(dsText),
+              details: `Extracted bits from single vs double spacing between words.`
+            });
+          }
+        }
+
+        /* --------------------------------------------------
+           METHOD 5: NULL CIPHERS & ACROSTICS (Arrangement)
+           -------------------------------------------------- */
+        const cleanWords = carrier.replace(/[^\w\s]/g, '').split(/\s+/).filter(w => w.length > 0);
+
+        if (cleanWords.length >= 3) {
+          // 5a. First Letter of Each Word (Acrostic)
+          const firstLetters = cleanWords.map(w => w[0]).join('');
+          results.push({
+            method: "Word Acrostic (1st Letter of Each Word)",
+            type: "Null Cipher",
+            payload: firstLetters,
+            rawBits: `Length: ${firstLetters.length} letters`,
+            confidence: scoreIntelligibility(firstLetters),
+            details: `Sequential first letters of every word in the carrier.`
+          });
+
+          // 5b. Second Letter of Each Word (Pershing Cable method)
+          const secondLetters = cleanWords.filter(w => w.length >= 2).map(w => w[1]).join('');
+          if (secondLetters.length >= 4) {
+            results.push({
+              method: "Null Cipher (2nd Letter of Each Word)",
+              type: "Null Cipher",
+              payload: secondLetters,
+              rawBits: `Length: ${secondLetters.length} letters`,
+              confidence: scoreIntelligibility(secondLetters) + 15,
+              details: `Classic 1918 Pershing cable steganography method.`
+            });
+          }
+
+          // 5c. Third Letter of Each Word
+          const thirdLetters = cleanWords.filter(w => w.length >= 3).map(w => w[2]).join('');
+          if (thirdLetters.length >= 4) {
+            results.push({
+              method: "Null Cipher (3rd Letter of Each Word)",
+              type: "Null Cipher",
+              payload: thirdLetters,
+              rawBits: `Length: ${thirdLetters.length} letters`,
+              confidence: scoreIntelligibility(thirdLetters),
+              details: `Third letter extraction from words.`
+            });
+          }
+
+          // 5d. Last Letter of Each Word (Telestich)
+          const lastLetters = cleanWords.map(w => w[w.length - 1]).join('');
+          results.push({
+            method: "Word Telestich (Last Letter of Each Word)",
+            type: "Null Cipher",
+            payload: lastLetters,
+            rawBits: `Length: ${lastLetters.length} letters`,
+            confidence: scoreIntelligibility(lastLetters),
+            details: `Last letters of every word.`
+          });
+
+          // 5e. Line-Based Acrostic (First letter of each line)
+          const lineAcrostic = lines.map(l => l.trim()).filter(l => l.length > 0).map(l => l[0]).join('');
+          if (lineAcrostic.length >= 3) {
+            results.push({
+              method: "Line Acrostic (1st Letter of Each Line)",
+              type: "Null Cipher",
+              payload: lineAcrostic,
+              rawBits: `Lines: ${lines.length}`,
+              confidence: scoreIntelligibility(lineAcrostic) + 10,
+              details: `First character of each text line.`
+            });
+          }
+        }
+
+        /* --------------------------------------------------
+           METHOD 6: BACONIAN CIPHER & CASE MODULATION
+           -------------------------------------------------- */
+        let caseLetters = carrier.replace(/[^a-zA-Z]/g, '');
+        if (caseLetters.length >= 5) {
+          // 6a. Uppercase = A, Lowercase = B
+          let baconA = "";
+          for (let ch of caseLetters) {
+            baconA += (ch === ch.toUpperCase()) ? "A" : "B";
+          }
+          let baconDecA = "";
+          for (let i = 0; i + 5 <= baconA.length; i += 5) {
+            const chunk = baconA.slice(i, i + 5);
+            baconDecA += (BACON_24[chunk] || BACON_26[chunk] || "?");
+          }
+          if (baconDecA && !/^\?+$/.test(baconDecA)) {
+            results.push({
+              method: "Bacon's Cipher (Upper=A, Lower=B)",
+              type: "Case Modulation",
+              payload: baconDecA,
+              rawBits: baconA.slice(0, 40) + "...",
+              confidence: scoreIntelligibility(baconDecA),
+              details: `5-bit Baconian alphabet case modulation.`
+            });
+          }
+
+          // 6b. Uppercase = B, Lowercase = A (Inverted)
+          let baconB = "";
+          for (let ch of caseLetters) {
+            baconB += (ch === ch.toUpperCase()) ? "B" : "A";
+          }
+          let baconDecB = "";
+          for (let i = 0; i + 5 <= baconB.length; i += 5) {
+            const chunk = baconB.slice(i, i + 5);
+            baconDecB += (BACON_24[chunk] || BACON_26[chunk] || "?");
+          }
+          if (baconDecB && !/^\?+$/.test(baconDecB)) {
+            results.push({
+              method: "Bacon's Cipher (Upper=B, Lower=A) [Inverted]",
+              type: "Case Modulation",
+              payload: baconDecB,
+              rawBits: baconB.slice(0, 40) + "...",
+              confidence: scoreIntelligibility(baconDecB),
+              details: `Inverted 5-bit Baconian cipher decoding.`
+            });
+          }
+
+          // 6c. Capital Letters Sequence
+          const capOnly = carrier.match(/[A-Z]/g);
+          if (capOnly && capOnly.length >= 3) {
+            const capStr = capOnly.join('');
+            results.push({
+              method: "Capital Letters Extraction",
+              type: "Case Pattern",
+              payload: capStr,
+              rawBits: `${capOnly.length} capitals`,
+              confidence: scoreIntelligibility(capStr),
+              details: `All uppercase capital letters isolated in order.`
+            });
+          }
+        }
+
+        /* --------------------------------------------------
+           METHOD 7: PUNCTUATION / MORSE CODE MODULATION
+           -------------------------------------------------- */
+        const punctOnly = carrier.replace(/[a-zA-Z0-9\s]/g, '');
+        if (punctOnly.length >= 3) {
+          // Dots and dashes translation
+          const morseDict = {
+            ".-":"A", "-...":"B", "-.-.":"C", "-..":"D", ".":"E", "..-.":"F", "--.":"G", "....":"H",
+            "..":"I", ".---":"J", "-.-":"K", ".-..":"L", "--":"M", "-.":"N", "---":"O", ".--.":"P",
+            "--.-":"Q", ".-.":"R", "...":"S", "-":"T", "..-":"U", "...-":"V", ".--":"W", "-..-":"X",
+            "-.--":"Y", "--..":"Z", "-----":"0", ".----":"1", "..---":"2", "...--":"3", "....-":"4",
+            ".....":"5", "-....":"6", "--...":"7", "---..":"8", "----.":"9"
+          };
+          let morseMapped = "";
+          for (let ch of punctOnly) {
+            if (ch === '.' || ch === ',') morseMapped += ".";
+            else if (ch === '-' || ch === ';' || ch === '!') morseMapped += "-";
+            else if (ch === '/') morseMapped += " ";
+          }
+          if (morseMapped.length >= 3) {
+            results.push({
+              method: "Punctuation Stream Extraction",
+              type: "Punctuation Cipher",
+              payload: punctOnly,
+              rawBits: `Punctuation count: ${punctOnly.length}`,
+              confidence: 25,
+              details: `Extracted punctuation sequence: ${punctOnly.slice(0, 32)}`
+            });
+          }
+        }
+
+        // Sort results by confidence score descending
+        results.sort((a, b) => b.confidence - a.confidence);
+
+        return results;
+      }
+
+      /* =========================================================
+         5. SPECIMENS / PUZZLES LIBRARY
+         ========================================================= */
+
+      // Helper to encode zero-width binary
+      function zwEncodeHelper(cover, secret) {
+        const bytes = new TextEncoder().encode(secret);
+        let bits = "";
+        for (let b of bytes) {
+          let bs = b.toString(2);
+          while (bs.length < 8) bs = "0" + bs;
+          bits += bs;
+        }
+        let zw = "";
+        for (let bit of bits) {
+          zw += (bit === "1" ? ZW.ZWNJ : ZW.ZWSP);
+        }
+        const spaceIdx = cover.indexOf(" ");
+        return spaceIdx !== -1 ? cover.slice(0, spaceIdx) + zw + cover.slice(spaceIdx) : cover + zw;
+      }
+
+      // Helper to encode tag watermark
+      function tagEncodeHelper(cover, secret) {
+        let tags = "";
+        for (let i = 0; i < secret.length; i++) {
+          const cp = 0xE0000 + secret.charCodeAt(i);
+          tags += String.fromCodePoint(cp);
+        }
+        return cover.slice(0, 5) + tags + cover.slice(5);
+      }
+
+      // Helper to encode Baconian cipher
+      function baconEncodeHelper(cover, secret) {
+        const cleanSecret = secret.toUpperCase().replace(/[^A-Z]/g, '');
+        let bits = "";
+        const revBacon = {};
+        for (const k in BACON_26) revBacon[BACON_26[k]] = k;
+        for (let ch of cleanSecret) {
+          bits += revBacon[ch] || "AAAAA";
+        }
+        let out = "", bitIdx = 0;
+        for (let i = 0; i < cover.length; i++) {
+          const ch = cover[i];
+          if (/[a-zA-Z]/.test(ch) && bitIdx < bits.length) {
+            out += (bits[bitIdx] === "A") ? ch.toUpperCase() : ch.toLowerCase();
+            bitIdx++;
+          } else {
+            out += ch.toLowerCase();
+          }
+        }
+        return out;
+      }
+
+      // Helper to encode SNOW trailing spaces
+      function snowEncodeHelper(linesArr, secret) {
+        const bytes = new TextEncoder().encode(secret);
+        let bits = "";
+        for (let b of bytes) {
+          let bs = b.toString(2);
+          while (bs.length < 8) bs = "0" + bs;
+          bits += bs;
+        }
+        // Distribute bits over lines as spaces (0) and tabs (1)
+        const linesPerChunk = Math.ceil(bits.length / linesArr.length);
+        let outLines = [];
+        let bitPtr = 0;
+        for (let line of linesArr) {
+          let chunk = bits.slice(bitPtr, bitPtr + linesPerChunk);
+          bitPtr += linesPerChunk;
+          let ws = "";
+          for (let b of chunk) ws += (b === "1" ? "\t" : " ");
+          outLines.push(line + ws);
+        }
+        return outLines.join("\n");
+      }
+
+      const SPECIMENS = [
+        {
+          id: "pershing",
+          name: "WWI Pershing Cable",
+          category: "Null Cipher",
+          text: "Apparently neutral's protest is thoroughly discounted and ignored. Isman hard hit. Blockade issue affects pretext for embargo on by-products, ejecting suets and vegetable oils."
+        },
+        {
+          id: "zw-whisper",
+          name: "The Invisible Whisper",
+          category: "Zero-Width",
+          text: zwEncodeHelper("Greetings team, the meeting scheduled for tomorrow at 10am has been moved to room 402. Please review the attached slide deck.", "FLAG{QUANTUM_CIPHER_REVEALED}")
+        },
+        {
+          id: "cyrillic-trojan",
+          name: "The Cyrillic Trojan",
+          category: "Homoglyph",
+          // Cyrillic 'а', 'е', 'о', 'р' swapped in
+          text: "Pleаse verify your bаnk аccount credentiаls аt the secυre pоrtal immediately to prevent unauthоrized suspensiоn."
+        },
+        {
+          id: "ai-tag-watermark",
+          name: "AI Watermark Tag",
+          category: "Unicode Tags",
+          text: tagEncodeHelper("This executive summary was generated via neural language synthesis for analytical purposes.", "AI-ORIGIN:DEEP-MIND-VER-9")
+        },
+        {
+          id: "bacon-secret",
+          name: "Bacon's Sonnet",
+          category: "Bacon Cipher",
+          text: baconEncodeHelper("Shall I compare thee to a summers day thou art more lovely and more temperate rough winds do shake the darling buds of may and summers lease hath all too short a date", "SECRET")
+        },
+        {
+          id: "snow-dispatch",
+          name: "SNOW Whitespace",
+          category: "Whitespace",
+          text: snowEncodeHelper([
+            "Field Report Alpha:",
+            "Observation point established on north ridge.",
+            "Target confirmed inside primary compound perimeter.",
+            "Awaiting final executive extraction orders.",
+            "Weather conditions remain overcast with low visibility.",
+            "Telemetry link verified stable on channel seven."
+          ], "GRID:34N118W")
+        },
+        {
+          id: "spy-postcard",
+          name: "The Spy's Postcard",
+          category: "Acrostic",
+          text: "All is calm by the quiet sea.\nBreakfast arrived late this morning.\nUncle Thomas sends his regards.\nRain held off for the village fair.\nEvery evening we stroll the beach.\nDown by the harbor ships gather."
+        },
+        {
+          id: "clean-control",
+          name: "Clean Control (Baseline)",
+          category: "Baseline",
+          text: "Hi Jason, thanks for sending over the project timeline. I will go through the specifications tonight and get back to you by Monday morning."
+        }
+      ];
+
+      /* =========================================================
+         6. UI CONTROLLER & RENDERING
+         ========================================================= */
+      const carrierInput = $('#carrier-input');
+      const scanBtn = $('#scan-trigger-btn');
+      const dropzone = $('#dropzone');
+      const fileInput = $('#file-input');
+      const clearBtn = $('#clear-btn');
+      const pasteBtn = $('#paste-btn');
+      const sfxBtn = $('#sfx-toggle-btn');
+      const sfxStatus = $('#sfx-status');
+      const shaderBtn = $('#shader-mode-btn');
+      const shaderStatus = $('#shader-status');
+      const presetChipsContainer = $('#preset-chips');
+
+      // Telemetry DOM
+      const valEntropy = $('#val-entropy');
+      const valInvis = $('#val-invis');
+      const valHomo = $('#val-homo');
+      const valMatches = $('#val-matches');
+      const charCount = $('#char-count');
+      const wordCount = $('#word-count');
+      const lineCount = $('#line-count');
+      const byteSize = $('#byte-size');
+
+      // Tabs & Panes
+      const tabBtns = $$('.tab-btn');
+      const tabPanes = $$('.tab-pane');
+      const payloadsContainer = $('#payloads-container');
+      const badgePayloads = $('#badge-payloads');
+      const xrayContent = $('#xray-content');
+      const matrixTbody = $('#matrix-tbody');
+
+      // Populate Presets
+      SPECIMENS.forEach((spec, idx) => {
+        const btn = document.createElement('button');
+        btn.className = `chip-btn ${idx === 0 ? 'active-preset' : ''}`;
+        btn.textContent = `${spec.name}`;
+        btn.setAttribute('data-id', spec.id);
+        btn.addEventListener('click', () => {
+          $$('.chip-btn').forEach(b => b.classList.remove('active-preset'));
+          btn.classList.add('active-preset');
+          carrierInput.value = spec.text;
+          playTone(600, 'triangle', 0.06);
+          updateTelemetry();
+          triggerScan();
+        });
+        presetChipsContainer.appendChild(btn);
+      });
+
+      // Update Input Telemetry
+      function updateTelemetry() {
+        const text = carrierInput.value;
+        const len = text.length;
+        const words = (text.trim().match(/\S+/g) || []).length;
+        const lines = text.length > 0 ? text.split(/\r?\n/).length : 0;
+        const bytes = new TextEncoder().encode(text).length;
+
+        charCount.textContent = len;
+        wordCount.textContent = words;
+        lineCount.textContent = lines;
+        byteSize.textContent = `${bytes} bytes`;
+
+        // Shannon Entropy
+        const ent = calculateEntropy(text);
+        valEntropy.textContent = ent.toFixed(2);
+
+        // Invisible characters
+        let invis = 0;
+        for (let i = 0; i < text.length; i++) {
+          const cp = text.codePointAt(i);
+          if (ALL_ZW_SET.has(text[i]) || (cp >= 0xE0000 && cp <= 0xE007F)) {
+            invis++;
+          }
+          if (cp > 0xFFFF) i++;
+        }
+        valInvis.textContent = invis;
+        $('#card-invis').className = `stat-card ${invis > 0 ? 'alert' : ''}`;
+
+        // Homoglyphs
+        let homo = 0;
+        for (let i = 0; i < text.length; i++) {
+          if (HOMOGLYPHS[text[i]]) homo++;
+        }
+        valHomo.textContent = homo;
+        $('#card-homo').className = `stat-card ${homo > 0 ? 'alert' : ''}`;
+      }
+
+      carrierInput.addEventListener('input', updateTelemetry);
+
+      // Perform Deep Scan
+      function triggerScan() {
+        const text = carrierInput.value;
+        if (!text || text.trim().length === 0) {
+          payloadsContainer.innerHTML = `
+            <div class="empty-state">
+              <div class="empty-icon">⚠️</div>
+              <div style="font-family:var(--display); font-weight:700; color:#fff;">NO TEXT SUPPLIED</div>
+              <div>Please paste or type text in the carrier box first.</div>
+            </div>
+          `;
+          valMatches.textContent = '0';
+          badgePayloads.textContent = '0';
+          badgePayloads.className = 'badge-count zero';
+          return;
+        }
+
+        // Trigger visual pulse in shader & play audio sweep
+        scanPulse = 0.05;
+        playScanSfx();
+
+        const inputPanel = $('#input-panel');
+        inputPanel.classList.add('scanning-active');
+        setTimeout(() => inputPanel.classList.remove('scanning-active'), 600);
+
+        const results = runAllDecoders(text);
+
+        // Update matches count
+        valMatches.textContent = results.length;
+        badgePayloads.textContent = results.length;
+        badgePayloads.className = `badge-count ${results.length > 0 ? '' : 'zero'}`;
+
+        // Render Payloads
+        renderPayloads(results);
+
+        // Render X-Ray View
+        renderXRay(text);
+
+        // Render Forensic Matrix
+        renderMatrix(results);
+
+        if (results.length > 0 && results[0].confidence >= 40) {
+          playSuccessChime();
+        }
+      }
+
+      function escapeHtml(str) {
+        return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+      }
+
+      function renderPayloads(results) {
+        if (results.length === 0) {
+          payloadsContainer.innerHTML = `
+            <div class="empty-state">
+              <div class="empty-icon">🛡️</div>
+              <div style="font-family:var(--display); font-weight:700; color:#fff;">NO STEGANOGRAPHIC CHANNELS FOUND</div>
+              <div>The carrier appears clean under all standard text steganography forensic tests.</div>
+            </div>
+          `;
+          return;
+        }
+
+        let html = "";
+        results.forEach((res, idx) => {
+          const confClass = res.confidence >= 65 ? "high-confidence" : (res.confidence >= 35 ? "medium-confidence" : "anomaly");
+          const pillClass = res.confidence >= 65 ? "high" : (res.confidence >= 35 ? "med" : "low");
+          const confLabel = res.confidence >= 65 ? `🎯 ${res.confidence}% MATCH` : (res.confidence >= 35 ? `⚠️ ${res.confidence}% SUSPICIOUS` : `🔍 ${res.confidence}% ANOMALY`);
+
+          html += `
+            <div class="finding-card ${confClass}">
+              <div class="finding-top">
+                <div class="finding-method">
+                  <span>${res.confidence >= 65 ? '✨' : '🔎'}</span> ${escapeHtml(res.method)}
+                </div>
+                <div class="confidence-pill ${pillClass}">
+                  ${confLabel}
+                </div>
+              </div>
+              <div class="finding-desc">${escapeHtml(res.details)}</div>
+              <div class="payload-box ${res.confidence < 30 ? 'raw' : ''}" id="payload-txt-${idx}">${escapeHtml(res.payload)}</div>
+              <div class="finding-meta">
+                <span>Category: ${escapeHtml(res.type)}</span>
+                <button class="copy-btn" data-copy-idx="${idx}">📋 Copy Payload</button>
+              </div>
+            </div>
+          `;
+        });
+
+        payloadsContainer.innerHTML = html;
+
+        // Bind copy buttons
+        $$('.copy-btn', payloadsContainer).forEach(btn => {
+          btn.addEventListener('click', () => {
+            const idx = btn.getAttribute('data-copy-idx');
+            const target = $(`#payload-txt-${idx}`);
+            if (target && navigator.clipboard) {
+              navigator.clipboard.writeText(target.textContent).then(() => {
+                showToast("Payload copied to clipboard");
+                playTone(880, 'sine', 0.08);
+              });
+            }
+          });
+        });
+      }
+
+      function renderXRay(text) {
+        if (!text) {
+          xrayContent.innerHTML = '<span style="color:var(--text-dim)">[ No content ]</span>';
+          return;
+        }
+
+        let out = "";
+        for (let i = 0; i < text.length; i++) {
+          const ch = text[i];
+          const cp = text.codePointAt(i);
+
+          if (ch === ZW.ZWSP) {
+            out += `<span class="xray-pill xray-zwsp" title="U+200B Zero-Width Space (Bit 0)">[ZWSP]</span>`;
+          } else if (ch === ZW.ZWNJ) {
+            out += `<span class="xray-pill xray-zwnj" title="U+200C Zero-Width Non-Joiner (Bit 1)">[ZWNJ]</span>`;
+          } else if (ch === ZW.ZWJ) {
+            out += `<span class="xray-pill xray-zwj" title="U+200D Zero-Width Joiner">[ZWJ]</span>`;
+          } else if (cp >= 0xE0000 && cp <= 0xE007F) {
+            const ascii = String.fromCharCode(cp - 0xE0000);
+            out += `<span class="xray-pill xray-tag" title="U+${cp.toString(16).toUpperCase()} Unicode Tag: '${ascii}'">[TAG:${ascii}]</span>`;
+            if (cp > 0xFFFF) i++;
+          } else if (HOMOGLYPHS[ch]) {
+            out += `<span class="xray-pill xray-homo" title="Homoglyph: '${ch}' (U+${ch.charCodeAt(0).toString(16)}) -> '${HOMOGLYPHS[ch]}'">[${ch}&rarr;${HOMOGLYPHS[ch]}]</span>`;
+          } else if (ch === "\u00A0") {
+            out += `<span class="xray-pill xray-space" title="U+00A0 Non-Breaking Space">[NBSP]</span>`;
+          } else if (ch === "\n") {
+            out += "<br>";
+          } else {
+            out += escapeHtml(ch);
+          }
+        }
+
+        xrayContent.innerHTML = out;
+      }
+
+      function renderMatrix(results) {
+        const rows = [
+          { name: "Zero-Width Binary (ZWSP/ZWNJ)", type: "Invisible Unicode", match: results.find(r => r.method.includes("Zero-Width Binary")) },
+          { name: "Unicode Language Tags (E0000)", type: "Invisible Tags", match: results.find(r => r.method.includes("Unicode Language Tag")) },
+          { name: "Homoglyph Confusables (Cyrillic)", type: "Character Swap", match: results.find(r => r.method.includes("Homoglyph")) },
+          { name: "Whitespace SNOW Trailing", type: "Spacing Stream", match: results.find(r => r.method.includes("Whitespace SNOW")) },
+          { name: "Inter-Word Spacing Binary", type: "Spacing Mod", match: results.find(r => r.method.includes("Inter-Word")) },
+          { name: "Null Cipher (2nd Letters)", type: "Arrangement", match: results.find(r => r.method.includes("2nd Letter")) },
+          { name: "Word Acrostic (1st Letters)", type: "Arrangement", match: results.find(r => r.method.includes("Word Acrostic")) },
+          { name: "Bacon's 5-bit Case Cipher", type: "Case Modulation", match: results.find(r => r.method.includes("Bacon")) },
+          { name: "Punctuation Sequence Stream", type: "Punctuation", match: results.find(r => r.method.includes("Punctuation")) }
+        ];
+
+        let html = "";
+        rows.forEach(row => {
+          const m = row.match;
+          const statusDot = m ? (m.confidence >= 40 ? 'active' : 'active" style="background:var(--amber);box-shadow:0 0 6px var(--amber);') : 'idle';
+          const statusTxt = m ? (m.confidence >= 65 ? `DECODED (${m.confidence}%)` : `ANOMALY (${m.confidence}%)`) : 'CLEAN';
+          const sizeTxt = m ? m.rawBits.slice(0, 20) : '0 bits';
+          const intellTxt = m ? (m.confidence >= 65 ? 'High' : (m.confidence >= 30 ? 'Medium' : 'Low')) : 'None';
+
+          html += `
+            <tr>
+              <td><span class="status-dot ${statusDot}"></span><b>${escapeHtml(row.name)}</b></td>
+              <td style="color:var(--text-dim)">${escapeHtml(row.type)}</td>
+              <td>${escapeHtml(sizeTxt)}</td>
+              <td>${intellTxt}</td>
+              <td style="color:${m && m.confidence >= 65 ? 'var(--green)' : (m ? 'var(--amber)' : 'var(--text-dim)')}; font-weight:700;">${statusTxt}</td>
+            </tr>
+          `;
+        });
+
+        matrixTbody.innerHTML = html;
+      }
+
+      scanBtn.addEventListener('click', triggerScan);
+
+      /* =========================================================
+         7. TABS NAVIGATION & EVENT HANDLERS
+         ========================================================= */
+      tabBtns.forEach(btn => {
+        btn.addEventListener('click', () => {
+          tabBtns.forEach(b => b.classList.remove('active'));
+          tabPanes.forEach(p => p.classList.remove('active'));
+          btn.classList.add('active');
+          const tabId = btn.getAttribute('data-tab');
+          $(`#${tabId}`).classList.add('active');
+          playTone(700, 'sine', 0.05);
+        });
+      });
+
+      // Clear button
+      clearBtn.addEventListener('click', () => {
+        carrierInput.value = '';
+        $$('.chip-btn').forEach(b => b.classList.remove('active-preset'));
+        updateTelemetry();
+        triggerScan();
+        playTone(350, 'square', 0.08);
+      });
+
+      // Paste button
+      pasteBtn.addEventListener('click', () => {
+        if (navigator.clipboard && navigator.clipboard.readText) {
+          navigator.clipboard.readText().then(text => {
+            carrierInput.value = text;
+            updateTelemetry();
+            triggerScan();
+            playTone(550, 'sine', 0.08);
+            showToast("Text pasted from clipboard");
+          }).catch(() => {
+            showToast("Clipboard permission denied");
+          });
+        }
+      });
+
+      // Drag and drop handler
+      dropzone.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        dropzone.classList.add('dragover');
+      });
+
+      dropzone.addEventListener('dragleave', () => {
+        dropzone.classList.remove('dragover');
+      });
+
+      dropzone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        dropzone.classList.remove('dragover');
+        if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+          const file = e.dataTransfer.files[0];
+          const reader = new FileReader();
+          reader.onload = (evt) => {
+            carrierInput.value = evt.target.result;
+            updateTelemetry();
+            triggerScan();
+            showToast(`Loaded file: ${file.name}`);
+          };
+          reader.readAsText(file);
+        }
+      });
+
+      // File upload input
+      fileInput.addEventListener('change', (e) => {
+        if (e.target.files && e.target.files[0]) {
+          const file = e.target.files[0];
+          const reader = new FileReader();
+          reader.onload = (evt) => {
+            carrierInput.value = evt.target.result;
+            updateTelemetry();
+            triggerScan();
+            showToast(`Loaded file: ${file.name}`);
+          };
+          reader.readAsText(file);
+        }
+      });
+
+      // SFX Toggle
+      sfxBtn.addEventListener('click', () => {
+        sfxEnabled = !sfxEnabled;
+        sfxStatus.textContent = sfxEnabled ? "ON" : "MUTED";
+        $('#sfx-icon').textContent = sfxEnabled ? "🔊" : "🔇";
+        if (sfxEnabled) playTone(880, 'sine', 0.08);
+      });
+
+      // Shader Mode Toggle
+      shaderBtn.addEventListener('click', () => {
+        if (shaderIntensity === 1.0) {
+          shaderIntensity = 0.4;
+          shaderStatus.textContent = "SUBTLE";
+        } else if (shaderIntensity === 0.4) {
+          shaderIntensity = 0.0;
+          shaderStatus.textContent = "OFF";
+        } else {
+          shaderIntensity = 1.0;
+          shaderStatus.textContent = "HYPER";
+        }
+        playTone(620, 'triangle', 0.06);
+      });
+
+      /* =========================================================
+         8. STEGANOGRAPHY STUDIO (ENCODER LAB)
+         ========================================================= */
+      const studioMethod = $('#studio-method');
+      const studioSecret = $('#studio-secret');
+      const studioCover = $('#studio-cover');
+      const studioEncodeBtn = $('#studio-encode-btn');
+      const studioSendBtn = $('#studio-send-btn');
+      const studioOutput = $('#studio-output');
+      const studioCopyBtn = $('#studio-copy-btn');
+
+      function executeStudioEncode() {
+        const method = studioMethod.value;
+        const secret = studioSecret.value;
+        const cover = studioCover.value;
+
+        if (!secret || !cover) {
+          studioOutput.textContent = "[ Please provide both a secret payload and cover carrier text. ]";
+          return;
+        }
+
+        let encoded = "";
+        if (method === "zw-binary") {
+          encoded = zwEncodeHelper(cover, secret);
+        } else if (method === "zw-tag") {
+          encoded = tagEncodeHelper(cover, secret);
+        } else if (method === "homoglyph") {
+          // Replace matching latin characters with Cyrillic homoglyphs where possible
+          const homoMap = { 'a':'а', 'c':'с', 'e':'е', 'o':'о', 'p':'р', 'x':'х', 'y':'у', 'i':'і' };
+          let swapped = "";
+          for (let ch of cover) {
+            swapped += (homoMap[ch] && Math.random() < 0.6) ? homoMap[ch] : ch;
+          }
+          encoded = swapped;
+        } else if (method === "bacon") {
+          encoded = baconEncodeHelper(cover, secret);
+        } else if (method === "snow") {
+          const linesArr = cover.split(/\r?\n/);
+          encoded = snowEncodeHelper(linesArr, secret);
+        } else if (method === "acrostic") {
+          const words = secret.toUpperCase().replace(/[^A-Z]/g, '').split('');
+          const lineBank = {
+            A: "All units report nominal status.",
+            B: "Breakfast is served at dawn.",
+            C: "Carrier signal confirmed secure.",
+            D: "Data packets transferred completely.",
+            E: "Every station remains on standby.",
+            F: "Flight plans have been approved.",
+            G: "Guards patrol the perimeter.",
+            H: "Heavy clouds obscure the valley.",
+            I: "Incoming transmission received.",
+            J: "June brings heavy seasonal rainfall.",
+            K: "Keep radio silence until sunrise.",
+            L: "Logistics depot has been replenished.",
+            M: "Maintain current heading.",
+            N: "Night operations proceed as planned.",
+            O: "Orders confirmed by high command.",
+            P: "Personnel report for inspection.",
+            Q: "Quiet settles over the base.",
+            R: "Rendezvous point active at coordinates.",
+            S: "Surveillance monitors remain dark.",
+            T: "Target acquired on primary radar.",
+            U: "Universal codes have been rotated.",
+            V: "Vector defense systems armed.",
+            W: "Weather holds clear tonight.",
+            X: "X-ray scans show clear pathways.",
+            Y: "Yesterday the fleet departed port.",
+            Z: "Zero errors detected in transmission."
+          };
+          encoded = words.map(w => lineBank[w] || `${w} is the secret code word.`).join("\n");
+        }
+
+        studioOutput.textContent = encoded;
+        playTone(920, 'sine', 0.1);
+        showToast("Encoded steganographic text generated!");
+      }
+
+      studioEncodeBtn.addEventListener('click', executeStudioEncode);
+
+      studioSendBtn.addEventListener('click', () => {
+        executeStudioEncode();
+        const text = studioOutput.textContent;
+        carrierInput.value = text;
+        // Switch to Payloads Tab
+        tabBtns[0].click();
+        updateTelemetry();
+        triggerScan();
+        showToast("Loaded encoded text into decoder!");
+      });
+
+      studioCopyBtn.addEventListener('click', () => {
+        const text = studioOutput.textContent;
+        if (navigator.clipboard) {
+          navigator.clipboard.writeText(text).then(() => {
+            showToast("Encoded text copied to clipboard");
+            playTone(880, 'sine', 0.08);
+          });
+        }
+      });
+
+      // Initial scan of first specimen on load
+      carrierInput.value = SPECIMENS[0].text;
+      updateTelemetry();
+      triggerScan();
+
+    })();
+  </script>
+</body>
+</html>
