@@ -1,0 +1,1096 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#0a0c1e">
+<title>STORMGLASS — the frozen tempest</title>
+<style>
+    :root {
+        --joy-radius: 56px;
+    }
+
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+    html, body {
+        margin: 0;
+        padding: 0;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        background: #05060f;
+        overscroll-behavior: none;
+        touch-action: none;
+        -webkit-user-select: none;
+        -moz-user-select: none;
+        user-select: none;
+        -webkit-touch-callout: none;
+        font-family: "Segoe UI", "Trebuchet MS", system-ui, -apple-system, sans-serif;
+    }
+
+    #scene {
+        display: block;
+        width: 100%;
+        height: 100%;
+        position: fixed;
+        inset: 0;
+        touch-action: none;
+        cursor: crosshair;
+    }
+
+    /* ---------- Start overlay ---------- */
+    #overlay {
+        position: fixed;
+        inset: 0;
+        z-index: 40;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: clamp(1rem, 4vw, 2.5rem);
+        background:
+            radial-gradient(ellipse at 50% 120%, rgba(122, 91, 110, 0.35), transparent 55%),
+            rgba(4, 5, 13, 0.62);
+        backdrop-filter: blur(2px);
+        -webkit-backdrop-filter: blur(2px);
+        color: #eef3ff;
+        text-align: center;
+        transition: opacity 0.6s ease;
+    }
+
+    #overlay.hidden { opacity: 0; pointer-events: none; }
+
+    .card {
+        max-width: 560px;
+        padding: clamp(1.4rem, 5vw, 2.6rem) clamp(1.2rem, 5vw, 2.4rem);
+        border-radius: 20px;
+        border: 1px solid rgba(190, 224, 255, 0.28);
+        background: linear-gradient(160deg, rgba(18, 22, 48, 0.92), rgba(8, 10, 24, 0.94));
+        box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+    }
+
+    .eyebrow {
+        letter-spacing: 0.34em;
+        text-transform: uppercase;
+        font-size: 0.72rem;
+        color: #8fd4ff;
+        margin: 0 0 0.4rem;
+    }
+
+    h1 {
+        margin: 0;
+        font-size: clamp(2rem, 9vw, 3.4rem);
+        letter-spacing: 0.12em;
+        font-weight: 800;
+        background: linear-gradient(180deg, #f4f7ff 0%, #9fd0ff 45%, #f5c98a 100%);
+        -webkit-background-clip: text;
+        background-clip: text;
+        -webkit-text-fill-color: transparent;
+        color: transparent;
+        text-shadow: 0 0 34px rgba(120, 190, 255, 0.25);
+    }
+
+    .sub {
+        margin: 0.2rem 0 1rem;
+        font-size: clamp(0.9rem, 3vw, 1.05rem);
+        letter-spacing: 0.22em;
+        text-transform: uppercase;
+        color: #c9d8f2;
+    }
+
+    .lore {
+        margin: 0 auto 1.4rem;
+        max-width: 46ch;
+        font-size: clamp(0.92rem, 2.8vw, 1rem);
+        line-height: 1.65;
+        color: rgba(226, 236, 255, 0.86);
+    }
+
+    .controls {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem 1.2rem;
+        justify-content: center;
+        font-size: 0.82rem;
+        color: rgba(198, 215, 240, 0.82);
+        margin-bottom: 1.5rem;
+    }
+
+    .controls b { color: #ffe3ae; font-weight: 600; }
+
+    #startBtn {
+        appearance: none;
+        border: 1px solid rgba(255, 216, 150, 0.55);
+        background: linear-gradient(180deg, rgba(255, 213, 130, 0.18), rgba(255, 170, 90, 0.08));
+        color: #ffe3ae;
+        font-size: 1rem;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        padding: 0.75rem 1.9rem;
+        border-radius: 999px;
+        cursor: pointer;
+        transition: transform 0.15s ease, background 0.15s ease;
+    }
+
+    #startBtn:hover { transform: translateY(-2px); background: rgba(255, 213, 130, 0.28); }
+    #startBtn:active { transform: translateY(0); }
+
+    /* ---------- HUD hint ---------- */
+    #hint {
+        position: fixed;
+        bottom: max(1rem, env(safe-area-inset-bottom));
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 20;
+        padding: 0.5rem 1rem;
+        border-radius: 999px;
+        font-size: 0.78rem;
+        letter-spacing: 0.06em;
+        color: rgba(222, 234, 255, 0.88);
+        background: rgba(10, 13, 30, 0.55);
+        border: 1px solid rgba(160, 200, 255, 0.22);
+        pointer-events: none;
+        transition: opacity 0.8s ease;
+        text-align: center;
+    }
+
+    /* ---------- Virtual joysticks ---------- */
+    .joy {
+        position: fixed;
+        z-index: 30;
+        width: calc(var(--joy-radius) * 2);
+        height: calc(var(--joy-radius) * 2);
+        touch-action: none;
+        -webkit-user-select: none;
+        user-select: none;
+    }
+
+    .joy--left  { left: max(1.2rem, env(safe-area-inset-left));  bottom: max(1.4rem, env(safe-area-inset-bottom)); }
+    .joy--right { right: max(1.2rem, env(safe-area-inset-right)); bottom: max(1.4rem, env(safe-area-inset-bottom)); }
+
+    .joy-base {
+        position: absolute;
+        inset: 0;
+        border-radius: 50%;
+        border: 2px solid rgba(170, 210, 255, 0.35);
+        background: radial-gradient(circle at 50% 40%, rgba(40, 60, 110, 0.5), rgba(10, 14, 34, 0.55));
+        box-shadow: 0 10px 26px rgba(0, 0, 0, 0.4), inset 0 0 22px rgba(90, 160, 255, 0.15);
+    }
+
+    .joy-thumb {
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        width: 46%;
+        height: 46%;
+        margin: -23% 0 0 -23%;
+        border-radius: 50%;
+        background: radial-gradient(circle at 38% 34%, rgba(235, 248, 255, 0.9), rgba(150, 200, 255, 0.55) 55%, rgba(90, 140, 220, 0.4));
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.45), inset 0 1px 2px rgba(255, 255, 255, 0.8);
+        transition: transform 0.05s linear;
+        will-change: transform;
+    }
+
+    .joy--right .joy-thumb {
+        background: radial-gradient(circle at 38% 34%, rgba(255, 244, 220, 0.9), rgba(250, 200, 130, 0.6) 55%, rgba(210, 150, 80, 0.45));
+    }
+
+    .joy-label {
+        position: absolute;
+        bottom: -1.25rem;
+        left: 0;
+        right: 0;
+        text-align: center;
+        font-size: 0.62rem;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+        color: rgba(200, 216, 245, 0.6);
+        pointer-events: none;
+    }
+
+    @media (max-width: 560px) {
+        :root { --joy-radius: 50px; }
+    }
+</style>
+</head>
+<body>
+    <svg id="scene" aria-label="STORMGLASS game view">
+        <defs>
+            <linearGradient id="skyGrad" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0" stop-color="#04050d"/>
+                <stop offset="0.30" stop-color="#10132e"/>
+                <stop offset="0.55" stop-color="#262050"/>
+                <stop offset="0.78" stop-color="#3c2f68"/>
+                <stop offset="0.90" stop-color="#6d4a6d"/>
+                <stop offset="1" stop-color="#b8825c"/>
+            </linearGradient>
+
+            <linearGradient id="groundGrad" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0" stop-color="#22163a"/>
+                <stop offset="0.25" stop-color="#0e0c24"/>
+                <stop offset="0.6" stop-color="#080819"/>
+                <stop offset="1" stop-color="#04050d"/>
+            </linearGradient>
+
+            <linearGradient id="mistGrad" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0" stop-color="#c9a37a" stop-opacity="0"/>
+                <stop offset="0.5" stop-color="#b8857a" stop-opacity="0.35"/>
+                <stop offset="1" stop-color="#8fb0d8" stop-opacity="0"/>
+            </linearGradient>
+
+            <radialGradient id="glowCyan">
+                <stop offset="0" stop-color="#eafcff" stop-opacity="0.95"/>
+                <stop offset="0.4" stop-color="#8fd8ff" stop-opacity="0.55"/>
+                <stop offset="1" stop-color="#4aa8ff" stop-opacity="0"/>
+            </radialGradient>
+
+            <radialGradient id="glowAmber">
+                <stop offset="0" stop-color="#fff4d0" stop-opacity="0.95"/>
+                <stop offset="0.45" stop-color="#ffd98a" stop-opacity="0.6"/>
+                <stop offset="1" stop-color="#ffb35c" stop-opacity="0"/>
+            </radialGradient>
+
+            <radialGradient id="eyeHalo">
+                <stop offset="0" stop-color="#fff3d6" stop-opacity="0.9"/>
+                <stop offset="0.5" stop-color="#f0c98a" stop-opacity="0.45"/>
+                <stop offset="1" stop-color="#e0a86a" stop-opacity="0"/>
+            </radialGradient>
+
+            <radialGradient id="glowCrack">
+                <stop offset="0" stop-color="#ffd08a" stop-opacity="0.9"/>
+                <stop offset="0.5" stop-color="#ff9c3f" stop-opacity="0.4"/>
+                <stop offset="1" stop-color="#ff7a2f" stop-opacity="0"/>
+            </radialGradient>
+
+            <linearGradient id="stoneGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0" stop-color="#333a5e"/>
+                <stop offset="1" stop-color="#14172c"/>
+            </linearGradient>
+
+            <linearGradient id="ringGrad" x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0" stop-color="#eafcff"/>
+                <stop offset="0.5" stop-color="#8fd4ff"/>
+                <stop offset="1" stop-color="#4aa0ff"/>
+            </linearGradient>
+
+            <linearGradient id="shardGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0" stop-color="#dff6ff" stop-opacity="0.9"/>
+                <stop offset="1" stop-color="#7fc4ff" stop-opacity="0.22"/>
+            </linearGradient>
+
+            <radialGradient id="vignette">
+                <stop offset="0" stop-color="#000000" stop-opacity="0"/>
+                <stop offset="0.62" stop-color="#02030c" stop-opacity="0"/>
+                <stop offset="1" stop-color="#02030c" stop-opacity="0.62"/>
+            </radialGradient>
+        </defs>
+
+        <g id="camera">
+            <g id="sky"></g>
+            <g id="ground"></g>
+            <g id="props"></g>
+        </g>
+        <rect id="vig" x="0" y="0" width="100" height="100" fill="url(#vignette)" pointer-events="none"></rect>
+    </svg>
+
+    <div id="overlay">
+        <div class="card">
+            <p class="eyebrow">a frozen tempest waits</p>
+            <h1>STORMGLASS</h1>
+            <p class="sub">the tempest that forgot how to rage</p>
+            <p class="lore">
+                The sky-weavers bottled the Great Tempest in a sphere of storm-glass to spare the world its fury.
+                The storm did not die &mdash; it <em>stopped</em>. Lightning hangs in the air like cracked crystal,
+                rain waits forever mid-fall, and thunderclouds have sunk into stone. You are a glasswright, walking
+                the endless storm-glass to mend its seams before the tempest remembers how to rage. Listen &mdash;
+                you can hear it dreaming.
+            </p>
+            <div class="controls">
+                <span>Desktop &middot; <b>WASD</b> move &middot; <b>drag</b> look &middot; <b>Q/E</b> turn &middot; <b>Shift</b> sprint</span>
+                <span>Mobile &middot; <b>left stick</b> walk &middot; <b>right stick</b> look</span>
+            </div>
+            <button id="startBtn" type="button">Enter the storm</button>
+        </div>
+    </div>
+
+    <div id="hint">Walk into the frozen storm &mdash; look around, glasswright.</div>
+
+    <div class="joy joy--left" id="joyL">
+        <div class="joy-base"></div>
+        <div class="joy-thumb" id="thumbL"></div>
+        <div class="joy-label">walk</div>
+    </div>
+    <div class="joy joy--right" id="joyR">
+        <div class="joy-base"></div>
+        <div class="joy-thumb" id="thumbR"></div>
+        <div class="joy-label">look</div>
+    </div>
+
+<script>
+(function () {
+    'use strict';
+
+    // ------------------------------------------------------------- config
+    var CELL = 24;        // meters per generation cell
+    var VIEW = 84;        // meters cull distance
+    var NEAR = 0.55;      // near plane (meters)
+    var EYE = 1.7;        // camera height in meters
+    var FOG_NEAR = 46;    // fog starts (meters)
+    var FOG_FAR = 82;     // fog full (meters)
+    var WALK = 4.6;       // m/s
+    var SPRINT = 8.6;
+    var TURN_RATE = 1.9;  // rad/s for keyboard turn
+
+    // ------------------------------------------------------------- dom
+    var svg = document.getElementById('scene');
+    var skyEl = document.getElementById('sky');
+    var groundEl = document.getElementById('ground');
+    var propsEl = document.getElementById('props');
+    var camEl = document.getElementById('camera');
+    var vigEl = document.getElementById('vig');
+    var overlay = document.getElementById('overlay');
+    var hintEl = document.getElementById('hint');
+
+    // ------------------------------------------------------------- state
+    var player = { x: 0, z: 0, yaw: 0, pitch: 0 };
+    var started = false;
+    var w = window.innerWidth;
+    var h = window.innerHeight;
+    var focal = Math.min(w, h) * 0.85;
+    var horizonBase = h * 0.45;
+    var horizonY = horizonBase;
+
+    var bobPhase = 0;
+    var bobY = 0;
+    var bobX = 0;
+    var moved = false;
+
+    var keys = Object.create(null);
+    var joyL = { x: 0, y: 0 };
+    var joyR = { x: 0, y: 0 };
+
+    // ------------------------------------------------------------- rng helpers
+    function hash3(cx, cz, s) {
+        var n = (Math.imul(cx, 374761393) ^ Math.imul(cz, 668265263) ^ Math.imul(s, 1274126177));
+        n = Math.imul(n ^ (n >>> 13), 1274126177);
+        n ^= n >>> 16;
+        return (n >>> 0) / 4294967296;
+    }
+
+    function m32(seed) {
+        var a = (seed * 2654435761) >>> 0;
+        return function () {
+            a = (a + 0x6D2B79F5) >>> 0;
+            var t = Math.imul(a ^ (a >>> 15), 1 | a);
+            t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+            return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+        };
+    }
+
+    function seedInt(seed) { return (seed * 4294967296) >>> 0; }
+
+    function fmt(pts) {
+        return pts.map(function (p) { return p[0].toFixed(2) + ',' + p[1].toFixed(2); }).join(' ');
+    }
+
+    // ------------------------------------------------------------- sky & ground (static backdrop)
+    function buildSkyGround() {
+        var slack = h * 0.35;
+        var H0 = horizonBase;
+
+        // sky
+        var sky = '';
+        sky += '<rect x="0" y="' + (-slack) + '" width="' + w + '" height="' + (H0 + slack * 2) + '" fill="url(#skyGrad)"></rect>';
+
+        // faint stars (sparse, high above)
+        var sr = m32(12345);
+        var stars = '';
+        for (var i = 0; i < 26; i++) {
+            var sx = sr() * w;
+            var sy = sr() * H0 * 0.55;
+            var r = 0.6 + sr() * 1.1;
+            stars += '<circle cx="' + sx.toFixed(1) + '" cy="' + sy.toFixed(1) + '" r="' + r.toFixed(2) + '" fill="rgba(214,230,255,' + (0.15 + sr() * 0.5).toFixed(2) + ')"></circle>';
+        }
+        sky += stars;
+
+        // aurora / distant cloud glow bands
+        var aur = m32(777);
+        for (var a = 0; a < 3; a++) {
+            var ax = aur() * w;
+            var ay = H0 - h * (0.08 + aur() * 0.16);
+            var arx = w * (0.25 + aur() * 0.4);
+            var ary = h * (0.03 + aur() * 0.05);
+            var arot = (aur() - 0.5) * 30;
+            var acol = a % 2 === 0 ? 'rgba(110,160,230,0.14)' : 'rgba(220,160,140,0.10)';
+            sky += '<ellipse cx="' + ax.toFixed(1) + '" cy="' + ay.toFixed(1) + '" rx="' + arx.toFixed(1) + '" ry="' + ary.toFixed(1) + '" fill="' + acol + '" transform="rotate(' + arot.toFixed(1) + ' ' + ax.toFixed(1) + ' ' + ay.toFixed(1) + ')"></ellipse>';
+        }
+
+        // frozen sky lightning
+        sky += skyBolt(w * 0.16, H0 * 0.16, 8, 9, 0.55);
+        sky += skyBolt(w * 0.62, H0 * 0.30, 10, 13, 0.4);
+
+        // the storm-eye (calm hole at the heart of the storm)
+        var ex = w * 0.70;
+        var ey = H0 - h * 0.26;
+        var er = Math.min(w, h) * 0.16;
+        sky += '<g id="eye">';
+        sky += '<circle cx="' + ex.toFixed(1) + '" cy="' + ey.toFixed(1) + '" r="' + (er * 2.4).toFixed(1) + '" fill="url(#eyeHalo)" opacity="0.5"></circle>';
+        sky += '<circle cx="' + ex.toFixed(1) + '" cy="' + ey.toFixed(1) + '" r="' + (er * 1.18).toFixed(1) + '" fill="none" stroke="rgba(255,240,210,0.28)" stroke-width="2"></circle>';
+        sky += '<circle cx="' + ex.toFixed(1) + '" cy="' + ey.toFixed(1) + '" r="' + er.toFixed(1) + '" fill="#f2e6cf" opacity="0.9"></circle>';
+        sky += '<circle cx="' + ex.toFixed(1) + '" cy="' + ey.toFixed(1) + '" r="' + (er * 0.82).toFixed(1) + '" fill="none" stroke="rgba(120,90,60,0.35)" stroke-width="' + (er * 0.06).toFixed(1) + '"></circle>';
+        sky += '<circle cx="' + ex.toFixed(1) + '" cy="' + ey.toFixed(1) + '" r="' + (er * 0.55).toFixed(1) + '" fill="#e8d7b6" opacity="0.55"></circle>';
+        sky += '</g>';
+
+        // horizon mist
+        sky += '<rect x="0" y="' + (H0 - h * 0.07) + '" width="' + w + '" height="' + (h * 0.12) + '" fill="url(#mistGrad)"></rect>';
+
+        skyEl.innerHTML = sky;
+
+        // ground
+        var g = '';
+        g += '<rect x="0" y="' + (H0 - slack) + '" width="' + w + '" height="' + (h - H0 + slack * 2) + '" fill="url(#groundGrad)"></rect>';
+
+        // reflection of the storm-eye (warm smear below horizon)
+        g += '<ellipse cx="' + ex.toFixed(1) + '" cy="' + (H0 + h * 0.05).toFixed(1) + '" rx="' + (er * 1.6).toFixed(1) + '" ry="' + (h * 0.06).toFixed(1) + '" fill="rgba(232,190,140,0.18)"></ellipse>';
+        g += '<rect x="' + (ex - er * 0.5).toFixed(1) + '" y="' + H0.toFixed(1) + '" width="' + (er).toFixed(1) + '" height="' + (h * 0.14).toFixed(1) + '" fill="rgba(220,180,130,0.05)"></rect>';
+
+        // reflection of sky lightning (cold vertical smears)
+        g += '<rect x="' + (w * 0.14).toFixed(1) + '" y="' + H0.toFixed(1) + '" width="' + (w * 0.02).toFixed(1) + '" height="' + (h * 0.2).toFixed(1) + '" fill="rgba(130,190,255,0.06)"></rect>';
+        g += '<rect x="' + (w * 0.61).toFixed(1) + '" y="' + H0.toFixed(1) + '" width="' + (w * 0.024).toFixed(1) + '" height="' + (h * 0.24).toFixed(1) + '" fill="rgba(130,190,255,0.06)"></rect>';
+
+        // frost cracks near the feet (subtle texture)
+        var fr = m32(4242);
+        for (var c = 0; c < 9; c++) {
+            var fx = fr() * w;
+            var fy = h - fr() * h * 0.35;
+            var fl = 40 + fr() * 160;
+            var ang = (fr() - 0.5) * 1.2;
+            var x2 = fx + Math.cos(ang) * fl;
+            var y2 = fy + Math.sin(ang) * fl * 0.4;
+            g += '<line x1="' + fx.toFixed(1) + '" y1="' + fy.toFixed(1) + '" x2="' + x2.toFixed(1) + '" y2="' + y2.toFixed(1) + '" stroke="rgba(170,215,255,0.06)" stroke-width="1"></line>';
+        }
+
+        groundEl.innerHTML = g;
+    }
+
+    function skyBolt(x, y, segs, spread, op) {
+        var r = m32((x * 1000 + y) | 0);
+        var pts = [[x, y]];
+        var cx = x;
+        var cy = y;
+        for (var i = 1; i <= segs; i++) {
+            cx += (r() - 0.5) * spread * 3;
+            cy += (r() * spread * 1.6 + 6);
+            pts.push([cx, cy]);
+        }
+        var m = '';
+        m += '<polyline points="' + fmt(pts) + '" fill="none" stroke="rgba(150,205,255,' + (op * 0.35).toFixed(2) + ')" stroke-width="5" stroke-linejoin="round" stroke-linecap="round"></polyline>';
+        m += '<polyline points="' + fmt(pts) + '" fill="none" stroke="rgba(220,240,255,' + (op * 0.85).toFixed(2) + ')" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round"></polyline>';
+        m += '<polyline points="' + fmt(pts) + '" fill="none" stroke="rgba(255,255,255,' + op.toFixed(2) + ')" stroke-width="0.8" stroke-linejoin="round" stroke-linecap="round"></polyline>';
+        return m;
+    }
+
+    // ------------------------------------------------------------- prop builders
+    function makeBolt(seed, s) {
+        var R = m32(seedInt(seed));
+        var H = (10 + R() * 16) * s;
+        var jitter = 1.4 * s;
+        var pts = [[0, 0]];
+        var x = 0;
+        var n = 5 + Math.floor(R() * 5);
+        for (var i = 1; i <= n; i++) {
+            x += (R() - 0.5) * 2 * jitter;
+            pts.push([x, -(i / n) * H]);
+        }
+        var tipX = x * 0.3;
+        pts.push([tipX, -H]);
+
+        var branches = [];
+        var nb = 1 + Math.floor(R() * 3);
+        for (var b = 0; b < nb; b++) {
+            var idx = 1 + Math.floor(R() * (pts.length - 2));
+            var bx = pts[idx][0];
+            var by = pts[idx][1];
+            var dir = R() < 0.5 ? -1 : 1;
+            var bl = (2 + R() * 4) * s;
+            branches.push([[bx, by], [bx + dir * bl * 0.7, by - bl * 0.5], [bx + dir * bl, by - bl * 0.9]]);
+        }
+
+        var html = '<g><g data-pulse>';
+        html += '<ellipse cx="0" cy="0" rx="' + (2.2 * s).toFixed(2) + '" ry="' + (0.5 * s).toFixed(2) + '" fill="rgba(180,225,255,0.14)"></ellipse>';
+        html += '<polyline points="' + fmt(pts) + '" fill="none" stroke="rgba(120,200,255,0.30)" stroke-width="' + (1.0 * s).toFixed(2) + '" stroke-linejoin="round" stroke-linecap="round"></polyline>';
+        html += '<polyline points="' + fmt(pts) + '" fill="none" stroke="rgba(205,238,255,0.85)" stroke-width="' + (0.45 * s).toFixed(2) + '" stroke-linejoin="round" stroke-linecap="round"></polyline>';
+        html += '<polyline points="' + fmt(pts) + '" fill="none" stroke="#eefaff" stroke-width="' + (0.18 * s).toFixed(2) + '" stroke-linejoin="round" stroke-linecap="round"></polyline>';
+        for (var k = 0; k < branches.length; k++) {
+            html += '<polyline points="' + fmt(branches[k]) + '" fill="none" stroke="rgba(205,238,255,0.7)" stroke-width="' + (0.32 * s).toFixed(2) + '" stroke-linejoin="round" stroke-linecap="round"></polyline>';
+            html += '<polyline points="' + fmt(branches[k]) + '" fill="none" stroke="#eefaff" stroke-width="' + (0.14 * s).toFixed(2) + '" stroke-linejoin="round" stroke-linecap="round"></polyline>';
+        }
+        html += '<circle cx="' + tipX.toFixed(2) + '" cy="' + (-H).toFixed(2) + '" r="' + (0.9 * s).toFixed(2) + '" fill="url(#glowCyan)"></circle>';
+        html += '</g></g>';
+
+        return {
+            html: html,
+            hgt: H,
+            floatAmp: 0,
+            floatSpeed: 0,
+            floatPhase: 0,
+            pulseSpeed: 1.4 + R() * 2.2,
+            pulsePhase: R() * Math.PI * 2
+        };
+    }
+
+    function makeLanterns(seed, s) {
+        var R = m32(seedInt(seed));
+        var count = 3 + Math.floor(R() * 5);
+        var topY = -(5 + R() * 4) * s;
+        var html = '<g><g data-float>';
+
+        var threads = 1 + Math.floor(R() * 2);
+        for (var t = 0; t < threads; t++) {
+            var tx = (R() - 0.5) * 2.4 * s;
+            var ty = -(13 + R() * 7) * s;
+            html += '<line x1="' + tx.toFixed(2) + '" y1="' + ty.toFixed(2) + '" x2="' + tx.toFixed(2) + '" y2="' + topY.toFixed(2) + '" stroke="rgba(170,220,255,0.22)" stroke-width="0.06"></line>';
+        }
+
+        html += '<g data-pulse>';
+        for (var o = 0; o < count; o++) {
+            var ox = (R() - 0.5) * 3.0 * s;
+            var oy = topY + R() * (Math.abs(topY) - 0.5 * s);
+            var warm = R() < 0.55;
+            var rr = (0.26 + R() * 0.4) * s;
+            var grad = warm ? 'glowAmber' : 'glowCyan';
+            var coreCol = warm ? '#fff6dd' : '#eafcff';
+            html += '<circle cx="' + ox.toFixed(2) + '" cy="' + oy.toFixed(2) + '" r="' + (rr * 2.4).toFixed(2) + '" fill="url(#' + grad + ')"></circle>';
+            html += '<circle cx="' + ox.toFixed(2) + '" cy="' + oy.toFixed(2) + '" r="' + (rr * 0.42).toFixed(2) + '" fill="' + coreCol + '" opacity="0.95"></circle>';
+        }
+        html += '</g></g></g>';
+
+        return {
+            html: html,
+            hgt: 20 * s,
+            floatAmp: 0.22 * s,
+            floatSpeed: 0.5 + R() * 0.7,
+            floatPhase: R() * Math.PI * 2,
+            pulseSpeed: 0.8 + R() * 1.4,
+            pulsePhase: R() * Math.PI * 2
+        };
+    }
+
+    function makeStone(seed, s) {
+        var R = m32(seedInt(seed));
+        var floating = R() < 0.62;
+        var size = (2.1 + R() * 3.0) * s;
+        var yBase = floating ? -(3 + R() * 6) * s : -(0.7 + R() * 1.4) * s;
+        var lobes = 3 + Math.floor(R() * 3);
+        var html = '<g><g data-float>';
+
+        if (!floating) {
+            html += '<ellipse cx="0" cy="0" rx="' + (size * 1.4).toFixed(2) + '" ry="' + (size * 0.3).toFixed(2) + '" fill="rgba(0,0,0,0.35)"></ellipse>';
+        }
+
+        var bhtml = '';
+        for (var l = 0; l < lobes; l++) {
+            var lx = (R() - 0.5) * size * 0.9;
+            var ly = yBase + (R() - 0.5) * size * 0.5;
+            var rx = size * (0.5 + R() * 0.5);
+            var ry = size * (0.38 + R() * 0.28);
+            bhtml += '<ellipse cx="' + lx.toFixed(2) + '" cy="' + ly.toFixed(2) + '" rx="' + rx.toFixed(2) + '" ry="' + ry.toFixed(2) + '" fill="url(#stoneGrad)" opacity="0.94"></ellipse>';
+        }
+        html += bhtml;
+
+        // glowing crack
+        var cp = [];
+        var cy2 = yBase - size * 0.55;
+        var cxx = (R() - 0.5) * size * 0.5;
+        var csegs = 4 + Math.floor(R() * 4);
+        for (var ci = 0; ci <= csegs; ci++) {
+            cxx += (R() - 0.5) * size * 0.3;
+            cy2 += (size * 0.9 / csegs);
+            cp.push([cxx, cy2]);
+        }
+        html += '<g data-pulse>';
+        html += '<polyline points="' + fmt(cp) + '" fill="none" stroke="rgba(255,170,90,0.35)" stroke-width="' + (0.5 * s).toFixed(2) + '" stroke-linejoin="round" stroke-linecap="round"></polyline>';
+        html += '<polyline points="' + fmt(cp) + '" fill="none" stroke="rgba(255,224,170,0.9)" stroke-width="' + (0.2 * s).toFixed(2) + '" stroke-linejoin="round" stroke-linecap="round"></polyline>';
+        html += '</g>';
+
+        // frozen rain drips below floating stones
+        if (floating) {
+            var drops = 2 + Math.floor(R() * 4);
+            for (var d = 0; d < drops; d++) {
+                var dx = (R() - 0.5) * size * 1.6;
+                var dy = yBase + size * 0.5;
+                var dl = Math.min((2 + R() * 3) * s, Math.abs(dy) * 0.75);
+                html += '<line x1="' + dx.toFixed(2) + '" y1="' + dy.toFixed(2) + '" x2="' + dx.toFixed(2) + '" y2="' + (dy + dl).toFixed(2) + '" stroke="rgba(170,220,255,0.25)" stroke-width="0.05"></line>';
+            }
+        }
+
+        html += '</g></g>';
+
+        return {
+            html: html,
+            hgt: Math.abs(yBase) + size,
+            floatAmp: floating ? 0.35 * s : 0,
+            floatSpeed: 0.35 + R() * 0.5,
+            floatPhase: R() * Math.PI * 2,
+            pulseSpeed: 0.9 + R() * 1.6,
+            pulsePhase: R() * Math.PI * 2
+        };
+    }
+
+    function makeRing(seed, s) {
+        var R = m32(seedInt(seed));
+        var rr = (3 + R() * 2.5) * s;
+        var cyc = -(rr + 1.4) * s;
+        var html = '<g><g data-pulse>';
+        html += '<ellipse cx="0" cy="0" rx="' + (rr * 1.25).toFixed(2) + '" ry="' + (rr * 0.28).toFixed(2) + '" fill="rgba(150,210,255,0.12)"></ellipse>';
+        html += '<circle cx="0" cy="' + cyc.toFixed(2) + '" r="' + (rr * 1.05).toFixed(2) + '" fill="url(#eyeHalo)" opacity="0.35"></circle>';
+        html += '<circle cx="0" cy="' + cyc.toFixed(2) + '" r="' + rr.toFixed(2) + '" fill="none" stroke="url(#ringGrad)" stroke-width="' + (0.5 * s).toFixed(2) + '"></circle>';
+        html += '<circle cx="0" cy="' + cyc.toFixed(2) + '" r="' + (rr * 0.86).toFixed(2) + '" fill="none" stroke="rgba(210,240,255,0.4)" stroke-width="' + (0.12 * s).toFixed(2) + '"></circle>';
+
+        var swirls = 2 + Math.floor(R() * 2);
+        for (var sw = 0; sw < swirls; sw++) {
+            var sa = (sw / swirls) * Math.PI * 2 + R() * 1.2;
+            var sx = Math.cos(sa) * rr * 1.35;
+            var sy = cyc + Math.sin(sa) * rr * 1.35;
+            var len = rr * (0.5 + R() * 0.7);
+            var sa2 = sa + (R() < 0.5 ? 0.7 : -0.7);
+            var ex2 = sx + Math.cos(sa2) * len;
+            var ey2 = sy + Math.sin(sa2) * len;
+            html += '<path d="M ' + sx.toFixed(2) + ' ' + sy.toFixed(2) + ' Q ' + ((sx + ex2) / 2 + (R() - 0.5) * len).toFixed(2) + ' ' + ((sy + ey2) / 2 - len * 0.6).toFixed(2) + ' ' + ex2.toFixed(2) + ' ' + ey2.toFixed(2) + '" fill="none" stroke="rgba(180,230,255,0.5)" stroke-width="' + (0.14 * s).toFixed(2) + '" stroke-linecap="round"></path>';
+        }
+        html += '</g></g>';
+
+        return {
+            html: html,
+            hgt: (rr * 2 + 1.4) * s,
+            floatAmp: 0,
+            floatSpeed: 0,
+            floatPhase: 0,
+            pulseSpeed: 0.6 + R() * 1.0,
+            pulsePhase: R() * Math.PI * 2
+        };
+    }
+
+    function makeShards(seed, s) {
+        var R = m32(seedInt(seed));
+        var count = 2 + Math.floor(R() * 4);
+        var html = '<g><g data-pulse>';
+        for (var i = 0; i < count; i++) {
+            var x = (R() - 0.5) * 2.2 * s;
+            var sh = (0.5 + R() * 1.6) * s;
+            var wdt = (0.28 + R() * 0.3) * s;
+            var lean = (R() - 0.5) * 0.5 * s;
+            html += '<polygon points="' + x.toFixed(2) + ',' + (-sh).toFixed(2) + ' ' + (x - wdt).toFixed(2) + ',0 ' + (x + wdt).toFixed(2) + ',0" fill="url(#shardGrad)" transform="rotate(' + (lean * 20).toFixed(1) + ' ' + x.toFixed(2) + ' 0)"></polygon>';
+        }
+        html += '<ellipse cx="0" cy="0" rx="' + (1.4 * s).toFixed(2) + '" ry="' + (0.25 * s).toFixed(2) + '" fill="rgba(160,215,255,0.08)"></ellipse>';
+        html += '</g></g>';
+
+        return {
+            html: html,
+            hgt: 2.2 * s,
+            floatAmp: 0,
+            floatSpeed: 0,
+            floatPhase: 0,
+            pulseSpeed: 0.4 + R() * 0.8,
+            pulsePhase: R() * Math.PI * 2
+        };
+    }
+
+    function buildProp(desc) {
+        switch (desc.type) {
+            case 'bolt': return makeBolt(desc.seed, desc.s);
+            case 'lanterns': return makeLanterns(desc.seed, desc.s);
+            case 'stone': return makeStone(desc.seed, desc.s);
+            case 'ring': return makeRing(desc.seed, desc.s);
+            default: return makeShards(desc.seed, desc.s);
+        }
+    }
+
+    // ------------------------------------------------------------- world generation
+    function shardProp(cx, cz, salt) {
+        return {
+            x: cx * CELL + CELL * (0.12 + hash3(cx, cz, salt) * 0.76),
+            z: cz * CELL + CELL * (0.12 + hash3(cx, cz, salt + 1) * 0.76),
+            type: 'shards',
+            seed: hash3(cx, cz, salt + 2),
+            s: 0.7 + hash3(cx, cz, salt + 3) * 1.3
+        };
+    }
+
+    function bigProp(cx, cz, salt) {
+        var t = hash3(cx, cz, salt);
+        var type, s;
+        if (t < 0.34) { type = 'bolt'; s = 0.8 + hash3(cx, cz, salt + 1) * 0.7; }
+        else if (t < 0.6) { type = 'lanterns'; s = 0.9 + hash3(cx, cz, salt + 2) * 0.6; }
+        else if (t < 0.86) { type = 'stone'; s = 0.8 + hash3(cx, cz, salt + 3) * 0.8; }
+        else { type = 'ring'; s = 0.9 + hash3(cx, cz, salt + 4) * 0.5; }
+        return {
+            x: cx * CELL + CELL * (0.16 + hash3(cx, cz, salt + 5) * 0.68),
+            z: cz * CELL + CELL * (0.16 + hash3(cx, cz, salt + 6) * 0.68),
+            type: type,
+            seed: hash3(cx, cz, salt + 7),
+            s: s
+        };
+    }
+
+    function cellProps(cx, cz) {
+        var out = [];
+        out.push(shardProp(cx, cz, 100));
+        if (hash3(cx, cz, 3) < 0.45) out.push(shardProp(cx, cz, 110));
+        if (hash3(cx, cz, 2) < 0.82) out.push(bigProp(cx, cz, 200));
+        if (hash3(cx, cz, 4) < 0.22) out.push(bigProp(cx, cz, 210));
+        return out;
+    }
+
+    var registry = new Map();      // key -> { desc, el, floatEl, pulseEl, hgt, fwd, cellKey }
+    var generatedCells = new Set();
+    var lastOrder = '';
+
+    function cellKey(cx, cz) { return cx + ',' + cz; }
+
+    function makePropElement(desc) {
+        var b = buildProp(desc);
+        var g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        g.innerHTML = b.html;
+        var floatEl = g.querySelector('[data-float]');
+        var pulseEl = g.querySelector('[data-pulse]');
+        return { desc: desc, el: g, floatEl: floatEl, pulseEl: pulseEl, hgt: b.hgt,
+                 floatAmp: b.floatAmp, floatSpeed: b.floatSpeed, floatPhase: b.floatPhase,
+                 pulseSpeed: b.pulseSpeed, pulsePhase: b.pulsePhase };
+    }
+
+    function desiredCells() {
+        var set = new Set();
+        var pcx = Math.floor(player.x / CELL);
+        var pcz = Math.floor(player.z / CELL);
+        var r = Math.ceil(VIEW / CELL) + 1;
+        var limit = VIEW + CELL * 0.75;
+        for (var cx = pcx - r; cx <= pcx + r; cx++) {
+            for (var cz = pcz - r; cz <= pcz + r; cz++) {
+                var ccx = (cx + 0.5) * CELL;
+                var ccz = (cz + 0.5) * CELL;
+                var dx = ccx - player.x;
+                var dz = ccz - player.z;
+                if (dx * dx + dz * dz <= limit * limit) set.add(cellKey(cx, cz));
+            }
+        }
+        return set;
+    }
+
+    function reconcile() {
+        var desired = desiredCells();
+
+        // remove out-of-range (and forget their cells so they regenerate on return)
+        var toForget = new Set();
+        for (var it = registry.entries(), step = it.next(); !step.done; step = it.next()) {
+            var key = step.value[0];
+            var p = step.value[1];
+            if (!desired.has(p.cellKey)) {
+                p.el.parentNode && p.el.parentNode.removeChild(p.el);
+                registry.delete(key);
+                toForget.add(p.cellKey);
+            }
+        }
+        toForget.forEach(function (ck) { generatedCells.delete(ck); });
+
+        // add new cells
+        desired.forEach(function (ck) {
+            if (generatedCells.has(ck)) return;
+            generatedCells.add(ck);
+            var parts = ck.split(',');
+            var cx = +parts[0];
+            var cz = +parts[1];
+            var descs = cellProps(cx, cz);
+            for (var i = 0; i < descs.length; i++) {
+                var key = ck + '|' + i;
+                var p = makePropElement(descs[i]);
+                p.cellKey = ck;
+                registry.set(key, p);
+            }
+        });
+    }
+
+    // ------------------------------------------------------------- update loop
+    function projectAndDraw(t) {
+        var sinY = Math.sin(player.yaw);
+        var cosY = Math.cos(player.yaw);
+        var visible = [];
+        var hidden = [];
+        var margin = 320;
+
+        registry.forEach(function (p, key) {
+            var dx = p.desc.x - player.x;
+            var dz = p.desc.z - player.z;
+            var fwd = dx * sinY + dz * cosY;
+            var right = dx * cosY - dz * sinY;
+
+            if (fwd < NEAR || fwd > FOG_FAR) { hide(p); hidden.push(key); return; }
+
+            var scale = focal / fwd;
+            var sx = w * 0.5 + right * scale;
+            var screenH = p.hgt * scale;
+
+            if (sx < -margin || sx > w + margin || screenH < 2) { hide(p); hidden.push(key); return; }
+
+            var sy = horizonY + EYE * scale;
+            p.el.style.display = '';
+            p.el.setAttribute('transform', 'translate(' + sx.toFixed(1) + ' ' + sy.toFixed(1) + ') scale(' + scale.toFixed(3) + ')');
+
+            var fog = 1;
+            if (fwd > FOG_NEAR) {
+                fog = Math.max(0, 1 - (fwd - FOG_NEAR) / (FOG_FAR - FOG_NEAR));
+            }
+            p.el.style.opacity = fog.toFixed(3);
+
+            if (p.floatEl && p.floatAmp > 0) {
+                p.floatEl.setAttribute('transform', 'translate(0 ' + (Math.sin(t * p.floatSpeed + p.floatPhase) * p.floatAmp).toFixed(3) + ')');
+            }
+            if (p.pulseEl) {
+                p.pulseEl.setAttribute('opacity', (0.72 + 0.28 * Math.sin(t * p.pulseSpeed + p.pulsePhase)).toFixed(3));
+            }
+
+            p.fwd = fwd;
+            visible.push(key);
+        });
+
+        // painter's algorithm: far first, near last; hidden at the end
+        visible.sort(function (a, b) { return registry.get(b).fwd - registry.get(a).fwd; });
+        var order = visible.join(',') + '#' + hidden.join(',');
+        if (order !== lastOrder) {
+            lastOrder = order;
+            for (var i = 0; i < visible.length; i++) propsEl.appendChild(registry.get(visible[i]).el);
+            for (var j = 0; j < hidden.length; j++) propsEl.appendChild(registry.get(hidden[j]).el);
+        }
+    }
+
+    function hide(p) {
+        if (p.el.style.display !== 'none') p.el.style.display = 'none';
+    }
+
+    // ------------------------------------------------------------- input
+    function setupKeyboard() {
+        window.addEventListener('keydown', function (e) {
+            var k = e.key.toLowerCase();
+            if (['arrowup', 'arrowdown', 'arrowleft', 'arrowright', ' '].indexOf(k) >= 0) e.preventDefault();
+            keys[k] = true;
+            if (e.key === 'Shift') keys.shift = true;
+        });
+        window.addEventListener('keyup', function (e) {
+            var k = e.key.toLowerCase();
+            keys[k] = false;
+            if (e.key === 'Shift') keys.shift = false;
+        });
+        window.addEventListener('blur', function () { keys = Object.create(null); });
+    }
+
+    function setupMouse() {
+        var dragging = false;
+        var lastX = 0, lastY = 0;
+
+        svg.addEventListener('pointerdown', function (e) {
+            if (!started || e.pointerType !== 'mouse') return;
+            dragging = true;
+            lastX = e.clientX;
+            lastY = e.clientY;
+            svg.setPointerCapture(e.pointerId);
+        });
+        svg.addEventListener('pointermove', function (e) {
+            if (!dragging) return;
+            var dx = e.clientX - lastX;
+            var dy = e.clientY - lastY;
+            lastX = e.clientX;
+            lastY = e.clientY;
+            player.yaw += dx * 0.0032;
+            player.pitch -= dy * 0.6;
+        });
+        function up(e) {
+            if (dragging) dragging = false;
+        }
+        svg.addEventListener('pointerup', up);
+        svg.addEventListener('pointercancel', up);
+        svg.addEventListener('contextmenu', function (e) { e.preventDefault(); });
+    }
+
+    function Joystick(base, thumb, onMove) {
+        var activeId = null;
+        var center = { x: 0, y: 0 };
+        var radius = 48;
+
+        function getCenter() {
+            var r = base.getBoundingClientRect();
+            center.x = r.left + r.width / 2;
+            center.y = r.top + r.height / 2;
+            radius = r.width / 2 * 0.82;
+        }
+
+        function setThumb(dx, dy) {
+            thumb.style.transform = 'translate(' + dx.toFixed(1) + 'px,' + dy.toFixed(1) + 'px)';
+        }
+
+        base.addEventListener('pointerdown', function (e) {
+            if (activeId !== null) return;
+            activeId = e.pointerId;
+            getCenter();
+            base.setPointerCapture(e.pointerId);
+            e.preventDefault();
+            moveTo(e.clientX, e.clientY);
+        });
+
+        function moveTo(clientX, clientY) {
+            var dx = clientX - center.x;
+            var dy = clientY - center.y;
+            var len = Math.sqrt(dx * dx + dy * dy);
+            if (len > radius) {
+                dx = dx / len * radius;
+                dy = dy / len * radius;
+            }
+            setThumb(dx, dy);
+            onMove(dx / radius, dy / radius);
+        }
+
+        base.addEventListener('pointermove', function (e) {
+            if (e.pointerId !== activeId) return;
+            e.preventDefault();
+            moveTo(e.clientX, e.clientY);
+        });
+
+        function reset(e) {
+            if (e.pointerId !== activeId) return;
+            activeId = null;
+            setThumb(0, 0);
+            onMove(0, 0);
+        }
+        base.addEventListener('pointerup', reset);
+        base.addEventListener('pointercancel', reset);
+    }
+
+    function setupJoysticks() {
+        var coarse = window.matchMedia && (window.matchMedia('(pointer: coarse)').matches || 'ontouchstart' in window);
+        var joyLEl = document.getElementById('joyL');
+        var joyREl = document.getElementById('joyR');
+        if (!coarse) {
+            joyLEl.style.display = 'none';
+            joyREl.style.display = 'none';
+            return;
+        }
+        new Joystick(joyLEl, document.getElementById('thumbL'), function (x, y) {
+            joyL.x = x;
+            joyL.y = y;
+        });
+        new Joystick(joyREl, document.getElementById('thumbR'), function (x, y) {
+            joyR.x = x;
+            joyR.y = y;
+        });
+    }
+
+    // ------------------------------------------------------------- resize
+    function resize() {
+        w = window.innerWidth;
+        h = window.innerHeight;
+        focal = Math.min(w, h) * 0.85;
+        horizonBase = h * 0.45;
+        svg.setAttribute('width', w);
+        svg.setAttribute('height', h);
+        svg.setAttribute('viewBox', '0 0 ' + w + ' ' + h);
+        vigEl.setAttribute('width', w);
+        vigEl.setAttribute('height', h);
+        buildSkyGround();
+        updateGradients();
+    }
+
+    function updateGradients() {
+        document.getElementById('skyGrad').setAttribute('y2', horizonBase);
+        var g = document.getElementById('groundGrad');
+        g.setAttribute('y1', horizonBase);
+        g.setAttribute('y2', h);
+        var m = document.getElementById('mistGrad');
+        m.setAttribute('y1', horizonBase - h * 0.07);
+        m.setAttribute('y2', horizonBase + h * 0.05);
+    }
+
+    // ------------------------------------------------------------- main loop
+    var lastT = performance.now();
+
+    function frame(now) {
+        var dt = Math.min(0.05, (now - lastT) / 1000);
+        lastT = now;
+
+        // pitch clamp
+        var maxUp = h * 0.30;
+        var maxDown = h * 0.27;
+        if (player.pitch > maxUp) player.pitch = maxUp;
+        if (player.pitch < -maxDown) player.pitch = -maxDown;
+        horizonY = horizonBase + player.pitch;
+
+        // input movement
+        var mvF = 0, mvR = 0, turn = 0;
+        if (started) {
+            var f = (keys.w || keys.arrowup ? 1 : 0) - (keys.s || keys.arrowdown ? 1 : 0);
+            var r = (keys.d ? 1 : 0) - (keys.a ? 1 : 0);
+            var tq = (keys.e ? 1 : 0) - (keys.q ? 1 : 0);
+            var ta = (keys.arrowright ? 1 : 0) - (keys.arrowleft ? 1 : 0);
+            mvF = f;
+            mvR = r;
+            turn = tq + ta;
+            // joysticks
+            mvF += -joyL.y;
+            mvR += joyL.x;
+            turn += joyR.x * 1.4;
+            player.pitch -= joyR.y * 120 * dt; // look up/down with right stick
+        }
+
+        // clamp movement vector
+        var mlen = Math.sqrt(mvF * mvF + mvR * mvR);
+        if (mlen > 1) { mvF /= mlen; mvR /= mlen; }
+
+        var speed = keys.shift ? SPRINT : WALK;
+        var sinY = Math.sin(player.yaw);
+        var cosY = Math.cos(player.yaw);
+        player.x += (sinY * mvF + cosY * mvR) * speed * dt;
+        player.z += (cosY * mvF - sinY * mvR) * speed * dt;
+        player.yaw += turn * TURN_RATE * dt;
+
+        moved = Math.abs(mvF) > 0.05 || Math.abs(mvR) > 0.05;
+
+        // head bob
+        if (moved) {
+            bobPhase += dt * (keys.shift ? 11 : 8.2);
+        } else {
+            bobPhase += dt * 1.2; // gentle idle breathing
+        }
+        var bobAmp = moved ? 5.0 : 1.6;
+        bobY = Math.sin(bobPhase * 2) * bobAmp;
+        bobX = Math.cos(bobPhase) * (moved ? 2.4 : 0.7);
+
+        camEl.setAttribute('transform', 'translate(' + bobX.toFixed(2) + ' ' + bobY.toFixed(2) + ')');
+        var pitchShift = player.pitch;
+        skyEl.setAttribute('transform', 'translate(0 ' + pitchShift.toFixed(2) + ')');
+        groundEl.setAttribute('transform', 'translate(0 ' + pitchShift.toFixed(2) + ')');
+
+        reconcile();
+        projectAndDraw(now / 1000);
+
+        requestAnimationFrame(frame);
+    }
+
+    // ------------------------------------------------------------- boot
+    function start() {
+        overlay.classList.add('hidden');
+        started = true;
+        setTimeout(function () { hintEl.style.opacity = '0'; }, 4200);
+    }
+
+    overlay.addEventListener('click', start);
+    overlay.addEventListener('touchend', function (e) { e.preventDefault(); start(); });
+
+    setupKeyboard();
+    setupMouse();
+    setupJoysticks();
+    resize();
+    window.addEventListener('resize', resize);
+    window.addEventListener('orientationchange', function () { setTimeout(resize, 120); });
+
+    requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
