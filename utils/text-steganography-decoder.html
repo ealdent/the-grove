@@ -1143,6 +1143,8 @@
               <div class="legend-item"><span class="legend-badge xray-zwnj">ZWNJ</span> U+200C</div>
               <div class="legend-item"><span class="legend-badge xray-zwj">ZWJ</span> U+200D</div>
               <div class="legend-item"><span class="legend-badge xray-tag">TAG</span> U+E0000+</div>
+              <div class="legend-item"><span class="legend-badge xray-tag">BIDI</span> U+202A-E</div>
+              <div class="legend-item"><span class="legend-badge xray-zwnj">VS</span> U+FE00-F</div>
               <div class="legend-item"><span class="legend-badge xray-homo">HOMO</span> Cyrillic/Greek</div>
               <div class="legend-item"><span class="legend-badge xray-space">NBSP</span> Space Mod</div>
               <div class="legend-item"><span class="legend-badge xray-acrostic">ACRO</span> Null/Acrostic</div>
@@ -1520,6 +1522,48 @@
         ZW.ZW_INVIS_PLUS, ZW.ZW_INVIS_SEP, ZW.ZW_INVIS_PLUS2
       ]);
 
+      // Bidirectional override / isolation control characters
+      const BIDI_CONTROLS = new Set([
+        "\u202A", "\u202B", "\u202C", "\u202D", "\u202E",
+        "\u2066", "\u2067", "\u2068", "\u2069"
+      ]);
+
+      // Unicode Variation Selectors (VS1..VS16)
+      const VARIATION_SELECTORS = [
+        "\uFE00","\uFE01","\uFE02","\uFE03","\uFE04","\uFE05","\uFE06","\uFE07",
+        "\uFE08","\uFE09","\uFE0A","\uFE0B","\uFE0C","\uFE0D","\uFE0E","\uFE0F"
+      ];
+      const VS_SET = new Set(VARIATION_SELECTORS);
+
+      // Unicode space variants used as covert channels (space = 0, NBSP = 1)
+      const SPACE_VARIANTS = {
+        "\u0020": { name: "SPACE", bit: "0" },
+        "\u00A0": { name: "NBSP", bit: "1" },
+        "\u2000": { name: "EN QUAD", bit: "0" },
+        "\u2001": { name: "EM QUAD", bit: "1" },
+        "\u2002": { name: "EN SPACE", bit: "0" },
+        "\u2003": { name: "EM SPACE", bit: "1" },
+        "\u2004": { name: "3-PER-EM", bit: "0" },
+        "\u2005": { name: "4-PER-EM", bit: "1" },
+        "\u2006": { name: "6-PER-EM", bit: "0" },
+        "\u2007": { name: "FIGURE SPACE", bit: "1" },
+        "\u2008": { name: "PUNCT SPACE", bit: "0" },
+        "\u2009": { name: "THIN SPACE", bit: "1" },
+        "\u200A": { name: "HAIR SPACE", bit: "0" },
+        "\u202F": { name: "NARROW NBSP", bit: "1" },
+        "\u205F": { name: "MM SPACE", bit: "0" },
+        "\u3000": { name: "IDEOGRAPHIC SPACE", bit: "1" }
+      };
+
+      // Morse code alphabet (letters + digits)
+      const MORSE_DICT = {
+        ".-":"A", "-...":"B", "-.-.":"C", "-..":"D", ".":"E", "..-.":"F", "--.":"G", "....":"H",
+        "..":"I", ".---":"J", "-.-":"K", ".-..":"L", "--":"M", "-.":"N", "---":"O", ".--.":"P",
+        "--.-":"Q", ".-.":"R", "...":"S", "-":"T", "..-":"U", "...-":"V", ".--":"W", "-..-":"X",
+        "-.--":"Y", "--..":"Z", "-----":"0", ".----":"1", "..---":"2", "...--":"3", "....-":"4",
+        ".....":"5", "-....":"6", "--...":"7", "---..":"8", "----.":"9"
+      };
+
       // Homoglyphs dictionary (Cyrillic, Greek, Math Latin -> standard Latin)
       const HOMOGLYPHS = {
         // Cyrillic Lowercase
@@ -1545,8 +1589,8 @@
         "AABAB": "F", "AABBA": "G", "AABBB": "H", "ABAAA": "I", "ABAAB": "J",
         "ABABA": "K", "ABABB": "L", "ABBAA": "M", "ABBAB": "N", "ABBBA": "O",
         "ABBBB": "P", "BAAAA": "Q", "BAAAB": "R", "BAABA": "S", "BAABB": "T",
-        "BAABA": "T", "BAABB": "U", "BABAA": "V", "BABAB": "W", "BABBA": "X",
-        "BABBB": "Y", "BBBBB": "Z"
+        "BABAA": "U", "BABAB": "V", "BABBA": "W", "BABBB": "X", "BBAAA": "Y",
+        "BBAAB": "Z"
       };
 
       // English common words dictionary for heuristic intelligibility evaluation
@@ -1580,20 +1624,75 @@
         return entropy;
       }
 
-      // Helper to convert bitstring to UTF-8 / ASCII text
+      // Helper to convert bitstring to UTF-8 / ASCII text (with 7-bit ASCII fallback)
+      function printableRatio(text) {
+        if (!text || text.length === 0) return 0;
+        let printable = 0;
+        for (let i = 0; i < text.length; i++) {
+          const code = text.charCodeAt(i);
+          if ((code >= 32 && code <= 126) || code === 9 || code === 10 || code === 13) printable++;
+        }
+        return printable / text.length;
+      }
+
+      // Heuristic: does this decoded string look like real plain text?
+      function looksLikeText(text) {
+        if (!text || text.length < 3) return false;
+        if (printableRatio(text) < 0.85) return false;
+        return !/[\u0000-\u0008\u000B\u000C\u000E-\u001F\uFFFD]/.test(text);
+      }
+
       function bitsToText(bits) {
-        if (!bits || bits.length < 8) return null;
-        const bytes = [];
-        for (let i = 0; i + 8 <= bits.length; i += 8) {
-          bytes.push(parseInt(bits.slice(i, i + 8), 2));
+        if (!bits || bits.length < 7) return null;
+        let utf8 = null;
+        if (bits.length >= 8) {
+          const bytes = [];
+          for (let i = 0; i + 8 <= bits.length; i += 8) {
+            bytes.push(parseInt(bits.slice(i, i + 8), 2));
+          }
+          try {
+            utf8 = new TextDecoder('utf-8', { fatal: false }).decode(new Uint8Array(bytes)).replace(/\0+$/, '');
+          } catch (e) { utf8 = null; }
         }
-        try {
-          const decoded = new TextDecoder('utf-8', { fatal: false }).decode(new Uint8Array(bytes));
-          // Strip null bytes if trailing
-          return decoded.replace(/\0+$/, '');
-        } catch (e) {
-          return null;
+        // 7-bit ASCII fallback (older stego tools used 7-bit encoding)
+        let ascii7 = "";
+        for (let i = 0; i + 7 <= bits.length; i += 7) {
+          ascii7 += String.fromCharCode(parseInt(bits.slice(i, i + 7), 2));
         }
+        ascii7 = ascii7.replace(/\0+$/, '');
+        if (utf8 && printableRatio(utf8) >= 0.75) return utf8;
+        if (ascii7 && printableRatio(ascii7) > printableRatio(utf8 || '')) return ascii7;
+        return utf8 || ascii7 || null;
+      }
+
+      // Decode a Baconian bit stream using a table, choosing the most intelligible
+      // truncation so trailing filler does not garble the recovered tail.
+      function bestBaconDecode(bits, table) {
+        let best = { text: "", score: -1 };
+        for (let len = 5; len <= bits.length; len += 5) {
+          let txt = "";
+          for (let i = 0; i < len; i += 5) {
+            txt += table[bits.slice(i, i + 5)] || "?";
+          }
+          const s = scoreIntelligibility(txt);
+          if (s > best.score) best = { text: txt, score: s };
+        }
+        return best;
+      }
+
+      // Greedy longest-match Morse decoder for streams without letter separators.
+      function greedyMorseDecode(stream) {
+        let out = "", i = 0;
+        while (i < stream.length) {
+          let matched = null;
+          for (let len = 5; len >= 1; len--) {
+            const tok = stream.slice(i, i + len);
+            if (MORSE_DICT[tok]) { matched = tok; break; }
+          }
+          if (!matched) { out += "?"; i++; }
+          else { out += MORSE_DICT[matched]; i += matched.length; }
+        }
+        return out;
       }
 
       // Helper to evaluate text intelligibility score (0 to 100)
@@ -1786,10 +1885,11 @@
             sanitized += HOMOGLYPHS[carrier[i]] || carrier[i];
           }
 
-          // 3b. Binary stream from homoglyphs
+          // 3b. Binary stream from homoglyphs (only if it decodes to meaningful text)
           let homoDecoded = null;
           if (homoBinary.length >= 8) {
-            homoDecoded = bitsToText(homoBinary);
+            const cand = bitsToText(homoBinary);
+            if (cand && scoreIntelligibility(cand) >= 35) homoDecoded = cand;
           }
 
           results.push({
@@ -1799,6 +1899,44 @@
             rawBits: homoBinary.slice(0, 64) + (homoBinary.length > 64 ? "..." : ""),
             confidence: homoDecoded ? scoreIntelligibility(homoDecoded) + 20 : (homoCount >= 3 ? 75 : 45),
             details: `Detected ${homoCount} disguised Cyrillic/Greek characters injected into Latin words.`
+          });
+        }
+
+        /* 3c. Broad Unicode confusable detection via NFKC normalization */
+        const nfkcNorm = carrier.normalize('NFKC');
+        let confusableCount = 0;
+        const confusableMap = new Map();
+        for (let i = 0; i < carrier.length; i++) {
+          const cp = carrier.codePointAt(i);
+          const ch = String.fromCodePoint(cp);
+          const norm = ch.normalize('NFKC');
+          if (norm !== ch && norm.length === 1 && !/[\s\u0000-\u001F]/.test(norm)) {
+            confusableCount++;
+            confusableMap.set(ch, norm);
+          }
+          if (cp > 0xFFFF) i++;
+        }
+        let confBits = "";
+        for (let i = 0; i < carrier.length; i++) {
+          const cp = carrier.codePointAt(i);
+          const ch = String.fromCodePoint(cp);
+          if (confusableMap.has(ch)) confBits += "1";
+          else if (ch.length === 1 && /[a-zA-Z]/.test(ch)) confBits += "0";
+          if (cp > 0xFFFF) i++;
+        }
+        if (confusableCount > 0) {
+          let confDecoded = null;
+          if (confBits.length >= 8) {
+            const cand = bitsToText(confBits);
+            if (cand && scoreIntelligibility(cand) >= 35) confDecoded = cand;
+          }
+          results.push({
+            method: "Unicode Confusable Normalizer (NFKC)",
+            type: "Confusable Characters",
+            payload: confDecoded ? `[Binary Stream]: ${confDecoded}\n[Normalized Text]: ${nfkcNorm}` : `[Confusables Found: ${confusableCount}]\n[Normalized Text]: ${nfkcNorm}`,
+            rawBits: confBits.slice(0, 64) + (confBits.length > 64 ? "..." : ""),
+            confidence: confDecoded ? scoreIntelligibility(confDecoded) + 20 : (confusableCount >= 3 ? 70 : 45),
+            details: `Detected ${confusableCount} characters that change under Unicode NFKC normalization (full-width, mathematical alphanumerics, etc.).`
           });
         }
 
@@ -1855,6 +1993,66 @@
           }
         }
 
+        // Leading whitespace binary (mirror of SNOW trailing)
+        let leadingBits = "";
+        lines.forEach(line => {
+          const match = line.match(/^[ \t]+/);
+          if (match) {
+            for (let ch of match[0]) {
+              leadingBits += (ch === " ") ? "0" : "1";
+            }
+          }
+        });
+        if (leadingBits.length >= 8) {
+          const leadText = bitsToText(leadingBits);
+          if (leadText && scoreIntelligibility(leadText) > 20) {
+            results.push({
+              method: "Whitespace SNOW (Leading Spaces & Tabs)",
+              type: "Whitespace Steganography",
+              payload: leadText,
+              rawBits: leadingBits,
+              confidence: scoreIntelligibility(leadText) + 15,
+              details: `Extracted ${leadingBits.length} bits from line-start leading whitespace.`
+            });
+          }
+        }
+
+        // Unicode space-variant binary (normal space = 0, NBSP = 1)
+        let spaceVariantBits = "";
+        let exoticSpaces = 0;
+        for (let i = 0; i < carrier.length; i++) {
+          const ch = carrier[i];
+          if (ch === "\u0020") spaceVariantBits += "0";
+          else if (ch === "\u00A0") spaceVariantBits += "1";
+          else if (SPACE_VARIANTS[ch] && ch !== "\u0020" && ch !== "\u00A0") {
+            exoticSpaces++;
+            spaceVariantBits += SPACE_VARIANTS[ch].bit;
+          }
+        }
+        if (exoticSpaces > 0) {
+          results.push({
+            method: "Exotic Unicode Space Characters",
+            type: "Whitespace Steganography",
+            payload: `${exoticSpaces} non-standard space code points detected`,
+            rawBits: `Count: ${exoticSpaces}`,
+            confidence: exoticSpaces >= 4 ? 55 : 35,
+            details: `Detected ${exoticSpaces} exotic Unicode space variants (em/en/thin/hair spaces) that could carry covert data.`
+          });
+        }
+        if (spaceVariantBits.length >= 8) {
+          const svText = bitsToText(spaceVariantBits);
+          if (svText && scoreIntelligibility(svText) > 20) {
+            results.push({
+              method: "Unicode Space Variant Binary (Space=0, NBSP=1)",
+              type: "Whitespace Steganography",
+              payload: svText,
+              rawBits: spaceVariantBits,
+              confidence: scoreIntelligibility(svText) + 10,
+              details: `Extracted bits from normal vs non-breaking spaces across the carrier.`
+            });
+          }
+        }
+
         /* --------------------------------------------------
            METHOD 5: NULL CIPHERS & ACROSTICS (Arrangement)
            -------------------------------------------------- */
@@ -1875,14 +2073,17 @@
           // 5b. Second Letter of Each Word (Pershing Cable method)
           const secondLetters = cleanWords.filter(w => w.length >= 2).map(w => w[1]).join('');
           if (secondLetters.length >= 4) {
-            results.push({
-              method: "Null Cipher (2nd Letter of Each Word)",
-              type: "Null Cipher",
-              payload: secondLetters,
-              rawBits: `Length: ${secondLetters.length} letters`,
-              confidence: scoreIntelligibility(secondLetters) + 15,
-              details: `Classic 1918 Pershing cable steganography method.`
-            });
+            const secondScore = scoreIntelligibility(secondLetters);
+            if (secondScore >= 40) {
+              results.push({
+                method: "Null Cipher (2nd Letter of Each Word)",
+                type: "Null Cipher",
+                payload: secondLetters,
+                rawBits: `Length: ${secondLetters.length} letters`,
+                confidence: secondScore + 15,
+                details: `Classic 1918 Pershing cable steganography method.`
+              });
+            }
           }
 
           // 5c. Third Letter of Each Word
@@ -1921,54 +2122,108 @@
               details: `First character of each text line.`
             });
           }
+
+          // 5f. Diagonal Null Cipher (Nth letter of Nth word)
+          const diagonal = cleanWords.map((w, idx) => w[idx] || "").join('');
+          if (diagonal.length >= 4) {
+            const ds = scoreIntelligibility(diagonal);
+            if (ds >= 30) {
+              results.push({
+                method: "Diagonal Null Cipher (Nth letter of Nth word)",
+                type: "Null Cipher",
+                payload: diagonal,
+                rawBits: `Length: ${diagonal.length} letters`,
+                confidence: ds,
+                details: `Extracts the Nth letter from the Nth word (a common skip-pattern null cipher).`
+              });
+            }
+          }
+
+          // 5g. Fixed-stride extraction (every 2nd..5th character)
+          for (let stride = 2; stride <= 5; stride++) {
+            let extracted = "";
+            for (let i = stride - 1; i < carrier.length; i += stride) {
+              extracted += carrier[i];
+            }
+            const stripped = extracted.replace(/[^a-zA-Z]/g, '');
+            const ss = scoreIntelligibility(stripped);
+            if (stripped.length >= 4 && ss >= 40) {
+              results.push({
+                method: `Fixed-Stride Extraction (every ${stride}th char)`,
+                type: "Null Cipher",
+                payload: extracted,
+                rawBits: `Stride: ${stride}, length ${extracted.length}`,
+                confidence: ss,
+                details: `Every ${stride}th character extracted from the carrier.`
+              });
+            }
+          }
         }
 
         /* --------------------------------------------------
            METHOD 6: BACONIAN CIPHER & CASE MODULATION
            -------------------------------------------------- */
-        let caseLetters = carrier.replace(/[^a-zA-Z]/g, '');
+        const caseLetters = carrier.replace(/[^a-zA-Z]/g, '');
         if (caseLetters.length >= 5) {
-          // 6a. Uppercase = A, Lowercase = B
-          let baconA = "";
+          // Build raw case streams (both polarities)
+          const caseStreams = [
+            { label: "Bacon's Cipher (Upper=A, Lower=B)", bits: "" },
+            { label: "Bacon's Cipher (Upper=B, Lower=A) [Inverted]", bits: "" }
+          ];
           for (let ch of caseLetters) {
-            baconA += (ch === ch.toUpperCase()) ? "A" : "B";
-          }
-          let baconDecA = "";
-          for (let i = 0; i + 5 <= baconA.length; i += 5) {
-            const chunk = baconA.slice(i, i + 5);
-            baconDecA += (BACON_24[chunk] || BACON_26[chunk] || "?");
-          }
-          if (baconDecA && !/^\?+$/.test(baconDecA)) {
-            results.push({
-              method: "Bacon's Cipher (Upper=A, Lower=B)",
-              type: "Case Modulation",
-              payload: baconDecA,
-              rawBits: baconA.slice(0, 40) + "...",
-              confidence: scoreIntelligibility(baconDecA),
-              details: `5-bit Baconian alphabet case modulation.`
-            });
+            const upper = (ch === ch.toUpperCase());
+            caseStreams[0].bits += upper ? "A" : "B";
+            caseStreams[1].bits += upper ? "B" : "A";
           }
 
-          // 6b. Uppercase = B, Lowercase = A (Inverted)
-          let baconB = "";
+          caseStreams.forEach(cs => {
+            const dec26 = bestBaconDecode(cs.bits, BACON_26);
+            const dec24 = bestBaconDecode(cs.bits, BACON_24);
+            if (dec26.text && dec26.score > 0 && !/^\?+$/.test(dec26.text) && dec26.text.replace(/\?/g, '').length >= 2) {
+              results.push({
+                method: `${cs.label} (26-letter)`,
+                type: "Case Modulation",
+                payload: dec26.text,
+                rawBits: cs.bits.slice(0, 40) + (cs.bits.length > 40 ? "..." : ""),
+                confidence: dec26.score,
+                details: `5-bit Baconian alphabet case modulation (modern 26-letter table).`
+              });
+            }
+            if (dec24.text && dec24.score > 0 && !/^\?+$/.test(dec24.text) && dec24.text !== dec26.text && dec24.text.replace(/\?/g, '').length >= 2) {
+              results.push({
+                method: `${cs.label} (24-letter)`,
+                type: "Case Modulation",
+                payload: dec24.text,
+                rawBits: cs.bits.slice(0, 40) + (cs.bits.length > 40 ? "..." : ""),
+                confidence: dec24.score,
+                details: `5-bit Baconian alphabet case modulation (classical 24-letter table, I/J & U/V merged).`
+              });
+            }
+          });
+
+          // Raw binary case modulation (8-bit ASCII), both polarities
+          const caseBin = [
+            { label: "Binary Case Modulation (Upper=1, Lower=0)", bits: "" },
+            { label: "Binary Case Modulation (Upper=0, Lower=1) [Inverted]", bits: "" }
+          ];
           for (let ch of caseLetters) {
-            baconB += (ch === ch.toUpperCase()) ? "B" : "A";
+            const upper = (ch === ch.toUpperCase());
+            caseBin[0].bits += upper ? "1" : "0";
+            caseBin[1].bits += upper ? "0" : "1";
           }
-          let baconDecB = "";
-          for (let i = 0; i + 5 <= baconB.length; i += 5) {
-            const chunk = baconB.slice(i, i + 5);
-            baconDecB += (BACON_24[chunk] || BACON_26[chunk] || "?");
-          }
-          if (baconDecB && !/^\?+$/.test(baconDecB)) {
-            results.push({
-              method: "Bacon's Cipher (Upper=B, Lower=A) [Inverted]",
-              type: "Case Modulation",
-              payload: baconDecB,
-              rawBits: baconB.slice(0, 40) + "...",
-              confidence: scoreIntelligibility(baconDecB),
-              details: `Inverted 5-bit Baconian cipher decoding.`
-            });
-          }
+          caseBin.forEach(cb => {
+            const txt = bitsToText(cb.bits);
+            if (txt && scoreIntelligibility(txt) >= 35) {
+              results.push({
+                method: cb.label,
+                type: "Case Modulation",
+                payload: txt,
+                rawBits: cb.bits.slice(0, 40) + (cb.bits.length > 40 ? "..." : ""),
+                confidence: scoreIntelligibility(txt),
+                details: `Every letter's case treated as a single binary digit, decoded as 8-bit ASCII.`
+              });
+            }
+          });
 
           // 6c. Capital Letters Sequence
           const capOnly = carrier.match(/[A-Z]/g);
@@ -1983,37 +2238,206 @@
               details: `All uppercase capital letters isolated in order.`
             });
           }
+
+          // 6d. Vowel / Consonant binary channel
+          let vcBits = "";
+          for (let ch of caseLetters) {
+            vcBits += /[aeiou]/i.test(ch) ? "0" : "1";
+          }
+          const vcText = bitsToText(vcBits);
+          if (vcText && scoreIntelligibility(vcText) >= 35) {
+            results.push({
+              method: "Vowel/Consonant Binary (Vowel=0, Consonant=1)",
+              type: "Phonetic Modulation",
+              payload: vcText,
+              rawBits: vcBits.slice(0, 40) + (vcBits.length > 40 ? "..." : ""),
+              confidence: scoreIntelligibility(vcText),
+              details: `Letters mapped to bits by vowel vs consonant, decoded as 8-bit ASCII.`
+            });
+          }
         }
 
         /* --------------------------------------------------
-           METHOD 7: PUNCTUATION / MORSE CODE MODULATION
+           METHOD 7: MORSE CODE MODULATION (PUNCTUATION & WORD LENGTH)
            -------------------------------------------------- */
-        const punctOnly = carrier.replace(/[a-zA-Z0-9\s]/g, '');
-        if (punctOnly.length >= 3) {
-          // Dots and dashes translation
-          const morseDict = {
-            ".-":"A", "-...":"B", "-.-.":"C", "-..":"D", ".":"E", "..-.":"F", "--.":"G", "....":"H",
-            "..":"I", ".---":"J", "-.-":"K", ".-..":"L", "--":"M", "-.":"N", "---":"O", ".--.":"P",
-            "--.-":"Q", ".-.":"R", "...":"S", "-":"T", "..-":"U", "...-":"V", ".--":"W", "-..-":"X",
-            "-.--":"Y", "--..":"Z", "-----":"0", ".----":"1", "..---":"2", "...--":"3", "....-":"4",
-            ".....":"5", "-....":"6", "--...":"7", "---..":"8", "----.":"9"
-          };
-          let morseMapped = "";
-          for (let ch of punctOnly) {
-            if (ch === '.' || ch === ',') morseMapped += ".";
-            else if (ch === '-' || ch === ';' || ch === '!') morseMapped += "-";
-            else if (ch === '/') morseMapped += " ";
+        // 7a. Punctuation-derived Morse (., - with spaces/slashes as letter separators)
+        let morseStream = "";
+        for (let ch of carrier) {
+          if (ch === '.' || ch === '\u2024' || ch === '\u00B7') morseStream += ".";
+          else if (ch === '-' || ch === '\u2013' || ch === '\u2014' || ch === '_') morseStream += "-";
+          else if (ch === '/' || ch === '|' || ch === '\\' || ch === ' ' || ch === '\t' || ch === '\n') morseStream += " ";
+        }
+        const morseTokens = morseStream.trim().split(/\s+/);
+        const hasLongToken = morseTokens.some(t => t.length >= 2);
+        if (morseTokens.length >= 2 && hasLongToken) {
+          let morseDecoded = "";
+          for (let tok of morseTokens) {
+            morseDecoded += MORSE_DICT[tok] || "?";
           }
-          if (morseMapped.length >= 3) {
+          if (morseDecoded && !/^\?+$/.test(morseDecoded)) {
             results.push({
-              method: "Punctuation Stream Extraction",
-              type: "Punctuation Cipher",
-              payload: punctOnly,
-              rawBits: `Punctuation count: ${punctOnly.length}`,
-              confidence: 25,
-              details: `Extracted punctuation sequence: ${punctOnly.slice(0, 32)}`
+              method: "Morse Code (Punctuation Dots/Dashes)",
+              type: "Morse / Punctuation",
+              payload: morseDecoded,
+              rawBits: `Morse stream: ${morseStream.slice(0, 48)}`,
+              confidence: scoreIntelligibility(morseDecoded) + 20,
+              details: `Decoded dot/dash punctuation into Morse code letters.`
             });
           }
+        }
+
+        // 7b. Word-length Morse (even length = dash, odd = dot)
+        const morseWords = carrier.split(/[^\w]+/).filter(w => w.length > 0);
+        if (morseWords.length >= 6) {
+          let wlStream = morseWords.map(w => (w.length % 2 === 0) ? "-" : ".").join("");
+          const wlDecoded = greedyMorseDecode(wlStream);
+          const wlScore = scoreIntelligibility(wlDecoded);
+          if (wlDecoded && wlDecoded.length >= 4 && wlScore >= 40) {
+            results.push({
+              method: "Morse Code (Word Length Odd/Even)",
+              type: "Morse / Word Length",
+              payload: wlDecoded,
+              rawBits: `Word symbols: ${morseWords.length}`,
+              confidence: wlScore,
+              details: `Mapped each word's length parity to a Morse symbol and decoded the resulting stream.`
+            });
+          }
+        }
+
+        // 7c. Raw punctuation stream (low-confidence anomaly signal)
+        const punctOnly = carrier.replace(/[a-zA-Z0-9\s]/g, '');
+        if (punctOnly.length >= 3) {
+          results.push({
+            method: "Punctuation Stream Extraction",
+            type: "Punctuation Cipher",
+            payload: punctOnly,
+            rawBits: `Punctuation count: ${punctOnly.length}`,
+            confidence: 25,
+            details: `Extracted punctuation sequence: ${punctOnly.slice(0, 32)}`
+          });
+        }
+
+        /* --------------------------------------------------
+           METHOD 8: EMBEDDED ENCODINGS (Base64 / Hex / Binary)
+           -------------------------------------------------- */
+        const embeds = [];
+
+        // 8a. Base64 blobs
+        const b64Re = /[A-Za-z0-9+/]{8,}={0,2}/g;
+        let bm;
+        while ((bm = b64Re.exec(carrier)) !== null) {
+          const cand = bm[0];
+          if (cand.length % 4 !== 0) continue;
+          const before = bm.index > 0 ? carrier[bm.index - 1] : "";
+          const after = bm.index + cand.length < carrier.length ? carrier[bm.index + cand.length] : "";
+          if (/[A-Za-z0-9+/=]/.test(before) || /[A-Za-z0-9+/=]/.test(after)) continue;
+          try {
+            const bin = atob(cand);
+            const bytes = new Uint8Array(bin.length);
+            for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+            const txt = new TextDecoder('utf-8', { fatal: false }).decode(bytes);
+            if (looksLikeText(txt)) {
+              embeds.push({
+                method: "Embedded Base64 Blob",
+                type: "Encoding",
+                payload: txt,
+                rawBits: `${cand.length} base64 chars`,
+                confidence: Math.max(scoreIntelligibility(txt), 40),
+                details: `Decoded a base64-encoded payload hidden in plain text.`
+              });
+            }
+          } catch (e) {}
+        }
+
+        // 8b. Hexadecimal blobs
+        const hexRe = /[0-9a-fA-F]{8,}/g;
+        let hm;
+        while ((hm = hexRe.exec(carrier)) !== null) {
+          const cand = hm[0];
+          if (cand.length % 2 !== 0) continue;
+          const before = hm.index > 0 ? carrier[hm.index - 1] : "";
+          const after = hm.index + cand.length < carrier.length ? carrier[hm.index + cand.length] : "";
+          if (/[0-9a-fA-F]/.test(before) || /[0-9a-fA-F]/.test(after)) continue;
+          const bytes = [];
+          let ok = true;
+          for (let i = 0; i + 1 < cand.length; i += 2) {
+            const b = parseInt(cand.slice(i, i + 2), 16);
+            if (isNaN(b)) { ok = false; break; }
+            bytes.push(b);
+          }
+          if (!ok) continue;
+          const txt = new TextDecoder('utf-8', { fatal: false }).decode(new Uint8Array(bytes));
+          if (looksLikeText(txt)) {
+            embeds.push({
+              method: "Embedded Hexadecimal Blob",
+              type: "Encoding",
+              payload: txt,
+              rawBits: `${cand.length} hex chars`,
+              confidence: Math.max(scoreIntelligibility(txt), 40),
+              details: `Decoded a hexadecimal-encoded payload hidden in plain text.`
+            });
+          }
+        }
+
+        // 8c. Binary strings (concatenated 8-bit runs)
+        const binRe = /[01]{8,}/g;
+        const binTokens = [];
+        let bim;
+        while ((bim = binRe.exec(carrier)) !== null) binTokens.push(bim[0]);
+        if (binTokens.length > 0) {
+          const allBits = binTokens.join('');
+          const txt = bitsToText(allBits);
+          if (looksLikeText(txt)) {
+            embeds.push({
+              method: "Embedded Binary String",
+              type: "Encoding",
+              payload: txt,
+              rawBits: `${allBits.length} bits`,
+              confidence: Math.max(scoreIntelligibility(txt), 40),
+              details: `Decoded binary digits found in the carrier text.`
+            });
+          }
+        }
+
+        embeds.forEach(e => results.push(e));
+
+        /* --------------------------------------------------
+           METHOD 9: UNICODE VARIATION SELECTORS & BIDI CONTROLS
+           -------------------------------------------------- */
+        let vsBits = "";
+        let vsCount = 0;
+        let bidiCount = 0;
+        for (let i = 0; i < carrier.length; i++) {
+          const ch = carrier[i];
+          if (VS_SET.has(ch)) {
+            vsCount++;
+            if (ch === "\uFE0E") vsBits += "0";       // VS15
+            else if (ch === "\uFE0F") vsBits += "1";  // VS16
+          }
+          if (BIDI_CONTROLS.has(ch)) bidiCount++;
+        }
+        if (vsBits.length >= 8) {
+          const vsText = bitsToText(vsBits);
+          if (vsText && scoreIntelligibility(vsText) >= 25) {
+            results.push({
+              method: "Variation Selector Binary (VS15=0, VS16=1)",
+              type: "Invisible Unicode",
+              payload: vsText,
+              rawBits: vsBits,
+              confidence: scoreIntelligibility(vsText) + 10,
+              details: `Extracted ${vsCount} Unicode variation selectors as a binary channel.`
+            });
+          }
+        }
+        if (bidiCount > 0) {
+          results.push({
+            method: "Bidirectional Control Character Detection",
+            type: "Invisible Formatting",
+            payload: `${bidiCount} bidi override/isolation control characters present`,
+            rawBits: `Count: ${bidiCount}`,
+            confidence: bidiCount >= 4 ? 55 : 30,
+            details: `Detected ${bidiCount} bidi control characters (U+202A\u2013U+202E / U+2066\u2013U+2069), often used to spoof text direction or hide payloads.`
+          });
         }
 
         // Sort results by confidence score descending
@@ -2228,7 +2652,7 @@
         let invis = 0;
         for (let i = 0; i < text.length; i++) {
           const cp = text.codePointAt(i);
-          if (ALL_ZW_SET.has(text[i]) || (cp >= 0xE0000 && cp <= 0xE007F)) {
+          if (ALL_ZW_SET.has(text[i]) || BIDI_CONTROLS.has(text[i]) || VS_SET.has(text[i]) || (cp >= 0xE0000 && cp <= 0xE007F)) {
             invis++;
           }
           if (cp > 0xFFFF) i++;
@@ -2358,10 +2782,17 @@
           return;
         }
 
+        const zwLabels = {
+          [ZW.LRM]: "LRM", [ZW.RLM]: "RLM", [ZW.BOM]: "BOM", [ZW.WJ]: "WJ",
+          [ZW.SHY]: "SHY", [ZW.ZW_INVIS_PLUS]: "INV×", [ZW.ZW_INVIS_SEP]: "INV|",
+          [ZW.ZW_INVIS_PLUS2]: "INV+"
+        };
+
         let out = "";
         for (let i = 0; i < text.length; i++) {
           const ch = text[i];
           const cp = text.codePointAt(i);
+          const fullCh = String.fromCodePoint(cp);
 
           if (ch === ZW.ZWSP) {
             out += `<span class="xray-pill xray-zwsp" title="U+200B Zero-Width Space (Bit 0)">[ZWSP]</span>`;
@@ -2371,16 +2802,37 @@
             out += `<span class="xray-pill xray-zwj" title="U+200D Zero-Width Joiner">[ZWJ]</span>`;
           } else if (cp >= 0xE0000 && cp <= 0xE007F) {
             const ascii = String.fromCharCode(cp - 0xE0000);
-            out += `<span class="xray-pill xray-tag" title="U+${cp.toString(16).toUpperCase()} Unicode Tag: '${ascii}'">[TAG:${ascii}]</span>`;
+            out += `<span class="xray-pill xray-tag" title="U+${cp.toString(16).toUpperCase()} Unicode Tag: '${escapeHtml(ascii)}'">[TAG:${escapeHtml(ascii)}]</span>`;
             if (cp > 0xFFFF) i++;
+          } else if (BIDI_CONTROLS.has(ch)) {
+            out += `<span class="xray-pill xray-tag" title="U+${cp.toString(16).toUpperCase()} Bidirectional Control">[BIDI:${cp.toString(16).toUpperCase()}]</span>`;
+          } else if (VS_SET.has(ch)) {
+            const vsLabel = (ch === "\uFE0E") ? "VS15" : (ch === "\uFE0F" ? "VS16" : `VS${cp - 0xFE00 + 1}`);
+            out += `<span class="xray-pill xray-zwnj" title="U+${cp.toString(16).toUpperCase()} Variation Selector">[${vsLabel}]</span>`;
           } else if (HOMOGLYPHS[ch]) {
-            out += `<span class="xray-pill xray-homo" title="Homoglyph: '${ch}' (U+${ch.charCodeAt(0).toString(16)}) -> '${HOMOGLYPHS[ch]}'">[${ch}&rarr;${HOMOGLYPHS[ch]}]</span>`;
-          } else if (ch === "\u00A0") {
-            out += `<span class="xray-pill xray-space" title="U+00A0 Non-Breaking Space">[NBSP]</span>`;
+            out += `<span class="xray-pill xray-homo" title="Homoglyph: '${escapeHtml(ch)}' (U+${ch.charCodeAt(0).toString(16)}) -> '${escapeHtml(HOMOGLYPHS[ch])}'">[${escapeHtml(ch)}&rarr;${escapeHtml(HOMOGLYPHS[ch])}]</span>`;
+          } else if (zwLabels[ch]) {
+            out += `<span class="xray-pill xray-zwsp" title="U+${cp.toString(16).toUpperCase()} Invisible Format Character">[${zwLabels[ch]}]</span>`;
+          } else if (SPACE_VARIANTS[ch] && ch !== "\u0020") {
+            out += `<span class="xray-pill xray-space" title="U+${cp.toString(16).toUpperCase()} ${SPACE_VARIANTS[ch].name}">[${SPACE_VARIANTS[ch].name}]</span>`;
+          } else if (cp > 0xFFFF) {
+            const norm = fullCh.normalize('NFKC');
+            if (norm !== fullCh && norm.length === 1) {
+              out += `<span class="xray-pill xray-homo" title="NFKC Confusable: '${fullCh}' (U+${cp.toString(16).toUpperCase()}) -> '${norm}'">[${fullCh}&rarr;${norm}]</span>`;
+              i++;
+            } else {
+              out += escapeHtml(fullCh);
+              i++;
+            }
           } else if (ch === "\n") {
             out += "<br>";
           } else {
-            out += escapeHtml(ch);
+            const norm = ch.normalize('NFKC');
+            if (norm !== ch && norm.length === 1) {
+              out += `<span class="xray-pill xray-homo" title="NFKC Confusable: '${escapeHtml(ch)}' (U+${cp.toString(16).toUpperCase()}) -> '${escapeHtml(norm)}'">[${escapeHtml(ch)}&rarr;${escapeHtml(norm)}]</span>`;
+            } else {
+              out += escapeHtml(ch);
+            }
           }
         }
 
@@ -2391,30 +2843,49 @@
         const rows = [
           { name: "Zero-Width Binary (ZWSP/ZWNJ)", type: "Invisible Unicode", match: results.find(r => r.method.includes("Zero-Width Binary")) },
           { name: "Unicode Language Tags (E0000)", type: "Invisible Tags", match: results.find(r => r.method.includes("Unicode Language Tag")) },
+          { name: "Variation Selector Binary", type: "Invisible Unicode", match: results.find(r => r.method.includes("Variation Selector")) },
+          { name: "Bidi Control Characters", type: "Invisible Formatting", match: results.find(r => r.method.includes("Bidirectional")) },
           { name: "Homoglyph Confusables (Cyrillic)", type: "Character Swap", match: results.find(r => r.method.includes("Homoglyph")) },
+          { name: "Confusable Normalizer (NFKC)", type: "Character Swap", match: results.find(r => r.method.includes("Confusable Normalizer")) },
           { name: "Whitespace SNOW Trailing", type: "Spacing Stream", match: results.find(r => r.method.includes("Whitespace SNOW")) },
           { name: "Inter-Word Spacing Binary", type: "Spacing Mod", match: results.find(r => r.method.includes("Inter-Word")) },
+          { name: "Unicode Space Variants", type: "Spacing Mod", match: results.find(r => r.method.includes("Space Variant") || r.method.includes("Exotic Unicode Space")) },
           { name: "Null Cipher (2nd Letters)", type: "Arrangement", match: results.find(r => r.method.includes("2nd Letter")) },
           { name: "Word Acrostic (1st Letters)", type: "Arrangement", match: results.find(r => r.method.includes("Word Acrostic")) },
+          { name: "Diagonal / Stride Null", type: "Arrangement", match: results.find(r => r.method.includes("Diagonal") || r.method.includes("Fixed-Stride")) },
           { name: "Bacon's 5-bit Case Cipher", type: "Case Modulation", match: results.find(r => r.method.includes("Bacon")) },
-          { name: "Punctuation Sequence Stream", type: "Punctuation", match: results.find(r => r.method.includes("Punctuation")) }
+          { name: "Binary Case Modulation", type: "Case Modulation", match: results.find(r => r.method.includes("Binary Case")) },
+          { name: "Vowel/Consonant Binary", type: "Phonetic Modulation", match: results.find(r => r.method.includes("Vowel/Consonant")) },
+          { name: "Morse Code (Punctuation)", type: "Punctuation", match: results.find(r => r.method.includes("Morse Code")) },
+          { name: "Embedded Encodings (B64/Hex/Bin)", type: "Encoding", match: results.find(r => r.method.includes("Embedded")) }
         ];
 
         let html = "";
         rows.forEach(row => {
           const m = row.match;
-          const statusDot = m ? (m.confidence >= 40 ? 'active' : 'active" style="background:var(--amber);box-shadow:0 0 6px var(--amber);') : 'idle';
-          const statusTxt = m ? (m.confidence >= 65 ? `DECODED (${m.confidence}%)` : `ANOMALY (${m.confidence}%)`) : 'CLEAN';
-          const sizeTxt = m ? m.rawBits.slice(0, 20) : '0 bits';
-          const intellTxt = m ? (m.confidence >= 65 ? 'High' : (m.confidence >= 30 ? 'Medium' : 'Low')) : 'None';
+          let dotClass = 'idle', dotStyle = '';
+          let statusTxt = 'CLEAN', statusColor = 'var(--text-dim)', intellTxt = 'None', sizeTxt = '0 bits';
+          if (m) {
+            if (m.confidence >= 65) {
+              dotClass = 'active'; statusTxt = `DECODED (${m.confidence}%)`; statusColor = 'var(--green)';
+            } else if (m.confidence >= 40) {
+              dotClass = 'active'; dotStyle = 'background:var(--amber);box-shadow:0 0 6px var(--amber);';
+              statusTxt = `SUSPECT (${m.confidence}%)`; statusColor = 'var(--amber)';
+            } else {
+              dotClass = 'active'; dotStyle = 'background:var(--purple);box-shadow:0 0 6px var(--purple);';
+              statusTxt = `ANOMALY (${m.confidence}%)`; statusColor = 'var(--purple)';
+            }
+            intellTxt = m.confidence >= 65 ? 'High' : (m.confidence >= 30 ? 'Medium' : 'Low');
+            sizeTxt = (m.rawBits || '').slice(0, 20);
+          }
 
           html += `
             <tr>
-              <td><span class="status-dot ${statusDot}"></span><b>${escapeHtml(row.name)}</b></td>
+              <td><span class="status-dot ${dotClass}" style="${dotStyle}"></span><b>${escapeHtml(row.name)}</b></td>
               <td style="color:var(--text-dim)">${escapeHtml(row.type)}</td>
               <td>${escapeHtml(sizeTxt)}</td>
               <td>${intellTxt}</td>
-              <td style="color:${m && m.confidence >= 65 ? 'var(--green)' : (m ? 'var(--amber)' : 'var(--text-dim)')}; font-weight:700;">${statusTxt}</td>
+              <td style="color:${statusColor}; font-weight:700;">${statusTxt}</td>
             </tr>
           `;
         });
