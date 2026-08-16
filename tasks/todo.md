@@ -1,3 +1,36 @@
+# SynthID-Text Explanation Revision (2026-08-16)
+
+## Task packet
+
+- Goal: make every chapter easier to follow and show, step by step, how SynthID changes next-token selection and later reconstructs the signal.
+- Project: The Grove (personal).
+- Repo/path: `learn/synthid-text.html`, `learn/synthid-text.js`, focused page tests, and this task record.
+- Constraints: use Jason's concise professional voice; define each symbol before using it; keep the published mechanism and production-detector boundary accurate; preserve all existing interactions and visual behavior.
+- Non-goals: changing the simulation algorithm, claiming Gemini verification, adding more visual effects, or broad redesign work.
+- Proof required: content assertions for the complete generation chain, full repository tests, JavaScript syntax checks, source/anchor checks, desktop/mobile browser proof, and clean exact-path commit/push.
+- Risks: adding math without explaining it, making the vectorized update sound like a separate algorithm, or implying the sampler deterministically chooses the highest-probability word.
+
+## Plan
+
+- [x] Read the selected Jason writing profile, banned-pattern list, project lessons, current tutorial, and tests.
+- [x] Add focused content tests for the full logit-to-token-to-detector explanation.
+- [x] Rewrite chapter and lab descriptions in plain language.
+- [x] Add a worked mathematical path connecting softmax, keyed g-values, reweighting, sampling, context updates, and detection.
+- [x] Run repository, syntax, content, responsive, and browser verification.
+- [x] Complete a skeptical review, document results, commit the intended files, and push `origin/main`.
+
+## Review
+
+- Rewrote every chapter and live result message to define its terms before use and state what each control, equation, chart, and score shows.
+- Added a six-stage generation path from logits through emitted token and updated context, followed by a direct bridge to detector reconstruction.
+- Expanded the published vector recurrence with symbol definitions, exact g = 1 and g = 0 multipliers, transferred probability mass, normalization, and a worked fruit calculation. The page distinguishes the literal bracket from its vectorized alternative and makes the final categorical draw explicit.
+- Clarified the non-distortion average, single-layer collision equation, repeated-context mask, 0.5 null expectation, threshold tradeoffs, base-rate arithmetic, edit propagation, and the boundary between the teaching model and Gemini verification.
+- Added a focused page contract for generation-stage order and mathematical anchors. `node --test tests/*.test.mjs` passes 24/24; both tutorial modules pass `node --check`; `git diff --check` passes.
+- Browser proof at 1280px/DPR2 and 390px showed zero horizontal page overflow, the six-stage grid changing from three columns to one, labelled inputs, 44px buttons/ranges, a live Three.js canvas, and correct updated lab copy. All local modules, Three.js, and fonts returned HTTP 200; console warnings/errors and failed network requests were empty.
+- Independent editorial and scientific reviewers found no remaining release blockers after the recurrence, expectation, and sliding-context corrections.
+
+---
+
 # SynthID-Text Interactive Learning Experience (2026-08-15)
 
 ## Task packet

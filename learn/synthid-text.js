@@ -84,11 +84,11 @@ function renderProbabilityLab() {
     if (label) label.textContent = percent(probability);
   });
   const description = temperature < 0.85
-    ? 'concentrated: the model has less room to carry a signal'
+    ? 'concentrated, so fewer alternatives can carry watermark evidence'
     : temperature > 1.15
-      ? 'spread out: more alternatives are available'
+      ? 'spread out, so more alternatives can carry watermark evidence'
       : 'close to the base distribution';
-  summary.textContent = `At T = ${temperature.toFixed(2)}, the menu is ${description}. Mango holds ${percent(adjusted[0])} of the mass.`;
+  summary.textContent = `At T = ${temperature.toFixed(2)}, the distribution is ${description}. Mango has ${percent(adjusted[0])} probability, and all four probabilities still total 100%.`;
 }
 
 function setupProbabilityLab() {
@@ -110,7 +110,7 @@ function renderGValues() {
       </span>
     </div>`;
   }).join('');
-  $('#g-summary').textContent = `${selectedKey === MATCHING_KEY ? 'Key A' : 'Key B'} and this context generate twelve reproducible bits. They are teaching bits, not Google’s private production values.`;
+  $('#g-summary').textContent = `${selectedKey === MATCHING_KEY ? 'Key A' : 'Key B'} and this context produce three bits per token. The same inputs reproduce these bits; changing the key or context recalculates them. These are educational values, not Google’s private values.`;
 }
 
 function setupGValueLab() {
@@ -154,7 +154,7 @@ function renderTournament() {
   </div>`).join('');
   board.innerHTML = candidateColumn + roundColumns;
   $('#tournament-seed').textContent = `Run ${String(tournamentRun).padStart(2, '0')}`;
-  $('#tournament-result').textContent = `${result.winner.label} wins with layer evidence ${result.winnerEvidence.join(' · ')}. Re-run to sample a new eight-candidate bracket; duplicates are expected.`;
+  $('#tournament-result').textContent = `${result.winner.label} is emitted after surviving with g-values ${result.winnerEvidence.join(', ')}. Another run starts with eight new draws, so it may emit a different token.`;
 }
 
 function setupTournamentLab() {
@@ -183,9 +183,16 @@ function renderVectorStage() {
   $('#vector-stage-label').textContent = vectorStage === 0 ? 'Base distribution' : `After g-layer ${vectorStage}`;
   $('#vector-back').disabled = vectorStage === 0;
   $('#vector-next').disabled = vectorStage === G_LAYERS.length;
-  $('#vector-summary').textContent = vectorStage === 0
-    ? 'Start with p = (.50, .30, .15, .05). No layer has acted yet.'
-    : `Layer ${vectorStage} used g = (${G_LAYERS[vectorStage - 1].join(', ')}). This fixed secret pattern shifts this one step; averaging over randomized patterns restores the base marginals.`;
+  if (vectorStage === 0) {
+    $('#vector-summary').textContent = 'Start with p⁽⁰⁾ = (.50, .30, .15, .05). This is the distribution entering the watermark sampler.';
+  } else {
+    const previous = vectorDistributions()[vectorStage - 1];
+    const bits = G_LAYERS[vectorStage - 1];
+    const markedMass = previous.reduce((sum, probability, index) => sum + probability * bits[index], 0);
+    const markedFactor = 2 - markedMass;
+    const unmarkedFactor = 1 - markedMass;
+    $('#vector-summary').textContent = `Layer ${vectorStage}: G = ${markedMass.toFixed(3)}. Tokens with g = 1 are multiplied by ${markedFactor.toFixed(3)}; tokens with g = 0 are multiplied by ${unmarkedFactor.toFixed(3)}. The four updated probabilities total 1.`;
+  }
 }
 
 function setupVectorLab() {
@@ -218,7 +225,7 @@ function renderMarginals(trials) {
     <span class="compare-value">${percent(result.observed[index])}</span>
   </div>`).join('');
   const maximumError = Math.max(...result.observed.map((value, index) => Math.abs(value - result.expected[index])));
-  $('#marginal-summary').textContent = `Largest gap from the original probabilities: ${percent(maximumError, 2)}. Monte Carlo noise shrinks as the trial count grows; this is an illustration, not a proof.`;
+  $('#marginal-summary').textContent = `The largest difference between a winner frequency and its base probability is ${percent(maximumError, 2)}. More trials reduce random sampling error. The theorem provides the proof; this lab shows the convergence.`;
 }
 
 function setupMarginalLab() {
@@ -255,7 +262,8 @@ function renderDetector() {
   $('#detector-score-fill').style.setProperty('--score', score.toFixed(6));
   $('#detector-count').textContent = `${evidence.evidenceValues} evidence bits · ${evidence.scoredTokens} tokens`;
   const keyCopy = selectedDetectorKey === 'match' ? 'matching' : 'wrong';
-  $('#detector-summary').textContent = `With the ${keyCopy} key, the mean g-value is ${score.toFixed(3)}. This score is not an authorship probability; it only has meaning against a calibrated null for this exact setup.`;
+  const comparison = score >= 0.5 ? `${(score - 0.5).toFixed(3)} above` : `${(0.5 - score).toFixed(3)} below`;
+  $('#detector-summary').textContent = `The ${keyCopy} key reconstructs a mean g-score of ${score.toFixed(3)}, which is ${comparison} the toy null expectation of 0.500. A positive decision would still require a length-specific calibrated threshold.`;
 }
 
 function setupDetectorLab() {
@@ -362,11 +370,11 @@ function renderEvidenceLab() {
   $('#score-stats').innerHTML = descriptors.map(item => `<div class="stat-card"><span>${escapeHtml(item.label)} mean</span><strong>${average(ensemble[item.key]).toFixed(3)}</strong></div>`).join('');
   $('#evidence-length-value').value = String(length);
   $('#evidence-length-value').textContent = String(length);
-  $('#evidence-status').textContent = `${length} tokens · ${selectedEntropy === 'open' ? 'open distribution' : 'nearly certain distribution'}`;
+  $('#evidence-status').textContent = `${length} tokens · ${selectedEntropy === 'open' ? 'probabilities spread out' : 'one token near 100%'}`;
   const separation = average(ensemble.watermarked) - average(ensemble.unwatermarked);
   $('#score-summary').textContent = selectedEntropy === 'open'
-    ? `The matching-key mean sits ${separation.toFixed(3)} above the null mean in this deterministic run. Longer text usually narrows the overlap.`
-    : `With almost no choice at each step, matching-key separation is only ${separation.toFixed(3)}. A watermark cannot encode a choice the model never had.`;
+    ? `The matching-key mean is ${separation.toFixed(3)} above the unmarked mean in this fixed simulation. Increase length to see the score curves narrow and overlap less.`
+    : `With one token near 100%, the matching-key mean is only ${separation.toFixed(3)} above the unmarked mean. Repeated candidate draws usually select the same token, so the tournament rarely changes the output.`;
   renderThresholdLab();
 }
 
@@ -419,7 +427,7 @@ function renderThresholdLab() {
   const tpr = result.truePositive / ensemble.watermarked.length;
   const fpr = result.falsePositive / ensemble.unwatermarked.length;
   const abstained = result.positiveAbstain + result.negativeAbstain;
-  $('#threshold-summary').textContent = `On this toy population: ${percent(tpr)} true-positive rate, ${percent(fpr)} false-positive rate, ${abstained} of ${ensemble.watermarked.length + ensemble.unwatermarked.length} passages withheld as uncertain.`;
+  $('#threshold-summary').textContent = `In this simulated population, the threshold finds ${percent(tpr)} of marked passages and incorrectly flags ${percent(fpr)} of unmarked passages. It withholds ${abstained} of ${ensemble.watermarked.length + ensemble.unwatermarked.length} passages as uncertain.`;
 }
 
 function setupThresholdLab() {
@@ -460,7 +468,7 @@ function renderEditLab() {
   $('#edited-score').textContent = editedScore.toFixed(3);
   $('#edited-sequence').innerHTML = edited.tokenIds.map((tokenId, index) => `<span class="edited-token${changed.has(index) ? ' changed' : ''}">${escapeHtml(PAPER_TOKENS[tokenId].label.slice(0, 3))}</span>`).join('');
   const direction = editedScore < originalScore ? 'fell' : editedScore > originalScore ? 'rose' : 'did not change';
-  $('#edit-summary').textContent = `${edited.changedIndices.length} of ${edited.tokenIds.length} tokens changed. This one sample’s score ${direction} from ${originalScore.toFixed(3)} to ${editedScore.toFixed(3)}. Individual runs can wiggle; robustness claims require a population, not a monotonic demo curve.`;
+  $('#edit-summary').textContent = `${edited.changedIndices.length} of ${edited.tokenIds.length} tokens changed. After rebuilding every affected context, this sample’s score ${direction} from ${originalScore.toFixed(3)} to ${editedScore.toFixed(3)}. One passage cannot establish an edit-resistance rate; that requires many samples.`;
 }
 
 function setupEditLab() {
