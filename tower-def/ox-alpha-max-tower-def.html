@@ -1,0 +1,1402 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>TERRA INCOGNITA — A Tower Defense of the Unmapped World</title>
+<style>
+  :root{
+    --parch:#e9dbb7; --parch2:#dfcda0; --parch-dark:#cdb488;
+    --ink:#33271a; --ink-soft:#54432c; --faded:#8a7350;
+    --oxblood:#7e2a1e; --oxbright:#a03324; --verdigris:#3f6f5f; --gilt:#9a7524;
+    --sea:#7fa08f; --vignette:rgba(51,39,26,.55);
+    --panel:#efe3c4; --panel-edge:#b89a67;
+    --danger:#8c2f1b; --ok:#3f6f45;
+    --serif:"Iowan Old Style","Palatino Linotype",Palatino,Georgia,"Times New Roman",serif;
+    --mono:"Courier New",Courier,monospace;
+    --hud-h:56px;
+  }
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{height:100%}
+  body{
+    background:#241c11;
+    color:var(--ink);
+    font-family:var(--serif);
+    overflow:hidden;
+    height:100vh;height:100dvh;
+    display:flex;flex-direction:column;
+    user-select:none;-webkit-user-select:none;
+  }
+  /* ---------- aged paper backdrop behind everything ---------- */
+  body::before{
+    content:"";position:fixed;inset:0;z-index:0;pointer-events:none;
+    background:
+      radial-gradient(ellipse at 50% 42%, rgba(255,240,200,.10), transparent 60%),
+      radial-gradient(ellipse at 85% 100%, rgba(60,40,15,.35), transparent 55%),
+      radial-gradient(ellipse at 10% 0%, rgba(60,40,15,.30), transparent 50%);
+  }
+  /* ============================ HUD ============================ */
+  header#hud{
+    position:relative;z-index:5;flex:0 0 auto;
+    display:flex;align-items:center;gap:.65rem;
+    padding:.4rem .8rem;padding-top:max(.4rem, env(safe-area-inset-top));
+    background:linear-gradient(180deg,#3a2d1b 0%, #2e2314 100%);
+    border-bottom:3px double var(--gilt);
+    color:var(--parch);
+    box-shadow:0 2px 12px rgba(0,0,0,.5);
+    flex-wrap:wrap;
+  }
+  #gameTitle{
+    font-variant:small-caps;letter-spacing:.14em;font-weight:700;
+    color:#e6cf9a;text-shadow:0 1px 0 #00000088;
+    white-space:nowrap;margin-right:.35rem;
+  }
+  .stat{
+    display:flex;align-items:center;gap:.35rem;
+    background:rgba(233,219,183,.08);
+    border:1px solid rgba(154,117,36,.55);
+    border-radius:3px;padding:.18rem .55rem;
+    font-size:.92rem;white-space:nowrap;
+  }
+  .stat b{font-weight:700;color:#f0e2bd}
+  .stat .ico{font-size:1rem;line-height:1}
+  #livesStat.low b{color:#ff9b84;animation:pulse 1s infinite}
+  @keyframes pulse{50%{opacity:.45}}
+  .spacer{flex:1}
+  button{
+    font-family:var(--serif);cursor:pointer;color:var(--ink);
+    background:linear-gradient(180deg,var(--panel),#dcc998);
+    border:1px solid #8a6d3b;border-radius:3px;
+    padding:.34rem .8rem;font-size:.92rem;font-weight:600;
+    box-shadow:0 2px 0 rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.35);
+    transition:transform .06s ease, filter .12s ease;
+  }
+  button:hover{filter:brightness(1.07)}
+  button:active{transform:translateY(1px)}
+  button:disabled{opacity:.45;cursor:not-allowed}
+  button.primary{
+    background:linear-gradient(180deg,#a03324,#7e2a1e);color:#f3e6c2;
+    border-color:#571d13;letter-spacing:.05em;
+    text-shadow:0 1px 1px #00000066;
+  }
+  button.iconbtn{padding:.3rem .55rem;font-size:.95rem}
+  /* ============================ MAIN ============================ */
+  main{position:relative;z-index:1;flex:1;display:flex;min-height:0}
+  #stage{flex:1;position:relative;min-width:0;display:flex;align-items:center;justify-content:center;background:#20180d}
+  canvas#board{
+    display:block;width:100%;height:100%;
+    image-rendering:auto;touch-action:none;cursor:crosshair;
+  }
+  /* ---------- side panel ---------- */
+  aside#panel{
+    flex:0 0 284px;display:flex;flex-direction:column;
+    background:linear-gradient(180deg,var(--panel),var(--parch2));
+    border-left:3px double var(--panel-edge);
+    overflow-y:auto;overflow-x:hidden;
+    padding:.6rem;gap:.55rem;
+    scrollbar-width:thin;scrollbar-color:#8a6d3b transparent;
+  }
+  #panel h3{
+    font-variant:small-caps;letter-spacing:.12em;font-size:.95rem;
+    color:var(--oxblood);border-bottom:1px solid #b89a67;padding-bottom:.2rem;
+    display:flex;justify-content:space-between;align-items:baseline;
+  }
+  #panel h3 small{color:var(--faded);letter-spacing:0;font-size:.72rem}
+  /* tower shop cards */
+  .shopcard{
+    display:flex;gap:.55rem;align-items:center;
+    background:rgba(255,252,240,.45);
+    border:1px solid #b89a67;border-radius:4px;
+    padding:.45rem .55rem;cursor:pointer;position:relative;
+    transition:border-color .12s, box-shadow .12s, transform .06s;
+  }
+  .shopcard:hover{border-color:var(--oxblood);box-shadow:0 0 0 1px var(--oxblood)}
+  .shopcard.selected{border-color:var(--oxblood);box-shadow:0 0 0 2px var(--oxblood)}
+  .shopcard.unaffordable{opacity:.5}
+  .shopcard canvas{width:44px;height:44px;flex:0 0 44px;border-radius:3px;background:#e3d3aa;border:1px solid #c4ab77}
+  .sc-name{font-weight:700;font-size:.92rem;line-height:1.1}
+  .sc-desc{font-size:.74rem;color:var(--ink-soft);line-height:1.25;margin-top:.12rem}
+  .sc-cost{margin-top:.22rem;font-family:var(--mono);font-size:.8rem;font-weight:700;color:var(--gilt)}
+  .sc-key{
+    position:absolute;top:.3rem;right:.4rem;
+    font-family:var(--mono);font-size:.66rem;color:var(--faded);
+    border:1px solid #c4ab77;border-radius:2px;padding:0 .25rem;
+  }
+  /* upgrade inspector */
+  #inspector{display:none}
+  #inspector.show{display:block}
+  .insp-head{display:flex;align-items:center;gap:.5rem}
+  .insp-head canvas{width:52px;height:52px;background:#e3d3aa;border:1px solid #c4ab77;border-radius:3px}
+  .tierdots{display:flex;gap:3px;margin-top:.25rem}
+  .tierdots i{width:14px;height:5px;background:#cbb17f;border-radius:1px}
+  .tierdots i.on{background:var(--oxblood)}
+  .upg-btn{
+    width:100%;text-align:left;margin-top:.5rem;
+    padding:.5rem .6rem;
+  }
+  .upg-btn .u-name{font-weight:700;font-size:.88rem}
+  .upg-btn .u-desc{font-weight:400;font-size:.76rem;display:block;color:var(--ink-soft);margin-top:.15rem;line-height:1.3}
+  .upg-btn .u-cost{float:right;font-family:var(--mono);color:var(--gilt);font-weight:700}
+  .upg-btn.maxed{background:#d8c69a;color:#6d5936;border-style:dashed;cursor:default}
+  .upg-btn.maxed .u-cost{visibility:hidden}
+  .sellrow{display:flex;justify-content:space-between;align-items:center;margin-top:.5rem;font-size:.8rem;color:var(--ink-soft)}
+  .lorebit{
+    font-style:italic;font-size:.78rem;color:#6b5836;line-height:1.45;
+    border-left:2px solid var(--gilt);padding-left:.5rem;margin-top:.4rem;
+  }
+  /* wave preview */
+  #wavePreview{font-size:.8rem;color:var(--ink-soft);line-height:1.5}
+  #wavePreview .wp-row{display:flex;justify-content:space-between;border-bottom:1px dotted #c4ab77;padding:.12rem 0}
+  #nextWaveName{font-variant:small-caps;font-weight:700;color:var(--oxblood)}
+  /* ================= overlays ================= */
+  .overlay{
+    position:absolute;inset:0;z-index:20;
+    display:flex;align-items:center;justify-content:center;
+    background:rgba(26,19,9,.82);
+    backdrop-filter:blur(2px);
+    padding:1rem;
+  }
+  .overlay.hidden{display:none}
+  .tome{
+    max-width:640px;width:min(94vw,640px);
+    max-height:88vh;max-height:88dvh;overflow-y:auto;
+    background:
+      radial-gradient(ellipse at 20% 10%, rgba(120,86,40,.16), transparent 55%),
+      radial-gradient(ellipse at 80% 90%, rgba(120,86,40,.18), transparent 50%),
+      linear-gradient(160deg,#f2e7c6,#e2d0a4);
+    border:1px solid #8a6d3b;
+    outline:4px double #8a6d3b;outline-offset:-8px;
+    border-radius:3px;
+    padding:clamp(1rem,3vw,2rem) clamp(1.1rem,3.5vw,2.4rem);
+    box-shadow:0 18px 60px rgba(0,0,0,.65);
+  }
+  .tome h1{
+    font-variant:small-caps;text-align:center;letter-spacing:.2em;
+    font-size:clamp(1.5rem,5vw,2.3rem);color:var(--oxblood);
+    text-shadow:0 1px 0 rgba(255,255,255,.4);
+  }
+  .tome .rule{
+    display:flex;align-items:center;gap:.6rem;color:var(--gilt);margin:.4rem 0 .9rem;
+  }
+  .tome .rule::before,.tome .rule::after{content:"";flex:1;border-top:1px solid #b89a67}
+  .tome p{line-height:1.62;font-size:clamp(.86rem,2.4vw,.98rem);color:var(--ink-soft);margin-bottom:.7em}
+  .tome p.first::first-letter{
+    font-size:2.9em;float:left;line-height:.82;padding-right:.09em;color:var(--oxblood);
+    font-weight:700;
+  }
+  .tome em{color:var(--oxblood)}
+  .compass-rose{text-align:center;font-size:1.5rem;color:var(--gilt);letter-spacing:.5em;margin:.2rem 0 .6rem}
+  .tome .btnrow{display:flex;gap:.7rem;justify-content:center;margin-top:1.1rem;flex-wrap:wrap}
+  .tome button{font-size:1rem;padding:.55rem 1.5rem}
+  .fieldlist{columns:2;column-gap:1.4rem;font-size:.8rem;color:var(--ink-soft);margin:.4rem 0 .8rem}
+  .fieldlist div{break-inside:avoid;margin-bottom:.45rem;line-height:1.4}
+  .fieldlist b{color:var(--ink)}
+  @media(max-width:560px){.fieldlist{columns:1}}
+  #resultStats{font-family:var(--mono);font-size:.85rem;color:var(--ink);background:rgba(126,42,30,.08);
+    border:1px dashed var(--oxblood);border-radius:3px;padding:.6rem .8rem;margin:.6rem 0;}
+  /* toast */
+  #toast{
+    position:absolute;left:50%;bottom:14%;transform:translateX(-50%);
+    z-index:15;background:rgba(46,35,20,.92);color:#f0e2bd;
+    border:1px solid var(--gilt);border-radius:3px;
+    padding:.45rem 1rem;font-size:.9rem;font-style:italic;
+    opacity:0;pointer-events:none;transition:opacity .25s;white-space:nowrap;max-width:92%;
+    text-overflow:ellipsis;overflow:hidden;
+  }
+  #toast.show{opacity:1}
+  /* wave banner */
+  #banner{
+    position:absolute;left:0;right:0;top:26%;z-index:14;text-align:center;pointer-events:none;
+    opacity:0;transition:opacity .5s;
+  }
+  #banner.show{opacity:1}
+  #banner .bn-main{
+    display:inline-block;font-variant:small-caps;letter-spacing:.22em;
+    font-size:clamp(1.2rem,4.5vw,2rem);color:#f3e6c2;
+    text-shadow:0 2px 10px #000, 0 0 26px rgba(240,220,160,.35);
+    border-top:1px solid #cbb17f;border-bottom:1px solid #cbb17f;
+    padding:.3rem 1.6rem;background:rgba(30,22,10,.55);
+  }
+  #banner .bn-sub{margin-top:.45rem;font-style:italic;color:#d9c79b;font-size:clamp(.78rem,2.6vw,.95rem);text-shadow:0 1px 4px #000}
+  /* ---------- responsive: bottom sheet on narrow screens ---------- */
+  @media (max-width:760px){
+    main{flex-direction:column-reverse}
+    aside#panel{
+      flex:0 0 auto;max-height:38vh;max-height:38dvh;
+      border-left:none;border-top:3px double var(--panel-edge);
+      flex-direction:row;flex-wrap:wrap;align-content:flex-start;
+      gap:.5rem;padding:.5rem;
+    }
+    #panel section{flex:1 1 260px}
+    #buildSec{order:1} #inspector{order:2} #waveSec{order:3}
+    .shopcard{flex:1 1 44%;min-width:150px}
+  }
+</style>
+</head>
+<body>
+<header id="hud">
+  <span id="gameTitle">Terra Incognita</span>
+  <span class="stat" title="Ink — currency of the Survey"><span class="ico">&#9998;</span><b id="inkVal">0</b></span>
+  <span class="stat" id="livesStat" title="Vellum integrity — when it tears, the map is lost"><span class="ico">&#9878;</span><b id="livesVal">0</b></span>
+  <span class="stat" title="Current survey wave"><span class="ico">&#9873;</span><b id="waveVal">0</b>/<span id="waveMax">24</span></span>
+  <span class="spacer"></span>
+  <button id="btnWave" class="primary">Begin Survey</button>
+  <button id="btnSpeed" class="iconbtn" title="Expedite the survey">&#9654;1&#215;</button>
+  <button id="btnPause" class="iconbtn" title="Pause">&#10073;&#10073;</button>
+  <button id="btnHelp" class="iconbtn" title="The Field Manual">?</button>
+</header>
+<main>
+  <div id="stage">
+    <canvas id="board"></canvas>
+    <div id="banner"><div class="bn-main" id="bannerMain"></div><div class="bn-sub" id="bannerSub"></div></div>
+    <div id="toast"></div>
+    <!-- ============ INTRO TOME ============ -->
+    <div class="overlay" id="introOverlay">
+      <div class="tome">
+        <h1>Terra Incognita</h1>
+        <div class="rule">&#10022; Here be dragons &#10022;</div>
+        <p class="first">The Empire&rsquo;s atlas was once complete. Every coast, every river, every road &mdash; inked, certified, and archived in the Hall of Maps. Then the Fraying began: coastlines unremembered themselves, roads wandered off their bearings, and whole provinces slid quietly off the edge of the known world.</p>
+        <p>The Guild&rsquo;s scholars learned a terrible truth. The map does not describe the world &mdash; <em>the world obeys the map</em>. What is drawn endures. What is left blank dissolves into the Unmapped, and the things that live there &mdash; Blots, Errata, the great pale Leviathans of the empty margins &mdash; pour through wherever the ink runs thin.</p>
+        <p>You are the last Cartographer of the First Chair. With compass, pen, and whatever instruments the Guild archive still yields, you must hold the final survey line: draw your defenses upon the vellum and keep the Unmapped from reaching the map&rsquo;s heart &mdash; the <em>Rose of Winds</em> &mdash; for if it falls, every place ever named will be unnamed again.</p>
+        <div class="compass-rose">&#10016; &#10038; &#10016;</div>
+        <div class="fieldlist">
+          <div><b>Draw towers:</b> pick an instrument below, then click open vellum to set it down.</div>
+          <div><b>Between waves:</b> the horde pauses &mdash; upgrade, repair your line, then Begin Survey.</div>
+          <div><b>Keys 1&ndash;5</b> select instruments &middot; <b>Esc</b> deselects &middot; <b>Space</b> starts waves &middot; <b>P</b> pauses.</div>
+          <div><b>Ink &#9998;</b> buys and upgrades &mdash; earned by mapping (destroying) intruders.</div>
+        </div>
+        <p style="font-style:italic;font-size:.82rem;color:#6b5836">&ldquo;A map is not a picture of a place. A map is a promise made to a place.&rdquo;<br>&mdash; Marginalia of the First Atlas</p>
+        <div class="btnrow">
+          <button class="primary" id="btnStart">Unroll the Vellum</button>
+          <button id="btnSkipLore">Straight to the Survey</button>
+        </div>
+      </div>
+    </div>
+    <!-- ============ PAUSE ============ -->
+    <div class="overlay hidden" id="pauseOverlay">
+      <div class="tome" style="text-align:center">
+        <h1 style="font-size:1.5rem">Survey Suspended</h1>
+        <div class="rule">&#10022; &#10022; &#10022;</div>
+        <p>The Unmapped waits. It is patient. It has all the space in the world &mdash; literally.</p>
+        <div class="btnrow">
+          <button class="primary" id="btnResume">Resume the Vigil</button>
+        </div>
+      </div>
+    </div>
+    <!-- ============ END ============ -->
+    <div class="overlay hidden" id="endOverlay">
+      <div class="tome">
+        <h1 id="endTitle">The Vellum Tears</h1>
+        <div class="rule">&#10022; &#10022; &#10022;</div>
+        <p id="endFlavor"></p>
+        <div id="resultStats"></div>
+        <p id="endEpigraph" style="font-style:italic;font-size:.82rem;color:#6b5836"></p>
+        <div class="btnrow"><button class="primary" id="btnRestart">Begin Again, Elsewhere</button></div>
+      </div>
+    </div>
+  </div>
+
+  <aside id="panel">
+    <section id="inspector">
+      <h3>Instrument Detail <small id="inspTier"></small></h3>
+      <div class="insp-head">
+        <canvas id="inspIcon" width="104" height="104"></canvas>
+        <div>
+          <div class="sc-name" id="inspName"></div>
+          <div class="tierdots" id="inspDots"></div>
+          <div class="sc-desc" id="inspStats" style="margin-top:.25rem"></div>
+        </div>
+      </div>
+      <div id="upgList"></div>
+      <div class="sellrow">
+        <span id="sellInfo"></span>
+        <button id="btnSell">Erase</button>
+      </div>
+      <div class="lorebit" id="inspLore"></div>
+    </section>
+    <section id="buildSec">
+      <h3>Guild Instruments <small>click, then place on vellum</small></h3>
+      <div id="shopList"></div>
+    </section>
+    <section id="waveSec">
+      <h3>Next Expedition <small id="wpWaveNo"></small></h3>
+      <div id="nextWaveName" style="margin:.15rem 0 .3rem"></div>
+      <div id="wavePreview"></div>
+      <div class="lorebit" id="waveLore" style="margin-top:.5rem"></div>
+    </section>
+  </aside>
+</main>
+<script>
+"use strict";
+/* =====================================================================
+   TERRA INCOGNITA — the last cartographer holds the survey line.
+   The map does not describe the world; the world obeys the map.
+   Vanilla JS on one canvas. No dependencies.
+   ===================================================================== */
+
+/* ---------------- seeded RNG (each vellum is a new land) ------------- */
+function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
+const rng = mulberry32((Math.random()*2**31)|0);
+const rand=(a,b)=>a+rng()*(b-a);
+const irand=(a,b)=>Math.floor(rand(a,b+1));
+const pick=arr=>arr[Math.floor(rng()*arr.length)];
+
+/* ---------------- tiny helpers -------------------------------------- */
+const TAU=Math.PI*2;
+const clamp=(v,a,b)=>v<a?a:v>b?b:v;
+const dist=(ax,ay,bx,by)=>Math.hypot(ax-bx,ay-by);
+const lerp=(a,b,t)=>a+(b-a)*t;
+const fmt=n=>n>=10000?(n/1000).toFixed(1)+"k":Math.floor(n).toString();
+
+/* ============================ LORE DATA ============================== */
+/* Five Guild instruments, four upgrade tiers each (base + 4).           */
+const TOWERS=[
+{
+  id:"astrolabe", key:"1", name:"Astrolabe", cost:60,
+  desc:"Sweeping brass rings fix a star-point and fire measured darts of calibrated light.",
+  lore:"The Guild\u2019s oldest instrument. It does not aim at things \u2014 it declares where they should be, and the dart agrees.",
+  base:{range:120, rate:1.1, dmg:12},
+  upg:[
+    {name:"Gnomon Ring",    cost:45,  desc:"+25% damage.",                                  mod:{dmg:1.25}},
+    {name:"Equatorial Mount",cost:85, desc:"+30% range, +15% fire rate.",                   mod:{range:1.30,rate:1.15}},
+    {name:"Alidade of the First Chair",cost:150,desc:"+40% damage; darts pierce Blot armor.", mod:{dmg:1.40,pierce:true}},
+    {name:"Fixed Star",     cost:280, desc:"Darts become starlight: double damage, vast range.",mod:{dmg:2.0,range:1.35,star:true}},
+  ],
+},
+{
+  id:"compassrose", key:"2", name:"Compass Rose", cost:70,
+  desc:"A drawn rose whose needles slow everything crossing its bearing lines.",
+  lore:"North is a promise. Intruders who cross the rose forget which way they were going.",
+  base:{range:95, rate:.5, dmg:3, auraSlow:.42},
+  upg:[
+    {name:"Needle of Iron",      cost:50,  desc:"Slow grows stronger.",                       mod:{auraSlow:.55}},
+    {name:"Declination Dial",    cost:85,  desc:"+35% radius of influence.",                  mod:{range:1.35}},
+    {name:"Rose of Winds Attuned",cost:160,desc:"Slowed intruders take +20% damage from all instruments.",mod:{auraSlow:.60,vuln:.20}},
+    {name:"True North",          cost:260, desc:"Near the rose all movement is a crawl; +25% vulnerability.",mod:{auraSlow:.72,vuln:.25}},
+  ],
+},
+{
+  id:"quill", key:"3", name:"Siege Quill", cost:90,
+  desc:"A tower-sized pen rewrites intruders with heavy ink-blots \u2014 splash damage included.",
+  lore:"Every blot it writes is a small erasure. The Unmapped fear being named out of existence.",
+  base:{range:135, rate:.45, dmg:26, splash:46},
+  upg:[
+    {name:"Iron-Gall Ink",   cost:65,  desc:"+40% damage per blot.",                          mod:{dmg:1.4}},
+    {name:"Broad Nib",       cost:110, desc:"Splash radius +45%, +15% damage.",               mod:{splash:1.45,dmg:1.15}},
+    {name:"Marginalia",      cost:190, desc:"Blots leave corrosive marginalia: damage over time.",mod:{burn:22}},
+    {name:"The Redactor",    cost:320, desc:"Blots strike twice as hard and erase armor entirely.",mod:{dmg:1.9,strip:true}},
+  ],
+},
+{
+  id:"sextant", key:"4", name:"Sextant Sniper", cost:120,
+  desc:"Long-lensed instrument measuring impossible distances \u2014 then closing them with one shot.",
+  lore:"It measures the angle between here and a Blot\u2019s heart. The shot travels along the measurement.",
+  base:{range:230, rate:.32, dmg:55},
+  upg:[
+    {name:"Fine Vernier",     cost:90,  desc:"+35% damage.",                                 mod:{dmg:1.35}},
+    {name:"Chronometer Sync", cost:140, desc:"+60% fire rate.",                              mod:{rate:1.6}},
+    {name:"Horizon Glass",    cost:230, desc:"+25% range; shots arc to never miss.",         mod:{range:1.25,homing:true}},
+    {name:"Noon Sight",       cost:380, desc:"Charged execution shot against wounded giants.",mod:{exec:true}},
+  ],
+},
+{
+  id:"lithograph", key:"5", name:"Lithograph Press", cost:150,
+  desc:"Prints rapid sheets of stone-ink in a cone \u2014 shreds crowds at close range.",
+  lore:"The press prints so many copies of reality that the Unmapped cannot tell which one to invade.",
+  base:{range:88, rate:4.2, dmg:6},
+  upg:[
+    {name:"Oiled Rollers",     cost:75,  desc:"+30% print speed.",                            mod:{rate:1.3}},
+    {name:"Double-Impression", cost:120, desc:"Two sheets per pass: +45% damage.",            mod:{dmg:1.45}},
+    {name:"Chromolithography", cost:210, desc:"Ink stains slow what they touch by 20%.",      mod:{chromo:.2}},
+    {name:"Folio Edition",     cost:340, desc:"Vast folio sheets: +70% damage, +25% range.",  mod:{dmg:1.7,range:1.25}},
+  ],
+},
+];
+
+/* ---------------- bestiary: citizens of the Unmapped ----------------- */
+const ENEMIES={
+  smudge:{
+    name:"Smudge", hp:26, speed:52, bounty:7, r:9,
+    desc:"A thumbprint of nothing. Weak alone, endless in numbers.",
+  },
+  blot:{
+    name:"Ink Blot", hp:64, speed:44, bounty:11, armor:2, r:12,
+    desc:"Where a name was forgotten. Armor soaks fixed damage from every hit.",
+  },
+  erratum:{
+    name:"Erratum", hp:38, speed:88, bounty:10, r:10,
+    desc:"A mistake given legs. It runs because it knows it is wrong.",
+    onDeathHeal:true,
+  },
+  palimpsest:{
+    name:"Palimpsest", hp:150, speed:34, bounty:18, armor:4, regen:6, r:14,
+    desc:"Scraped and rewritten many times. It heals what it remembers.",
+  },
+  leviathan:{
+    name:"Margin Leviathan", hp:900, speed:26, bounty:80, armor:8, r:22,
+    boss:true,
+    desc:"A great pale thing swimming the empty margins of old maps.",
+    immuneSlow:false,
+  },
+  cartograph:{
+    name:"The False Cartographer", hp:2200, speed:22, bounty:200, armor:10, r:26,
+    boss:true,
+    desc:"It draws its own maps, and on those maps, you are the error.",
+    shieldPhase:true,
+  },
+};
+</script>
+
+<script>
+/* ============================ WAVES ==================================
+   24 named expeditions. Composition scales; every 6th wave is a boss.  */
+const WAVE_NAMES=[
+ "The First Blank Page","Smudges at the Margin","Errata Corrigenda","The Ink Thickens",
+ "A Palimpsest Surfaces","The Margin Swims","Cartouche of Teeth","The Fraying Widens",
+ "Running Corrections","The Blot Tide","Rewritten Roads","The Leviathan&rsquo;s Wake",
+ "A Map of Itself","The Second Leviathan","Erratum Swarm","The Ink Never Dries",
+ "Palimpsest Procession","The Margins Close In","The False Survey","What the Sea Forgot",
+ "The Third Leviathan","Everything Unnamed","The Cartographer&rsquo;s Shadow",
+ "Terra Incognita",
+];
+const WAVE_LORE=[
+ "&ldquo;Every atlas begins with a blank page. The Unmapped merely remembered that first.&rdquo;",
+ "&ldquo;A smudge is a place that lost the argument for existing.&rdquo;",
+ "&ldquo;The Guild printed corrections for centuries. Tonight the corrections print back.&rdquo;",
+ "&ldquo;Ink remembers being alive. Ink remembers being whale and squid and night.&rdquo;",
+ "&ldquo;Scrape a page clean and you only teach it how to be written again.&rdquo;",
+ "&ldquo;Sailors drew the margins full of monsters as a warning. The warning worked &mdash; until it didn&rsquo;t.&rdquo;",
+ "&ldquo;A cartouche was meant to protect a name. Some names took offense at protection.&rdquo;",
+ "&ldquo;The Fraying does not advance. It simply becomes more of everywhere.&rdquo;",
+ "&ldquo;Corrections run faster than errors. Nobody knows why.&rdquo;",
+ "&ldquo;Stand in the tide and be a coastline.&rdquo; \u2014 Guild field maxim",
+ "&ldquo;A road unmapped walks wherever it liked walking when it existed.&rdquo;",
+ "&ldquo;Where the margin ends, the leviathan begins. Or perhaps vice versa.&rdquo;",
+ "&ldquo;It had drawn you first, cartographer, long before you saw it.&rdquo;",
+ "&ldquo;The second wake is worse than the first: now you know what makes it.&rdquo;",
+ "&ldquo;Errors multiply. That is not malice. That is arithmetic.&rdquo;",
+ "&ldquo;The press never stops. Neither shall the survey.&rdquo;",
+ "&ldquo;Each of them has been three or four better documents once.&rdquo;",
+ "&ldquo;The map grows heavy near its edges, like a held breath.&rdquo;",
+ "&ldquo;It surveys you while it marches. Take notes on it anyway.&rdquo;",
+ "&ldquo;Some seas were never mapped because no one returned. Now they walk.&rdquo;",
+ "&ldquo;Third time, the leviathan brings arguments from deeper pages.&rdquo;",
+ "&ldquo;This is the wave where names go to be forgotten.&rdquo;",
+ "&ldquo;It wears your coat. It holds your compass. Do not let it finish its map.&rdquo;",
+ "&ldquo;Here the atlas ends and the world, unwritten, decides whether you were ever in it.&rdquo;",
+];
+function buildWave(n){ // n: 1-based
+  const g=[]; // groups: {type,count,gap,delay}
+  const add=(type,count,gap,delay)=>g.push({type,count,gap,delay:delay||0});
+  const hpMul=1+ (n-1)*0.14 + Math.pow(Math.max(0,n-8),1.25)*0.015;
+  switch(n){
+    case 1: add("smudge",8,1.1); break;
+    case 2: add("smudge",14,.85); break;
+    case 3: add("smudge",10,.9); add("erratum",4,.9,3); break;
+    case 4: add("blot",6,1.2); add("smudge",10,.7,4); break;
+    case 5: add("palimpsest",2,3); add("blot",6,1.1,2); break;
+    case 6: add("leviathan",1,0); add("smudge",12,.6,4); break;
+    case 7: add("blot",10,.9); add("erratum",8,.55,5); break;
+    case 8: add("erratum",14,.5); add("blot",8,1,4); break;
+    case 9: add("palimpsest",4,2.4); add("smudge",16,.45,3); break;
+    case 10: add("blot",18,.65); add("erratum",10,.5,6); break;
+    case 11: add("palimpsest",6,2); add("blot",10,.85,4); break;
+    case 12: add("leviathan",2,9); add("erratum",12,.5,3); break;
+    case 13: add("cartograph",1,0); add("smudge",20,.5,5); break;
+    case 14: add("leviathan",3,8); add("blot",12,.7,4); break;
+    case 15: add("erratum",26,.32); add("palimpsest",5,2,6); break;
+    case 16: add("blot",24,.5); add("palimpsest",6,1.8,5); break;
+    case 17: add("palimpsest",10,1.4); add("erratum",14,.45,4); break;
+    case 18: add("leviathan",4,6); add("blot",16,.6,3); break;
+    case 19: add("cartograph",1,0); add("leviathan",2,10,8); break;
+    case 20: add("palimpsest",12,1.2); add("erratum",18,.4,4); break;
+    case 21: add("leviathan",5,5); add("palimpsest",8,1.6,3); break;
+    case 22: add("blot",30,.42); add("erratum",22,.34,5); add("palimpsest",8,1.5,9); break;
+    case 23: add("cartograph",2,16); add("leviathan",3,6,4); break;
+    case 24: add("cartograph",3,13); add("leviathan",4,5,5); add("palimpsest",10,1.3,10); break;
+    default: break;
+  }
+  return {groups:g, hpMul};
+}
+</script>
+
+<script>
+/* ======================= MAP GENERATION ==============================
+   A random track: a winding survey route from one margin to the Rose.  */
+function genTrack(W,H){
+  // waypoints: enter from a random edge, wander, end at center (Rose of Winds)
+  const cx=W/2, cy=H/2;
+  const side=irand(0,3);
+  const pts=[];
+  const m=30; // margin
+  let x,y;
+  if(side===0){x=rand(m,W-m);y=-20;} else if(side===1){x=W+20;y=rand(m,H-m);}
+  else if(side===2){x=rand(m,W-m);y=H+20;} else {x=-20;y=rand(m,H-m);}
+  pts.push({x,y});
+  // wander toward center with jitter, in ~6 legs
+  let px=x,py=y;
+  for(let i=1;i<=6;i++){
+    const t=i/6;
+    const tx=lerp(x,cx,t)+rand(-W*0.18,W*0.18)*(1-t);
+    const ty=lerp(y,cy,t)+rand(-H*0.18,H*0.18)*(1-t);
+    px=clamp(tx,m*2,W-m*2); py=clamp(ty,m*2,H-m*2);
+    pts.push({x:px,y:py});
+  }
+  pts.push({x:cx,y:cy});
+  // chaikin smoothing x3 -> soft hand-drawn curve
+  let poly=pts;
+  for(let s=0;s<3;s++){
+    const np=[poly[0]];
+    for(let i=0;i<poly.length-1;i++){
+      const a=poly[i],b=poly[i+1];
+      np.push({x:lerp(a.x,b.x,.25),y:lerp(a.y,b.y,.25)});
+      np.push({x:lerp(a.x,b.x,.75),y:lerp(a.y,b.y,.75)});
+    }
+    np.push(poly[poly.length-1]); poly=np;
+  }
+  // arc-length resample
+  const res=[]; let total=0; const segs=[];
+  for(let i=0;i<poly.length-1;i++){const d=dist(poly[i].x,poly[i].y,poly[i+1].x,poly[i+1].y);segs.push(d);total+=d;}
+  let acc=0, step=4; // px
+  res.push({...poly[0]});
+  let target=step, i=0, run=0;
+  while(i<segs.length){
+    if(run+segs[i]>=target){
+      const t=(target-run)/segs[i];
+      res.push({x:lerp(poly[i].x,poly[i+1].x,t),y:lerp(poly[i].y,poly[i+1].y,t)});
+      target+=step;
+    } else {run+=segs[i];i++;}
+  }
+  return {pts:res,total};
+}
+function pointAt(track,d){ // d in px along track
+  d=clamp(d,0,track.total);
+  let acc=0;
+  for(let i=0;i<track.pts.length-1;i++){
+    const a=track.pts[i],b=track.pts[i+1];
+    const seg=dist(a.x,a.y,b.x,b.y);
+    if(acc+seg>=d){const t=(d-acc)/seg;return{x:lerp(a.x,b.x,t),y:lerp(a.y,b.y,t),ang:Math.atan2(b.y-a.y,b.x-a.x)};}
+    acc+=seg;
+  }
+  const a=track.pts[track.pts.length-2],b=track.pts[track.pts.length-1];
+  return {x:b.x,y:b.y,ang:Math.atan2(b.y-a.y,b.x-a.x)};
+}
+function nearTrack(track,x,y,r){ // min distance to path < r ?
+  for(const p of track.pts){if(dist(p.x,p.y,x,y)<r)return true;}
+  return false;
+}
+
+/* ============================ STATE ================================== */
+const cvs=document.getElementById("board"), ctx=cvs.getContext("2d");
+const S={
+  ink:140, lives:20, wave:0, phase:"intro", // intro|build|wave|paused|over
+  speed:1, towers:[], foes:[], shots:[], fx:[], sel:null, placing:null,
+  time:0, kills:0, spawnedAll:true, spawnQ:[], waveTimer:0,
+  hover:{x:-999,y:-999,on:false}, shake:0, rosePulse:0,
+};
+let track=null, Wpx=800, Hpx=600;
+
+function resize(){
+  const st=document.getElementById("stage");
+  const w=st.clientWidth||innerWidth, h=st.clientHeight||innerHeight-56;
+  const dpr=Math.min(devicePixelRatio||1,2);
+  cvs.width=w*dpr; cvs.height=h*dpr;
+  cvs.style.width=w+"px"; cvs.style.height=h+"px";
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  Wpx=w; Hpx=h;
+  track=genTrack(w,h);
+  // keep existing towers only if still off-path & on-screen
+  S.towers=S.towers.filter(t=>t.x>10&&t.x<w-10&&t.y>10&&t.y<h-10&&!nearTrack(track,t.x,t.y,t.r+14));
+}
+addEventListener("resize",()=>{resize();draw();});
+</script>
+
+<script>
+/* ======================= TOWER LOGIC ================================= */
+function towerStats(t){ // apply upgrade mods to base
+  const def=TOWERS.find(d=>d.id===t.type);
+  const st=Object.assign({pierce:false,star:false,strip:false,homing:false,exec:false,burn:0,vuln:0,chromo:0,splash:0},def.base);
+  for(let i=0;i<t.tier;i++){
+    const m=def.upg[i].mod;
+    if(m.dmg)st.dmg*=m.dmg; if(m.range)st.range*=m.range;
+    if(m.rate)st.rate*=m.rate; if(m.splash)st.splash*=m.splash;
+    if(m.auraSlow!==undefined)st.auraSlow=m.auraSlow;
+    if(m.vuln)st.vuln=m.vuln;
+    if(m.burn)st.burn+=m.burn;
+    for(const k of["pierce","star","strip","homing","exec"])if(m[k])st[k]=true;
+    if(m.chromo)st.chromo=Math.max(st.chromo,m.chromo);
+  }
+  return st;
+}
+function towerValue(t){const def=TOWERS.find(d=>d.id===t.type);let v=def.cost;for(let i=0;i<t.tier;i++)v+=def.upg[i].cost;return Math.floor(v*.7);}
+function canPlace(x,y){
+  if(x<24||y<24||x>Wpx-24||y>Hpx-24)return false;
+  if(nearTrack(track,x,y,26))return false;
+  for(const t of S.towers){if(dist(t.x,t.y,x,y)<t.r*2+6)return false;}
+  return true;
+}
+function placeTower(type,x,y){
+  const def=TOWERS.find(d=>d.id===type);
+  if(S.ink<def.cost){toast("Not enough ink.");return false;}
+  S.ink-=def.cost;
+  S.towers.push({type,x,y,r:14,tier:0,cd:0,ang:-Math.PI/2,kills:0});
+  drawShop(); updateHUD();
+  return true;
+}
+function acquire(t,st){
+  // find best target: furthest along path in range
+  let best=null,bestD=-1;
+  for(const f of S.foes){
+    if(f.hp<=0)continue;
+    const d=dist(t.x,t.y,f.x,f.y);
+    if(d<=st.range&&f.prog>bestD){best=f;bestD=f.prog;}
+  }
+  t.target=best?best:null;
+  return best;
+}
+function fireTower(t,st,dt){
+  t.cd-=dt;
+  const tgt=t.target&&t.target.hp>0?t.target:null;
+  if(!tgt)return;
+  const d=dist(t.x,t.y,tgt.x,tgt.y);
+  t.ang=Math.atan2(tgt.y-t.y,tgt.x-t.x);
+  if(t.cd>0||d>st.range*1.05)return;
+  t.cd=1/st.rate;
+  if(t.type==="compassrose"){ // aura only: tick damage pulse
+    damageFoe(tgt,st.dmg,t,st,false);
+    S.fx.push({kind:"pulse",x:t.x,y:t.y,r:st.range,life:.5,max:.5});
+    return;
+  }
+  if(t.type==="lithograph"){ // instant sheet of ink
+    S.fx.push({kind:"sheet",x1:t.x,y1:t.y,x2:tgt.x,y2:tgt.y,life:.12,max:.12});
+    damageFoe(tgt,st.dmg,t,st,true);
+    if(st.chromo)tgt.chromoT=2.0;
+    return;
+  }
+  // projectile (astrolabe / quill / sextant)
+  S.shots.push({
+    x:t.x,y:t.y,tx:tgt,tid:tgt.id,sp:t.type==="sextant"?520:(t.type==="astrolabe"?(st.star?420:340):260),
+    dmg:st.dmg,type:t.type,st,
+    homing:st.homing||t.type==="sextant",
+  });
+}
+function damageFoe(f,dmg,t,st,isHit){
+  if(st&&st.strip)f.armor=0;
+  let d=dmg-(f.armor||0)*(isHit?1:.4);
+  if(f.shield>0)d*=(st&&st.strip)?0.55:0.22; // unwritable while shielded
+  if(st&&st.exec&&f.hp<f.maxhp*.3)d*=3;
+  if(st&&st.vuln)d*=(1+st.vuln);
+  if(f.slowedVuln)d*=(1+f.slowedVuln); // rose attunement
+  f.hp-=d;
+  S.fx.push({kind:"hit",x:f.x,y:f.y,life:.18,max:.18,col:st&&st.star?"#c9a53a":"#7e2a1e"});
+  if(st&&st.burn&&!f.dead){f.burn=Math.min((f.burn||0)+st.burn,f.maxhp*.25);}
+  if(f.hp<=0&&!f.dead){killFoe(f,t);}
+}
+function killFoe(f,t){
+  f.dead=true;S.kills++;
+  S.ink+=f.bounty;
+  if(t)t.kills++;
+  S.fx.push({kind:"death",x:f.x,y:f.y,r:f.r,life:.45,max:.45});
+  if(f.def.onDeathHeal){/* erratum: nothing special on death */}
+  updateHUD();
+}
+function updateTowers(dt){
+  for(const t of S.towers){
+    const st=towerStats(t);
+    if(t.type==="compassrose"){
+      // aura applied continuously
+      for(const f of S.foes){
+        if(f.hp<=0)continue;
+        if(dist(t.x,t.y,f.x,f.y)<=st.range){
+          f.slowFactor=Math.min(f.slowFactor===undefined?1:f.slowFactor,1-st.auraSlow);
+          if(st.vuln)f.slowedVuln=st.vuln;
+        }
+      }
+      continue;
+    }
+    if(!t.target||t.target.hp<=0||dist(t.x,t.y,t.target.x,t.target.y)>st.range*1.15){
+      acquire(t,st);
+    }
+    fireTower(t,st,dt);
+  }
+}
+function updateShots(dt){
+  for(const s of S.shots){
+    let tx=s.tx,ty=s.ty,tgt=null;
+    if(s.homing){
+      tgt=S.foes.find(f=>f.id===s.tid&&f.hp>0);
+      if(tgt){s.x=lerp(s.x,tgt.x,.5);s.y=lerp(s.y,tgt.y,.5);} // strong steer
+    } else {
+      tgt=S.foes.find(f=>f.id===s.tid&&f.hp>0);
+      if(tgt){tx=tgt.x;ty=tgt.y;}
+    }
+    if(tgt){
+      const d=dist(s.x,s.y,tgt.x,tgt.y);
+      if(d<Math.max(8,tgt.r)){
+        hitShot(s,tgt);s.hit=true;continue;
+      }
+      const ang=Math.atan2(tgt.y-s.y,tgt.x-s.x);
+      s.vx=s.sp*Math.cos(ang);s.vy=s.sp*Math.sin(ang);
+    } else if(!s.vx){s.hit=true;}
+    s.x+=(s.vx||0)*dt;s.y+=(s.vy||0)*dt;
+    if(s.x<-40||s.x>Wpx+40||s.y<-40||s.y>Hpx+40)s.hit=true;
+  }
+  S.shots=S.shots.filter(s=>!s.hit);
+}
+function hitShot(s,tgt){
+  const st=s.st;
+  damageFoe(tgt,st.dmg,{kills:s.kills},st,true);
+  if(s.type==="quill"){
+    const rad=(towerSplash(st));
+    for(const f of S.foes){
+      if(f===tgt||f.hp<=0)continue;
+      if(dist(f.x,f.y,tgt.x,tgt.y)<=rad)damageFoe(f,st.dmg*.6,null,st,true);
+    }
+    S.fx.push({kind:"blot",x:tgt.x,y:tgt.y,r:rad,life:.35,max:.35});
+    if(st.chromo)tgt.chromoT=2;
+  }
+  if(st.pierce){ // astrolabe T3+: also hits one nearby foe
+    for(const f of S.foes){
+      if(f===tgt||f.hp<=0)continue;
+      if(dist(f.x,f.y,tgt.x,tgt.y)<26){damageFoe(f,st.dmg*.7,null,st,true);break;}
+    }
+  }
+}
+function towerSplash(st){return 46*(st.splash||1);}
+</script>
+
+<script>
+/* ======================= FOE LOGIC =================================== */
+let foeId=1;
+function spawnFoe(type,hpMul){
+  const def=ENEMIES[type];
+  const f={
+    id:foeId++,type,def,
+    hp:def.hp*hpMul,maxhp:def.hp*hpMul,
+    prog:0,speed:def.speed*(rand(.92,1.08)),
+    armor:def.armor||0,bounty:Math.round(def.bounty*(1+ (S.wave-1)*.03)),
+    x:-100,y:-100,r:def.r,slowFactor:1,chromoT:0,burn:0,slowedVuln:0,
+    wob:rand(0,TAU),
+  };
+  if(def.shieldPhase){f.shield=3;f.shieldT=6;} // false cartographer phases
+  S.foes.push(f);
+}
+function updateFoes(dt){
+  for(const f of S.foes){
+    if(f.hp<=0)continue;
+    f.wob+=dt*3;
+    let sp=f.speed*f.slowFactor;
+    if(f.chromoT>0){sp*=1-(f.def.boss?0:.2);f.chromoT-=dt;}
+    if(f.def.regen&&f.hp<f.maxhp)f.hp=Math.min(f.maxhp,f.hp+f.def.regen*dt);
+    if(f.burn>0){const b=Math.min(f.burn,f.maxhp*.05);f.hp-=b*dt;f.burn-=b*dt*.5;
+      if(rng()<dt*8)S.fx.push({kind:"hit",x:f.x+rand(-4,4),y:f.y+rand(-4,4),life:.15,max:.15,col:"#9a7524"});
+      if(f.hp<=0&&!f.dead)killFoe(f,null);}
+    // shield phase for the False Cartographer
+    if(f.def.shieldPhase){
+      f.shieldT-=dt;
+      if(f.shield>0){
+        if(f.shieldT<=0){f.shield--;f.shieldT=6;
+          toast("The False Cartographer sheds a shield \u2014 it is more writable now!");
+          S.fx.push({kind:"pulse",x:f.x,y:f.y,r:90,life:.5,max:.5,col:"#33271a"});}
+      }
+    }
+    f.prog+=sp*dt;
+    const p=pointAt(track,f.prog);
+    // gentle perpendicular wobble so the column looks organic
+    const off=Math.sin(f.wob)* (f.def.boss?2:5);
+    f.x=p.x+Math.cos(p.ang+Math.PI/2)*off;
+    f.y=p.y+Math.sin(p.ang+Math.PI/2)*off;
+    f.ang=p.ang;
+    if(f.prog>=track.total){ // reached the Rose
+      f.dead=true;f.leaked=true;
+      const dmg=f.def.boss?10:(f.type==="palimpsest"?3:1);
+      S.lives-=dmg;S.shake=Math.min(14,S.shake+6);
+      updateHUD();
+      if(S.lives<=0){gameOver(false);return;}
+    }
+  }
+  S.foes=S.foes.filter(f=>!f.dead);
+  // reset per-frame slow accumulation
+  for(const t of S.towers){if(t.type==="compassrose"){for(const f of S.foes)f.slowFactor=1,f.slowedVuln=0;break;}}
+}
+
+/* ======================= WAVE FLOW =================================== */
+function startWave(){
+  if(S.phase!=="build")return;
+  S.wave++;
+  if(S.wave>WAVE_NAMES.length){victory();return;}
+  S.phase="wave";
+  const w=buildWave(S.wave);
+  S.spawnQ=[];
+  for(const g of w.groups){
+    for(let i=0;i<g.count;i++){
+      S.spawnQ.push({type:g.type,t:g.delay+i*g.gap});
+    }
+  }
+  S.spawnQ.sort((a,b)=>a.t-b.t);
+  S.waveTime=0;S.spawnedAll=false;
+  banner("Expedition "+S.wave+" \u2014 "+WAVE_NAMES[S.wave-1].replace(/&rsquo;/g,"\u2019").replace(/&ldquo;/g,"\u201C").replace(/&rdquo;/g,"\u201D").replace(/&mdash;/g,"\u2014"), htmlDecode(WAVE_LORE[S.wave-1]));
+  document.getElementById("btnWave").disabled=true;
+  document.getElementById("btnWave").textContent="Surveying\u2026";
+  updateHUD(); renderWavePreview();
+}
+function endWaveCheck(){
+  if(S.phase==="wave"&&S.spawnedAll&&S.foes.length===0){
+    const bonus=20+S.wave*8;
+    S.ink+=bonus;
+    if(S.wave>=WAVE_NAMES.length){victory();return;}
+    S.phase="build";
+    document.getElementById("btnWave").disabled=false;
+    document.getElementById("btnWave").textContent="Begin Survey \u271A";
+    toast("The line holds. The Guild wires "+bonus+" ink for supplies.");
+    renderWavePreview();
+  }
+}
+function spawnTick(dt){
+  S.waveTime+=dt;
+  while(S.spawnQ.length&&S.spawnQ[0].t<=S.waveTime){
+    const s=S.spawnQ.shift();
+    spawnFoe(s.type,currentHpMul());
+  }
+  if(!S.spawnQ.length)S.spawnedAll=true;
+}
+function currentHpMul(){return buildWave(S.wave).hpMul;}
+
+/* ======================= GAME FLOW =================================== */
+function gameOver(win){
+  S.phase="over";
+  document.getElementById("endTitle").textContent=win?"The Atlas Endures":"The Vellum Tears";
+  document.getElementById("endFlavor").innerHTML=win
+   ? "The Rose of Winds holds. Around it, in your hand, the last true map of the world is still wet \u2014 and every line you drew <em>stayed drawn</em>. Somewhere beyond the margins, the Unmapped learns what every cartographer eventually knows: a promise, kept long enough, becomes geography."
+   : "The ink runs out before the world does. The Unmapped pours across the vellum, and the Rose of Winds blurs into everything around it. But paper remembers pressure \u2014 and somewhere, a fresh sheet is already being stretched.";
+  document.getElementById("resultStats").innerHTML=
+    "expeditions survived: "+(win?WAVE_NAMES.length:S.wave-1)+" / "+WAVE_NAMES.length+"<br>"+
+    "intruders mapped (destroyed): "+S.kills+"<br>"+
+    "instruments on the vellum: "+S.towers.length+"<br>"+
+    "final integrity of the map: "+Math.max(0,S.lives)+" / 20";
+  document.getElementById("endEpigraph").innerHTML=win
+   ? "&ldquo;He drew the coast, and the coast was faithful.&rdquo;<br>\u2014 colophon of the New Atlas"
+   : "&ldquo;We do not blame the cartographer. We thank him for the coastline we had.&rdquo;<br>\u2014 Guild memorial inscription";
+  show("endOverlay");
+}
+function victory(){gameOver(true);}
+function newGame(){
+  Object.assign(S,{ink:140,lives:20,wave:0,phase:"build",speed:1,towers:[],foes:[],shots:[],fx:[],sel:null,placing:null,kills:0,spawnQ:[],shake:0});
+  resize();hide("endOverlay");updateHUD();drawShop();renderWavePreview();
+  const bw=document.getElementById("btnWave");bw.disabled=false;bw.textContent="Begin Survey \u271A";
+}
+</script>
+
+<script>
+/* ======================= RENDERING =================================== */
+function draw(){
+  ctx.save();
+  if(S.shake>0){ctx.translate(rand(-S.shake,S.shake)*.5,rand(-S.shake,S.shake)*.5);S.shake*=.86;if(S.shake<.4)S.shake=0;}
+  // ---- vellum base
+  const g=ctx.createLinearGradient(0,0,Wpx,Hpx);
+  g.addColorStop(0,"#ecdcb4");g.addColorStop(.5,"#e6d3a8");g.addColorStop(1,"#ddc795");
+  ctx.fillStyle=g;ctx.fillRect(-20,-20,Wpx+40,Hpx+40);
+  // foxing / aging blotches (stable per map: seeded by positions)
+  ctx.save();ctx.globalAlpha=.06;
+  for(let i=0;i<26;i++){
+    const fx=(i*971)%Wpx, fy=(i*613)%Hpx;
+    ctx.fillStyle=i%3?"#8a6d3b":"#7e2a1e";
+    ctx.beginPath();ctx.ellipse(fx,fy,14+(i%5)*9,10+(i%4)*7,i,.0,TAU);ctx.fill();
+  }
+  ctx.restore();
+  // faint graticule
+  ctx.strokeStyle="rgba(138,109,59,.16)";ctx.lineWidth=1;
+  for(let x=0;x<Wpx;x+=64){line(x,0,x,Hpx);}
+  for(let y=0;y<Hpx;y+=64){line(0,y,Wpx,y);}
+  // rhumb lines from the Rose
+  ctx.strokeStyle="rgba(126,42,30,.07)";
+  for(let a=0;a<16;a++){const ang=a*TAU/16;line(Wpx/2,Hpx/2,Wpx/2+Math.cos(ang)*Math.max(Wpx,Hpx),Hpx/2+Math.sin(ang)*Math.max(Wpx,Hpx));}
+
+  // ---- the route (survey path)
+  drawTrack();
+
+  // ---- Rose of Winds at the center
+  drawRose();
+
+  // ---- towers
+  for(const t of S.towers)drawTower(t);
+
+  // ---- placement ghost
+  if(S.placing&&S.hover.on){
+    const ok=canPlace(S.hover.x,S.hover.y)&&S.ink>=TOWERS.find(d=>d.id===S.placing).cost;
+    ctx.globalAlpha=.55;
+    drawTower({type:S.placing,x:S.hover.x,y:S.hover.y,r:14,tier:0,ang:-Math.PI/2},true);
+    ctx.globalAlpha=1;
+    const def=TOWERS.find(d=>d.id===S.placing);
+    const st=towerStats({type:S.placing,tier:0});
+    ctx.strokeStyle=ok?"rgba(63,111,95,.7)":"rgba(140,47,27,.7)";
+    ctx.setLineDash([6,5]);ctx.lineWidth=1.5;
+    ctx.beginPath();ctx.arc(S.hover.x,S.hover.y,st.range,0,TAU);ctx.stroke();
+    ctx.setLineDash([]);
+  }
+  // selected tower range ring
+  if(S.sel){
+    const st=towerStats(S.sel);
+    ctx.strokeStyle="rgba(126,42,30,.45)";ctx.setLineDash([4,4]);ctx.lineWidth=1.2;
+    ctx.beginPath();ctx.arc(S.sel.x,S.sel.y,st.range,0,TAU);ctx.stroke();ctx.setLineDash([]);
+  }
+
+  // ---- foes
+  for(const f of S.foes)drawFoe(f);
+
+  // ---- shots
+  ctx.lineWidth=2;
+  for(const s of S.shots){
+    ctx.fillStyle=s.type==="quill"?"#241a0f":(s.st&&s.st.star?"#c9a53a":"#33271a");
+    ctx.beginPath();
+    if(s.type==="quill"){ctx.arc(s.x,s.y,4,0,TAU);}
+    else{ctx.ellipse(s.x,s.y,s.sp>400?4:2.6,1.6,Math.atan2(s.vy||0,s.vx||0),0,TAU);}
+    ctx.fill();
+  }
+
+  // ---- fx
+  for(const e of S.fx)drawFx(e);
+  S.fx=S.fx.filter(e=>e.life>0);
+
+  // compass border frame
+  ctx.strokeStyle="rgba(90,66,32,.65)";ctx.lineWidth=6;ctx.strokeRect(3,3,Wpx-6,Hpx-6);
+  ctx.strokeStyle="rgba(154,117,36,.5)";ctx.lineWidth=1;ctx.strokeRect(9,9,Wpx-18,Hpx-18);
+  ctx.restore();
+}
+function line(a,b,c,d){ctx.beginPath();ctx.moveTo(a,b);ctx.lineTo(c,d);ctx.stroke();}
+function drawTrack(){
+  ctx.lineCap="round";ctx.lineJoin="round";
+  ctx.strokeStyle="rgba(90,66,32,.35)";ctx.lineWidth=26;
+  ctx.beginPath();track.pts.forEach((p,i)=>i?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y));ctx.stroke();
+  ctx.strokeStyle="#f2e8cd";ctx.lineWidth=20;
+  ctx.beginPath();track.pts.forEach((p,i)=>i?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y));ctx.stroke();
+  // dotted survey line
+  ctx.strokeStyle="rgba(126,42,30,.5)";ctx.lineWidth=1.4;ctx.setLineDash([1,7]);
+  ctx.beginPath();track.pts.forEach((p,i)=>i?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y));ctx.stroke();
+  ctx.setLineDash([]);
+  // entrance marker: torn edge + label
+  const s=track.pts[0],s2=track.pts[6];
+  ctx.fillStyle="#7e2a1e";ctx.font="600 11px Georgia";ctx.textAlign="center";
+  const lbl=edgeLabel(s.x,s.y);
+  ctx.fillText(lbl,s.x,s.y+4);
+  // small compass ticks along the path every ~80px
+  ctx.fillStyle="rgba(138,109,59,.5)";
+  for(let d=60;d<track.total-40;d+=80){const p=pointAt(track,d);ctx.fillRect(p.x-1,p.y-1,2,2);}
+}
+function edgeLabel(x,y){
+  if(y<Hpx*.25)return "\u2190 the Fraying \u2192";
+  if(y>Hpx*.75)return "\u2190 terra incognita \u2192";
+  if(x<Wpx*.5)return "the Unmapped \u2192";
+  return "\u2190 the Unmapped";
+}
+function drawRose(){
+  const cx=Wpx/2,cy=Hpx/2,R=Math.min(Wpx,Hpx)*.055+8;
+  const pulse=1+Math.sin(S.time*2)*.05+S.rosePulse;
+  ctx.save();ctx.translate(cx,cy);ctx.scale(pulse,pulse);
+  ctx.rotate(Math.sin(S.time*.4)*.03);
+  for(let ring=0;ring<2;ring++){
+    ctx.save();ctx.rotate(ring?Math.PI/4:0);
+    ctx.fillStyle=ring?"rgba(158,42,30,.85)":"rgba(51,39,26,.8)";
+    for(let i=0;i<4;i++){
+      ctx.beginPath();
+      ctx.moveTo(0,0);ctx.quadraticCurveTo(R*.22,-R*.38,R*.12,-R);ctx.quadraticCurveTo(R*.05,-R*.55,0,-R);
+      ctx.quadraticCurveTo(-R*.05,-R*.55,-R*.12,-R);ctx.quadraticCurveTo(-R*.22,-R*.38,0,0);
+      ctx.fill();ctx.rotate(Math.PI/2);
+    }
+    ctx.restore();
+  }
+  ctx.fillStyle="#e6d3a8";ctx.beginPath();ctx.arc(0,0,R*.16,0,TAU);ctx.fill();
+  ctx.strokeStyle="#33271a";ctx.lineWidth=1;ctx.stroke();
+  ctx.restore();
+  ctx.fillStyle="rgba(51,39,26,.75)";ctx.font="small-caps 700 11px Georgia";ctx.textAlign="center";
+  ctx.fillText("rose of winds",cx,cy+R+16);
+}
+</script>
+
+<script>
+/* ---------- tower drawing: each instrument gets a hand-drawn glyph --- */
+function drawTower(t,ghost){
+  const st=towerStats(t);
+  ctx.save();ctx.translate(t.x,t.y);
+  // plinth
+  ctx.fillStyle="rgba(90,66,32,.28)";ctx.beginPath();ctx.ellipse(0,4,t.r+3,t.r*.55+2,0,0,TAU);ctx.fill();
+  ctx.rotate(t.ang+Math.PI/2);
+  const ink=ghost?"rgba(51,39,26,.6)":"#33271a", ox=ghost?"rgba(126,42,30,.6)":"#7e2a1e", brass=ghost?"rgba(154,117,36,.6)":"#9a7524";
+  ctx.lineWidth=1.6;ctx.strokeStyle=ink;ctx.fillStyle="#e9dbb7";
+  switch(t.type){
+    case "astrolabe":{
+      ctx.beginPath();ctx.arc(0,0,t.r,0,TAU);ctx.fill();ctx.stroke();
+      ctx.strokeStyle=brass;ctx.beginPath();ctx.arc(0,0,t.r*.62,t.ang+Math.PI/2,t.ang+Math.PI/2+Math.PI*1.2);ctx.stroke();
+      ctx.strokeStyle=ink;ctx.beginPath();ctx.moveTo(0,0);ctx.lineTo(0,-t.r*.9);ctx.stroke();
+      ctx.fillStyle=st.star?"#c9a53a":ox;ctx.beginPath();ctx.arc(0,-t.r*.9,2.4,0,TAU);ctx.fill();
+      // meridian ring
+      ctx.strokeStyle=brass;ctx.beginPath();ctx.ellipse(0,0,t.r*.8,t.r*.3,0,0,TAU);ctx.stroke();
+      break;}
+    case "compassrose":{
+      ctx.fillStyle="#e9dbb7";ctx.beginPath();ctx.arc(0,0,t.r,0,TAU);ctx.fill();ctx.stroke();
+      ctx.fillStyle=ox;
+      for(let i=0;i<4;i++){
+        ctx.beginPath();ctx.moveTo(0,-t.r*.85);ctx.lineTo(t.r*.22,0);ctx.lineTo(-t.r*.22,0);ctx.closePath();ctx.fill();
+        ctx.rotate(Math.PI/2);
+      }
+      ctx.fillStyle=ink;ctx.beginPath();ctx.arc(0,0,2.2,0,TAU);ctx.fill();
+      break;}
+    case "quill":{
+      ctx.fillStyle="#e9dbb7";ctx.beginPath();
+      ctx.moveTo(0,-t.r);ctx.quadraticCurveTo(t.r*.8,-t.r*.2,t.r*.3,t.r*.8);
+      ctx.quadraticCurveTo(0,t.r,-t.r*.3,t.r*.8);ctx.quadraticCurveTo(-t.r*.8,-t.r*.2,0,-t.r);
+      ctx.fill();ctx.stroke();
+      // nib
+      ctx.fillStyle=ink;ctx.beginPath();ctx.moveTo(0,-t.r);ctx.lineTo(2.6,-t.r+7);ctx.lineTo(-2.6,-t.r+7);ctx.closePath();ctx.fill();
+      ctx.strokeStyle=brass;ctx.beginPath();ctx.moveTo(-t.r*.5,t.r*.2);ctx.lineTo(t.r*.5,t.r*.2);ctx.stroke();
+      break;}
+    case "sextant":{
+      ctx.fillStyle="#e9dbb7";ctx.beginPath();ctx.moveTo(0,-t.r);ctx.lineTo(t.r*.9,t.r*.7);ctx.lineTo(-t.r*.9,t.r*.7);ctx.closePath();ctx.fill();ctx.stroke();
+      ctx.strokeStyle=brass;ctx.beginPath();ctx.arc(0,t.r*.1,t.r*.55,-.4,Math.PI+.4);ctx.stroke();
+      ctx.strokeStyle=ink;ctx.beginPath();ctx.moveTo(0,-t.r*.2);ctx.lineTo(0,-t.r*1.15);ctx.stroke();
+      ctx.fillStyle=st.homing?"#c9a53a":ox;ctx.beginPath();ctx.arc(0,-t.r*1.15,2.2,0,TAU);ctx.fill();
+      break;}
+    case "lithograph":{
+      ctx.fillStyle="#e9dbb7";ctx.fillRect(-t.r*.9,-t.r*.8,t.r*1.8,t.r*1.6);ctx.strokeRect(-t.r*.9,-t.r*.8,t.r*1.8,t.r*1.6);
+      ctx.fillStyle=ink;
+      for(let i=-1;i<=1;i++)ctx.fillRect(-t.r*.65,-t.r*.55+i*t.r*.45,t.r*1.3,t.r*.22);
+      ctx.strokeStyle=brass;ctx.strokeRect(-t.r*1.05,-t.r*.95,t.r*2.1,t.r*.3);
+      break;}
+  }
+  // tier pips
+  ctx.rotate(-(t.ang+Math.PI/2));
+  if(t.tier>0){
+    ctx.fillStyle="#9a7524";
+    for(let i=0;i<t.tier;i++){ctx.beginPath();ctx.arc(-t.r+4+i*6,t.r+5,2.1,0,TAU);ctx.fill();}
+  }
+  ctx.restore();
+}
+/* ---------- foes: creatures of the Unmapped -------------------------- */
+function drawFoe(f){
+  ctx.save();ctx.translate(f.x,f.y);
+  const wob=Math.sin(f.wob)*.08;
+  ctx.rotate((f.ang||0)+Math.PI/2+wob);
+  const ink="#241a0f", body=f.def.boss?"#3a3a42":"#33271a";
+  if(f.def.boss){
+    // leviathan / cartographer: pale whale-like mass with ink outline
+    ctx.fillStyle="#ddd0b0";ctx.strokeStyle=ink;ctx.lineWidth=2;
+    ctx.beginPath();
+    ctx.moveTo(0,-f.r*1.2);
+    ctx.quadraticCurveTo(f.r,-f.r*.4,f.r*.7,f.r*.7);
+    ctx.quadraticCurveTo(f.r*.3,f.r*1.1,0,f.r*.9);
+    ctx.quadraticCurveTo(-f.r*.3,f.r*1.1,-f.r*.7,f.r*.7);
+    ctx.quadraticCurveTo(-f.r,-f.r*.4,0,-f.r*1.2);
+    ctx.closePath();ctx.fill();ctx.stroke();
+    ctx.fillStyle=ink;
+    ctx.beginPath();ctx.arc(-f.r*.28,-f.r*.35,2.6,0,TAU);ctx.fill();
+    ctx.beginPath();ctx.arc(f.r*.28,-f.r*.35,2.6,0,TAU);ctx.fill();
+    if(f.def.shieldPhase){
+      ctx.strokeStyle="rgba(126,42,30,.8)";ctx.lineWidth=2;ctx.setLineDash([5,4]);
+      ctx.beginPath();ctx.arc(0,0,f.r*1.5,0,TAU);ctx.stroke();ctx.setLineDash([]);
+    }
+  } else if(f.type==="smudge"){
+    ctx.fillStyle="rgba(51,39,26,.75)";
+    ctx.beginPath();ctx.ellipse(0,0,f.r*.9,f.r*.7,wob*2,0,TAU);ctx.fill();
+  } else if(f.type==="blot"){
+    ctx.fillStyle=body;
+    ctx.beginPath();
+    ctx.moveTo(0,-f.r);ctx.quadraticCurveTo(f.r,-f.r*.2,f.r*.6,f.r*.8);
+    ctx.quadraticCurveTo(0,f.r*1.1,-f.r*.6,f.r*.8);ctx.quadraticCurveTo(-f.r,-f.r*.2,0,-f.r);
+    ctx.fill();
+    // drips
+    ctx.fillRect(-f.r*.2,f.r*.6,2.4,f.r*.5);
+  } else if(f.type==="erratum"){
+    ctx.strokeStyle=body;ctx.lineWidth=2.4;
+    ctx.beginPath();ctx.moveTo(-f.r,-f.r*.6);
+    ctx.quadraticCurveTo(0,f.r*.8,f.r,-f.r*.6);ctx.stroke(); // a squiggle with legs
+    ctx.fillStyle=body;
+    ctx.beginPath();ctx.arc(0,-f.r*.6,3,0,TAU);ctx.fill();
+  } else if(f.type==="palimpsest"){
+    ctx.fillStyle="#cbb98e";ctx.strokeStyle=ink;ctx.lineWidth=1.5;
+    ctx.fillRect(-f.r*.8,-f.r,f.r*1.6,f.r*2);ctx.strokeRect(-f.r*.8,-f.r,f.r*1.6,f.r*2);
+    ctx.strokeStyle="rgba(51,39,26,.5)";
+    for(let i=0;i<3;i++){ctx.beginPath();ctx.moveTo(-f.r*.5,-f.r*.5+i*f.r*.5);ctx.lineTo(f.r*.5,-f.r*.5+i*f.r*.5);ctx.stroke();}
+  }
+  ctx.restore();
+  // hp bar
+  if(f.hp<f.maxhp){
+    const w=Math.max(18,f.r*2.2);
+    ctx.fillStyle="rgba(36,26,15,.55)";ctx.fillRect(f.x-w/2,f.y-f.r-9,w,3.5);
+    ctx.fillStyle=f.hp/f.maxhp>.4?"#3f6f45":"#a03324";
+    ctx.fillRect(f.x-w/2,f.y-f.r-9,w*clamp(f.hp/f.maxhp,0,1),3.5);
+  }
+  if(f.shield>0){
+    ctx.strokeStyle="rgba(126,42,30,.9)";ctx.lineWidth=1.4;ctx.setLineDash([4,3]);
+    ctx.beginPath();ctx.arc(f.x,f.y,f.r+4,0,TAU);ctx.stroke();ctx.setLineDash([]);
+  }
+}
+/* ---------- fx -------------------------------------------------------- */
+function drawFx(e){
+  const t=e.life/e.max;
+  ctx.save();ctx.globalAlpha=t;
+  switch(e.kind){
+    case "hit":
+      ctx.strokeStyle=e.col||"#7e2a1e";ctx.lineWidth=1.6;
+      for(let i=0;i<4;i++){const a=i*TAU/4+.6;ctx.beginPath();ctx.moveTo(e.x,e.y);ctx.lineTo(e.x+Math.cos(a)*8*(1-t),e.y+Math.sin(a)*8*(1-t));ctx.stroke();}
+      break;
+    case "death":{
+      ctx.fillStyle="rgba(51,39,26,.5)";
+      ctx.beginPath();ctx.arc(e.x,e.y,e.r*(2-t),0,TAU);ctx.stroke();
+      ctx.strokeStyle="rgba(51,39,26,.6)";
+      for(let i=0;i<5;i++){const a=i*TAU/5;ctx.beginPath();ctx.moveTo(e.x+Math.cos(a)*e.r,e.y+Math.sin(a)*e.r);ctx.lineTo(e.x+Math.cos(a)*e.r*(2.2-t),e.y+Math.sin(a)*e.r*(2.2-t));ctx.stroke();}
+      break;}
+    case "blot":
+      ctx.fillStyle="rgba(36,26,15,"+(.35*t)+")";
+      ctx.beginPath();ctx.arc(e.x,e.y,e.r*(1.2-t*.4),0,TAU);ctx.fill();
+      break;
+    case "pulse":{
+      ctx.strokeStyle=e.col||"rgba(126,42,30,.8)";ctx.lineWidth=2;
+      ctx.beginPath();ctx.arc(e.x,e.y,e.r*(1-t*.5),0,TAU);ctx.stroke();
+      break;}
+    case "sheet":
+      ctx.strokeStyle="rgba(36,26,15,.8)";ctx.lineWidth=3*t+1;
+      ctx.beginPath();ctx.moveTo(e.x1,e.y1);ctx.lineTo(e.x2,e.y2);ctx.stroke();
+      break;
+  }
+  ctx.restore();
+}
+</script>
+
+<script>
+/* ======================= UI WIRING =================================== */
+const $=id=>document.getElementById(id);
+function show(id){$(id).classList.remove("hidden");}
+function hide(id){$(id).classList.add("hidden");}
+let toastT=null;
+function toast(msg){$("toast").textContent=msg;$("toast").classList.add("show");
+  clearTimeout(toastT);toastT=setTimeout(()=>$("toast").classList.remove("show"),2600);}
+let bannerT=null;
+function banner(main,sub){
+  $("bannerMain").textContent=main;$("bannerSub").innerHTML=sub;
+  const b=$("banner");b.classList.add("show");
+  clearTimeout(bannerT);bannerT=setTimeout(()=>b.classList.remove("show"),3400);
+}
+function htmlDecode(s){const d=document.createElement("div");d.innerHTML=s;return d.textContent;}
+function updateHUD(){
+  $("inkVal").textContent=fmt(S.ink);
+  $("livesVal").textContent=Math.max(0,S.lives);
+  $("waveVal").textContent=S.wave;
+  $("waveMax").textContent=WAVE_NAMES.length;
+  $("livesStat").classList.toggle("low",S.lives<=6);
+  drawShop();
+  if(S.sel)renderInspector(S.sel);
+}
+/* ---------- shop ---------- */
+function drawShop(){
+  const list=$("shopList");
+  if(!list.dataset.built){
+    list.innerHTML=TOWERS.map(d=>
+      '<div class="shopcard" data-id="'+d.id+'">'+
+      '<canvas width="88" height="88" data-ico="'+d.id+'"></canvas>'+
+      '<div><div class="sc-name">'+d.name+'</div>'+
+      '<div class="sc-desc">'+d.desc+'</div>'+
+      '<div class="sc-cost">&#9998; '+d.cost+'</div></div>'+
+      '<span class="sc-key">'+d.key+'</span></div>').join("");
+    list.querySelectorAll(".shopcard").forEach(el=>{
+      el.addEventListener("click",()=>selectPlacing(el.dataset.id));
+      drawShopIcon(el.querySelector("canvas"),el.dataset.id);
+    });
+    list.dataset.built="1";
+  }
+  list.querySelectorAll(".shopcard").forEach(el=>{
+    const d=TOWERS.find(x=>x.id===el.dataset.id);
+    el.classList.toggle("unaffordable",S.ink<d.cost);
+    el.classList.toggle("selected",S.placing===el.dataset.id);
+  });
+}
+function drawShopIcon(cvs2,id,ghostOnly){
+  const c=cvs2.getContext("2d");c.clearRect(0,0,88,88);
+  // reuse main drawTower via a temporary context swap
+  const realCtx=ctx;const realW=Wpx,realH=Hpx;
+  try{
+    window.__ctxSwap=true;
+  }catch(e){}
+  // simpler: draw a mini glyph manually per type
+  c.save();c.translate(44,44);
+  c.lineWidth=3;c.strokeStyle="#33271a";c.fillStyle="#e9dbb7";
+  switch(id){
+    case "astrolabe":
+      c.beginPath();c.arc(0,0,26,0,TAU);c.fill();c.stroke();
+      c.strokeStyle="#9a7524";c.beginPath();c.arc(0,0,16,-.6,Math.PI*1.4);c.stroke();
+      c.strokeStyle="#33271a";c.beginPath();c.moveTo(0,0);c.lineTo(0,-22);c.stroke();
+      c.fillStyle="#7e2a1e";c.beginPath();c.arc(0,-22,5,0,TAU);c.fill();break;
+    case "compassrose":
+      c.beginPath();c.arc(0,0,26,0,TAU);c.fill();c.stroke();
+      c.fillStyle="#7e2a1e";
+      for(let i=0;i<4;i++){c.beginPath();c.moveTo(0,-22);c.lineTo(6,0);c.lineTo(-6,0);c.closePath();c.fill();c.rotate(Math.PI/2);}
+      break;
+    case "quill":
+      c.beginPath();c.moveTo(0,-28);c.quadraticCurveTo(20,-6,8,18);c.quadraticCurveTo(0,24,-8,18);c.quadraticCurveTo(-20,-6,0,-28);c.fill();c.stroke();
+      c.fillStyle="#33271a";c.beginPath();c.moveTo(0,-28);c.lineTo(6,-13);c.lineTo(-6,-13);c.closePath();c.fill();break;
+    case "sextant":
+      c.beginPath();c.moveTo(0,-26);c.lineTo(22,18);c.lineTo(-22,18);c.closePath();c.fill();c.stroke();
+      c.strokeStyle="#9a7524";c.beginPath();c.arc(0,4,14,-.4,Math.PI+.4);c.stroke();
+      c.strokeStyle="#33271a";c.beginPath();c.moveTo(0,-4);c.lineTo(0,-30);c.stroke();
+      c.fillStyle="#7e2a1e";c.beginPath();c.arc(0,-30,4.5,0,TAU);c.fill();break;
+    case "lithograph":
+      c.fillRect(-22,-18,44,36);c.strokeRect(-22,-18,44,36);
+      c.fillStyle="#33271a";
+      for(let i=-1;i<=1;i++)c.fillRect(-15,-12+i*12,30,6);
+      break;
+  }
+  c.restore();
+}
+function selectPlacing(id){
+  if(S.phase!=="build"&&S.phase!=="wave")return;
+  S.placing=S.placing===id?null:id;
+  S.sel=null;hideInspector();drawShop();
+}
+/* ---------- inspector ---------- */
+function renderInspector(t){
+  const def=TOWERS.find(d=>d.id===t.type);
+  $("inspector").classList.add("show");
+  $("buildSec").style.display="none";
+  $("inspName").innerHTML=def.name;
+  $("inspTier").textContent="tier "+t.tier+" / 4";
+  const dots=$("inspDots");dots.innerHTML="";
+  for(let i=0;i<4;i++){const dot=document.createElement("i");if(i<t.tier)dot.className="on";dots.appendChild(dot);}
+  drawShopIcon($("inspIcon"),t.type);
+  const st=towerStats(t);
+  let stats="dmg "+st.dmg.toFixed(0)+" &middot; rate "+st.rate.toFixed(2)+"/s &middot; rng "+Math.round(st.range);
+  if(st.auraSlow)stats+=" &middot; slow "+Math.round(st.auraSlow*100)+"%";
+  if(st.splash)stats+=" &middot; splash "+Math.round(st.splash);
+  $("inspStats").innerHTML=stats;
+  $("inspLore").innerHTML=def.lore;
+  const ul=$("upgList");ul.innerHTML="";
+  if(t.tier<4){
+    const u=def.upg[t.tier];
+    const b=document.createElement("button");b.className="upg-btn"+(S.ink<u.cost?"":" ");
+    const afford=S.ink>=u.cost;
+    b.innerHTML='<span class="u-cost">&#9998; '+u.cost+'</span><span class="u-name">'+u.name+'</span><span class="u-desc">'+u.desc+'</span>';
+    if(!afford)b.disabled=true;
+    b.addEventListener("click",()=>{
+      if(S.ink<u.cost)return toast("Not enough ink.");
+      S.ink-=u.cost;t.tier++;
+      toast(def.name+" improved: "+u.name+".");
+      S.fx.push({kind:"pulse",x:t.x,y:t.y,r:40+t.tier*8,life:.5,max:.5});
+      updateHUD();renderInspector(t);
+    });
+    ul.appendChild(b);
+  } else {
+    const b=document.createElement("button");b.className="upg-btn maxed";
+    b.innerHTML='<span class="u-name">Masterwork \u2014 fully inscribed</span>';
+    ul.appendChild(b);
+  }
+  $("sellInfo").textContent="Erase refunds:";
+  $("btnSell").textContent="\u270E "+towerValue(t);
+  $("btnSell").onclick=()=>{
+    S.ink+=towerValue(t);
+    S.towers=S.towers.filter(x=>x!==t);
+    hideInspector();updateHUD();toast("The instrument is erased from the vellum.");
+  };
+}
+function hideInspector(){$("inspector").classList.remove("show");$("buildSec").style.display="";}
+/* ---------- wave preview ---------- */
+function renderWavePreview(){
+  const n=S.wave+1;
+  $("wpWaveNo").textContent=(S.wave>=WAVE_NAMES.length)?"survey complete":("expedition "+n+" of "+WAVE_NAMES.length);
+  if(n>WAVE_NAMES.length){$("nextWaveName").textContent="The Atlas Endures";$("wavePreview").innerHTML="";$("waveLore").innerHTML="";return;}
+  $("nextWaveName").textContent=WAVE_NAMES[n-1];
+  const w=buildWave(n);
+  const counts={};
+  for(const g of w.groups)counts[g.type]=(counts[g.type]||0)+g.count;
+  $("wavePreview").innerHTML=Object.entries(counts).map(([k,v])=>{
+    const e=ENEMIES[k];
+    return '<div class="wp-row"><span>'+e.name+(e.boss?' &#10038;':'')+'</span><span>&times;'+v+'</span></div>';
+  }).join("")+'<div class="wp-row" style="border:none;color:#6b5836;font-style:italic">vigilance '+"&#9633;".repeat(Math.min(10,Math.ceil(n/2.4)))+'</div>';
+  $("waveLore").innerHTML=WAVE_LORE[n-1];
+}
+</script>
+
+<script>
+/* ======================= INPUT ======================================= */
+function canvasPos(ev){
+  const r=cvs.getBoundingClientRect();
+  const cx=(ev.touches?ev.touches[0].clientX:ev.clientX);
+  const cy=(ev.touches?ev.touches[0].clientY:ev.clientY);
+  return {x:(cx-r.left)*(Wpx/r.width),y:(cy-r.top)*(Hpx/r.height)};
+}
+cvs.addEventListener("mousemove",ev=>{const p=canvasPos(ev);S.hover.x=p.x;S.hover.y=p.y;S.hover.on=true;});
+cvs.addEventListener("mouseleave",()=>{S.hover.on=false;});
+cvs.addEventListener("click",ev=>{
+  if(S.phase!=="build"&&S.phase!=="wave")return;
+  const p=canvasPos(ev);
+  // clicked an existing tower?
+  for(const t of S.towers){
+    if(dist(t.x,t.y,p.x,p.y)<t.r+8){S.sel=t;renderInspector(t);return;}
+  }
+  S.sel=null;hideInspector();
+  if(S.placing){
+    const def=TOWERS.find(d=>d.id===S.placing);
+    const ok=canPlace(p.x,p.y);
+    if(!ok){toast("Too close to the route or another instrument.");return;}
+    if(placeTower(S.placing,p.x,p.y)&&!ev.shiftKey){/* keep placing mode */}
+    drawShop();
+  }
+});
+cvs.addEventListener("touchstart",ev=>{const p=canvasPos(ev);S.hover.x=p.x;S.hover.y=p.y;S.hover.on=true;},{passive:true});
+addEventListener("keydown",ev=>{
+  if(S.phase==="intro"&&(ev.key==="Enter"||ev.key===" ")){startFromIntro();ev.preventDefault();return;}
+  const k=ev.key;
+  if(k>="1"&&k<="5"){selectPlacing(TOWERS[+k-1].id);}
+  else if(k==="Escape"){S.placing=null;S.sel=null;hideInspector();drawShop();}
+  else if(k===" "){if(S.phase==="build"){startWave();ev.preventDefault();}}
+  else if(k==="p"||k==="P"){togglePause();}
+});
+$("btnWave").addEventListener("click",startWave);
+$("btnSpeed").addEventListener("click",()=>{
+  S.speed=S.speed===1?2:(S.speed===2?3:1);
+  $("btnSpeed").innerHTML="&#9654;"+S.speed+"\u00D7";
+});
+function togglePause(){
+  if(S.phase==="wave"||S.phase==="build"){S.prevPhase=S.phase;S.phase="paused";show("pauseOverlay");}
+  else if(S.phase==="paused"){S.phase=S.prevPhase||"build";hide("pauseOverlay");}
+}
+$("btnPause").addEventListener("click",togglePause);
+$("btnResume").addEventListener("click",togglePause);
+$("btnHelp").addEventListener("click",()=>{if(S.phase!=="intro"){$("btnStart").style.display="none";$("btnSkipLore").textContent="Return to the Survey";show("introOverlay");S.prevPhase=S.phase==="paused"?S.prevPhase:S.phase;S.phase="paused";}});
+$("btnSkipLore").addEventListener("click",()=>{hide("introOverlay");
+  if(S.phase==="intro")startFromIntro();else{S.phase="build";$("btnStart").style.display="";}});
+$("btnStart").addEventListener("click",startFromIntro);
+$("btnRestart").addEventListener("click",newGame);
+function startFromIntro(){
+  hide("introOverlay");
+  if(S.phase==="over")newGame();
+  if(S.phase==="intro"){S.phase="build";toast("Choose an instrument, then set it upon the vellum.");}
+}
+</script>
+
+<script>
+/* ======================= MAIN LOOP =================================== */
+let lastT=performance.now();
+function frame(now){
+  let dt=Math.min(.05,(now-lastT)/1000);lastT=now;
+  if(S.phase==="wave"||S.phase==="build"){
+    const steps=S.phase==="wave"?S.speed:1;
+    for(let i=0;i<steps;i++)step(dt);
+  }
+  draw();
+  S.time+=dt;
+  requestAnimationFrame(frame);
+}
+function step(dt){
+  S.rosePulse*=.9;
+  for(const e of S.fx)e.life-=dt;
+  updateFoes(dt);
+  if(S.phase!=="wave")return;
+  spawnTick(dt);
+  updateTowers(dt);
+  updateShots(dt);
+  endWaveCheck();
+}
+/* ======================= BOOT ======================================== */
+resize();updateHUD();drawShop();renderWavePreview();
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
