@@ -1,0 +1,1154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>The Last Broadcast — KVLT Tower Defense</title>
+<style>
+    :root {
+        --shell: #17120c;
+        --panel: #221a11;
+        --panel-2: #2c2216;
+        --brass: #c9a24b;
+        --brass-bright: #f0d489;
+        --dial: #7ee0d2;
+        --amber: #ffb347;
+        --danger: #ff6b57;
+        --paper: #e8dcc0;
+        --ink: #3a2f1e;
+        --line: rgba(201, 162, 75, 0.35);
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    html, body { height: 100%; }
+    body {
+        background: radial-gradient(ellipse at 50% 0%, #241c11 0%, var(--shell) 60%, #0e0b07 100%);
+        color: var(--paper);
+        font-family: "Courier New", Courier, monospace;
+        display: flex; flex-direction: column; align-items: center;
+        min-height: 100vh; min-height: -webkit-fill-available;
+        overflow-x: hidden;
+        user-select: none;
+    }
+    /* subtle CRT grain */
+    body::after {
+        content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 90;
+        background: repeating-linear-gradient(0deg, transparent 0 2px, rgba(0,0,0,0.07) 2px 4px);
+    }
+
+    header {
+        width: 100%; max-width: 1180px;
+        display: flex; align-items: center; justify-content: space-between; gap: 1rem;
+        padding: 0.8rem 1.2rem 0.4rem;
+    }
+    .callsign { display: flex; align-items: baseline; gap: 0.7rem; flex-wrap: wrap; }
+    .callsign h1 {
+        font-size: clamp(1rem, 3vw, 1.5rem); letter-spacing: 0.28em;
+        color: var(--brass-bright); font-weight: 700; text-transform: uppercase;
+        text-shadow: 0 0 14px rgba(240, 212, 137, 0.35);
+    }
+    .callsign .sub { font-size: 0.66rem; letter-spacing: 0.18em; color: rgba(232,220,192,0.55); text-transform: uppercase; }
+    .onair {
+        border: 2px solid var(--danger); color: var(--danger); border-radius: 4px;
+        padding: 0.25rem 0.7rem; font-size: 0.68rem; letter-spacing: 0.3em; font-weight: 700;
+        box-shadow: 0 0 12px rgba(255,107,87,0.25) inset; opacity: 0.35; transition: all 0.3s;
+    }
+    .onair.live { opacity: 1; animation: pulse 1.6s ease-in-out infinite; }
+    @keyframes pulse { 0%,100% { box-shadow: 0 0 6px rgba(255,107,87,0.3) inset; } 50% { box-shadow: 0 0 18px rgba(255,107,87,0.7) inset; } }
+
+    .layout {
+        width: 100%; max-width: 1180px; flex: 1;
+        display: flex; gap: 0.9rem;
+        padding: 0.4rem 1.2rem 1rem;
+        align-items: stretch;
+    }
+    /* ------- Board ------- */
+    .board-wrap {
+        flex: 1 1 auto; min-width: 0; position: relative;
+        border: 2px solid var(--line); border-radius: 8px;
+        background: linear-gradient(160deg, #241c10, #17110a);
+        padding: 6px;
+        display: flex; align-items: center; justify-content: center;
+        box-shadow: 0 8px 40px rgba(0,0,0,0.5), 0 0 0 1px rgba(0,0,0,0.6);
+    }
+    canvas { display: block; width: 100%; height: auto; border-radius: 4px; touch-action: manipulation; cursor: crosshair; }
+
+    /* ------- Side console ------- */
+    .console {
+        flex: 0 0 300px; display: flex; flex-direction: column; gap: 0.7rem;
+        max-height: calc(100vh - 110px); overflow-y: auto; scrollbar-width: thin;
+    }
+    .module {
+        background: linear-gradient(170deg, var(--panel-2), var(--panel));
+        border: 1px solid var(--line); border-radius: 8px; padding: 0.7rem 0.8rem;
+    }
+    .module h3 {
+        font-size: 0.62rem; letter-spacing: 0.28em; text-transform: uppercase;
+        color: var(--brass); margin-bottom: 0.55rem; display: flex; justify-content: space-between; align-items: center;
+    }
+    .meters { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; }
+    .meter { background: #14100a; border: 1px solid var(--line); border-radius: 5px; padding: 0.45rem 0.55rem; }
+    .meter .lbl { font-size: 0.56rem; letter-spacing: 0.2em; color: rgba(232,220,192,0.5); text-transform: uppercase; }
+    .meter .val { font-size: 1.15rem; font-weight: 700; color: var(--amber); }
+    .meter .val.small { font-size: 0.95rem; }
+    /* VU signal-strength meter */
+    .vu { margin-top: 0.5rem; background: #14100a; border: 1px solid var(--line); border-radius: 5px; padding: 0.4rem 0.55rem 0.5rem; }
+    .vu .lbl { font-size: 0.56rem; letter-spacing: 0.2em; color: rgba(232,220,192,0.5); text-transform: uppercase; display: flex; justify-content: space-between; }
+    .vu-bar { margin-top: 0.35rem; height: 10px; border-radius: 3px; overflow: hidden; display: flex; gap: 2px; }
+    .vu-bar i { flex: 1; background: #2e2718; border-radius: 1px; transition: background 0.25s; }
+    .vu-bar i.on { background: var(--dial); box-shadow: 0 0 5px rgba(126,224,210,0.6); }
+    .vu-bar i.warn { background: var(--amber); }
+    .vu-bar i.crit { background: var(--danger); box-shadow: 0 0 6px rgba(255,107,87,0.7); }
+
+    /* tower palette */
+    .palette { display: grid; grid-template-columns: repeat(5, 1fr); gap: 0.4rem; }
+    .tow-btn {
+        background: #14100a; border: 1px solid var(--line); border-radius: 6px;
+        padding: 0.45rem 0.15rem 0.35rem; cursor: pointer; text-align: center;
+        color: var(--paper); font-family: inherit; transition: all 0.15s;
+        display: flex; flex-direction: column; align-items: center; gap: 0.25rem;
+    }
+    .tow-btn svg { width: 26px; height: 26px; }
+    .tow-btn .nm { font-size: 0.52rem; letter-spacing: 0.04em; line-height: 1.15; }
+    .tow-btn .cost { font-size: 0.55rem; color: var(--amber); font-weight: 700; }
+    .tow-btn:hover { border-color: var(--brass); background: #1c1610; }
+    .tow-btn.sel { border-color: var(--brass-bright); box-shadow: 0 0 10px rgba(240,212,137,0.3); background: #241c10; }
+    .tow-btn.poor { opacity: 0.45; }
+
+    /* inspector */
+    .insp-body { font-size: 0.72rem; line-height: 1.5; }
+    .insp-body .tname { color: var(--brass-bright); font-weight: 700; letter-spacing: 0.08em; }
+    .insp-body .stats { margin: 0.45rem 0; display: grid; grid-template-columns: 1fr 1fr; gap: 0.15rem 0.6rem; color: rgba(232,220,192,0.85); font-size: 0.66rem; }
+    .upg-path { list-style: none; margin: 0.4rem 0; }
+    .upg-path li {
+        font-size: 0.62rem; padding: 0.3rem 0.4rem; margin-bottom: 0.25rem;
+        border-left: 3px solid #3a2f1e; color: rgba(232,220,192,0.55); background: rgba(0,0,0,0.18); border-radius: 0 4px 4px 0;
+    }
+    .upg-path li.done { border-left-color: var(--brass); color: var(--brass-bright); }
+    .upg-path li.next { border-left-color: var(--dial); color: var(--paper); background: rgba(126,224,210,0.08); }
+    .btn {
+        display: inline-block; width: 100%; text-align: center; cursor: pointer;
+        background: linear-gradient(170deg, #3a2e1a, #2c2212); color: var(--brass-bright);
+        border: 1px solid var(--brass); border-radius: 6px; padding: 0.55rem 0.6rem;
+        font-family: inherit; font-size: 0.72rem; letter-spacing: 0.12em; font-weight: 700;
+        text-transform: uppercase; transition: all 0.15s;
+    }
+    .btn:hover { box-shadow: 0 0 12px rgba(201,162,75,0.35); }
+    .btn:disabled { opacity: 0.4; cursor: default; box-shadow: none; }
+    .btn.danger { border-color: var(--danger); color: #ffb0a5; }
+    .row { display: flex; gap: 0.45rem; }
+    .row .btn { flex: 1; }
+
+    /* wave log / telegram */
+    .telegram {
+        background: var(--paper); color: var(--ink); border-radius: 4px;
+        padding: 0.55rem 0.65rem; font-size: 0.64rem; line-height: 1.55;
+        box-shadow: inset 0 0 12px rgba(58,47,30,0.15);
+        font-style: italic; position: relative;
+    }
+    .telegram::before {
+        content: "✂ - - - - - - - - - - - - - - - -";
+        display: block; font-style: normal; font-size: 0.55rem; opacity: 0.4; letter-spacing: 0.1em; margin-bottom: 0.25rem;
+    }
+    .wave-title { font-size: 0.66rem; letter-spacing: 0.2em; text-transform: uppercase; color: var(--brass-bright); margin-bottom: 0.3rem; }
+
+    .controls { display: flex; gap: 0.45rem; }
+    .ctl {
+        flex: 1; cursor: pointer; background: #14100a; border: 1px solid var(--line); border-radius: 6px;
+        color: var(--paper); font-family: inherit; font-size: 0.7rem; padding: 0.5rem 0.2rem; font-weight: 700;
+        transition: all 0.15s;
+    }
+    .ctl:hover { border-color: var(--brass); }
+
+    /* ------- overlays ------- */
+    .overlay {
+        position: fixed; inset: 0; z-index: 200; display: flex; align-items: center; justify-content: center;
+        background: rgba(10, 8, 5, 0.86); backdrop-filter: blur(3px); padding: 1rem;
+    }
+    .overlay.hidden { display: none; }
+    .ledger {
+        max-width: 620px; width: 100%; max-height: 92vh; overflow-y: auto;
+        background: var(--paper); color: var(--ink); border-radius: 6px;
+        padding: 2rem 2.2rem; box-shadow: 0 20px 80px rgba(0,0,0,0.7);
+        font-size: 0.8rem; line-height: 1.75;
+    }
+    .ledger h2 { font-size: 1.2rem; letter-spacing: 0.14em; text-transform: uppercase; margin-bottom: 0.2rem; border-bottom: 2px solid var(--ink); padding-bottom: 0.4rem; }
+    .ledger .stamp { float: right; border: 2px solid #8a2f22; color: #8a2f22; padding: 0.15rem 0.5rem; font-weight: 700; letter-spacing: 0.2em; transform: rotate(6deg); font-size: 0.65rem; border-radius: 3px; margin-left: 0.5rem; }
+    .ledger p { margin: 0.7rem 0; }
+    .ledger .sig { text-align: right; font-style: italic; margin-top: 1rem; }
+    .ledger .btn { background: var(--ink); color: var(--paper); border-color: var(--ink); margin-top: 1rem; }
+    .ledger.center { text-align: center; }
+
+    /* intermission strip */
+    .intermission {
+        position: absolute; left: 0; right: 0; bottom: 6px; z-index: 20;
+        display: flex; align-items: center; justify-content: center; gap: 0.8rem;
+        padding: 0.6rem; pointer-events: none;
+    }
+    .intermission > * { pointer-events: auto; }
+    .intermission .hint { font-size: 0.62rem; color: rgba(232,220,192,0.65); letter-spacing: 0.1em; background: rgba(23,18,12,0.85); border: 1px solid var(--line); border-radius: 5px; padding: 0.4rem 0.7rem; }
+
+    /* mobile */
+    @media (max-width: 900px) {
+        .layout { flex-direction: column; }
+        .console { flex: none; max-height: none; width: 100%; }
+        .palette { grid-template-columns: repeat(5, 1fr); }
+        header { padding: 0.6rem 0.8rem 0.3rem; }
+        .layout { padding: 0.3rem 0.8rem 0.8rem; }
+        .ledger { padding: 1.3rem 1.2rem; }
+    }
+</style>
+</head>
+<body>
+
+<header>
+    <div class="callsign">
+        <h1>KVLT · The Last Broadcast</h1>
+        <span class="sub">Night Light of Emberwick · 618 kHz</span>
+    </div>
+    <div class="onair" id="onair">ON AIR</div>
+</header>
+
+<div class="layout">
+    <div class="board-wrap">
+        <canvas id="board" width="960" height="660"></canvas>
+        <div class="intermission" id="intermission" style="display:none">
+            <span class="hint">◄ Static clear — upgrade your apparatus, then…</span>
+            <button class="btn" id="btnWave" style="width:auto; padding:0.55rem 1.4rem">Begin Broadcast ▸</button>
+        </div>
+    </div>
+
+    <aside class="console">
+        <div class="module">
+            <h3>Station Meters</h3>
+            <div class="meters">
+                <div class="meter"><div class="lbl">Watts</div><div class="val" id="uiWatts">0</div></div>
+                <div class="meter"><div class="lbl">Watch</div><div class="val small" id="uiWave">—</div></div>
+            </div>
+            <div class="vu">
+                <div class="lbl"><span>Signal Strength</span><span id="uiLivesTxt">20 / 20</span></div>
+                <div class="vu-bar" id="vuBar"></div>
+            </div>
+        </div>
+
+        <div class="module">
+            <h3>Apparatus Rack</h3>
+            <div class="palette" id="palette"></div>
+        </div>
+
+        <div class="module" id="inspector" style="display:none">
+            <h3 id="inspTitle">Inspector</h3>
+            <div class="insp-body" id="inspBody"></div>
+        </div>
+
+        <div class="module">
+            <h3>Operations Desk</h3>
+            <div class="controls">
+                <button class="ctl" id="btnPause">⏸ PAUSE</button>
+                <button class="ctl" id="btnSpeed">1×</button>
+                <button class="ctl" id="btnMute">♪ ON</button>
+            </div>
+        </div>
+
+        <div class="module">
+            <h3>Wireless Log</h3>
+            <div class="wave-title" id="uiWaveName">—</div>
+            <div class="telegram" id="uiTelegram">Awaiting first watch…</div>
+        </div>
+    </aside>
+</div>
+
+<!-- Intro / lore overlay -->
+<div class="overlay" id="introOverlay">
+    <div class="ledger">
+        <span class="stamp">CLASSIFIED</span>
+        <h2>Station Log — KVLT</h2>
+        <p><strong>Emberwick, the cliff. Night of the long static.</strong></p>
+        <p>They call this stretch of the dial the Dead Band, and they are right to. Every night since the mast went up in '31, this station has sung the Sleepwave across the valley — the one frequency that keeps Emberwick dreaming. The town has never known. The town must never know.</p>
+        <p>Because when the transmitter falls silent, the <strong>Hollow Hours</strong> come through. Things of pure static — Hisses, Crackles, Whistlers, Deadairs — crawling up the signal cable to smother our voice. The Operator before me learned this too slowly. I found only his headphones, still warm.</p>
+        <p>Tonight the ionosphere broke. The Hollow Hours are already on the cable, wave upon wave, and dawn is twenty-four watches away. My apparatus is old, my valves are warm, and my hand is steady.</p>
+        <p>I am the night operator. <strong>As long as KVLT broadcasts, Emberwick sleeps.</strong></p>
+        <p class="sig">— final entry, station logbook · 1937</p>
+        <button class="btn" id="btnStart">Take the Night Shift ▸</button>
+    </div>
+</div>
+
+<!-- Game over overlay -->
+<div class="overlay hidden" id="endOverlay">
+    <div class="ledger center" id="endLedger">
+        <h2 id="endTitle">—</h2>
+        <p id="endBody">—</p>
+        <button class="btn" id="btnRestart">Take the Shift Again ▸</button>
+    </div>
+</div>
+
+<script>
+"use strict";
+/* ============================================================
+   THE LAST BROADCAST — a KVLT night-shift tower defense
+   Zero dependencies. One file. Canvas + Web Audio.
+   ============================================================ */
+
+// ---------- helpers ----------
+const rnd = (a, b) => a + Math.random() * (b - a);
+const ri = (a, b) => Math.floor(rnd(a, b + 1));
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+const fmt = n => Math.round(n).toLocaleString();
+
+// ---------- audio (tiny synth, mutable) ----------
+const Sfx = (() => {
+    let ctx = null, muted = false, master = null;
+    function ensure() {
+        if (!ctx) {
+            ctx = new (window.AudioContext || window.webkitAudioContext)();
+            master = ctx.createGain(); master.gain.value = 0.16; master.connect(ctx.destination);
+        }
+        if (ctx.state === "suspended") ctx.resume();
+    }
+    function tone(freq, dur, type, vol, slide) {
+        if (muted) return; ensure();
+        const o = ctx.createOscillator(), g = ctx.createGain();
+        o.type = type || "sine"; o.frequency.value = freq;
+        if (slide) o.frequency.exponentialRampToValueAtTime(Math.max(30, freq * slide), ctx.currentTime + dur);
+        g.gain.value = vol || 0.5;
+        g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + dur);
+        o.connect(g); g.connect(master);
+        o.start(); o.stop(ctx.currentTime + dur + 0.02);
+    }
+    function noise(dur, vol) {
+        if (muted) return; ensure();
+        const n = ctx.sampleRate * dur, buf = ctx.createBuffer(1, n, ctx.sampleRate), d = buf.getChannelData(0);
+        for (let i = 0; i < n; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / n);
+        const s = ctx.createBufferSource(), g = ctx.createGain();
+        s.buffer = buf; g.gain.value = vol || 0.4;
+        s.connect(g); g.connect(master); s.start();
+    }
+    return {
+        shoot: () => tone(rnd(500, 700), 0.07, "square", 0.25),
+        zap: () => tone(rnd(900, 1300), 0.1, "sawtooth", 0.2, 0.4),
+        beam: () => tone(220, 0.12, "sine", 0.15, 1.6),
+        snipe: () => { tone(1200, 0.16, "triangle", 0.35, 0.2); noise(0.06, 0.15); },
+        lull: () => tone(rnd(300, 340), 0.3, "sine", 0.12),
+        hit: () => noise(0.05, 0.18),
+        kill: () => tone(rnd(160, 220), 0.15, "sawtooth", 0.22, 0.3),
+        leak: () => { tone(110, 0.5, "sawtooth", 0.5, 0.5); noise(0.3, 0.5); },
+        wave: () => { tone(392, 0.2, "triangle", 0.4); setTimeout(() => tone(523, 0.35, "triangle", 0.4), 180); },
+        up: () => { tone(660, 0.1, "square", 0.3); setTimeout(() => tone(880, 0.15, "square", 0.3), 90); },
+        win: () => [392, 494, 587, 784].forEach((f, i) => setTimeout(() => tone(f, 0.4, "triangle", 0.4), i * 200)),
+        setMuted: m => { muted = m; }, get muted() { return muted; }, ensure
+    };
+})();
+
+// ---------- board / path generation ----------
+const GRID_W = 16, GRID_H = 11, CELL = 60, PAD = 0;
+const canvas = document.getElementById("board");
+const cx = canvas.getContext("2d");
+
+function generatePath() {
+    // A signal cable: enters west, meanders east with vertical detours, ends at the mast.
+    // Generated on the grid; guaranteed monotone in x so it can't self-cross.
+    const cols = [];
+    let row = ri(3, GRID_H - 4);
+    for (let x = 0; x < GRID_W; x++) {
+        cols.push(row);
+        if (x === GRID_W - 1) break;
+        let drift = ri(-2, 2);
+        if (x === 0 || x === GRID_W - 2) drift = 0;             // straight into/out of edges
+        const target = clamp(row + drift, 1, GRID_H - 2);
+        if (target !== row && Math.random() < 0.72) {
+            // commit to a turn: vertical run happens while advancing columns
+            cols[cols.length - 1] = row;
+            const steps = Math.min(3, Math.abs(target - row));
+            const dir = Math.sign(target - row);
+            let r = row;
+            for (let s = 0; s < steps && x + 1 < GRID_W; s++) {
+                r += dir;
+                // the vertical jog occupies the same x for multiple cells: encode via segments later
+                jogs.push({ x, from: r - dir, to: r });
+            }
+            row = r;
+            cols[cols.length - 1] = row;
+        }
+    }
+    // Build waypoint list walking column by column, honoring jogs.
+    const jogsByCol = {};
+    jogs.forEach(j => { (jogsByCol[j.x] = jogsByCol[j.x] || []).push(j); });
+    const pts = [];
+    const cellC = (x, y) => ({ x: x * CELL + CELL / 2, y: y * CELL + CELL / 2 });
+    let curRow = cols[0];
+    pts.push(cellC(-1, curRow));
+    pts.push(cellC(0, curRow));
+    for (let x = 0; x < GRID_W; x++) {
+        const js = jogsByCol[x] || [];
+        js.forEach(j => { curRow = j.to; pts.push(cellC(x, curRow)); });
+        if (x < GRID_W - 1 && cols[x + 1] !== curRow) { /* covered by next col's jogs */ }
+        if (x === GRID_W - 1) pts.push(cellC(GRID_W, curRow));
+        else if (cols[x + 1] === curRow) pts.push(cellC(x + 1, curRow));
+    }
+    // ensure final exit east
+    const last = pts[pts.length - 1];
+    if (last.x < GRID_W * CELL) pts.push({ x: (GRID_W + 1) * CELL, y: curRow * CELL + CELL / 2 });
+    return { pts, exitRow: curRow };
+}
+let jogs = [];
+
+function pathCells(pts) {
+    // rasterize waypoints to grid cells (blocked for building)
+    const set = new Set();
+    for (let i = 0; i < pts.length - 1; i++) {
+        const a = pts[i], b = pts[i + 1];
+        const steps = Math.ceil(dist(a, b) / (CELL / 2));
+        for (let s = 0; s <= steps; s++) {
+            const gx = clamp(Math.floor((a.x + (b.x - a.x) * (s / steps)) / CELL), 0, GRID_W - 1);
+            const gy = clamp(Math.floor((a.y + (b.y - a.y) * (s / steps)) / CELL), 0, GRID_H - 1);
+            set.add(gx + "," + gy);
+        }
+    }
+    return set;
+}
+
+// ---------- tower definitions ----------
+// Each tower: base stats, 4 sequential upgrades. (lvl 0 = newly built)
+const TOWERS = {
+    gram: {
+        name: "Gram Horn", icon: "horn", cost: 90,
+        desc: "Brass gramophone that barks a chord of concentrated lullaby at the nearest static.",
+        stats: l => ({ dmg: [9, 14, 22, 34, 50][l], range: 130 + l * 18, rate: 0.85, aoe: 44 + l * 6, stun: l >= 4 ? 0.25 : 0 }),
+        upNames: ["Brass Polish", "Twin Bell", "Resonant Chamber", "The Golden Horn"],
+        upDesc: ["Sharper tones: +damage.", "Two bells sing as one.", "The horn hums itself: heavy shots.", "One chord in four hundred stops a heart."],
+        upCost: [60, 110, 190, 330],
+        kind: "pulse"
+    },
+    tesla: {
+        name: "Tesla Choir", icon: "coil", cost: 130,
+        desc: "A rack of singing coils. Lightning leaps voice to voice down the static's own throats.",
+        stats: l => ({ dmg: [7, 11, 17, 26, 40][l], range: 115 + l * 14, rate: 1.0, chains: [2, 3, 3, 4, 6][l] }),
+        upNames: ["Oiled Contacts", "Second Coil", "Storm Capacitors", "Choir of Nine"],
+        upDesc: ["Sparks fly farther and truer.", "A duet: lightning forks once more.", "The air itself is loaded.", "The whole rack sings at once."],
+        upCost: [85, 140, 230, 400],
+        kind: "chain"
+    },
+    valve: {
+        name: "Valve Bank", icon: "valve", cost: 110,
+        desc: "Hot triodes focus into a steady beam. The longer it holds a target, the deeper it burns — and it unmakes armour.",
+        stats: l => ({ dmg: [12, 18, 27, 40, 60][l], range: 120 + l * 15, rate: 6, ramp: [1.6, 1.8, 2.0, 2.3, 2.8][l], shred: 1 + l }),
+        upNames: ["Fresh Filaments", "Push-Pull Pair", "Mercury Vapour", "The Oven"],
+        upDesc: ["Brighter burn, faster ramp.", "Two valves, one throat.", "Blue-hot: armour slags off.", "The bench glows like a small sun."],
+        upCost: [80, 130, 210, 360],
+        kind: "beam"
+    },
+    ghost: {
+        name: "Ghostline Aerial", icon: "mast", cost: 160,
+        desc: "A wire strung to catch whispers. Fires one aimed whisper of pure carrier wave — devastating to anything slowed or sleeping.",
+        stats: l => ({ dmg: [46, 70, 105, 155, 230][l], range: 210 + l * 30, rate: 0.38, xslow: [2, 2.2, 2.5, 2.8, 3.4][l] }),
+        upNames: ["Taut Guy-Wire", "Long Wave", "Directional Reflector", "The Night Voice"],
+        upDesc: ["Quicker to speak, farther to hear.", "Reaches across the whole valley.", "A aimed mirror of copper mesh.", "One shot. One silence."],
+        upCost: [110, 175, 280, 470],
+        kind: "snipe"
+    },
+    lull: {
+        name: "Lullaby Loop", icon: "loop", cost: 100,
+        desc: "A wax loop of the Sleepwave itself. Static in range forgets its hurry; sometimes it stops to listen.",
+        stats: l => ({ dmg: [3, 5, 8, 12, 18][l], range: 90 + l * 20, rate: 2, slow: [0.3, 0.38, 0.46, 0.54, 0.65][l], lullChance: [0, 0, 0.02, 0.04, 0.07][l] }),
+        upNames: ["Warmer Wax", "Deeper Groove", "Half-Speed Master", "The True Sleepwave"],
+        upDesc: ["Slower loops, slower static.", "Sub-bass: they truly drag.", "Occasionally a listener halts.", "The original master. Nothing stays awake."],
+        upCost: [70, 120, 200, 350],
+        kind: "aura"
+    }
+};
+const TOWER_KEYS = ["gram", "tesla", "valve", "ghost", "lull"];
+
+// ---------- enemy definitions ----------
+// speed in px/s at 1×; hp scaled per-wave by difficulty ramp
+const ENEMIES = {
+    hiss:    { name: "Hiss",           hp: 26,  speed: 78, reward: 7,  r: 11, color: "#bfe8df", armor: 0,  desc: "Fast, thin, hateful." },
+    crackle: { name: "Crackle",        hp: 55,  speed: 52, reward: 10, r: 13, color: "#ffd27a", armor: 1,  desc: "Standard interference." },
+    whistle: { name: "Whistler",       hp: 38,  speed: 104, reward: 12, r: 10, color: "#9ad7ff", armor: 0, desc: "A rising shriek. Very fast." },
+    deadair: { name: "Deadair",        hp: 190, speed: 30, reward: 22, r: 17, color: "#8f8aa8", armor: 5,  desc: "Absence with mass. Armoured silence." },
+    wraith:  { name: "Feedback Wraith", hp: 90, speed: 44, reward: 18, r: 14, color: "#ff9ecf", armor: 0, regen: 6, desc: "Re-asserts itself unless killed quickly." },
+    echo:    { name: "Echo Twin",      hp: 70,  speed: 58, reward: 9,  r: 12, color: "#c5b3ff", armor: 0, split: "hiss", splitN: 2, desc: "Dies twice." },
+    choir:   { name: "Static Choir",   hp: 46,  speed: 66, reward: 8,  r: 10, color: "#e8e3c8", armor: 0, desc: "They arrive singing, all together." },
+    conduct: { name: "The Conductor",  hp: 900, speed: 34, reward: 90, r: 22, color: "#f0d489", armor: 6, haste: true, desc: "It beats time. Its choir quickens." },
+    channel: { name: "The Dead Channel", hp: 2400, speed: 24, reward: 200, r: 26, color: "#7ee0d2", armor: 8, spawns: "hiss", desc: "A whole dead frequency, walking." },
+    hollow:  { name: "The Hollow Hour", hp: 5200, speed: 20, reward: 500, r: 30, color: "#ff6b57", armor: 10, spawns: "crackle", haste: true, desc: "Midnight itself, leaked through." }
+};
+
+// ---------- waves (24 watches until dawn) ----------
+const WAVES = [
+    { n: "First Watch · 12:04",  lore: "STATIC ON THE CABLE. SMALL. SINGING. — night log", g: [{ t: "hiss", c: 8, gap: 1.1 }] },
+    { n: "Second Watch · 12:47", lore: "THEY FOLLOW THE CABLE LIKE IT'S A ROPE HOME.", g: [{ t: "hiss", c: 12, gap: 0.85 }, { t: "crackle", c: 4, gap: 1.4 }] },
+    { n: "Third Watch · 1:15",   lore: "CRACKLES NOW. THEY CRUNCH UNDER THE LULLABY.", g: [{ t: "crackle", c: 10, gap: 1.0 }] },
+    { n: "Fourth Watch · 1:58",  lore: "HEARD A WHISTLE TONIGHT. NEVER A GOOD SIGN.", g: [{ t: "whistle", c: 8, gap: 0.8 }, { t: "hiss", c: 8, gap: 0.6 }] },
+    { n: "Fifth Watch · 2:30",   lore: "A CHOIRE OF STATIC, ALL VOICES AS ONE.", g: [{ t: "choir", c: 16, gap: 0.5 }, { t: "crackle", c: 6, gap: 1.0 }] },
+    { n: "Sixth Watch · 3:03",   lore: "THE HOUR OF WOLF. DEADAIR ON THE LINE — HEAVY, SILENT.", g: [{ t: "deadair", c: 4, gap: 2.2 }, { t: "hiss", c: 10, gap: 0.7 }] },
+    { n: "Seventh Watch · 3:33", lore: "THE WITCHING NUMBER. THE STATIC KNOWS IT TOO.", g: [{ t: "whistle", c: 12, gap: 0.55 }, { t: "wraith", c: 4, gap: 1.8 }] },
+    { n: "Eighth Watch · 4:00",  lore: "ECHOES ARRIVING IN PAIRS NOW. EVERYTHING ARRIVES IN PAIRS.", g: [{ t: "echo", c: 8, gap: 1.2 }, { t: "crackle", c: 8, gap: 0.9 }] },
+    { n: "Ninth Watch · 4:26",   lore: "FEEDBACK LOOP IN THE VALLEY. THE WRAITHS FEED ON IT.", g: [{ t: "wraith", c: 8, gap: 1.4 }, { t: "whistle", c: 8, gap: 0.6 }] },
+    { n: "Tenth Watch · 4:51",   lore: "THEY TESTED US TONIGHT. NEXT COMES THE PRESSURE.", g: [{ t: "deadair", c: 5, gap: 1.9 }, { t: "echo", c: 6, gap: 1.1 }, { t: "hiss", c: 12, gap: 0.5 }] },
+    { n: "Eleventh Watch · 5:09", lore: "STATIC REPORTS A CONDUCTOR ON THE CABLE. IT KEEPS TIME. IT SPEEDS THE CHOIR.", g: [{ t: "conduct", c: 1, gap: 0 }, { t: "choir", c: 14, gap: 0.55 }] },
+    { n: "Twelfth Watch · 5:22", lore: "HALF THE NIGHT IS GONE. SO IS HALF MY COFFEE.", g: [{ t: "whistle", c: 16, gap: 0.45 }, { t: "wraith", c: 6, gap: 1.3 }, { t: "crackle", c: 8, gap: 0.8 }] },
+    { n: "Thirteenth Watch · 5:34", lore: "THE HOUR THEY SAID DIDN'T EXIST. IT EXISTS.", g: [{ t: "deadair", c: 7, gap: 1.6 }, { t: "echo", c: 8, gap: 1.0 }, { t: "hiss", c: 14, gap: 0.45 }] },
+    { n: "Fourteenth Watch · 5:45", lore: "THE WHISTLERS HAVE LEARNED TO WAIT FOR EACH OTHER.", g: [{ t: "whistle", c: 20, gap: 0.4 }, { t: "choir", c: 12, gap: 0.5 }] },
+    { n: "Fifteenth Watch · 5:53", lore: "FIFTY-EIGHT MINUTES OF DARK LEFT. THEY KNOW.", g: [{ t: "conduct", c: 1, gap: 0 }, { t: "deadair", c: 6, gap: 1.5 }, { t: "wraith", c: 8, gap: 1.1 }] },
+    { n: "Sixteenth Watch · 5:58", lore: "SOMETHING BIG IS USING THE DEAD AIR AS A ROAD.", g: [{ t: "echo", c: 12, gap: 0.8 }, { t: "choir", c: 16, gap: 0.45 }, { t: "whistle", c: 10, gap: 0.4 }] },
+    { n: "Seventeenth Watch · 6:01", lore: "THE DEAD CHANNEL ITSELF. A WHOLE FREQUENCY, DEAD AND WALKING.", g: [{ t: "channel", c: 1, gap: 0 }, { t: "hiss", c: 12, gap: 0.5 }] },
+    { n: "Eighteenth Watch · 6:09", lore: "THE SKY IS NOT LIGHTENING. THE SKY IS STATIC.", g: [{ t: "deadair", c: 8, gap: 1.3 }, { t: "wraith", c: 10, gap: 1.0 }, { t: "whistle", c: 12, gap: 0.4 }] },
+    { n: "Nineteenth Watch · 6:14", lore: "TWO CONDUCTORS. THE VALLEY IS AN ORCHESTRA PIT.", g: [{ t: "conduct", c: 2, gap: 6 }, { t: "choir", c: 20, gap: 0.4 }, { t: "echo", c: 10, gap: 0.8 }] },
+    { n: "Twentieth Watch · 6:19", lore: "THEY POUR LIKE WATER NOW. HOLD THE MAST.", g: [{ t: "hiss", c: 30, gap: 0.3 }, { t: "crackle", c: 16, gap: 0.5 }, { t: "deadair", c: 6, gap: 1.4 }] },
+    { n: "Twenty-First · 6:23", lore: "BIRDS? AT THIS HOUR? NO. NOT BIRDS.", g: [{ t: "whistle", c: 24, gap: 0.32 }, { t: "wraith", c: 12, gap: 0.9 }, { t: "choir", c: 16, gap: 0.45 }] },
+    { n: "Twenty-Second · 6:27", lore: "THREE MINUTES OF NIGHT. THEY SPEND EVERYTHING.", g: [{ t: "channel", c: 1, gap: 0 }, { t: "conduct", c: 1, gap: 0 }, { t: "echo", c: 14, gap: 0.7 }] },
+    { n: "Twenty-Third · 6:29", lore: "THE MAST GLOWS. THE VALLEY HOLDS ITS BREATH. SO DO I.", g: [{ t: "deadair", c: 10, gap: 1.1 }, { t: "wraith", c: 12, gap: 0.8 }, { t: "whistle", c: 18, gap: 0.3 }, { t: "choir", c: 16, gap: 0.4 }] },
+    { n: "The Hollow Hour · 6:30", lore: "IT IS THE HOUR ITSELF. THE LAST MINUTE OF NIGHT, LEAKED THROUGH. WHEN IT DIES — DAWN.", g: [{ t: "hollow", c: 1, gap: 0 }, { t: "hiss", c: 20, gap: 0.4 }, { t: "deadair", c: 6, gap: 1.2 }] }
+];
+const FINAL_WAVE = WAVES.length;
+
+// ---------- game state ----------
+let G;
+function newGame() {
+    jogs = [];
+    const path = generatePath();
+    G = {
+        path: path.pts,
+        blocked: pathCells(path.pts),
+        pathLen: 0, cum: [],
+        towers: [], enemies: [], shots: [], fx: [],
+        watts: 220, lives: 20, maxLives: 20,
+        wave: 0, phase: "idle", // idle | running | over
+        spawnQueue: [], spawnT: 0,
+        speed: 1, paused: false,
+        selType: null, selTower: null,
+        time: 0, kills: 0, leaked: 0,
+        hover: null
+    };
+    // cumulative path distances
+    G.cum[0] = 0;
+    for (let i = 1; i < G.path.length; i++) G.cum[i] = G.cum[i - 1] + dist(G.path[i - 1], G.path[i]);
+    G.pathLen = G.cum[G.cum.length - 1];
+}
+function pathAt(d) {
+    const c = G.cum;
+    if (d <= 0) return { ...G.path[0], d: 0 };
+    for (let i = 1; i < c.length; i++) {
+        if (d <= c[i]) {
+            const a = G.path[i - 1], b = G.path[i], t = (d - c[i - 1]) / (c[i] - c[i - 1] || 1);
+            return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t };
+        }
+    }
+    return { ...G.path[G.path.length - 1] };
+}
+
+// ---------- enemies ----------
+function hpScale(wave) { return 1 + (wave - 1) * 0.16 + Math.pow(Math.max(0, wave - 10), 1.6) * 0.012; }
+function spawnEnemy(type, dOff, hpMul) {
+    const b = ENEMIES[type];
+    G.enemies.push({
+        type, ...b,
+        hp: b.hp * hpScale(G.wave) * (hpMul || 1), maxHp: b.hp * hpScale(G.wave) * (hpMul || 1),
+        d: dOff || 0, slow: 0, slowT: 0, lullT: 0, hasteT: 0,
+        armorShred: 0, wob: rnd(0, 6.28), spawnT: 0
+    });
+}
+function enemyPos(e) { return pathAt(e.d); }
+function armorOf(e) { return Math.max(0, e.armor - e.armorShred); }
+function damage(e, raw, src) {
+    const d = Math.max(1, raw - armorOf(e));
+    e.hp -= d;
+    G.fx.push({ kind: "num", x: enemyPos(e).x + rnd(-8, 8), y: enemyPos(e).y - 14, txt: Math.round(d), t: 0.6, col: src === "ghost" ? "#9ad7ff" : "#f0d489" });
+    if (e.hp <= 0 && !e.dead) killEnemy(e);
+}
+function killEnemy(e) {
+    e.dead = true;
+    G.kills++;
+    G.watts += e.reward;
+    Sfx.kill();
+    const p = enemyPos(e);
+    G.fx.push({ kind: "pop", x: p.x, y: p.y, t: 0.4, col: e.color, r: e.r });
+    if (e.split) for (let i = 0; i < e.splitN; i++) spawnEnemy(e.split, e.d - i * 12, 0.7);
+}
+
+// ---------- towers ----------
+function towerStats(t) { return TOWERS[t.type].stats(t.lvl); }
+function canBuild(gx, gy) {
+    if (gx < 0 || gy < 0 || gx >= GRID_W || gy >= GRID_H) return false;
+    if (G.blocked.has(gx + "," + gy)) return false;
+    return !G.towers.some(t => t.gx === gx && t.gy === gy);
+}
+function buildTower(type, gx, gy) {
+    const def = TOWERS[type];
+    if (G.watts < def.cost || !canBuild(gx, gy)) return false;
+    G.watts -= def.cost;
+    const t = { type, gx, gy, x: gx * CELL + CELL / 2, y: gy * CELL + CELL / 2, lvl: 0, cd: 0, angle: -Math.PI / 2, target: null, beamT: 0, pulseT: 0 };
+    G.towers.push(t);
+    Sfx.up();
+    return t;
+}
+function upgradeCost(t) { const d = TOWERS[t.type]; return t.lvl >= 4 ? null : d.upCost[t.lvl]; }
+function upgradeTower(t) {
+    const c = upgradeCost(t);
+    if (c == null || G.watts < c) return false;
+    G.watts -= c; t.lvl++;
+    Sfx.up();
+    G.fx.push({ kind: "ring", x: t.x, y: t.y, t: 0.5, col: "#f0d489" });
+    return true;
+}
+function sellTower(t) {
+    let spent = TOWERS[t.type].cost;
+    for (let i = 0; i < t.lvl; i++) spent += TOWERS[t.type].upCost[i];
+    G.watts += Math.floor(spent * 0.6);
+    G.towers = G.towers.filter(x => x !== t);
+    G.selTower = null;
+    renderInspector();
+}
+
+// ---------- combat ----------
+function updateTower(t, dt) {
+    const s = towerStats(t);
+    t.cd -= dt;
+    const inRange = G.enemies.filter(e => !e.dead && dist(enemyPos(e), t) <= s.range + e.r);
+    if (!inRange.length) { t.target = null; t.beamT = Math.max(0, t.beamT - dt); return; }
+
+    if (TOWERS[t.type].kind === "aura") {
+        // lullaby: continuous aura, ticks at rate
+        inRange.forEach(e => {
+            e.slow = Math.max(e.slow, s.slow); e.slowT = Math.max(e.slowT, 0.3);
+            if (s.lullChance && Math.random() < s.lullChance * dt * 3) e.lullT = Math.max(e.lullT, 0.8);
+        });
+        if (t.cd <= 0) { t.cd = 1 / s.rate; inRange.forEach(e => damage(e, s.dmg, "lull")); Sfx.lull(); }
+        t.target = inRange[0];
+        return;
+    }
+    // pick target: furthest along path
+    inRange.sort((a, b) => b.d - a.d);
+    const tgt = inRange[0];
+    t.target = tgt;
+    const p = enemyPos(tgt);
+    t.angle = Math.atan2(p.y - t.y, p.x - t.x);
+
+    if (TOWERS[t.type].kind === "beam") {
+        // continuous beam with ramp on same target
+        if (t.target === t.lastTarget) t.beamT += dt; else { t.beamT = 0; t.lastTarget = t.target; }
+        const mult = 1 + (s.ramp - 1) * Math.min(1, t.beamT / 2);
+        if (t.cd <= 0) {
+            t.cd = 1 / s.rate;
+            tgt.armorShred = Math.min(tgt.armor, (tgt.armorShred || 0) + s.shred);
+            damage(tgt, s.dmg * mult / 3, "beam");
+            if (Math.random() < 0.2) Sfx.beam();
+        }
+        t.beamFrom = { x: t.x, y: t.y - 14 };
+        return;
+    }
+    if (t.cd > 0) return;
+    t.cd = 1 / s.rate;
+
+    if (TOWERS[t.type].kind === "pulse") {
+        G.shots.push({ kind: "pulse", x: t.x, y: t.y, tx: p.x, ty: p.y, t: 0, dur: 0.18, col: "#f0d489" });
+        inRange.forEach(e => { if (dist(enemyPos(e), p) <= s.aoe + e.r) { damage(e, s.dmg, "gram"); if (s.stun) e.lullT = Math.max(e.lullT, s.stun); } });
+        Sfx.shoot();
+    } else if (TOWERS[t.type].kind === "chain") {
+        // chain lightning: hop to nearest unhit
+        const chain = [{ x: t.x, y: t.y - 16 }];
+        let cur = tgt, hit = new Set();
+        for (let i = 0; i <= s.chains && cur; i++) {
+            chain.push(enemyPos(cur));
+            hit.add(cur); damage(cur, s.dmg * (1 - i * 0.12), "tesla");
+            let best = null, bd = 1e9;
+            G.enemies.forEach(e => {
+                if (e.dead || hit.has(e)) return;
+                const dd = dist(enemyPos(e), enemyPos(cur));
+                if (dd < 95 && dd < bd) { bd = dd; best = e; }
+            });
+            cur = best;
+        }
+        G.shots.push({ kind: "chain", pts: chain, t: 0, dur: 0.22 });
+        Sfx.zap();
+    } else if (TOWERS[t.type].kind === "snipe") {
+        // bonus vs slowed/lulled; ghostly pierce line
+        const bonus = (tgt.slow > 0.1 ? s.xslow : 1) * (tgt.lullT > 0 ? 1.8 : 1);
+        G.shots.push({ kind: "snipe", x: t.x, y: t.y - 20, tx: p.x, ty: p.y, t: 0, dur: 0.14 });
+        damage(tgt, s.dmg * bonus, "ghost");
+        Sfx.snipe();
+    }
+}
+
+// ---------- waves ----------
+function startWave() {
+    if (G.phase !== "idle") return;
+    G.wave++;
+    const w = WAVES[G.wave - 1];
+    G.spawnQueue = [];
+    w.g.forEach(gr => { for (let i = 0; i < gr.c; i++) G.spawnQueue.push({ t: gr.t, delay: gr.gap }); });
+    G.spawnT = 0.5; G.phase = "running";
+    document.getElementById("onair").classList.add("live");
+    document.getElementById("uiWaveName").textContent = w.n;
+    document.getElementById("uiTelegram").textContent = "— " + w.lore;
+    document.getElementById("intermission").style.display = "none";
+    Sfx.wave(); Sfx.ensure();
+}
+function waveCleared() {
+    const bonus = 60 + G.wave * 14;
+    G.watts += bonus;
+    G.phase = "idle";
+    document.getElementById("onair").classList.remove("live");
+    if (G.wave >= FINAL_WAVE) { endGame(true); return; }
+    document.getElementById("intermission").style.display = "flex";
+    document.getElementById("uiTelegram").textContent =
+        "— WATCH ENDED. STATION CREDITED " + bonus + " WATTS. " + (FINAL_WAVE - G.wave) +
+        (FINAL_WAVE - G.wave === 1 ? " WATCH" : " WATCHES") + " TO DAWN.";
+}
+
+// ---------- main update ----------
+function update(dt) {
+    G.time += dt;
+    // spawning
+    if (G.phase === "running" && G.spawnQueue.length) {
+        G.spawnT -= dt;
+        if (G.spawnT <= 0) {
+            const s = G.spawnQueue.shift();
+            spawnEnemy(s.t, -ri(0, 30));
+            G.spawnT = s.delay;
+        }
+    }
+    // enemies
+    for (const e of G.enemies) {
+        if (e.dead) continue;
+        e.spawnT += dt;
+        if (e.slowT > 0) e.slowT -= dt; else e.slow = 0;
+        if (e.lullT > 0) e.lullT -= dt;
+        if (e.hasteT > 0) e.hasteT -= dt;
+        if (e.regen && e.hp < e.maxHp) e.hp = Math.min(e.maxHp, e.hp + e.regen * dt);
+        // conductor/hollow auras: haste nearby
+        if (e.haste) G.enemies.forEach(o => { if (!o.dead && o !== e && dist(enemyPos(o), enemyPos(e)) < 110) o.hasteT = 0.4; });
+        if (e.spawns && Math.random() < dt / 5) spawnEnemy(e.spawns, e.d - 10, 0.8);
+        let sp = e.speed * (1 - Math.min(0.65, e.slow)) * (e.hasteT > 0 ? 1.5 : 1);
+        if (e.lullT > 0) sp = 0;
+        e.d += sp * dt;
+        if (e.d >= G.pathLen) {
+            e.dead = true; e.leaked = true;
+            G.lives--; G.leaked++;
+            Sfx.leak();
+            G.fx.push({ kind: "ring", x: G.path[G.path.length - 1].x, y: G.path[G.path.length - 1].y, t: 0.5, col: "#ff6b57" });
+            if (G.lives <= 0) { endGame(false); return; }
+        }
+    }
+    G.enemies = G.enemies.filter(e => !e.dead);
+    // towers
+    G.towers.forEach(t => updateTower(t, dt));
+    // shots & fx decay
+    G.shots.forEach(s => s.t += dt);
+    G.shots = G.shots.filter(s => s.t < s.dur);
+    G.fx.forEach(f => f.t -= dt);
+    G.fx = G.fx.filter(f => f.t > 0);
+    // wave end
+    if (G.phase === "running" && !G.spawnQueue.length && !G.enemies.length) waveCleared();
+}
+
+function endGame(won) {
+    G.phase = "over";
+    document.getElementById("onair").classList.remove("live");
+    const led = document.getElementById("endLedger");
+    document.getElementById("endTitle").textContent = won ? "Dawn." : "Dead Air.";
+    document.getElementById("endBody").innerHTML = won
+        ? "The Hollow Hour guttered out with the last star. The mast still hums; below, Emberwick stirs, dreams folding away, nobody the wiser. The logbook closes: <em>“Broadcast uninterrupted. Going to sleep at last.”</em><br><br>Statics silenced: " + G.kills + " · Signal leaked: " + G.leaked + " · Watches survived: " + FINAL_WAVE + "/" + FINAL_WAVE
+        : "The transmitter choked mid-note. For one full minute — the Station Log demands I record it — the valley heard <em>nothing</em>, and the nothing walked in. Emberwick woke into a grey that has no morning.<br><br>Statics silenced: " + G.kills + " · Watches survived: " + G.wave + "/" + FINAL_WAVE + "<br><br>Someone will find this logbook. Someone always does.";
+    document.getElementById("endOverlay").classList.remove("hidden");
+    if (won) Sfx.win(); else Sfx.leak();
+}
+
+// ============================================================
+// RENDERING
+// ============================================================
+function drawTowerIcon(c, type, lvl, angle, t) {
+    // little vector apparatus; grows slightly with level
+    const glow = ["#6b5a33", "#8a7440", "#a8894a", "#c9a24b", "#f0d489"][lvl];
+    c.save();
+    c.rotate(angle || 0);
+    c.lineWidth = 2;
+    switch (type) {
+        case "gram": // horn
+            c.fillStyle = glow;
+            c.beginPath(); c.moveTo(2, 0); c.lineTo(-8, -7); c.lineTo(-8, 7); c.closePath(); c.fill();
+            c.beginPath(); c.moveTo(2, -3); c.arc(4, 0, 8, -1.1, 1.1); c.closePath(); c.fill();
+            c.fillStyle = "#221a11"; c.beginPath(); c.arc(6, 0, 4, -1.1, 1.1); c.fill();
+            break;
+        case "tesla":
+            c.strokeStyle = glow; c.fillStyle = glow;
+            c.beginPath(); c.arc(0, 4, 8, Math.PI, 0); c.stroke();       // coil body
+            c.beginPath(); c.arc(0, 4, 5, Math.PI, 0); c.stroke();
+            c.beginPath(); c.arc(0, -4, 3.4, 0, 6.29); c.fill();          // top terminal
+            if (t) { c.strokeStyle = "rgba(126,224,210," + (0.4 + 0.3 * Math.sin(t * 12)) + ")"; c.beginPath(); c.arc(0, -4, 7 + 2 * Math.sin(t * 9), 0, 6.29); c.stroke(); }
+            break;
+        case "valve":
+            c.strokeStyle = glow;
+            c.strokeRect(-7, -2, 14, 10);                                 // base bench
+            c.fillStyle = "rgba(255,179,71," + (0.5 + 0.3 * Math.sin(t * 6)) + ")";
+            c.beginPath(); c.arc(0, -5, 5.5, 0, 6.29); c.fill();          // glowing tube
+            c.strokeStyle = glow; c.beginPath(); c.moveTo(0, -5); c.lineTo(0, -16); c.stroke(); // beam muzzle
+            break;
+        case "ghost":
+            c.strokeStyle = glow;
+            c.beginPath(); c.moveTo(0, 8); c.lineTo(0, -10); c.stroke();  // mast
+            c.beginPath(); c.moveTo(0, -6); c.lineTo(-8, 2); c.moveTo(0, -6); c.lineTo(8, 2); c.stroke(); // guys
+            c.fillStyle = glow; c.beginPath(); c.arc(0, -11, 2.2, 0, 6.29); c.fill(); // beacon
+            break;
+        case "lull":
+            c.strokeStyle = glow;
+            c.beginPath(); c.arc(0, 0, 8, 0, 6.29); c.stroke();           // wax loop
+            c.beginPath(); c.arc(0, 0, 4.5, 0, 6.29); c.stroke();
+            c.fillStyle = glow; c.beginPath(); c.arc(0, 0, 1.8, 0, 6.29); c.fill();
+            if (t) { c.strokeStyle = "rgba(126,224,210," + (0.25 + 0.2 * Math.sin(t * 3)) + ")"; c.beginPath(); c.arc(0, 0, 12 + 3 * Math.sin(t * 2), 0, 6.29); c.stroke(); }
+            break;
+    }
+    c.restore();
+    // level pips
+    c.fillStyle = "#f0d489";
+    for (let i = 0; i < lvl; i++) c.fillRect(-8 + i * 5, 16, 3, 3);
+}
+
+function drawEnemy(c, e) {
+    const p = enemyPos(e);
+    c.save();
+    c.translate(p.x, p.y + Math.sin(e.wob + G.time * 6) * 2);
+    // static body: jittery blob
+    c.fillStyle = e.color;
+    c.beginPath();
+    const n = 7;
+    for (let i = 0; i <= n; i++) {
+        const a = i / n * Math.PI * 2;
+        const rr = e.r * (0.8 + 0.3 * Math.sin(a * 3 + e.wob + G.time * 8));
+        const x = Math.cos(a) * rr, y = Math.sin(a) * rr;
+        i ? c.lineTo(x, y) : c.moveTo(x, y);
+    }
+    c.closePath(); c.fill();
+    // "static" speckle
+    c.fillStyle = "rgba(23,18,12,0.55)";
+    for (let i = 0; i < 4; i++) {
+        const a = rnd(0, 6.28), rr = rnd(0, e.r * 0.6);
+        c.fillRect(Math.cos(a) * rr, Math.sin(a) * rr, 2, 2);
+    }
+    // eyes (two dark dots) — quirky
+    c.fillStyle = "#17120c";
+    c.beginPath(); c.arc(-e.r * 0.35, -e.r * 0.15, 2, 0, 6.29); c.arc(e.r * 0.35, -e.r * 0.15, 2, 0, 6.29); c.fill();
+    // status
+    if (e.slow > 0.05) { c.strokeStyle = "rgba(126,224,210,0.6)"; c.beginPath(); c.arc(0, 0, e.r + 4, 0, 6.29); c.stroke(); }
+    if (e.lullT > 0) { c.fillStyle = "#7ee0d2"; c.font = "10px serif"; c.fillText("z", e.r + 2, -e.r); }
+    if (e.hasteT > 0) { c.strokeStyle = "rgba(255,107,87,0.7)"; c.beginPath(); c.arc(0, 0, e.r + 6, 0, 6.29); c.stroke(); }
+    // hp bar
+    if (e.hp < e.maxHp) {
+        const w = e.r * 2.2;
+        c.fillStyle = "rgba(0,0,0,0.5)"; c.fillRect(-w / 2, -e.r - 9, w, 3);
+        c.fillStyle = e.hp / e.maxHp > 0.4 ? "#7ee0d2" : "#ff6b57";
+        c.fillRect(-w / 2, -e.r - 9, w * clamp(e.hp / e.maxHp, 0, 1), 3);
+    }
+    c.restore();
+}
+
+function render() {
+    const c = cx;
+    c.clearRect(0, 0, canvas.width, canvas.height);
+    // sky / board
+    const grad = c.createLinearGradient(0, 0, 0, canvas.height);
+    grad.addColorStop(0, "#1b1610"); grad.addColorStop(1, "#120e09");
+    c.fillStyle = grad; c.fillRect(0, 0, canvas.width, canvas.height);
+
+    // faint grid
+    c.strokeStyle = "rgba(201,162,75,0.06)"; c.lineWidth = 1;
+    for (let x = 0; x <= GRID_W; x++) { c.beginPath(); c.moveTo(x * CELL, 0); c.lineTo(x * CELL, GRID_H * CELL); c.stroke(); }
+    for (let y = 0; y <= GRID_H; y++) { c.beginPath(); c.moveTo(0, y * CELL); c.lineTo(GRID_W * CELL, y * CELL); c.stroke(); }
+
+    // buildable hover highlight
+    if (G.selType && G.hover) {
+        const ok = canBuild(G.hover.gx, G.hover.gy) && G.watts >= TOWERS[G.selType].cost;
+        c.fillStyle = ok ? "rgba(126,224,210,0.15)" : "rgba(255,107,87,0.15)";
+        c.strokeStyle = ok ? "rgba(126,224,210,0.5)" : "rgba(255,107,87,0.5)";
+        c.fillRect(G.hover.gx * CELL, G.hover.gy * CELL, CELL, CELL);
+        c.strokeRect(G.hover.gx * CELL + 1, G.hover.gy * CELL + 1, CELL - 2, CELL - 2);
+        if (ok) { // range preview
+            const s = TOWERS[G.selType].stats(0);
+            c.strokeStyle = "rgba(240,212,137,0.35)";
+            c.beginPath(); c.arc(G.hover.px, G.hover.py, s.range, 0, 6.29); c.stroke();
+        }
+    }
+    // selected tower range
+    if (G.selTower) {
+        const s = towerStats(G.selTower);
+        c.strokeStyle = "rgba(240,212,137,0.5)"; c.setLineDash([5, 5]);
+        c.beginPath(); c.arc(G.selTower.x, G.selTower.y, s.range, 0, 6.29); c.stroke();
+        c.setLineDash([]);
+        c.strokeStyle = "#f0d489";
+        c.strokeRect(G.selTower.gx * CELL + 2, G.selTower.gy * CELL + 2, CELL - 4, CELL - 4);
+    }
+
+    // the signal cable (path)
+    c.lineCap = "round"; c.lineJoin = "round";
+    c.strokeStyle = "#0c0a07"; c.lineWidth = 34;
+    strokePath(c);
+    c.strokeStyle = "#3a2f1e"; c.lineWidth = 26;
+    strokePath(c);
+    // glowing core with traveling pulse (the Sleepwave)
+    c.strokeStyle = "rgba(126,224,210,0.55)"; c.lineWidth = 3;
+    strokePath(c);
+    const pulseD = (G.time * 90) % G.pathLen;
+    const pp = pathAt(pulseD);
+    c.fillStyle = "rgba(180,255,244,0.9)";
+    c.beginPath(); c.arc(pp.x, pp.y, 5, 0, 6.29); c.fill();
+
+    // entry marker (west)
+    const p0 = G.path[0];
+    c.fillStyle = "rgba(232,220,192,0.5)"; c.font = "10px 'Courier New', monospace";
+    c.fillText("FROM THE DEAD BAND ▸", 8, p0.y - 22);
+
+    // the mast / transmitter (east end)
+    const mast = G.path[G.path.length - 1];
+    drawMast(c, Math.min(mast.x, canvas.width - 60), mast.y);
+
+    // towers
+    G.towers.forEach(t => {
+        c.save(); c.translate(t.x, t.y);
+        c.fillStyle = "rgba(0,0,0,0.35)";
+        c.beginPath(); c.ellipse(0, 14, 16, 6, 0, 0, 6.29); c.fill();
+        drawTowerIcon(c, t.type, t.lvl, t.angle, G.time);
+        c.restore();
+        // beams drawn live
+        if (t.type === "valve" && t.target && !t.target.dead) {
+            const p = enemyPos(t.target);
+            const g = c.createLinearGradient(t.x, t.y - 14, p.x, p.y);
+            g.addColorStop(0, "rgba(255,179,71,0.8)"); g.addColorStop(1, "rgba(255,179,71,0.1)");
+            c.strokeStyle = g; c.lineWidth = 3 + t.lvl;
+            c.beginPath(); c.moveTo(t.x, t.y - 14); c.lineTo(p.x, p.y); c.stroke();
+        }
+        if (t.type === "lull" && t.target) {
+            c.strokeStyle = "rgba(126,224,210," + (0.2 + 0.15 * Math.sin(G.time * 3)) + ")";
+            c.lineWidth = 1.5;
+            c.beginPath(); c.arc(t.x, t.y, towerStats(t).range * (0.4 + 0.25 * ((G.time * 0.4) % 1)), 0, 6.29); c.stroke();
+        }
+    });
+
+    // enemies
+    G.enemies.forEach(e => drawEnemy(c, e));
+
+    // shots
+    G.shots.forEach(s => {
+        const k = s.t / s.dur;
+        if (s.kind === "pulse") {
+            c.strokeStyle = "rgba(240,212,137," + (1 - k) + ")"; c.lineWidth = 4;
+            c.beginPath(); c.moveTo(s.x, s.y); c.lineTo(s.tx, s.ty); c.stroke();
+            c.fillStyle = "rgba(240,212,137," + (0.5 * (1 - k)) + ")";
+            c.beginPath(); c.arc(s.tx, s.ty, TOWERS.gram.stats(0).aoe * k, 0, 6.29); c.fill();
+        } else if (s.kind === "chain") {
+            c.strokeStyle = "rgba(154,215,255," + (1 - k) + ")"; c.lineWidth = 2.5;
+            c.beginPath();
+            s.pts.forEach((p, i) => {
+                const jx = p.x + rnd(-3, 3), jy = p.y + rnd(-3, 3);
+                i ? c.lineTo(jx, jy) : c.moveTo(jx, jy);
+            });
+            c.stroke();
+        } else if (s.kind === "snipe") {
+            c.strokeStyle = "rgba(255,255,255," + (1 - k) + ")"; c.lineWidth = 2;
+            c.beginPath(); c.moveTo(s.x, s.y); c.lineTo(s.tx, s.ty); c.stroke();
+        }
+    });
+
+    // fx
+    G.fx.forEach(f => {
+        if (f.kind === "pop") {
+            c.strokeStyle = f.col; c.globalAlpha = f.t / 0.4; c.lineWidth = 2;
+            c.beginPath(); c.arc(f.x, f.y, f.r + (0.4 - f.t) * 40, 0, 6.29); c.stroke();
+            c.globalAlpha = 1;
+        } else if (f.kind === "ring") {
+            c.strokeStyle = f.col; c.globalAlpha = f.t / 0.5; c.lineWidth = 3;
+            c.beginPath(); c.arc(f.x, f.y, 10 + (0.5 - f.t) * 70, 0, 6.29); c.stroke();
+            c.globalAlpha = 1;
+        } else if (f.kind === "num") {
+            c.fillStyle = f.col; c.globalAlpha = Math.min(1, f.t / 0.3);
+            c.font = "bold 11px 'Courier New', monospace";
+            c.fillText(f.txt, f.x, f.y - (0.6 - f.t) * 20);
+            c.globalAlpha = 1;
+        }
+    });
+}
+function strokePath(c) {
+    c.beginPath();
+    G.path.forEach((p, i) => i ? c.lineTo(p.x, p.y) : c.moveTo(p.x, p.y));
+    c.stroke();
+}
+function drawMast(c, x, y) {
+    c.save(); c.translate(x, y);
+    // cliff tower + antenna
+    c.strokeStyle = "#c9a24b"; c.lineWidth = 3;
+    c.beginPath(); c.moveTo(0, 26); c.lineTo(0, -34); c.stroke();
+    c.lineWidth = 1.5;
+    for (let i = 0; i < 3; i++) { c.beginPath(); c.moveTo(0, 20 - i * 10); c.lineTo(14 - i * 3, 26 - i * 10); c.moveTo(0, 20 - i * 10); c.lineTo(-(14 - i * 3), 26 - i * 10); c.stroke(); }
+    // beacon
+    const b = 0.5 + 0.5 * Math.sin(G.time * 4);
+    c.fillStyle = "rgba(255,107,87," + (0.3 + 0.7 * b) + ")";
+    c.beginPath(); c.arc(0, -36, 4, 0, 6.29); c.fill();
+    c.strokeStyle = "rgba(255,107,87," + 0.3 * b + ")";
+    c.beginPath(); c.arc(0, -36, 10 + 8 * b, 0, 6.29); c.stroke();
+    // hut
+    c.fillStyle = "#2c2216"; c.strokeStyle = "#c9a24b"; c.lineWidth = 1.5;
+    c.fillRect(-22, 6, 44, 24); c.strokeRect(-22, 6, 44, 24);
+    c.fillStyle = "rgba(255,179,71,0.8)"; c.fillRect(-8, 14, 7, 8); c.fillRect(4, 14, 7, 8);
+    c.restore();
+}
+
+// ============================================================
+// UI
+// ============================================================
+const ui = {
+    watts: document.getElementById("uiWatts"),
+    wave: document.getElementById("uiWave"),
+    livesTxt: document.getElementById("uiLivesTxt"),
+    vuBar: document.getElementById("vuBar"),
+    palette: document.getElementById("palette"),
+    insp: document.getElementById("inspector"),
+    inspTitle: document.getElementById("inspTitle"),
+    inspBody: document.getElementById("inspBody"),
+    onair: document.getElementById("onair")
+};
+// build VU segments
+for (let i = 0; i < 20; i++) ui.vuBar.appendChild(document.createElement("i"));
+
+// palette buttons with mini SVG-ish canvas icons
+const ICONS = {
+    horn: "📻", coil: "⚡", valve: "🔮", mast: "📡", loop: "💿"
+};
+TOWER_KEYS.forEach(k => {
+    const d = TOWERS[k];
+    const b = document.createElement("button");
+    b.className = "tow-btn"; b.dataset.type = k;
+    b.innerHTML = '<span style="font-size:1.25rem">' + ICONS[d.icon] + '</span><span class="nm">' + d.name.replace(" ", "<br>") + '</span><span class="cost">' + d.cost + 'W</span>';
+    b.title = d.desc;
+    b.addEventListener("click", () => {
+        if (G.selType === k) { G.selType = null; }
+        else { G.selType = k; G.selTower = null; renderInspector(); }
+        refreshPalette();
+    });
+    ui.palette.appendChild(b);
+});
+function refreshPalette() {
+    [...ui.palette.children].forEach(b => {
+        b.classList.toggle("sel", G.selType === b.dataset.type);
+        b.classList.toggle("poor", G.watts < TOWERS[b.dataset.type].cost);
+    });
+}
+
+function renderInspector() {
+    const t = G.selTower;
+    if (!t) { ui.insp.style.display = "none"; return; }
+    ui.insp.style.display = "";
+    const d = TOWERS[t.type], s = towerStats(t);
+    ui.inspTitle.textContent = d.name + " · Mk " + (t.lvl + 1);
+    let statLines = "";
+    if (d.kind === "pulse") statLines = "Dmg <b>" + s.dmg + "</b><br>Rate " + s.rate + "/s<br>Range " + Math.round(s.range) + "<br>Blast " + s.aoe;
+    if (d.kind === "chain") statLines = "Dmg <b>" + s.dmg + "</b><br>Chains " + s.chains + "<br>Range " + Math.round(s.range) + "<br>Rate " + s.rate + "/s";
+    if (d.kind === "beam") statLines = "Dps ~<b>" + s.dmg * s.rate / 2 + "</b>×ramp<br>Ramp ×" + s.ramp + "<br>Range " + Math.round(s.range) + "<br>Shred " + s.shred;
+    if (d.kind === "snipe") statLines = "Dmg <b>" + s.dmg + "</b><br>Rate " + s.rate + "/s<br>Range " + Math.round(s.range) + "<br>vs slowed ×" + s.xslow;
+    if (d.kind === "aura") statLines = "Slow <b>" + Math.round(s.slow * 100) + "%</b><br>Dmg " + s.dmg + "/tick<br>Range " + Math.round(s.range) + "<br>Lull " + Math.round(s.lullChance * 100) + "%";
+    let upg = "<ul class='upg-path'>";
+    d.upNames.forEach((n, i) => {
+        const cls = i < t.lvl ? "done" : i === t.lvl ? "next" : "";
+        upg += "<li class='" + cls + "'>" + (i < t.lvl ? "✔ " : i === t.lvl ? "▸ " : "· ") + n + (i === t.lvl ? " — " + d.upCost[i] + "W" : "") + "<br><span style='opacity:.7'>" + d.upDesc[i] + "</span></li>";
+    });
+    upg += "</ul>";
+    const cost = upgradeCost(t);
+    ui.inspBody.innerHTML =
+        "<span class='tname'>" + d.name + "</span><br>" + d.desc +
+        "<div class='stats'>" + statLines + "</div>" + upg +
+        "<div class='row'>" +
+        "<button class='btn' id='btnUpg'" + (cost == null || G.watts < cost ? " disabled" : "") + ">" +
+        (cost == null ? "Fully Tuned" : "Tune ▸ " + cost + "W") + "</button>" +
+        "<button class='btn danger' id='btnSell'>Scrap</button></div>";
+    const bu = document.getElementById("btnUpg"), bs = document.getElementById("btnSell");
+    if (bu) bu.addEventListener("click", () => { if (upgradeTower(t)) { renderInspector(); syncHUD(); } });
+    bs.addEventListener("click", () => { sellTower(t); syncHUD(); });
+}
+
+function syncHUD() {
+    ui.watts.textContent = fmt(G.watts);
+    ui.wave.textContent = G.wave ? G.wave + " / " + FINAL_WAVE : "—";
+    ui.livesTxt.textContent = G.lives + " / " + G.maxLives;
+    const segs = ui.vuBar.children, ratio = G.lives / G.maxLives;
+    for (let i = 0; i < segs.length; i++) {
+        const on = i < Math.ceil(G.lives);
+        segs[i].className = "";
+        if (on) segs[i].className = ratio > 0.5 ? "on" : ratio > 0.25 ? (i < G.lives * 0.6 ? "warn" : "on") : "crit";
+    }
+    refreshPalette();
+}
+
+// ---------- input ----------
+function canvasPos(ev) {
+    const r = canvas.getBoundingClientRect();
+    const p = ev.touches ? ev.touches[0] : ev;
+    return { x: (p.clientX - r.left) / r.width * canvas.width, y: (p.clientY - r.top) / r.height * canvas.height };
+}
+function cellAt(pos) { return { gx: Math.floor(pos.x / CELL), gy: Math.floor(pos.y / CELL), px: pos.x, py: pos.y }; }
+canvas.addEventListener("mousemove", ev => { G.hover = cellAt(canvasPos(ev)); });
+canvas.addEventListener("mouseleave", () => { G.hover = null; });
+canvas.addEventListener("click", ev => {
+    if (G.phase === "over") return;
+    Sfx.ensure();
+    const cell = cellAt(canvasPos(ev));
+    const existing = G.towers.find(t => t.gx === cell.gx && t.gy === cell.gy);
+    if (G.selType && !existing) {
+        if (buildTower(G.selType, cell.gx, cell.gy)) {
+            if (G.watts < TOWERS[G.selType].cost) { /* keep selection, too poor for another */ }
+        }
+    } else if (existing) {
+        G.selTower = existing; G.selType = null; refreshPalette(); renderInspector();
+    } else {
+        G.selTower = null; renderInspector();
+    }
+    syncHUD();
+});
+
+// ---------- controls ----------
+document.getElementById("btnWave").addEventListener("click", () => { Sfx.ensure(); startWave(); syncHUD(); });
+document.getElementById("btnPause").addEventListener("click", function () {
+    G.paused = !G.paused;
+    this.textContent = G.paused ? "▶ RESUME" : "⏸ PAUSE";
+});
+document.getElementById("btnSpeed").addEventListener("click", function () {
+    G.speed = G.speed === 1 ? 2 : G.speed === 2 ? 3 : 1;
+    this.textContent = G.speed + "×";
+});
+document.getElementById("btnMute").addEventListener("click", function () {
+    Sfx.setMuted(!Sfx.muted);
+    this.textContent = Sfx.muted ? "♪ OFF" : "♪ ON";
+});
+document.getElementById("btnStart").addEventListener("click", () => {
+    Sfx.ensure();
+    document.getElementById("introOverlay").classList.add("hidden");
+    document.getElementById("intermission").style.display = "flex";
+    document.getElementById("uiTelegram").textContent = "— FIRST WATCH BEGINS WHEN YOU ARE READY. WARM THE VALVES.";
+});
+document.getElementById("btnRestart").addEventListener("click", () => {
+    document.getElementById("endOverlay").classList.add("hidden");
+    newGame();
+    G.selType = null; G.selTower = null;
+    renderInspector(); refreshPalette(); syncHUD();
+    document.getElementById("intermission").style.display = "flex";
+    document.getElementById("uiWaveName").textContent = "—";
+    document.getElementById("uiTelegram").textContent = "— ANOTHER NIGHT. THE STATIC REMEMBERS YOU.";
+    document.getElementById("btnPause").textContent = "⏸ PAUSE"; G.paused = false;
+    document.getElementById("btnSpeed").textContent = "1×"; G.speed = 1;
+});
+
+// ---------- loop ----------
+let last = performance.now();
+function frame(now) {
+    let dt = Math.min(0.05, (now - last) / 1000);
+    last = now;
+    if (!G.paused && G.phase !== "over") {
+        for (let i = 0; i < G.speed; i++) update(dt);
+    }
+    render();
+    syncHUD();
+    requestAnimationFrame(frame);
+}
+newGame();
+syncHUD();
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
