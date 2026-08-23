@@ -1,0 +1,956 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#0b0714">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>EMBERFALL — The Cinder Terraces</title>
+<style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+        height: 100%;
+        overflow: hidden;
+        background: #060309;
+        overscroll-behavior: none;
+        -webkit-user-select: none;
+        user-select: none;
+        -webkit-touch-callout: none;
+        -webkit-tap-highlight-color: transparent;
+        font-family: "Avenir Next", "Segoe UI", "Trebuchet MS", sans-serif;
+    }
+
+    #stage {
+        position: fixed;
+        inset: 0;
+        touch-action: none;
+        overflow: hidden;
+    }
+
+    #scene {
+        display: block;
+        width: 100%;
+        height: 100%;
+        cursor: grab;
+    }
+    #scene.dragging { cursor: grabbing; }
+
+    /* ---------- stars twinkle ---------- */
+    .tw { animation: twk ease-in-out infinite; }
+    @keyframes twk {
+        0%, 100% { opacity: 0.15; }
+        50%      { opacity: 0.95; }
+    }
+
+    /* ---------- compass ---------- */
+    #compass {
+        position: absolute;
+        top: calc(10px + env(safe-area-inset-top));
+        left: 50%;
+        transform: translateX(-50%);
+        width: min(300px, 62vw);
+        height: 36px;
+        overflow: hidden;
+        border-radius: 999px;
+        border: 1px solid rgba(255, 158, 84, 0.30);
+        background: rgba(12, 6, 12, 0.45);
+        pointer-events: none;
+        z-index: 4;
+    }
+    #compassStrip {
+        position: absolute;
+        top: 0;
+        left: 0;
+        height: 100%;
+        will-change: transform;
+    }
+    .c-copy { position: absolute; top: 0; height: 100%; }
+    .c-tick {
+        position: absolute;
+        bottom: 7px;
+        width: 1px;
+        height: 7px;
+        background: rgba(255, 190, 130, 0.4);
+    }
+    .c-tick.major { height: 11px; bottom: 5px; background: rgba(255, 200, 140, 0.75); }
+    .c-lab {
+        position: absolute;
+        top: 4px;
+        transform: translateX(-50%);
+        font-size: 12px;
+        letter-spacing: 0.08em;
+        color: #ffcf9a;
+        font-weight: 600;
+    }
+    .c-mark {
+        position: absolute;
+        left: 50%;
+        top: 3px;
+        bottom: 3px;
+        width: 2px;
+        transform: translateX(-50%);
+        background: #ffb066;
+        border-radius: 2px;
+        box-shadow: 0 0 6px rgba(255, 150, 70, 0.8);
+    }
+
+    /* ---------- virtual joysticks ---------- */
+    .stick {
+        position: absolute;
+        bottom: calc(26px + env(safe-area-inset-bottom));
+        width: 128px;
+        height: 128px;
+        display: none;
+        z-index: 6;
+        touch-action: none;
+        opacity: 0.92;
+    }
+    #stickL { left: calc(22px + env(safe-area-inset-left)); }
+    #stickR { right: calc(22px + env(safe-area-inset-right)); }
+    body.touch .stick { display: block; }
+    .stick-base {
+        position: absolute;
+        inset: 0;
+        border-radius: 50%;
+        border: 2px solid rgba(255, 158, 84, 0.35);
+        background:
+            radial-gradient(circle at 50% 42%, rgba(255, 140, 60, 0.10), transparent 70%),
+            rgba(16, 8, 14, 0.38);
+    }
+    .stick-base::after {
+        content: "";
+        position: absolute;
+        inset: 18px;
+        border-radius: 50%;
+        border: 1px dashed rgba(255, 170, 100, 0.22);
+    }
+    .knob {
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        width: 54px;
+        height: 54px;
+        margin: -27px 0 0 -27px;
+        border-radius: 50%;
+        background: radial-gradient(circle at 35% 30%, #ffc07e, #c24a20 68%, #7d2d13);
+        box-shadow: 0 0 16px rgba(255, 140, 60, 0.55), inset 0 -3px 6px rgba(0,0,0,0.35);
+        will-change: transform;
+    }
+    .stick-lab {
+        position: absolute;
+        left: 50%;
+        transform: translateX(-50%);
+        bottom: -19px;
+        font-size: 10px;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+        color: rgba(255, 190, 130, 0.55);
+        white-space: nowrap;
+    }
+
+    /* ---------- intro overlay ---------- */
+    #intro {
+        position: absolute;
+        inset: 0;
+        z-index: 10;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 18px;
+        background: radial-gradient(circle at 50% 60%, rgba(30, 10, 14, 0.55), rgba(5, 2, 7, 0.88));
+        transition: opacity 0.7s ease;
+    }
+    #intro.gone { opacity: 0; pointer-events: none; }
+    .intro-card {
+        max-width: 560px;
+        text-align: center;
+        color: #f3ddc2;
+        background: linear-gradient(170deg, rgba(28, 14, 20, 0.92), rgba(14, 7, 12, 0.94));
+        border: 1px solid rgba(255, 158, 84, 0.35);
+        border-radius: 20px;
+        padding: clamp(1.4rem, 4.5vw, 2.4rem) clamp(1.2rem, 5vw, 2.6rem);
+        box-shadow: 0 24px 60px rgba(0, 0, 0, 0.6), 0 0 40px rgba(210, 90, 40, 0.12) inset;
+    }
+    .eyebrow {
+        font-size: clamp(0.6rem, 2vw, 0.72rem);
+        letter-spacing: 0.32em;
+        text-transform: uppercase;
+        color: #d98a52;
+        margin-bottom: 0.7rem;
+    }
+    .intro-card h1 {
+        font-family: Georgia, "Times New Roman", serif;
+        font-size: clamp(2.1rem, 9vw, 3.4rem);
+        letter-spacing: 0.14em;
+        color: #ffc27d;
+        text-shadow: 0 0 24px rgba(255, 130, 50, 0.35);
+        line-height: 1.05;
+    }
+    .intro-card h2 {
+        font-size: clamp(0.85rem, 3vw, 1.05rem);
+        font-weight: 500;
+        letter-spacing: 0.22em;
+        text-transform: uppercase;
+        color: #c99a78;
+        margin: 0.45rem 0 1.05rem;
+    }
+    .lore {
+        font-size: clamp(0.86rem, 2.8vw, 0.98rem);
+        line-height: 1.65;
+        color: rgba(243, 221, 194, 0.82);
+        margin-bottom: 1.5rem;
+    }
+    #begin {
+        font: inherit;
+        font-weight: 600;
+        font-size: clamp(0.95rem, 3vw, 1.05rem);
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: #2a120a;
+        background: linear-gradient(180deg, #ffbe74, #d96a2c);
+        border: none;
+        border-radius: 999px;
+        padding: 0.8rem 2.4rem;
+        cursor: pointer;
+        touch-action: manipulation;
+        box-shadow: 0 8px 22px rgba(220, 110, 40, 0.35);
+        transition: transform 0.15s ease, box-shadow 0.15s ease;
+    }
+    #begin:hover { transform: translateY(-2px); box-shadow: 0 12px 28px rgba(230, 125, 50, 0.45); }
+    #begin:active { transform: translateY(0); }
+    .ctl-hint {
+        margin-top: 1.1rem;
+        font-size: 0.78rem;
+        letter-spacing: 0.06em;
+        color: rgba(255, 190, 130, 0.65);
+    }
+    .hint-touch { display: none; }
+    body.touch .hint-touch { display: block; }
+    body.touch .hint-desktop { display: none; }
+
+    /* ---------- watermark ---------- */
+    #mark {
+        position: absolute;
+        right: calc(12px + env(safe-area-inset-right));
+        bottom: calc(8px + env(safe-area-inset-bottom));
+        font-size: 10px;
+        letter-spacing: 0.22em;
+        text-transform: uppercase;
+        color: rgba(255, 180, 120, 0.34);
+        pointer-events: none;
+        z-index: 3;
+    }
+    body.touch #mark { right: auto; left: 50%; transform: translateX(-50%); bottom: calc(4px + env(safe-area-inset-bottom)); }
+
+    @media (max-width: 480px) {
+        .stick { width: 112px; height: 112px; }
+        .knob { width: 48px; height: 48px; margin: -24px 0 0 -24px; }
+    }
+</style>
+</head>
+<body>
+<div id="stage">
+    <svg id="scene" viewBox="0 0 1200 675" preserveAspectRatio="xMidYMid slice" aria-label="First-person view of the Cinder Terraces">
+        <defs>
+            <linearGradient id="g-sky" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0"    stop-color="#150b2a"/>
+                <stop offset="0.42" stop-color="#341538"/>
+                <stop offset="0.68" stop-color="#7c2c38"/>
+                <stop offset="0.85" stop-color="#cf5a2a"/>
+                <stop offset="1"    stop-color="#ffa245"/>
+            </linearGradient>
+            <linearGradient id="g-ground" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0"    stop-color="#571f1f"/>
+                <stop offset="0.16" stop-color="#331218"/>
+                <stop offset="0.5"  stop-color="#150a10"/>
+                <stop offset="1"    stop-color="#070409"/>
+            </linearGradient>
+            <radialGradient id="g-sun">
+                <stop offset="0"    stop-color="#fff6d8"/>
+                <stop offset="0.25" stop-color="#ffce7a"/>
+                <stop offset="0.6"  stop-color="#ff8c3c" stop-opacity="0.85"/>
+                <stop offset="1"    stop-color="#ff7828" stop-opacity="0"/>
+            </radialGradient>
+            <radialGradient id="g-sunglow">
+                <stop offset="0" stop-color="#ff9a46" stop-opacity="0.5"/>
+                <stop offset="1" stop-color="#ff7828" stop-opacity="0"/>
+            </radialGradient>
+            <radialGradient id="g-groundglow">
+                <stop offset="0" stop-color="#e06a30" stop-opacity="0.34"/>
+                <stop offset="1" stop-color="#e06a30" stop-opacity="0"/>
+            </radialGradient>
+            <radialGradient id="g-crater">
+                <stop offset="0"   stop-color="#ffe9a8"/>
+                <stop offset="0.3" stop-color="#ff9a3a"/>
+                <stop offset="0.7" stop-color="#c23a12" stop-opacity="0.8"/>
+                <stop offset="1"   stop-color="#c23a12" stop-opacity="0"/>
+            </radialGradient>
+            <linearGradient id="g-crackline" x1="0" y1="0" x2="1" y2="0">
+                <stop offset="0"   stop-color="#ff7c2e" stop-opacity="0"/>
+                <stop offset="0.5" stop-color="#ff7c2e" stop-opacity="0.85"/>
+                <stop offset="1"   stop-color="#ff7c2e" stop-opacity="0"/>
+            </linearGradient>
+            <linearGradient id="g-flute" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0"   stop-color="#483c52"/>
+                <stop offset="0.5" stop-color="#2b2233"/>
+                <stop offset="1"   stop-color="#16101d"/>
+            </linearGradient>
+            <linearGradient id="g-shard" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0"   stop-color="#2b1f44"/>
+                <stop offset="0.6" stop-color="#110a1e"/>
+                <stop offset="1"   stop-color="#060310"/>
+            </linearGradient>
+            <linearGradient id="g-tuft" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0"    stop-color="#ff9040"/>
+                <stop offset="0.45" stop-color="#7a3a20"/>
+                <stop offset="1"    stop-color="#241612"/>
+            </linearGradient>
+            <radialGradient id="g-mothglow">
+                <stop offset="0"   stop-color="#ffd696" stop-opacity="0.9"/>
+                <stop offset="0.4" stop-color="#ffa046" stop-opacity="0.45"/>
+                <stop offset="1"   stop-color="#ffa046" stop-opacity="0"/>
+            </radialGradient>
+            <radialGradient id="g-vig" cx="0.5" cy="0.44" r="0.78">
+                <stop offset="0"   stop-color="#000000" stop-opacity="0"/>
+                <stop offset="0.62" stop-color="#000000" stop-opacity="0"/>
+                <stop offset="1"   stop-color="#050208" stop-opacity="0.62"/>
+            </radialGradient>
+            <linearGradient id="g-fog" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0"    stop-color="#e0743c" stop-opacity="0"/>
+                <stop offset="0.47" stop-color="#e0743c" stop-opacity="0.22"/>
+                <stop offset="0.56" stop-color="#e0743c" stop-opacity="0.18"/>
+                <stop offset="1"    stop-color="#e0743c" stop-opacity="0"/>
+            </linearGradient>
+
+            <!-- ======== props: design units = world units x 10, origin at ground centre ======== -->
+
+            <!-- flute-stone: cluster of hexagonal basalt columns venting the star's warmth -->
+            <g id="s-flute">
+                <polygon points="-88,0 -84,-187 -62,-195 -40,-187 -36,0" fill="#221a2b"/>
+                <path d="M-62,-195 L-62,0" stroke="#120c18" stroke-width="1.5" opacity="0.6" vector-effect="non-scaling-stroke"/>
+                <polygon points="-124,0 -121,-89 -108,-96 -95,-89 -92,0" fill="#2c2236"/>
+                <polygon points="60,0 63,-144 82,-152 101,-144 104,0" fill="#251c2e"/>
+                <path d="M60,0 L63,-144 L82,-152" stroke="#ff8748" stroke-width="2" fill="none" opacity="0.42" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>
+                <polygon points="-24,0 -20,-219 8,-228 36,-219 40,0" fill="url(#g-flute)"/>
+                <path d="M8,-228 L8,0" stroke="#0e0914" stroke-width="1.5" opacity="0.5" vector-effect="non-scaling-stroke"/>
+                <path d="M-24,0 L-20,-219 L8,-228" stroke="#ff8748" stroke-width="2" fill="none" opacity="0.55" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>
+                <path d="M-32,6 L-12,-2 L-14,2 Z M18,8 L36,0 L34,4 Z M-106,7 L-88,1 L-90,5 Z" fill="#ff6a26" opacity="0.75"/>
+            </g>
+
+            <!-- obsidian shard: glassy splinter of the star's crust -->
+            <g id="s-shard">
+                <polygon points="-38,0 -30,-96 -14,-118 -6,0" fill="#17102a" opacity="0.92"/>
+                <path d="M-30,-96 L-14,-118" stroke="#c9a0ff" stroke-width="2" opacity="0.35"/>
+                <polygon points="0,-196 22,-58 30,0 -22,0 -30,-84" fill="url(#g-shard)" stroke="#6b4fa0" stroke-width="2" stroke-opacity="0.3"/>
+                <polyline points="2,-176 16,-62 20,-8" fill="none" stroke="#a493d6" stroke-width="1.5" opacity="0.55" vector-effect="non-scaling-stroke"/>
+            </g>
+
+            <!-- fumarole: breathing vent with glowing crater -->
+            <g id="s-fume">
+                <path d="M0,-52 C-8,-78 10,-96 0,-124" stroke="#caa27f" stroke-width="6" fill="none" stroke-linecap="round" opacity="0">
+                    <animate attributeName="opacity" values="0;0.22;0" dur="7s" repeatCount="indefinite"/>
+                    <animateTransform attributeName="transform" type="translate" values="0 0; 7 -30" dur="7s" repeatCount="indefinite"/>
+                </path>
+                <path d="M-84,0 C-70,-34 -34,-48 0,-50 C34,-48 70,-34 84,0 Z" fill="#1d1420"/>
+                <ellipse cx="0" cy="-48" rx="36" ry="11" fill="#0a0408"/>
+                <path d="M-36,-46 C-12,-54 12,-54 36,-46" stroke="#b3471f" stroke-width="2" fill="none" opacity="0.5" vector-effect="non-scaling-stroke"/>
+                <ellipse cx="0" cy="-47" rx="26" ry="8" fill="url(#g-crater)">
+                    <animate attributeName="opacity" values="0.55;0.95;0.7;0.9;0.55" dur="3.6s" repeatCount="indefinite"/>
+                </ellipse>
+            </g>
+
+            <!-- ember tuft: charred grass with burning tips -->
+            <g id="s-tuft">
+                <path d="M0,0 C-3,-10 -8,-18 -13,-27 C-6,-17 -2,-8 2,0 Z" fill="url(#g-tuft)"/>
+                <path d="M4,0 C3,-12 1,-20 3,-30 C7,-19 8,-9 9,0 Z" fill="url(#g-tuft)"/>
+                <path d="M-6,0 C-8,-8 -13,-14 -19,-19 C-12,-12 -8,-5 -3,0 Z" fill="url(#g-tuft)"/>
+                <path d="M9,0 C10,-9 14,-16 20,-21 C14,-12 12,-5 12,0 Z" fill="url(#g-tuft)"/>
+                <path d="M-2,0 C-4,-14 -3,-24 -6,-33 C-1,-23 1,-11 3,0 Z" fill="url(#g-tuft)"/>
+                <circle cx="3" cy="-29" r="1.3" fill="#ffb066" opacity="0.95"/>
+                <circle cx="-12" cy="-24" r="1" fill="#ff9848" opacity="0.8"/>
+            </g>
+
+            <!-- slag rock -->
+            <g id="s-rock">
+                <polygon points="-46,0 -34,-22 -8,-32 22,-26 46,0 Z" fill="#1a1220"/>
+                <polyline points="-34,-22 -8,-32 22,-26" fill="none" stroke="#4a2a30" stroke-width="2.5" opacity="0.8"/>
+                <path d="M22,-26 L46,0" stroke="#ff8748" stroke-width="1.5" opacity="0.35" vector-effect="non-scaling-stroke"/>
+            </g>
+
+            <!-- ground crack vein (flat decal, drawn pre-squashed) -->
+            <g id="s-crack">
+                <path d="M-72,2 L-52,-9 L-34,-2 L-16,-11 L-2,-3 L14,-12 L30,-2 L48,-10 L60,-3 L74,1 L52,8 L28,2 L6,10 L-18,3 L-44,9 Z" fill="url(#g-crackline)" opacity="0.75"/>
+            </g>
+
+            <!-- cinder moth: a spark that learned to fly -->
+            <g id="s-moth">
+                <circle cx="0" cy="0" r="13" fill="url(#g-mothglow)">
+                    <animate attributeName="opacity" values="0.55;0.95;0.55" dur="2.4s" repeatCount="indefinite"/>
+                </circle>
+                <ellipse cx="-7" cy="-2" rx="7" ry="3.5" fill="#ffd9a4" opacity="0.9">
+                    <animateTransform attributeName="transform" type="rotate" values="26;-20;26" dur="0.4s" repeatCount="indefinite"/>
+                </ellipse>
+                <ellipse cx="7" cy="-2" rx="7" ry="3.5" fill="#ffd9a4" opacity="0.9">
+                    <animateTransform attributeName="transform" type="rotate" values="-26;20;-26" dur="0.4s" repeatCount="indefinite"/>
+                </ellipse>
+                <circle cx="0" cy="0" r="2.4" fill="#fff2da"/>
+            </g>
+        </defs>
+
+        <g id="world">
+            <rect id="sky" x="0" y="-320" width="1200" height="618" fill="url(#g-sky)"/>
+            <g id="stars"></g>
+            <ellipse id="sunGlow" cx="600" cy="298" rx="430" ry="165" fill="url(#g-sunglow)"/>
+            <circle id="sunDisc" cx="600" cy="190" r="88" fill="url(#g-sun)"/>
+            <path id="ridgeFar" fill="#38183a" opacity="0.88"/>
+            <path id="ridgeNear" fill="#200e22"/>
+            <rect id="ground" x="0" y="298" width="1200" height="1150" fill="url(#g-ground)"/>
+            <ellipse id="groundGlow" cx="600" cy="330" rx="520" ry="95" fill="url(#g-groundglow)"/>
+            <g id="props"></g>
+            <g id="moths"></g>
+        </g>
+        <g id="ash"></g>
+        <rect x="0" y="0" width="1200" height="675" fill="url(#g-vig)" pointer-events="none"/>
+    </svg>
+
+    <div id="compass"><div id="compassStrip"></div><div class="c-mark"></div></div>
+
+    <div class="stick" id="stickL">
+        <div class="stick-base"><div class="knob"></div></div>
+        <span class="stick-lab">walk</span>
+    </div>
+    <div class="stick" id="stickR">
+        <div class="stick-base"><div class="knob"></div></div>
+        <span class="stick-lab">turn</span>
+    </div>
+
+    <div id="intro">
+        <div class="intro-card">
+            <p class="eyebrow">A pilgrim&rsquo;s account &middot; the last fire</p>
+            <h1>EMBERFALL</h1>
+            <h2>The Cinder Terraces</h2>
+            <p class="lore">Long after the forge&#8209;star fell, its cooling shell stretches past every horizon.
+            Basalt hardened into hollow <em>flute&#8209;stones</em> that vent the last warmth; shards of
+            <em>obsidian</em> mirror the ember sky; fumaroles breathe over glowing cracks; and cinder
+            moths&nbsp;&mdash; sparks that learned to fly&nbsp;&mdash; drift on the heat. Walk as long as you wish.
+            The terraces do not end. They only remember.</p>
+            <button id="begin" type="button">Begin the walk</button>
+            <p class="ctl-hint hint-desktop">WASD / arrows &mdash; walk &nbsp;&middot;&nbsp; click &amp; drag &mdash; look around</p>
+            <p class="ctl-hint hint-touch">Left stick &mdash; walk &nbsp;&middot;&nbsp; right stick &mdash; turn</p>
+        </div>
+    </div>
+
+    <div id="mark">Emberfall &middot; pure svg</div>
+</div>
+
+<script>
+(function () {
+'use strict';
+
+/* ============================== constants ============================== */
+const NS = 'http://www.w3.org/2000/svg';
+const CX = 600, HORIZON = 298, FOCAL = 700;
+const CAM_H = 1.7, NEAR = 0.7;
+const SPACING = 13, R_CELL = 7, FAR = R_CELL * SPACING;   // 91 units draw radius
+const FOG0 = 38;
+const POOL = 175, MOTH_POOL = 15, ASH_N = 42;
+const SPEED = 6.4, TURN_RATE = 2.3;
+const SUN_AZ = 0.95;                                       // sun azimuth (radians)
+const PERIOD = 2400;                                       // ridge pattern period (px)
+
+/* ============================== dom refs ============================== */
+const $ = id => document.getElementById(id);
+const scene = $('scene'), worldG = $('world'), propsG = $('props'), mothsG = $('moths');
+const skyR = $('sky'), starsG = $('stars'), sunGlow = $('sunGlow'), sunDisc = $('sunDisc');
+const ridgeFar = $('ridgeFar'), ridgeNear = $('ridgeNear');
+const groundR = $('ground'), groundGlow = $('groundGlow');
+const compassStrip = $('compassStrip');
+
+/* ============================== utilities ============================== */
+function hash(x, z) {
+    let h = Math.imul(x, 374761393) + Math.imul(z, 668265263) | 0;
+    h = h ^ (h >>> 13);
+    h = Math.imul(h, 1274126177) | 0;
+    h = h ^ (h >>> 16);
+    return (h >>> 0) / 4294967296;
+}
+function wrapPi(a) {
+    const TAU = Math.PI * 2;
+    a = (a + Math.PI) % TAU;
+    if (a < 0) a += TAU;
+    return a - Math.PI;
+}
+function modP(a, m) { const r = a % m; return r < 0 ? r + m : r; }
+function clamp(v, lo, hi) { return v < lo ? lo : v > hi ? hi : v; }
+function smooth(a, b, x) { return clamp((x - a) / (b - a), 0, 1); }
+
+/* ============================== state ============================== */
+let px = 0, pz = 0, yaw = 0;
+let velF = 0, velS = 0;
+let pitchT = 0, pitchC = 0;          // look pitch, stored as pixel shear
+let bobPhase = 0, bobAmt = 0;
+let started = false;
+let nowSec = 0;
+
+const keys = Object.create(null);
+
+/* ============================== static scenery ============================== */
+
+// stars
+(function makeStars() {
+    for (let i = 0; i < 64; i++) {
+        const c = document.createElementNS(NS, 'circle');
+        c.setAttribute('cx', (hash(i * 3 + 1, 77) * 1200).toFixed(1));
+        c.setAttribute('cy', (8 + hash(i * 3 + 2, 78) * 225).toFixed(1));
+        c.setAttribute('r', (0.5 + hash(i * 3 + 3, 79) * 1.1).toFixed(2));
+        c.setAttribute('fill', '#ffe9d0');
+        if (i % 4 === 0) {
+            c.setAttribute('class', 'tw');
+            c.style.animationDuration = (2.2 + hash(i, 81) * 3).toFixed(2) + 's';
+            c.style.animationDelay = (-hash(i, 82) * 5).toFixed(2) + 's';
+        } else {
+            c.setAttribute('opacity', (0.25 + hash(i, 83) * 0.6).toFixed(2));
+        }
+        starsG.appendChild(c);
+    }
+})();
+
+// parallax ridge silhouettes (three seamless periods each)
+function ridgePath(steps, amp, base, seed) {
+    const hs = [];
+    for (let i = 0; i < steps; i++) {
+        const n = Math.sin(i * 127.1 + seed * 311.7) * 43758.5453;
+        hs.push(base + amp * (0.3 + 0.7 * (n - Math.floor(n))));
+    }
+    const stepW = PERIOD / steps;
+    let d = 'M-2400 ' + (HORIZON + 70);
+    for (let p = 0; p < 3; p++) {
+        for (let i = 0; i < steps; i++) {
+            const x = -2400 + p * PERIOD + i * stepW;
+            d += ' L' + x.toFixed(1) + ' ' + (HORIZON - hs[i]).toFixed(1);
+        }
+    }
+    d += ' L4800 ' + (HORIZON + 70) + ' Z';
+    return d;
+}
+ridgeFar.setAttribute('d', ridgePath(14, 58, 24, 1));
+ridgeNear.setAttribute('d', ridgePath(11, 92, 8, 2));
+
+/* ============================== element pools ============================== */
+function makeUse(parent) {
+    const u = document.createElementNS(NS, 'use');
+    parent.appendChild(u);
+    u._href = null; u._hidden = true;
+    u.setAttribute('visibility', 'hidden');
+    return u;
+}
+const pool = []; for (let i = 0; i < POOL; i++) pool.push(makeUse(propsG));
+const mothPool = []; for (let i = 0; i < MOTH_POOL; i++) mothPool.push(makeUse(mothsG));
+
+// screen-space ash fall (independent of camera)
+const ashP = [];
+(function makeAsh() {
+    const ashG = $('ash');
+    for (let i = 0; i < ASH_N; i++) {
+        const c = document.createElementNS(NS, 'circle');
+        const r = 0.8 + hash(i, 91) * 1.6;
+        c.setAttribute('r', r.toFixed(2));
+        c.setAttribute('fill', hash(i, 92) < 0.3 ? '#ffb87a' : '#d8a37a');
+        ashG.appendChild(c);
+        ashP.push({
+            el: c, r,
+            x: hash(i, 93) * 1300 - 50,
+            y: hash(i, 94) * 750,
+            fall: 14 + hash(i, 95) * 26,
+            wind: -6 - hash(i, 96) * 14,
+            ph: hash(i, 97) * 6.28,
+            op: 0.18 + hash(i, 98) * 0.4
+        });
+    }
+})();
+
+/* ============================== world scan ============================== */
+const SYMS = ['#s-flute', '#s-shard', '#s-fume', '#s-tuft', '#s-rock'];
+const WIDTHS = [240, 130, 175, 110, 105];
+const items = [];
+const anchors = [];
+let sinY = 0, cosY = 1;
+
+function scanWorld() {
+    items.length = 0;
+    anchors.length = 0;
+    const gx0 = Math.round(px / SPACING), gz0 = Math.round(pz / SPACING);
+    const far2 = FAR * FAR;
+    for (let iz = -R_CELL; iz <= R_CELL; iz++) {
+        for (let ix = -R_CELL; ix <= R_CELL; ix++) {
+            const gx = gx0 + ix, gz = gz0 + iz;
+            const h1 = hash(gx, gz);
+            if (h1 >= 0.62) continue;
+            if (gx === 0 && gz === 0) continue;          // keep the spawn cell clear
+            const wx = (gx + (hash(gx * 3 + 7, gz * 3 + 1) - 0.5) * 0.8) * SPACING;
+            const wz = (gz + (hash(gx * 3 + 2, gz * 3 + 9) - 0.5) * 0.8) * SPACING;
+            const dx = wx - px, dz = wz - pz;
+            const zf = dx * sinY + dz * cosY;
+            if (zf < NEAR) continue;
+            const d2 = dx * dx + dz * dz;
+            if (d2 > far2) continue;
+
+            // occasional cinder-moth anchor
+            if (hash(gx * 7 + 1, gz * 7 + 5) < 0.075 && d2 < 70 * 70) {
+                anchors.push({ x: wx + 4, z: wz + 3, p: h1 * 40 });
+            }
+
+            const t = hash(gx * 5 + 3, gz * 5 + 4);
+            let ti;
+            if (t < 0.28) ti = 0; else if (t < 0.46) ti = 1; else if (t < 0.60) ti = 2; else if (t < 0.86) ti = 3; else ti = 4;
+            const size = 0.8 + h1 * 0.5;
+            items.push({
+                zf,
+                xf: dx * cosY - dz * sinY,
+                sym: SYMS[ti],
+                w: WIDTHS[ti],
+                size,
+                flip: hash(gx * 9 + 6, gz * 9 + 8) < 0.5 ? 1 : -1,
+                d: Math.sqrt(d2)
+            });
+            // some cells carry a glowing ground crack (kept off the near field)
+            if (t >= 0.58 && t < 0.74) {
+                items.push({
+                    zf, xf: dx * cosY - dz * sinY + 20,
+                    sym: '#s-crack', w: 150, size: 1.1 + h1 * 1.0, flip: 1,
+                    d: Math.sqrt(d2), crack: true
+                });
+            }
+        }
+    }
+    items.sort((a, b) => b.zf - a.zf);
+}
+
+/* ============================== collision ============================== */
+function collide(nx, nz) {
+    const gx0 = Math.round(nx / SPACING), gz0 = Math.round(nz / SPACING);
+    for (let iz = -1; iz <= 1; iz++) {
+        for (let ix = -1; ix <= 1; ix++) {
+            const gx = gx0 + ix, gz = gz0 + iz;
+            const h = hash(gx, gz);
+            if (h >= 0.62) continue;
+            if (gx === 0 && gz === 0) continue;
+            if (gx === 0 && gz === 0) continue;
+            const t = hash(gx * 5 + 3, gz * 5 + 4);
+            let r;
+            if (t < 0.28) r = 2.6; else if (t < 0.46) r = 2.0; else if (t < 0.60) r = 2.2; else if (t < 0.86) continue; else r = 1.7;
+            r = (r + 0.5) * (0.8 + h * 0.5);
+            const wx = (gx + (hash(gx * 3 + 7, gz * 3 + 1) - 0.5) * 0.8) * SPACING;
+            const wz = (gz + (hash(gx * 3 + 2, gz * 3 + 9) - 0.5) * 0.8) * SPACING;
+            const dx = nx - wx, dz = nz - wz;
+            const d = Math.sqrt(dx * dx + dz * dz);
+            if (d < r && d > 1e-4) {
+                nx = wx + dx / d * r;
+                nz = wz + dz / d * r;
+            }
+        }
+    }
+    return [nx, nz];
+}
+
+/* ============================== input ============================== */
+function makeStick(el) {
+    const knob = el.querySelector('.knob');
+    const R = 44;
+    let pid = null, vx = 0, vy = 0, cx0 = 0, cy0 = 0;
+    function set(dx, dy) {
+        const m = Math.hypot(dx, dy);
+        const c = m > 0 ? Math.min(1, m / R) : 0;
+        vx = m > 0 ? dx / m * c : 0;
+        vy = m > 0 ? dy / m * c : 0;
+        knob.style.transform = 'translate(' + (vx * R).toFixed(1) + 'px,' + (vy * R).toFixed(1) + 'px)';
+    }
+    el.addEventListener('pointerdown', function (e) {
+        if (pid !== null) return;
+        pid = e.pointerId;
+        try { el.setPointerCapture(pid); } catch (_) {}
+        const r = el.getBoundingClientRect();
+        cx0 = r.left + r.width / 2; cy0 = r.top + r.height / 2;
+        set(e.clientX - cx0, e.clientY - cy0);
+        e.preventDefault();
+        e.stopPropagation();
+    });
+    el.addEventListener('pointermove', function (e) {
+        if (e.pointerId !== pid) return;
+        set(e.clientX - cx0, e.clientY - cy0);
+        e.preventDefault();
+    });
+    function end(e) {
+        if (e.pointerId !== pid) return;
+        pid = null; vx = vy = 0;
+        knob.style.transform = 'translate(0px, 0px)';
+    }
+    el.addEventListener('pointerup', end);
+    el.addEventListener('pointercancel', end);
+    return {
+        get vx() { return Math.abs(vx) < 0.14 ? 0 : vx; },
+        get vy() { return Math.abs(vy) < 0.14 ? 0 : vy; },
+        get active() { return pid !== null; }
+    };
+}
+const stickL = makeStick($('stickL'));
+const stickR = makeStick($('stickR'));
+
+window.addEventListener('keydown', function (e) {
+    keys[e.code] = true;
+    if (e.code.startsWith('Arrow') || e.code === 'Space') e.preventDefault();
+});
+window.addEventListener('keyup', function (e) { keys[e.code] = false; });
+window.addEventListener('blur', function () { for (const k in keys) keys[k] = false; });
+
+// mouse-drag look (desktop pointers only)
+let drag = null;
+scene.addEventListener('pointerdown', function (e) {
+    if (e.pointerType === 'touch' || drag) return;
+    drag = { id: e.pointerId, x: e.clientX, y: e.clientY };
+    scene.classList.add('dragging');
+});
+window.addEventListener('pointermove', function (e) {
+    if (!drag || e.pointerId !== drag.id) return;
+    yaw += (e.clientX - drag.x) * 0.0045;
+    pitchT = clamp(pitchT - (e.clientY - drag.y) * 0.55, -95, 95);
+    drag.x = e.clientX; drag.y = e.clientY;
+});
+function endDrag(e) {
+    if (!drag || e.pointerId !== drag.id) return;
+    drag = null;
+    scene.classList.remove('dragging');
+}
+window.addEventListener('pointerup', endDrag);
+window.addEventListener('pointercancel', endDrag);
+
+/* ============================== touch setup ============================== */
+if (window.matchMedia('(pointer: coarse)').matches || 'ontouchstart' in window) {
+    document.body.classList.add('touch');
+}
+window.addEventListener('touchstart', function () { document.body.classList.add('touch'); }, { once: true, passive: true });
+document.addEventListener('touchmove', function (e) {
+    if (e.target.closest && e.target.closest('#intro')) return;
+    e.preventDefault();
+}, { passive: false });
+document.addEventListener('gesturestart', e => e.preventDefault());
+document.addEventListener('dblclick', e => e.preventDefault());
+
+/* ============================== compass ============================== */
+const PPD = 2.4, COMP_W = 360 * PPD;
+(function buildCompass() {
+    const LABELS = { 0: 'N', 45: 'NE', 90: 'E', 135: 'SE', 180: 'S', 225: 'SW', 270: 'W', 315: 'NW' };
+    for (let copy = 0; copy < 3; copy++) {
+        const div = document.createElement('div');
+        div.className = 'c-copy';
+        div.style.left = (copy * COMP_W) + 'px';
+        div.style.width = COMP_W + 'px';
+        for (let deg = 0; deg < 360; deg += 15) {
+            const tick = document.createElement('div');
+            const major = deg % 45 === 0;
+            tick.className = 'c-tick' + (major ? ' major' : '');
+            tick.style.left = (deg * PPD) + 'px';
+            div.appendChild(tick);
+            if (major) {
+                const lab = document.createElement('span');
+                lab.className = 'c-lab';
+                lab.textContent = LABELS[deg];
+                lab.style.left = (deg * PPD) + 'px';
+                div.appendChild(lab);
+            }
+        }
+        compassStrip.appendChild(div);
+    }
+})();
+compassStrip.style.width = (COMP_W * 3) + 'px';
+
+/* ============================== update ============================== */
+function update(dt) {
+    // gather input
+    let fIn = (keys.KeyW || keys.ArrowUp ? 1 : 0) - (keys.KeyS || keys.ArrowDown ? 1 : 0) - stickL.vy;
+    let sIn = (keys.KeyD ? 1 : 0) - (keys.KeyA ? 1 : 0);
+    let tIn = (keys.ArrowRight ? 1 : 0) - (keys.ArrowLeft ? 1 : 0) + stickR.vx;
+    fIn = clamp(fIn, -1, 1); sIn = clamp(sIn, -1, 1); tIn = clamp(tIn, -1, 1);
+
+    yaw += tIn * TURN_RATE * dt;
+    sinY = Math.sin(yaw); cosY = Math.cos(yaw);
+
+    const tvF = fIn * SPEED * (fIn < 0 ? 0.65 : 1);
+    const tvS = sIn * SPEED * 0.7;
+    const k = Math.min(1, dt * 8);
+    velF += (tvF - velF) * k;
+    velS += (tvS - velS) * k;
+
+    let nx = px + (sinY * velF + cosY * velS) * dt;
+    let nz = pz + (cosY * velF - sinY * velS) * dt;
+    const c = collide(nx, nz);
+    px = c[0]; pz = c[1];
+
+    // head bob
+    const spd = Math.hypot(velF, velS);
+    const target = clamp(spd / SPEED, 0, 1);
+    bobAmt += (target - bobAmt) * Math.min(1, dt * 5);
+    bobPhase += dt * (5.5 + 5.5 * bobAmt) * (bobAmt > 0.03 ? 1 : 0);
+
+    pitchC += (pitchT - pitchC) * Math.min(1, dt * 10);
+}
+
+/* ============================== render ============================== */
+let prevUsed = 0, prevMothUsed = 0;
+const fmt = v => v.toFixed(1);
+
+function render(dt) {
+    // whole-world shear: head bob + breathing + pitch
+    const bobY = Math.sin(bobPhase) * 5 * bobAmt + Math.sin(nowSec * 1.3) * 1.6 * (1 - bobAmt);
+    worldG.setAttribute('transform', 'translate(0 ' + fmt(bobY + pitchC) + ')');
+
+    // sun (fixed azimuth, infinite distance)
+    const sa = wrapPi(SUN_AZ - yaw);
+    if (Math.abs(sa) < 1.05) {
+        const sx = CX + Math.tan(sa) * FOCAL;
+        sunGlow.style.display = ''; sunDisc.style.display = '';
+        const xs = fmt(sx);
+        sunGlow.setAttribute('cx', xs);
+        sunDisc.setAttribute('cx', xs);
+        groundGlow.setAttribute('cx', fmt(CX + clamp(sx - CX, -520, 520)));
+    } else {
+        sunGlow.style.display = 'none'; sunDisc.style.display = 'none';
+        groundGlow.setAttribute('cx', '-2000');
+    }
+
+    // ridges parallax
+    ridgeFar.setAttribute('transform', 'translate(' + fmt(-modP(yaw * FOCAL * 0.55, PERIOD)) + ' 0)');
+    ridgeNear.setAttribute('transform', 'translate(' + fmt(-modP(yaw * FOCAL * 0.85, PERIOD)) + ' 0)');
+
+    // ---- props ----
+    scanWorld();
+    let used = 0;
+    for (let i = 0; i < items.length && used < POOL; i++) {
+        const it = items[i];
+        const k = FOCAL / it.zf / 10 * it.size;
+        const sx = CX + it.xf / it.zf * FOCAL;
+        if (sx < -180 - it.w * k || sx > 1380 + it.w * k) continue;
+        const sy = HORIZON + CAM_H * FOCAL / it.zf;
+        let op = (1 - smooth(FOG0, FAR, it.d)) * smooth(NEAR, NEAR + 2, it.zf);
+        if (it.crack) op *= smooth(4, 12, it.d) * 0.85;  // cracks live in the near/mid field
+        if (op < 0.045) continue;
+        const u = pool[used++];
+        if (u._href !== it.sym) { u.setAttribute('href', it.sym); u._href = it.sym; }
+        u.setAttribute('transform',
+            'translate(' + fmt(sx) + ' ' + fmt(sy) + ') scale(' +
+            (it.flip * -k).toFixed(3) + ' ' + k.toFixed(3) + ')');
+        u.setAttribute('opacity', op.toFixed(2));
+        if (u._hidden) { u.removeAttribute('visibility'); u._hidden = false; }
+    }
+    if (prevUsed > used) for (let i = used; i < prevUsed; i++) {
+        pool[i].setAttribute('visibility', 'hidden'); pool[i]._hidden = true;
+    }
+    prevUsed = used;
+
+    // ---- cinder moths ----
+    let mUsed = 0;
+    const t = nowSec;
+    for (let i = 0; i < anchors.length && mUsed < MOTH_POOL; i++) {
+        const a = anchors[i];
+        const mx = a.x + Math.cos(t * 0.6 + a.p) * 2.4;
+        const mz = a.z + Math.sin(t * 0.43 + a.p * 1.7) * 2.4;
+        const alt = 1.15 + 0.45 * Math.sin(t * 1.1 + a.p * 2.3);
+        const dx = mx - px, dz = mz - pz;
+        const zf = dx * sinY + dz * cosY;
+        if (zf < NEAR) continue;
+        const xf = dx * cosY - dz * sinY;
+        const sx = CX + xf / zf * FOCAL;
+        if (sx < -60 || sx > 1260) continue;
+        const d = Math.hypot(dx, dz);
+        const op = (1 - smooth(FOG0, 62, d)) * smooth(NEAR, NEAR + 2, zf) *
+                   (0.75 + 0.25 * Math.sin(t * 3 + a.p * 5));
+        if (op < 0.05) continue;
+        const k = FOCAL / zf / 10;
+        const sy = HORIZON + (CAM_H - alt) * FOCAL / zf;
+        const u = mothPool[mUsed++];
+        u.setAttribute('href', '#s-moth');
+        u.setAttribute('transform', 'translate(' + fmt(sx) + ' ' + fmt(sy) + ') scale(' + k.toFixed(3) + ')');
+        u.setAttribute('opacity', op.toFixed(2));
+        if (u._hidden) { u.removeAttribute('visibility'); u._hidden = false; }
+    }
+    if (prevMothUsed > mUsed) for (let i = mUsed; i < prevMothUsed; i++) {
+        mothPool[i].setAttribute('visibility', 'hidden'); mothPool[i]._hidden = true;
+    }
+    prevMothUsed = mUsed;
+
+    // ---- ash fall (screen space) ----
+    for (let i = 0; i < ASH_N; i++) {
+        const p = ashP[i];
+        p.y += (p.fall + 8 * bobAmt) * dt;
+        p.x += p.wind * dt + Math.sin(nowSec * 0.8 + p.ph) * 22 * dt;
+        if (p.y > 700) { p.y = -20; p.x = Math.random() * 1300 - 50; }
+        if (p.x < -60) p.x += 1320;
+        p.el.setAttribute('cx', fmt(p.x));
+        p.el.setAttribute('cy', fmt(p.y));
+        p.el.setAttribute('opacity', (p.op * (0.7 + 0.3 * Math.sin(nowSec + p.ph))).toFixed(2));
+    }
+
+    // ---- compass ----
+    const heading = ((yaw * 180 / Math.PI) % 360 + 360) % 360;
+    const compW = compassStrip.parentElement.clientWidth;
+    compassStrip.style.transform =
+        'translateX(' + fmt(compW / 2 - (COMP_W + heading * PPD)) + 'px)';
+}
+
+/* ============================== main loop ============================== */
+let last = 0;
+let frames = 0;
+function frame(ts) {
+    frames++;
+    if (!last) last = ts;
+    const dt = Math.min(0.05, (ts - last) / 1000);
+    last = ts;
+    nowSec = ts / 1000;
+    if (started) update(dt);
+    else { sinY = Math.sin(yaw); cosY = Math.cos(yaw); }
+    render(dt);
+    requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+
+/* ============================== start ============================== */
+$('begin').addEventListener('click', function () {
+    $('intro').classList.add('gone');
+    started = true;
+});
+// deep-link start: #play or #play=<initialYaw> skips the title card
+const hsh = location.hash;
+if (hsh.indexOf('#play') === 0) {
+    const yv = parseFloat(hsh.split('=')[1]);
+    if (!isNaN(yv)) yaw = yv;
+    $('intro').classList.add('gone');
+    started = true;
+}
+
+// clicking anywhere on the intro (outside card) also begins
+$('intro').addEventListener('pointerdown', function (e) {
+    if (e.target.id !== 'intro') return;
+    $('intro').classList.add('gone');
+    started = true;
+});
+
+// debug/verification handle (headless testing)
+window.__ef = {
+    get yaw() { return yaw; },
+    get pos() { return [px, pz]; },
+    get started() { return started; },
+    get vel() { return [velF, velS]; },
+    get keyW() { return !!keys['KeyW']; },
+    get frames() { return frames; },
+    step(dt) { update(dt); render(dt || 0.016); return [px, pz, yaw]; },
+    get err() { return window.__efErr || null; }
+};
+window.addEventListener('error', function (e) { window.__efErr = e.message + ' @ ' + e.lineno; });
+
+})();
+</script>
+</body>
+</html>
