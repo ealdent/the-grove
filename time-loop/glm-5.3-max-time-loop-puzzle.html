@@ -1,0 +1,2318 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Jack in the Green</title>
+<!--
+=======================================================================
+ JACK IN THE GREEN
+ a Midsummer time-riddle in three rehearsals
+ Single self-contained HTML file. Vanilla JS + Canvas. No assets,
+ no libraries, no network. Sound (optional) is synthesized WebAudio.
+=======================================================================
+
+-----------------------------------------------------------------------
+ PART 1 · THE DESIGN DOCUMENT
+-----------------------------------------------------------------------
+
+ 1) TITLE
+    "Jack in the Green" — the foliage man of English May Day, the thing
+    the rite raises if the last rehearsal holds together.
+
+ 2) PREMISE
+    You are the new Fool of the Hallowfield side. It is Midsummer Eve,
+    and the village has one job older than the church bell: carry the
+    flowered garland down the green and crown the bare pole with it
+    before dawn, or summer simply does not come. The Great War took
+    every dancer the side had; only the fiddler is left, ninety-one
+    years old, playing from a chair. What the village has instead is
+    the turf. A green keeps every dance ever stepped on it, worn in
+    like a path worn to a door — and on Midsummer Eve, when the fiddler
+    plays, the turf steps them again. So you rehearse. Each rehearsal
+    you dance, the green keeps; when it replays, it steps out beside
+    you as a FOOTFALL — a dancer of grass and blossom-light wearing the
+    kit you wore that time. They are not ghosts; they are steps, worn
+    and binding. The green is strict as any conductor: if the green you
+    leave contradicts the steps it has kept — the wain shoved onto a
+    worn line, ribbons dropped across a figure, your living body where
+    a Footfall must step — the ribbons TANGLE, the figure tears, and a
+    tangled rite raises nothing but weather. Give Hallowfield a final
+    dance that holds every rehearsal at once. Crown the pole. Bring
+    the summer.
+
+ 3) ART DIRECTION
+    Place & hour: a Cotswold village green at golden hour sliding into
+    dusk, c. 1926. Light: one low western sun (long warm light from the
+    left), bunting and hedge shadows, blossom drifting on a west wind.
+    Shape language: hand-woven and botanical — hoops, wreaths, ribbons,
+    petals; nothing square, nothing glowing.
+    Palette:
+      turf deep        #3E5A2E      turf lit         #6E8F3C
+      worn path        #A8A06B      hedge black-green #26371E
+      meadowlight gold #F2D98B      sun cream        #FFF4D6
+      dusk cream sky   #F7E8BE      sky gold         #E8D592
+      madder red       #B33A2B      woad blue        #3E5D7E
+      sloe plum        #6E4668      saffron          #D9A036
+      walnut wood      #6B4A2C      wain oak         #7D5A33
+      garland green    #4F7A34      blossom white    #F5EFDC
+      petal rose       #D98A98      parchment        #F1E6C4
+      card ink         #2E2417      tangle plum wash #4A2B33
+    Typography: a warm display serif stack (Georgia / Iowan Old Style /
+    Palatino), Title Case titles, italic serif for the fiddler's lines.
+    No monospace anywhere — nothing in this fiction is a terminal — no
+    letterspaced all-caps headers, no gradient text, no glow grids,
+    no navy-with-neon anything.
+
+ 4) VOICE
+    The old fiddler speaks every line in the game — warm, worn, a
+    little dry; fond of the village and strict about the figures; he
+    explains a tangle the way a conductor explains a missed entrance:
+    precisely, and without unkindness.
+
+-----------------------------------------------------------------------
+ PART 5 · MECHANICS & DECIDED AMBIGUITIES
+   (every rule below is implemented exactly as written, and the
+    self-test — "the muster" — proves the load-bearing ones)
+-----------------------------------------------------------------------
+ · Grid: 12x12. Four-direction walking (arrows/WASD). One input spends
+   exactly one STEP — walking, holding (space), or bumping something.
+ · The rehearsal (the repeated span): each lasts N steps (30 / 40 / 52
+   by scene). When N is spent — or the Fool BOWS OUT early (C) — the
+   Fool returns to the gate onto the green, the world is reset to its
+   first stone, and every finished rehearsal replays its exact inputs
+   simultaneously as a Footfall. The green keeps four rehearsals; when
+   a fifth is finished, the oldest has worn away.
+ · Order within a step (the deterministic conflict rule): the ELDEST
+   Footfall steps first, then each younger, and the live Fool steps
+   LAST. No body may enter an occupied tile (positions update
+   immediately), so when two seek one tile the elder keeps it and the
+   younger holds. The gate-onto-the-green tile (the Fool's entry) is
+   the one tile where bodies may stack.
+ · Flowered marks hold ribbon gates up while OCCUPIED — by any body,
+   living or worn, or by the wain (a wreath does not care for feet or
+   wheel). A group of marks wired to one gate needs all of them loaded.
+ · Ribbon gates never drop onto anything: if the tile beneath a ribbon
+   is occupied when its marks unload, the ribbons wait aloft until the
+   tile clears. (Nothing falls on a dancer, a wain, or the garland.)
+ · The wain (the pushable cart) obeys Sokoban rules: it rolls one tile
+   in the push direction only if the tile beyond its far side is clear
+   turf (not thorn, not a lowered ribbon, not a body, not the garland,
+   not the gate-onto tile — a wain cannot leave the green).
+ · The garland is shouldered automatically by stepping onto it, and set
+   down with X. X while empty-handed is ignored outright (no step is
+   spent). Anything carrying the garland that EXITS — a Footfall whose
+   steps run out, or one that bowed out, or the Fool at rehearsal's
+   end — sets the garland down where it stands: the garland never
+   leaves the green.
+ · The pole is crowned by the live Fool stepping onto it carrying the
+   garland — and every path to every pole runs under a ribbon gate.
+ · Causal consistency: Footfalls replay INPUTS, not positions. Each
+   rehearsal's expected outcome per step is recorded when it is danced
+   (the outcome the live Fool got then, in that exact company). On
+   replay, if a step's outcome differs — a clear way now blocked, a
+   blocked way now open, a wain that should roll standing fast, a
+   garland gone from its trestle — the green halts in the TANGLE,
+   naming the rehearsal, the step, and what the turf kept against what
+   the green gives.
+ · Untreading (undo, U): the fiddler takes you back one step, with no
+   limit, across rehearsal boundaries — untreading past a boundary
+   removes that Footfall and resumes the prior rehearsal mid-dance.
+   The whole game is a pure function of (scene, input log); every
+   input and every undo re-simulates from the first stone, so untread
+   and dance again always reproduces the identical green.
+ · Determinism: logic runs on discrete steps only; rendering may
+   interpolate, sway, and drift blossom as it pleases.
+
+-----------------------------------------------------------------------
+ PART 6 · SCENES & INTENDED SOLUTIONS
+   (solutions are also asserted headlessly by the muster, key T)
+-----------------------------------------------------------------------
+ SCENE I — THE GARLAND (30 steps)
+   The mark is up the green; the garland and the pole are past the
+   ribbons. You cannot hold the mark and carry the garland both — but
+   the turf can.
+     Rehearsal 1:  R R R R R D D, then hold to the end
+       (shoulder the mark at step 7; the green keeps you standing there)
+     Rehearsal 2:  hold 4, R R R, D x6 (under the lifted ribbons at
+       step 11), L (shoulder the garland), R x5 — crowned at step 19.
+ SCENE II — THE WAIN (40 steps)
+   Two marks, two gates. Roll the wain onto the south mark so its
+   ribbons stay up; a Footfall holds the west mark; the Fool fetches
+   the garland through both gates.
+     Rehearsal 1:  R R D, D x7 (wain onto the south mark at step 10),
+       U x3, L (west mark at step 14), hold to the end.
+     Rehearsal 2:  hold 1 (let your elder past), R R R, D x4, hold x6
+       (both marks load), R R, U x3 (garland), R, D, R R (east gate),
+       D x7 — crowned at step 30.
+ SCENE III — MIDSUMMER EVE (52 steps)
+   The pole's ribbons want three marks held at once: the NE mark (a
+   Footfall stands it), the east mark (a Footfall stands it), and the
+   mid-south mark (the wain parks on it). The obvious beeline through
+   the middle of the green crosses the wain's worn rolling-line and
+   the standing Footfalls — the ribbons knot. Protect what you wore:
+   push the wain the long way round the apron, and in the last
+   rehearsal wait, then hug the west and south edges.
+     Rehearsal 1:  D, R x9, U (NE mark at step 11), hold to the end.
+     Rehearsal 2:  hold 1, D D, R x5, D D, L x3 (wain west), U, L,
+       D x3 (wain south), L, D, R x3 (wain onto the mid-south mark at
+       step 23), U U, R x6 (east mark at step 31), hold to the end.
+     Rehearsal 3:  hold 31 (all three marks load), D x9 (garland at
+       step 40), R x9 (under the pole ribbons), — crowned at step 49.
+ ENDING — LAST ONE OUT. Crowned on the last step, the Footfalls take
+   their bow, Jack rises out of the hedge, and the fiddler packs up.
+=======================================================================
+-->
+<style>
+  html, body {
+    margin: 0; padding: 0;
+    background: #1a2415;
+    height: 100%;
+  }
+  body {
+    display: flex; align-items: center; justify-content: center;
+    min-height: 100vh;
+  }
+  canvas {
+    display: block;
+    max-width: 100vw; max-height: 100vh;
+    width: auto; height: auto;
+  }
+</style>
+</head>
+<body>
+<canvas id="stage" width="1000" height="780" aria-label="Jack in the Green"></canvas>
+<script>
+"use strict";
+/* =====================================================================
+   0 · SMALL UTILITIES
+===================================================================== */
+var HAS_DOM = (typeof document !== "undefined") && (typeof window !== "undefined");
+
+function mulberry32(seed) {
+  var a = seed >>> 0;
+  return function () {
+    a |= 0; a = (a + 0x6D2B79F5) | 0;
+    var t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+function hashString(s) {
+  var h = 2166136261;
+  for (var i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); }
+  return h >>> 0;
+}
+var ROMAN = ["I", "II", "III", "IV", "V", "VI", "VII", "VIII"];
+var DIRS = { U: [0, -1], D: [0, 1], L: [-1, 0], R: [1, 0] };
+var DIRWORD = { U: "north", D: "south", L: "west", R: "east" };
+
+/* =====================================================================
+   1 · PALETTE  (matches the art direction statement above)
+===================================================================== */
+var PAL = {
+  turfDeep: "#3E5A2E", turfLit: "#6E8F3C", worn: "#A8A06B",
+  hedge: "#26371E", hedgeLit: "#3A5030",
+  gold: "#F2D98B", cream: "#FFF4D6", skyCream: "#F7E8BE", skyGold: "#E8D592",
+  madder: "#B33A2B", woad: "#3E5D7E", sloe: "#6E4668", saffron: "#D9A036",
+  walnut: "#6B4A2C", wainOak: "#7D5A33", wainWood: "#8A6740",
+  garlandGreen: "#4F7A34", blossom: "#F5EFDC", rose: "#D98A98",
+  parchment: "#F1E6C4", parchmentDim: "#DCCBA0", ink: "#2E2417",
+  tangleWash: "#4A2B33", nightfall: "#1A2415"
+};
+var KITS = [
+  { phrase: "the straw hat",     sash: "#B33A2B", hat: "straw" },
+  { phrase: "the feathered cap", sash: "#3E5D7E", hat: "cap" },
+  { phrase: "the leaf hood",     sash: "#6E4668", hat: "hood" },
+  { phrase: "the flowered hat",  sash: "#D9A036", hat: "flowered" }
+];
+var FONT = function (px, style) {
+  return (style ? style + " " : "") + px + "px Georgia, 'Iowan Old Style', 'Palatino Linotype', 'Book Antiqua', serif";
+};
+
+/* =====================================================================
+   2 · SCENES (levels)
+   grid legend:
+     #  thorn hedge (wall)      .  turf
+     S  the gate onto the green (start; bodies may stack here)
+     f  flowered mark (plate)   r  ribbon gate (door; open only while
+                                  its mark-group is loaded)
+     W  the wain (pushable)     g  the garland (carryable)
+     P  the pole (goal)
+===================================================================== */
+function mkScene(def) {
+  var sc = {
+    id: def.id, name: def.name, N: def.N, grid: def.grid,
+    wires: def.wires, intro: def.intro, hint: def.hint, outro: def.outro,
+    solution: def.solution || null, seed: hashString(def.id + def.name)
+  };
+  sc.rows = def.grid.map(function (r) { return r.split(""); });
+  sc.w = def.grid[0].length; sc.h = def.grid.length;
+  sc.start = null; sc.pole = null; sc.garland = null;
+  sc.wains = []; sc.marks = []; sc.gates = [];
+  for (var y = 0; y < sc.h; y++) for (var x = 0; x < sc.w; x++) {
+    var c = sc.rows[y][x];
+    if (c === "S") sc.start = { x: x, y: y };
+    else if (c === "P") sc.pole = { x: x, y: y };
+    else if (c === "g") sc.garland = { x: x, y: y };
+    else if (c === "W") sc.wains.push({ x: x, y: y });
+    else if (c === "f") sc.marks.push({ x: x, y: y });
+    else if (c === "r") sc.gates.push({ x: x, y: y });
+  }
+  // gate key -> wire (a gate is wired to exactly one group of marks,
+  // and lifts only while every mark in its group is loaded)
+  sc.gateWire = {};
+  sc.wires.forEach(function (w) {
+    w.gates.forEach(function (g) { sc.gateWire[g[0] + "," + g[1]] = w; });
+  });
+  return sc;
+}
+
+var SCENES = [
+  mkScene({
+    id: "I", name: "The Garland", N: 30,
+    grid: [
+      "############",
+      "#S.........#",
+      "#.TT.......#",
+      "#....f.....#",
+      "#.TT.......#",
+      "####r#######",
+      "#..........#",
+      "#..g....P..#",
+      "#.TT.......#",
+      "#.TT..TT...#",
+      "#..........#",
+      "############"
+    ],
+    wires: [{ marks: [[6, 3]], gates: [[4, 5]] }],
+    intro: [
+      "First rehearsal, then.",
+      "The garland sits by the bench; the pole stands past the ribbons; the flowered mark is up the green. You cannot hold the mark and carry the garland both — not alone.",
+      "But tonight you are never alone. What you dance, the green dances again."
+    ],
+    hint: "Ribbons lift while a body holds the flowered mark. Feet can be yours that were.",
+    outro: "Crowned. Awkward as a foal, but crowned.",
+    solution: [
+      "RRRRRDD" + "W".repeat(23),
+      "WWWW" + "RRR" + "DDDDDD" + "L" + "RRRRR"
+    ]
+  }),
+  mkScene({
+    id: "II", name: "The Wain", N: 40,
+    grid: [
+      "############",
+      "#S...#..#..#",
+      "#....#.g#..#",
+      "#..W.#..r..#",
+      "#....#..#..#",
+      "#....r..#..#",
+      "#.f..#..#..#",
+      "#....#..#..#",
+      "#....#..#..#",
+      "#....#..#..#",
+      "#..f.#..#P.#",
+      "############"
+    ],
+    wires: [
+      { marks: [[2, 6]], gates: [[5, 5]] },
+      { marks: [[3, 10]], gates: [[8, 3]] }
+    ],
+    intro: [
+      "The wain, now.",
+      "It rolls where it is pushed and stays where it stops — and a wreath does not care if it is feet or wheel that holds it. Two marks tonight, and two of you dancing."
+    ],
+    hint: "Roll the wain onto a flowered mark and your hands are free for other work.",
+    outro: "Crowned again, and the wain exactly where it should be. You are getting the hang of being everywhere.",
+    solution: [
+      "RRD" + "DDDDDDD" + "UUU" + "L" + "W".repeat(26),
+      "W" + "RRR" + "DDDD" + "W".repeat(6) + "RR" + "UUU" + "R" + "D" + "RR" + "DDDDDDD"
+    ]
+  }),
+  mkScene({
+    id: "III", name: "Midsummer Eve", N: 52,
+    grid: [
+      "############",
+      "#S..T...T.f#",
+      "#..........#",
+      "#.......T..#",
+      "#.......TT.#",
+      "#....W.....#",
+      "#..T......f#",
+      "#.....TT...#",
+      "#.....f.TT.#",
+      "#..T..T.T..#",
+      "#g.......rP#",
+      "############"
+    ],
+    wires: [{ marks: [[10, 1], [10, 6], [5, 8]], gates: [[9, 10]] }],
+    intro: [
+      "Midsummer Eve. The rite itself.",
+      "Everything you have danced tonight will dance again, all at once, while you carry the garland down. The pole wants three marks held together.",
+      "The straight road through the middle of the green is worn with your own going. Cross it carelessly and the ribbons knot."
+    ],
+    hint: "Every rehearsal dances again at once. Protect what you have worn.",
+    solution: [
+      "D" + "RRRRRRRRR" + "U" + "W".repeat(41),
+      "W" + "DD" + "RRRRR" + "DD" + "LLL" + "UL" + "DDD" + "LD" + "RRR" + "UU" + "RRRRR" + "R" +
+        "W".repeat(21),
+      "W".repeat(31) + "DDDDDDDDD" + "RRRRRRRRR"
+    ]
+  })
+];
+
+function tileAt(sc, x, y) {
+  if (y < 0 || y >= sc.h || x < 0 || x >= sc.w) return "#";
+  var t = sc.rows[y][x];
+  if (t === undefined) return "#";
+  return (t === "#" || t === "T") ? "#" : t;   // T = thorn clump, same as hedge
+}
+function isWings(sc, x, y) { return sc.start.x === x && sc.start.y === y; }
+function isGate(sc, x, y) { return sc.gateWire.hasOwnProperty(x + "," + y); }
+
+/* =====================================================================
+   3 · THE PURE SIMULATION
+   The whole game state is a function of (scene, input log).
+   simulate(scene, runs, live) advances every finished rehearsal's
+   recorded inputs alongside the live rehearsal's inputs so far, and
+   returns per-step frames, the live Fool's outcomes (which become the
+   next Footfall's expectations), any divergence (the tangle), and the
+   win flag. Expectations are always re-derived by replaying each run
+   in its own original company, so "expected" means exactly "what the
+   Fool got when this was danced".
+===================================================================== */
+function gateGroupLoaded(st, sc, wire) {
+  for (var i = 0; i < wire.marks.length; i++) {
+    var m = wire.marks[i], held = false;
+    for (var b = 0; b < st.bodies.length; b++) {
+      var bd = st.bodies[b];
+      if (!bd.exited && bd.x === m[0] && bd.y === m[1]) { held = true; break; }
+    }
+    if (!held) for (var w = 0; w < st.wains.length; w++) {
+      if (st.wains[w].x === m[0] && st.wains[w].y === m[1]) { held = true; break; }
+    }
+    if (!held) return false;
+  }
+  return true;
+}
+function bodyAt(st, x, y) {
+  for (var i = 0; i < st.bodies.length; i++) {
+    var b = st.bodies[i];
+    if (!b.exited && b.x === x && b.y === y) return b;
+  }
+  return null;
+}
+function bodyName(b) {
+  return b.isFool ? "the Fool" : "Rehearsal " + ROMAN[b.ff] + " (" + KITS[b.ff % 4].phrase + ")";
+}
+
+/* one body acts one input; returns {code, desc, ...detail}
+   outcome codes:
+     M clear step   G step + shouldered the garland   V step + rolled the wain
+     B blocked      W held           D garland set down      X bowed out        */
+function applyInput(sc, st, body, a) {
+  function block(why) { return { code: "B", desc: "blocked — " + why }; }
+  body.facing = DIRS[a] ? a : body.facing;
+  if (a === "W") return { code: "W", desc: "held" };
+  if (a === "X") {
+    if (body.carry) {
+      st.garland.x = body.x; st.garland.y = body.y;
+      st.garland.carrier = null; body.carry = false;
+      return { code: "D", desc: "garland set down at " + body.x + "," + body.y };
+    }
+    return { code: "W", desc: "held" }; // never recorded: filtered upstream
+  }
+  if (a === "C") {
+    if (body.carry) {
+      st.garland.x = body.x; st.garland.y = body.y;
+      st.garland.carrier = null; body.carry = false;
+    }
+    body.exited = true;
+    return { code: "X", desc: "bowed out at " + body.x + "," + body.y };
+  }
+  var d = DIRS[a]; if (!d) return { code: "W", desc: "held" };
+  var tx = body.x + d[0], ty = body.y + d[1];
+  var t = tileAt(sc, tx, ty);
+  if (t === "#") return block("the thorn hedge");
+  var gk = tx + "," + ty;
+  if (isGate(sc, tx, ty) && !st.gates[gk])
+    return block("the ribbons are down across the way " + DIRWORD[a]);
+  var occ = bodyAt(st, tx, ty);
+  if (occ && !isWings(sc, tx, ty)) return block(bodyName(occ) + " stands in the road");
+  var wain = null;
+  for (var i = 0; i < st.wains.length; i++)
+    if (st.wains[i].x === tx && st.wains[i].y === ty) wain = st.wains[i];
+  if (wain) {
+    var bx = tx + d[0], by = ty + d[1];
+    var bt = tileAt(sc, bx, by);
+    if (bt === "#") return block("the wain cannot roll — thorn behind it");
+    var bgk = bx + "," + by;
+    if (isGate(sc, bx, by) && !st.gates[bgk])
+      return block("the wain cannot roll — ribbons are down behind it");
+    var boc = bodyAt(st, bx, by);
+    if (boc && !isWings(sc, bx, by)) return block("the wain cannot roll — " + bodyName(boc) + " stands behind it");
+    for (var j = 0; j < st.wains.length; j++)
+      if (st.wains[j] !== wain && st.wains[j].x === bx && st.wains[j].y === by)
+        return block("the wain cannot roll — another wain behind it");
+    if (isWings(sc, bx, by)) return block("the wain cannot leave the green");
+    if (st.garland.carrier === null && st.garland.x === bx && st.garland.y === by)
+      return block("the wain cannot roll — the garland stands in its road");
+    wain.x = bx; wain.y = by;
+    body.x = tx; body.y = ty;
+    return { code: "V", desc: "rolled the wain " + DIRWORD[a] + " to " + bx + "," + by };
+  }
+  body.x = tx; body.y = ty;
+  if (st.garland.carrier === null && st.garland.x === tx && st.garland.y === ty) {
+    st.garland.carrier = body.id; body.carry = true;
+    return { code: "G", desc: "shouldered the garland at " + tx + "," + ty };
+  }
+  return { code: "M", desc: "a clear step " + DIRWORD[a] };
+}
+
+function simulate(sc, runs, live) {
+  runs = runs || []; live = live || [];
+  // expectations for each finished run = the outcomes its live Fool got,
+  // replayed in its own original company (this is the definition of
+  // "what the turf kept")
+  var exps = [];
+  for (var i = 0; i < runs.length; i++) {
+    exps.push(simulate(sc, runs.slice(0, i), runs[i]).liveOutcomes);
+  }
+  var st = {
+    step: 0,
+    bodies: [],
+    wains: sc.wains.map(function (w) { return { x: w.x, y: w.y }; }),
+    garland: { x: sc.garland.x, y: sc.garland.y, carrier: null },
+    gates: {}, events: []
+  };
+  sc.gates.forEach(function (g) { st.gates[g.x + "," + g.y] = false; });
+  runs.forEach(function (r, idx) {
+    st.bodies.push({
+      id: "ff" + idx, ff: idx, isFool: false,
+      x: sc.start.x, y: sc.start.y, carry: false, exited: false, facing: "D"
+    });
+  });
+  st.bodies.push({
+    id: "fool", isFool: true,
+    x: sc.start.x, y: sc.start.y, carry: false, exited: false, facing: "D"
+  });
+
+  function snap() {
+    return {
+      step: st.step,
+      bodies: st.bodies.map(function (b) {
+        return { id: b.id, ff: b.isFool ? -1 : b.ff, isFool: b.isFool, x: b.x, y: b.y, carry: b.carry, exited: b.exited, facing: b.facing };
+      }),
+      wains: st.wains.map(function (w) { return { x: w.x, y: w.y }; }),
+      garland: { x: st.garland.x, y: st.garland.y, carrier: st.garland.carrier },
+      gates: JSON.parse(JSON.stringify(st.gates)),
+      events: st.events
+    };
+  }
+
+  var frames = [snap()], liveOutcomes = [], divergence = null, win = false;
+
+  for (var s = 1; s <= live.length; s++) {
+    st.step = s; st.events = [];
+    // the eldest Footfall steps first; the live Fool steps last
+    for (var bi = 0; bi < st.bodies.length && !divergence && !win; bi++) {
+      var body = st.bodies[bi];
+      if (body.exited) continue;
+      var input = body.isFool ? live[s - 1] : runs[body.ff][s - 1];
+      if (input === undefined) continue; // its steps are spent; exits below
+      var out = applyInput(sc, st, body, input);
+      st.events.push({ who: body.id, kind: out.code, x: body.x, y: body.y });
+      if (body.isFool) {
+        liveOutcomes.push(out);
+      } else {
+        var expected = exps[body.ff][s - 1];
+        if (!expected || expected.code !== out.code) {
+          divergence = {
+            run: body.ff + 1, step: s,
+            expected: expected || { code: "?", desc: "nothing (the turf is torn)" },
+            actual: out,
+            at: { x: body.x, y: body.y }
+          };
+        }
+      }
+    }
+    // Footfalls whose recorded steps have run out bow off — the garland
+    // never leaves the green, so it is set down where they stand
+    if (!divergence && !win) {
+      st.bodies.forEach(function (b) {
+        if (!b.isFool && !b.exited && s >= runs[b.ff].length) {
+          if (b.carry) {
+            st.garland.x = b.x; st.garland.y = b.y; st.garland.carrier = null; b.carry = false;
+          }
+          b.exited = true;
+          st.events.push({ who: b.id, kind: "exit", x: b.x, y: b.y });
+        }
+      });
+    }
+    // marks and ribbon gates (ribbons never drop onto an occupied tile)
+    if (!divergence && !win) {
+      sc.wires.forEach(function (w) {
+        var loaded = gateGroupLoaded(st, sc, w);
+        w.gates.forEach(function (g) {
+          var key = g[0] + "," + g[1];
+          if (loaded && !st.gates[key]) {
+            st.gates[key] = true;
+            st.events.push({ who: "gate", kind: "up", key: key });
+          } else if (!loaded && st.gates[key]) {
+            var clear = w.gates.every(function (gg) {
+              var occupied = !!bodyAt(st, gg[0], gg[1]);
+              if (!occupied && st.garland.carrier === null &&
+                  st.garland.x === gg[0] && st.garland.y === gg[1]) occupied = true;
+              for (var wi = 0; wi < st.wains.length; wi++)
+                if (st.wains[wi].x === gg[0] && st.wains[wi].y === gg[1]) occupied = true;
+              return !occupied;
+            });
+            if (clear) {
+              st.gates[key] = false;
+              st.events.push({ who: "gate", kind: "down", key: key });
+            }
+          }
+        });
+      });
+    }
+    // the crowning
+    if (!divergence && sc.pole) {
+      var fool = st.bodies[st.bodies.length - 1];
+      if (fool.carry && fool.x === sc.pole.x && fool.y === sc.pole.y) {
+        win = true;
+        st.events.push({ who: "fool", kind: "crown" });
+      }
+    }
+    frames.push(snap());
+    if (divergence || win) break;
+  }
+
+  return { frames: frames, liveOutcomes: liveOutcomes, divergence: divergence, win: win };
+}
+
+/* ---- the input log (pure ops used by both the game and the muster) -- */
+function newLog() { return { runs: [], live: [] }; }
+function logEnded(sc, log) {
+  if (!log.live.length) return false;
+  var last = log.live[log.live.length - 1];
+  return last === "C" || log.live.length >= sc.N;
+}
+function pushInput(sc, log, a) {
+  if (a === "X") {
+    var cur = simulate(sc, log.runs, log.live);
+    var f = cur.frames[cur.frames.length - 1];
+    var fool = f.bodies[f.bodies.length - 1];
+    if (!fool.carry) return false; // nothing to set down: no step spent
+  }
+  log.live.push(a);
+  return true;
+}
+function endRun(sc, log) {
+  if (log.runs.length === 4) log.runs.shift(); // the green keeps four
+  log.runs.push(log.live);
+  log.live = [];
+}
+function undoLog(sc, log) {
+  if (log.live.length) { log.live.pop(); return true; }
+  if (log.runs.length) {
+    log.live = log.runs.pop();
+    log.live.pop(); // a finished rehearsal always kept at least one step
+    return true;
+  }
+  return false;
+}
+function hashState(sc, log) {
+  var r = simulate(sc, log.runs, log.live);
+  var f = r.frames[r.frames.length - 1];
+  return JSON.stringify({
+    f: f.bodies.map(function (b) { return [b.x, b.y, b.carry ? 1 : 0, b.exited ? 1 : 0]; }),
+    w: f.wains, g: [f.garland.x, f.garland.y, f.garland.carrier],
+    gates: f.gates, win: r.win ? 1 : 0, div: r.divergence ? 1 : 0
+  });
+}
+
+/* =====================================================================
+   4 · THE MUSTER (headless self-test)
+   Runs every intended solution plus the rulebook's load-bearing
+   edge cases through the pure simulation. Key T in game; exported for
+   the node harness.
+===================================================================== */
+function mkTiny(grid, wires, N, garlandAt) {
+  // every scene needs a garland somewhere harmless; default (9,2) is open
+  // turf in every synthetic grid below and on no tested path
+  var p = garlandAt || [9, 2];
+  var patched = grid.map(function (row, y) {
+    if (y === p[1]) return row.substring(0, p[0]) + "g" + row.substring(p[0] + 1);
+    return row;
+  });
+  return mkScene({ id: "test", name: "test", N: N || 30, grid: patched, wires: wires || [], intro: [], hint: "" });
+}
+var T_OPEN = [
+  "############",
+  "#S.........#",
+  "#..........#",
+  "#..........#",
+  "#..........#",
+  "#..........#",
+  "#..........#",
+  "#..........#",
+  "#..........#",
+  "#..........#",
+  "#..........#",
+  "############"
+];
+function setTile(grid, x, y, c) {
+  return grid.map(function (row, yy) {
+    if (yy === y) return row.substring(0, x) + c + row.substring(x + 1);
+    return row;
+  });
+}
+
+function runMuster() {
+  var checks = [];
+  function check(name, note, fn) {
+    var pass = false, detail = note;
+    try { var r = fn(); pass = r === true; if (typeof r === "string") { pass = false; detail = r; } }
+    catch (e) { pass = false; detail = note + " — threw: " + (e && e.message); }
+    checks.push({ name: name, pass: pass, note: detail });
+  }
+  function playSolution(sc) {
+    var log = newLog();
+    for (var i = 0; i < sc.solution.length; i++) {
+      for (var j = 0; j < sc.solution[i].length; j++) {
+        if (!pushInput(sc, log, sc.solution[i][j])) return { ok: false, why: "input rejected at run " + (i + 1) + " step " + (j + 1) };
+        var sim = simulate(sc, log.runs, log.live);
+        if (sim.win) return { ok: true, at: sim.frames[sim.frames.length - 1].step, run: i + 1 };
+        if (sim.divergence) return { ok: false, why: "tangle at run " + sim.divergence.run + " step " + sim.divergence.step };
+        if (logEnded(sc, log)) endRun(sc, log);
+      }
+    }
+    return { ok: false, why: "solution exhausted without a crowning" };
+  }
+
+  SCENES.forEach(function (sc) {
+    check(
+      "Scene " + sc.id + " — " + sc.name + ": the intended dance crowns the pole",
+      "solution verified step by step",
+      function () {
+        var r = playSolution(sc);
+        if (!r.ok) throw new Error(r.why);
+        return true;
+      }
+    );
+  });
+
+  check(
+    "Determinism: the same log grows the same green",
+    "hash of final state, twice",
+    function () {
+      var sc = SCENES[2], log = newLog();
+      sc.solution[0].split("").forEach(function (a) { pushInput(sc, log, a); if (logEnded(sc, log)) endRun(sc, log); });
+      sc.solution[1].split("").forEach(function (a) { pushInput(sc, log, a); if (logEnded(sc, log)) endRun(sc, log); });
+      return hashState(sc, log) === hashState(sc, JSON.parse(JSON.stringify({ runs: log.runs, live: log.live }))) ? true : "hashes differ";
+    }
+  );
+
+  check(
+    "Untread, dance again: identical state, unlimited depth",
+    "undo every input back to the first step, replay verbatim",
+    function () {
+      var sc = SCENES[0], log = newLog(), trace = [];
+      sc.solution[0].split("").forEach(function (a) { trace.push(a); pushInput(sc, log, a); if (logEnded(sc, log)) endRun(sc, log); });
+      sc.solution[1].split("").forEach(function (a) { trace.push(a); pushInput(sc, log, a); if (logEnded(sc, log)) endRun(sc, log); });
+      var before = hashState(sc, log);
+      var guard = 0;
+      while ((log.live.length || log.runs.length) && guard++ < 500) undoLog(sc, log);
+      if (log.live.length || log.runs.length) return "undo did not reach the beginning";
+      trace.forEach(function (a) { pushInput(sc, log, a); if (logEnded(sc, log)) endRun(sc, log); });
+      return hashState(sc, log) === before ? true : "state after replay differs";
+    }
+  );
+
+  check(
+    "Contradiction halts: a body where a worn step must fall",
+    "stand on the Footfall's line; expect the tangle at Rehearsal I, step 8",
+    function () {
+      var sc = SCENES[0];
+      var r = simulate(sc,
+        ["WWWWW" + "RRRRR" + "DD" + "WWWWWWWWWWWWWWWWWWWW"],
+        "RRRWWWWW".split(""));
+      if (!r.divergence) return "no tangle was called";
+      return (r.divergence.run === 1 && r.divergence.step === 8 &&
+              r.divergence.expected.code === "M" && r.divergence.actual.code === "B")
+        ? true
+        : "tangle at run " + r.divergence.run + " step " + r.divergence.step + " (" + r.divergence.expected.code + "→" + r.divergence.actual.code + ")";
+    }
+  );
+
+  check(
+    "Contradiction halts: a cleared way the turf kept blocked",
+    "wain moved off a worn blocked push; expect Rehearsal I, step 7, B→M",
+    function () {
+      var grid = setTile(T_OPEN, 3, 3, "W");   // wain at (3,3)
+      grid = setTile(grid, 4, 3, "T");         // thorn east of it
+      var sc = mkTiny(grid, [], 30);
+      var r = simulate(sc, ["DWWWDRR" + "WWWWWWWWWWWWWWWWWWWWWWW"], "RRDDUWW".split(""));
+      if (!r.divergence) return "no tangle was called";
+      return (r.divergence.run === 1 && r.divergence.step === 7 &&
+              r.divergence.expected.code === "B" && r.divergence.actual.code === "M")
+        ? true
+        : "tangle at run " + r.divergence.run + " step " + r.divergence.step + " (" + r.divergence.expected.code + "→" + r.divergence.actual.code + ")";
+    }
+  );
+
+  check(
+    "Order rule: the eldest keeps the tile; the Fool steps last; the gate-on stacks",
+    "three bodies, one contested tile, step 3 of a third rehearsal",
+    function () {
+      var sc = mkTiny(T_OPEN, [], 12);
+      var r = simulate(sc, ["WRRRR", "WRR"], "WWR".split(""));
+      if (r.divergence) return "unexpected tangle";
+      var f1 = r.frames[1], f3 = r.frames[3];
+      var allStacked = f1.bodies.every(function (b) { return b.x === 1 && b.y === 1; });
+      if (!allStacked) return "bodies did not stack at the gate-on while holding";
+      var ff1 = f3.bodies[0], ff2 = f3.bodies[1], fool = f3.bodies[2];
+      if (!(ff1.x === 3 && ff1.y === 1)) return "eldest was not furthest along";
+      if (!(ff2.x === 2 && ff2.y === 1)) return "second did not follow the eldest";
+      if (!(fool.x === 1 && fool.y === 1)) return "the Fool was not held last";
+      return true;
+    }
+  );
+
+  check(
+    "The wain holds a flowered mark",
+    "a wheel loads a wreath as well as a foot",
+    function () {
+      var grid = setTile(T_OPEN, 2, 1, "W");
+      grid = setTile(grid, 3, 1, "f");
+      grid = setTile(grid, 6, 6, "r");
+      var sc = mkTiny(grid, [{ marks: [[3, 1]], gates: [[6, 6]] }], 12);
+      var r = simulate(sc, [], ["R"]);
+      if (r.divergence) return "unexpected tangle";
+      return r.frames[1].gates["6,6"] === true ? true : "gate did not lift under the wain";
+    }
+  );
+
+  check(
+    "Ribbons never drop onto a body",
+    "mark unloads while the Fool stands under the gate; gate waits",
+    function () {
+      var grid = setTile(T_OPEN, 2, 1, "f");
+      grid = setTile(grid, 6, 6, "r");
+      var sc = mkTiny(grid, [{ marks: [[2, 1]], gates: [[6, 6]] }], 30);
+      var run1 = "R" + "WWWWWWWWWW" + "L" + "WWWWWWWWWWWWWWWWWW"; // holds mark, steps off at 12
+      var run2 = "DDDDDRRRRR" + "WWW" + "L";                      // stands on the gate 10..12, off at 14
+      var r = simulate(sc, [run1], run2.split(""));
+      if (r.divergence) return "unexpected tangle";
+      var f13 = r.frames[13], f14 = r.frames[14];
+      if (f13.gates["6,6"] !== true) return "ribbons dropped early";
+      if (f14.gates["6,6"] !== false) return "ribbons never dropped after clear";
+      return true;
+    }
+  );
+
+  check(
+    "Bowing out trims the rehearsal",
+    "a Footfall that bowed out exits at that step and lets the mark go",
+    function () {
+      var grid = setTile(T_OPEN, 2, 1, "f");
+      grid = setTile(grid, 6, 6, "r");
+      var sc = mkTiny(grid, [{ marks: [[2, 1]], gates: [[6, 6]] }], 30);
+      var r = simulate(sc, ["RC"], "WW".split(""));
+      if (r.divergence) return "unexpected tangle";
+      var f1 = r.frames[1], f2 = r.frames[2];
+      if (f1.gates["6,6"] !== true) return "gate did not lift";
+      if (f2.bodies[0].exited !== true) return "footfall did not bow out";
+      if (f2.gates["6,6"] !== false) return "mark was not released";
+      return true;
+    }
+  );
+
+  check(
+    "A blocked step still spends the step",
+    "bump the hedge; the step counter advances regardless",
+    function () {
+      var sc = SCENES[0];
+      var r = simulate(sc, [], ["U"]);
+      var f = r.frames[r.frames.length - 1];
+      return (r.frames.length === 2 && f.bodies[0].x === 1 && f.bodies[0].y === 1)
+        ? true : "frames: " + r.frames.length;
+    }
+  );
+
+  check(
+    "X with an empty shoulder spends no step",
+    "set-down is refused before it is recorded",
+    function () {
+      var sc = SCENES[0], log = newLog();
+      var ok = pushInput(sc, log, "X");
+      return (!ok && log.live.length === 0) ? true : "input was recorded";
+    }
+  );
+
+  check(
+    "The garland never leaves the green",
+    "a carrier that exits sets the garland down where it stands",
+    function () {
+      var sc = mkTiny(T_OPEN, [], 8, [1, 2]);
+      var r = simulate(sc, ["DC"], "WW".split(""));
+      if (r.divergence) return "unexpected tangle";
+      var f = r.frames[2];
+      if (f.bodies[0].exited !== true) return "footfall did not exit";
+      if (!(f.garland.x === 1 && f.garland.y === 2 && f.garland.carrier === null))
+        return "garland was carried off: " + JSON.stringify(f.garland);
+      return true;
+    }
+  );
+
+  check(
+    "The green keeps four",
+    "finish a fifth rehearsal; the oldest has worn away",
+    function () {
+      var sc = mkTiny(T_OPEN, [], 8);
+      var log = newLog();
+      for (var i = 0; i < 5; i++) {
+        pushInput(sc, log, "R");
+        for (var j = 1; j < 8; j++) pushInput(sc, log, "W");
+        endRun(sc, log);
+      }
+      if (log.runs.length !== 4) return "kept " + log.runs.length + " runs";
+      var r = simulate(sc, log.runs, ["W"]);
+      var ff = r.frames[1].bodies.filter(function (b) { return !b.isFool; });
+      return ff.length === 4 ? true : ff.length + " footfalls stepped";
+    }
+  );
+
+  var allPass = checks.every(function (c) { return c.pass; });
+  return { checks: checks, allPass: allPass };
+}
+var EXPORT = { simulate: simulate, scenes: SCENES, runMuster: runMuster, newLog: newLog, pushInput: pushInput, endRun: endRun, undoLog: undoLog, logEnded: logEnded, hashState: hashState };
+if (typeof globalThis !== "undefined") globalThis.__GL = EXPORT;
+if (typeof window !== "undefined") window.__GL = EXPORT;
+
+/* everything past this point touches the DOM and only runs in a browser */
+if (HAS_DOM) (function () {
+
+/* =====================================================================
+   5 · AUDIO — a small fiddle-adjacent synth (WebAudio, mutable)
+===================================================================== */
+var Sound = {
+  ctx: null, master: null, on: true,
+  ensure: function () {
+    if (this.ctx) return true;
+    try {
+      var AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return false;
+      this.ctx = new AC();
+      this.master = this.ctx.createGain();
+      this.master.gain.value = 0.22;
+      this.master.connect(this.ctx.destination);
+      return true;
+    } catch (e) { return false; }
+  },
+  tone: function (freq, dur, type, vol, slideTo, when) {
+    if (!this.on || !this.ensure()) return;
+    try {
+      var t0 = this.ctx.currentTime + (when || 0);
+      var o = this.ctx.createOscillator(), g = this.ctx.createGain();
+      o.type = type || "sine"; o.frequency.setValueAtTime(freq, t0);
+      if (slideTo) o.frequency.exponentialRampToValueAtTime(slideTo, t0 + dur);
+      g.gain.setValueAtTime(0.0001, t0);
+      g.gain.exponentialRampToValueAtTime(vol || 0.1, t0 + 0.012);
+      g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+      o.connect(g); g.connect(this.master);
+      o.start(t0); o.stop(t0 + dur + 0.05);
+    } catch (e) { /* the show goes on */ }
+  },
+  noise: function (dur, vol, hp, lp) {
+    if (!this.on || !this.ensure()) return;
+    try {
+      var t0 = this.ctx.currentTime;
+      var n = Math.floor(this.ctx.sampleRate * dur);
+      var buf = this.ctx.createBuffer(1, n, this.ctx.sampleRate);
+      var d = buf.getChannelData(0);
+      for (var i = 0; i < n; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / n);
+      var src = this.ctx.createBufferSource(); src.buffer = buf;
+      var f = this.ctx.createBiquadFilter();
+      f.type = "bandpass"; f.frequency.value = lp || 800; f.Q.value = 0.8;
+      src.connect(f); f.connect(this.master);
+      var g = this.ctx.createGain(); g.gain.value = vol || 0.05;
+      f.disconnect(); f.connect(g); g.connect(this.master);
+      src.start(t0);
+    } catch (e) { }
+  },
+  play: function (name) {
+    switch (name) {
+      case "step": this.tone(96, 0.09, "sine", 0.05); this.noise(0.05, 0.025, 0, 900); break;
+      case "jingle": this.tone(1900, 0.05, "sine", 0.018); this.tone(2500, 0.04, "sine", 0.012, 0, 0.03); break;
+      case "blocked": this.tone(64, 0.12, "sine", 0.07); break;
+      case "pick": this.tone(523, 0.16, "sine", 0.05); this.tone(659, 0.16, "sine", 0.04, 0, 0.05); this.tone(784, 0.2, "sine", 0.035, 0, 0.1); break;
+      case "setdown": this.tone(330, 0.14, "sine", 0.045); break;
+      case "gateUp": this.noise(0.28, 0.035, 0, 1600); this.tone(392, 0.2, "sine", 0.03, 523); break;
+      case "gateDown": this.noise(0.24, 0.03, 0, 700); this.tone(330, 0.22, "sine", 0.035, 220); break;
+      case "tangle": this.tone(220, 0.7, "sawtooth", 0.05, 180); this.tone(233, 0.7, "sawtooth", 0.045, 190); this.tone(110, 0.5, "sine", 0.06, 90); break;
+      case "back": this.tone(440, 0.16, "sawtooth", 0.03, 330); this.tone(587, 0.16, "sawtooth", 0.022, 440); break;
+      case "crown": this.tone(523, 0.7, "sine", 0.05); this.tone(659, 0.7, "sine", 0.04, 0, 0.08); this.tone(784, 0.8, "sine", 0.04, 0, 0.16); this.tone(1046, 0.9, "sine", 0.03, 0, 0.24); break;
+      case "bow": this.tone(196, 0.4, "sine", 0.04); this.tone(294, 0.4, "sine", 0.03, 0, 0.02); break;
+    }
+  }
+};
+
+/* =====================================================================
+   6 · RENDERER
+===================================================================== */
+var canvas = document.getElementById("stage");
+var ctx = canvas.getContext("2d");
+var W = canvas.width, H = canvas.height;
+var T = 48, BX = 212, BY = 118;              // board origin, tile size
+function cx(tx) { return BX + tx * T + T / 2; }
+function cy(ty) { return BY + ty * T + T / 2; }
+
+var ambient = {
+  t: 0, petals: [], motes: [], wind: 0,
+  init: function (seed) {
+    var rnd = mulberry32(seed);
+    this.petals = [];
+    for (var i = 0; i < 26; i++) this.petals.push({
+      x: rnd() * W, y: rnd() * H, ph: rnd() * Math.PI * 2,
+      sp: 0.15 + rnd() * 0.35, sway: 14 + rnd() * 26,
+      sz: 2.2 + rnd() * 2.6, hue: rnd()
+    });
+    this.motes = [];
+    for (var m = 0; m < 16; m++) this.motes.push({
+      x: rnd() * W * 0.6, y: 80 + rnd() * 480, ph: rnd() * Math.PI * 2, sp: 0.1 + rnd() * 0.2
+    });
+  },
+  step: function (dt) {
+    this.t += dt; this.wind = Math.sin(this.t * 0.7) * 0.5 + Math.sin(this.t * 0.23) * 0.5;
+    for (var i = 0; i < this.petals.length; i++) {
+      var p = this.petals[i];
+      p.x += (10 + 18 * this.wind) * dt * p.sp * 2;
+      p.y += (6 + Math.sin(this.t * 1.3 + p.ph) * 8) * dt * p.sp * 2;
+      if (p.x > W + 10) { p.x = -10; p.y = Math.random() * H; }
+      if (p.y > H + 10) { p.y = -10; }
+    }
+    for (var m = 0; m < this.motes.length; m++) {
+      var mo = this.motes[m];
+      mo.x += 6 * dt * mo.sp * 3; mo.y += Math.sin(this.t * 0.5 + mo.ph) * 4 * dt;
+      if (mo.x > W * 0.7) { mo.x = -5; mo.y = 80 + Math.random() * 480; }
+    }
+  },
+  draw: function (alpha) {
+    var i;
+    for (i = 0; i < this.motes.length; i++) {
+      var mo = this.motes[i];
+      var a = (0.25 + 0.2 * Math.sin(this.t * 2 + mo.ph)) * (alpha == null ? 1 : alpha);
+      ctx.globalAlpha = a;
+      ctx.fillStyle = PAL.cream;
+      ctx.beginPath(); ctx.arc(mo.x, mo.y, 1.1, 0, 7); ctx.fill();
+    }
+    for (i = 0; i < this.petals.length; i++) {
+      var p = this.petals[i];
+      ctx.globalAlpha = 0.5 * (alpha == null ? 1 : alpha);
+      ctx.fillStyle = p.hue < 0.55 ? PAL.blossom : (p.hue < 0.8 ? PAL.rose : PAL.gold);
+      var sw = Math.sin(this.t * 2.2 + p.ph);
+      ctx.save();
+      ctx.translate(p.x + Math.sin(this.t + p.ph) * 6, p.y);
+      ctx.rotate(sw * 0.9);
+      ctx.beginPath(); ctx.ellipse(0, 0, p.sz, p.sz * 0.55, 0, 0, 7); ctx.fill();
+      ctx.restore();
+    }
+    ctx.globalAlpha = 1;
+  }
+};
+
+/* ---- static scene layer (turf, hedge, thorns, boards, sky) --------- */
+var staticLayer = null, staticSceneId = null;
+function renderStatic(sc) {
+  if (staticSceneId === sc.id + sc.name) return;
+  staticSceneId = sc.id + sc.name;
+  var c = document.createElement("canvas"); c.width = W; c.height = H;
+  var g = c.getContext("2d");
+  var rnd = mulberry32(sc.seed);
+
+  // dusk sky
+  var sky = g.createLinearGradient(0, 0, 0, BY + 20);
+  sky.addColorStop(0, PAL.skyCream); sky.addColorStop(0.6, PAL.skyGold); sky.addColorStop(1, "#D9C584");
+  g.fillStyle = sky; g.fillRect(0, 0, W, BY + 8);
+  // distant hedgerow & rooftops silhouette
+  g.fillStyle = PAL.hedge; g.globalAlpha = 0.85;
+  g.beginPath(); g.moveTo(0, 104);
+  for (var sx = 0; sx <= W; sx += 18) {
+    g.lineTo(sx, 96 + Math.sin(sx * 0.05) * 4 + rnd() * 3);
+  }
+  g.lineTo(W, BY); g.lineTo(0, BY); g.closePath(); g.fill();
+  // a far church tower
+  g.globalAlpha = 0.9;
+  g.fillRect(760, 58, 16, 46); g.fillRect(756, 54, 24, 8);
+  g.beginPath(); g.moveTo(758, 54); g.lineTo(768, 40); g.lineTo(778, 54); g.closePath(); g.fill();
+  g.globalAlpha = 1;
+
+  // hedge frame around the board
+  g.fillStyle = PAL.hedge;
+  g.fillRect(BX - 26, BY - 26, 12 * T + 52, 12 * T + 52);
+  // hedge leaf dabs + blossom
+  for (var hx = BX - 26; hx < BX + 12 * T + 26; hx += 9) {
+    for (var hy = BY - 26; hy < BY + 12 * T + 26; hy += 9) {
+      var outside = hx < BX - 6 || hx > BX + 12 * T - 3 || hy < BY - 6 || hy > BY + 12 * T - 3;
+      if (!outside) continue;
+      g.fillStyle = rnd() < 0.5 ? PAL.hedge : PAL.hedgeLit;
+      g.beginPath(); g.ellipse(hx + rnd() * 4, hy + rnd() * 4, 5.5, 4, rnd(), 0, 7); g.fill();
+      if (rnd() < 0.05) {
+        g.fillStyle = PAL.blossom; g.globalAlpha = 0.8;
+        g.beginPath(); g.arc(hx, hy, 1.6, 0, 7); g.fill(); g.globalAlpha = 1;
+      }
+    }
+  }
+
+  // turf tiles
+  for (var y = 0; y < sc.h; y++) for (var x = 0; x < sc.w; x++) {
+    var t = sc.rows[y][x];
+    if ((t === "#" || t === "T") && !(x === 0 || y === 0 || x === sc.w - 1 || y === sc.h - 1)) continue; // thorns drawn later
+    var v = rnd();
+    g.fillStyle = v < 0.33 ? PAL.turfDeep : (v < 0.8 ? "#476631" : PAL.turfLit);
+    g.fillRect(BX + x * T, BY + y * T, T, T);
+    // mottling
+    g.globalAlpha = 0.14;
+    g.fillStyle = rnd() < 0.5 ? PAL.worn : PAL.turfLit;
+    g.beginPath(); g.ellipse(BX + x * T + rnd() * T, BY + y * T + rnd() * T, 5 + rnd() * 7, 3 + rnd() * 4, rnd(), 0, 7); g.fill();
+    g.globalAlpha = 1;
+    // faint worn tick at tile corners (the dancer's marks — no grid glow)
+    g.strokeStyle = "rgba(232,213,146,0.13)"; g.lineWidth = 1;
+    g.beginPath();
+    g.moveTo(BX + x * T + 5, BY + y * T + 2); g.lineTo(BX + x * T + 2, BY + y * T + 5);
+    g.stroke();
+  }
+
+  // grass tufts
+  for (var gt = 0; gt < 46; gt++) {
+    var gx = BX + rnd() * 12 * T, gy = BY + rnd() * 12 * T;
+    g.strokeStyle = "rgba(110,143,60,0.8)"; g.lineWidth = 1.2;
+    for (var b = 0; b < 3; b++) {
+      g.beginPath(); g.moveTo(gx + b * 3 - 3, gy);
+      g.quadraticCurveTo(gx + b * 3 - 3 + 1, gy - 5, gx + b * 3 - 3 + 3, gy - 8 - rnd() * 3);
+      g.stroke();
+    }
+  }
+
+  // thorn clumps (interior walls)
+  for (var ty2 = 0; ty2 < sc.h; ty2++) for (var tx2 = 0; tx2 < sc.w; tx2++) {
+    var tt = sc.rows[ty2][tx2];
+    if ((tt !== "#" && tt !== "T") || tx2 === 0 || ty2 === 0 || tx2 === sc.w - 1 || ty2 === sc.h - 1) continue;
+    var px = BX + tx2 * T, py = BY + ty2 * T;
+    g.fillStyle = "#1F3018";
+    g.beginPath(); g.ellipse(px + T / 2, py + T / 2 + 3, 23, 19, 0, 0, 7); g.fill();
+    g.strokeStyle = "#2E4522"; g.lineWidth = 1.4;
+    for (var s2 = 0; s2 < 9; s2++) {
+      var a0 = rnd() * Math.PI * 2, rr = 8 + rnd() * 13;
+      g.beginPath();
+      g.moveTo(px + T / 2 + Math.cos(a0) * 4, py + T / 2 + Math.sin(a0) * 3);
+      g.quadraticCurveTo(
+        px + T / 2 + Math.cos(a0) * rr * 0.6, py + T / 2 + Math.sin(a0) * rr * 0.6 - 3,
+        px + T / 2 + Math.cos(a0) * rr, py + T / 2 + Math.sin(a0) * rr * 0.8);
+      g.stroke();
+    }
+    for (var bl = 0; bl < 4; bl++) {
+      g.fillStyle = rnd() < 0.6 ? "#D8D2B8" : "#E9E4CE"; g.globalAlpha = 0.85;
+      g.beginPath(); g.arc(px + 8 + rnd() * 32, py + 8 + rnd() * 30, 1.5, 0, 7); g.fill();
+    }
+    g.globalAlpha = 1;
+  }
+
+  // the gate onto the green (start tile): a wreathed opening in the hedge
+  var sxp = cx(sc.start.x), syp = cy(sc.start.y);
+  g.fillStyle = "#20301A";
+  g.beginPath(); g.ellipse(sxp, syp, 21, 15, 0, 0, 7); g.fill();
+  g.strokeStyle = PAL.walnut; g.lineWidth = 3;
+  g.beginPath(); g.ellipse(sxp, syp, 20, 14, 0, 0, 7); g.stroke();
+  g.strokeStyle = PAL.garlandGreen; g.lineWidth = 2;
+  g.beginPath(); g.ellipse(sxp, syp, 16, 10, 0, 0, 7); g.stroke();
+  for (var fw = 0; fw < 5; fw++) {
+    g.fillStyle = fw % 2 ? PAL.rose : PAL.blossom;
+    g.beginPath(); g.arc(sxp + Math.cos(fw * 1.26) * 16, syp + Math.sin(fw * 1.26) * 10, 1.8, 0, 7); g.fill();
+  }
+
+  // gate posts for ribbon gates
+  sc.gates.forEach(function (gt2) {
+    var gx2 = BX + gt2.x * T, gy2 = BY + gt2.y * T;
+    [-2, T - 4].forEach(function (o) {
+      g.fillStyle = PAL.walnut; g.fillRect(gx2 + o, gy2 - 8, 6, T + 6);
+      g.fillStyle = "#84603A"; g.fillRect(gx2 + o + 1, gy2 - 8, 2, T + 6);
+    });
+    g.fillStyle = PAL.saffron;
+    g.beginPath(); g.arc(gx2 + 1, gy2 - 8, 2.6, 0, 7); g.fill();
+    g.beginPath(); g.arc(gx2 + T - 1, gy2 - 8, 2.6, 0, 7); g.fill();
+  });
+
+  // the pole (drawn tall; ribbons are dynamic)
+  var pxp = cx(sc.pole.x), pyp = cy(sc.pole.y);
+  g.fillStyle = "rgba(38,55,30,0.35)";
+  g.beginPath(); g.ellipse(pxp + 6, pyp + 10, 16, 6, 0, 0, 7); g.fill();
+  g.fillStyle = "#8A6A44"; g.fillRect(pxp - 3, pyp - 96, 6, 104);
+  g.fillStyle = "#755636"; g.fillRect(pxp + 1, pyp - 96, 2, 104);
+  g.fillStyle = PAL.saffron;
+  g.beginPath(); g.arc(pxp, pyp - 98, 4.5, 0, 7); g.fill();
+
+  // caller's crib board (bottom strip) & muster board (top right) backings
+  g.fillStyle = "#3A2E1E"; g.fillRect(24, 698, W - 48, 68);
+  g.strokeStyle = "#57452C"; g.lineWidth = 2; g.strokeRect(25, 699, W - 50, 66);
+  g.fillStyle = "#4A3B26"; g.fillRect(BX - 6, 698, 12 * T + 12, 4);
+
+  // vignette
+  var vg = g.createRadialGradient(W / 2, H / 2, H * 0.42, W / 2, H / 2, H * 0.85);
+  vg.addColorStop(0, "rgba(26,36,21,0)"); vg.addColorStop(1, "rgba(20,29,16,0.5)");
+  g.fillStyle = vg; g.fillRect(0, 0, W, H);
+
+  // low western sun wash
+  var sun = g.createLinearGradient(0, BY, W * 0.7, BY + 400);
+  sun.addColorStop(0, "rgba(255,236,180,0.14)"); sun.addColorStop(1, "rgba(255,236,180,0)");
+  g.fillStyle = sun; g.fillRect(0, BY - 20, W, 12 * T + 40);
+
+  staticLayer = c;
+}
+
+/* ---- dynamic pieces ------------------------------------------------ */
+function drawMark(sc, x, y, loaded, pulse) {
+  var mx = cx(x), my = cy(y);
+  ctx.save();
+  ctx.strokeStyle = loaded ? PAL.gold : "rgba(168,160,107,0.75)";
+  ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.ellipse(mx, my + 4, 15, 9, 0, 0, 7); ctx.stroke();
+  ctx.strokeStyle = PAL.garlandGreen; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.ellipse(mx, my + 4, 11, 6.5, 0, 0, 7); ctx.stroke();
+  var cols = [PAL.madder, PAL.blossom, PAL.rose, PAL.saffron, PAL.woad];
+  for (var i = 0; i < 5; i++) {
+    var a = i * 1.26 + 0.4;
+    ctx.fillStyle = loaded ? cols[i] : "rgba(216,210,184,0.8)";
+    ctx.beginPath(); ctx.arc(mx + Math.cos(a) * 15, my + 4 + Math.sin(a) * 9, 2.2, 0, 7); ctx.fill();
+  }
+  if (loaded) {
+    ctx.globalAlpha = 0.25 + 0.15 * Math.sin(pulse * 5);
+    ctx.strokeStyle = PAL.gold; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.ellipse(mx, my + 4, 18 + Math.sin(pulse * 3) * 1.5, 11, 0, 0, 7); ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function drawGate(sc, x, y, lift, t) {
+  var gx = BX + x * T, gy = BY + y * T;
+  var lifted = lift >= 0.5;
+  var cols = [PAL.madder, PAL.saffron, PAL.rose];
+  for (var i = 0; i < 3; i++) {
+    var topY = gy + 2 + (1 - lift) * 16 + i * 4;
+    var sag = 8 - lift * 3 + Math.sin(t * 1.6 + i + x) * 1.4;
+    ctx.strokeStyle = cols[i]; ctx.lineWidth = i === 1 ? 2.5 : 2;
+    ctx.globalAlpha = 0.9;
+    ctx.beginPath();
+    ctx.moveTo(gx + 4, topY);
+    ctx.quadraticCurveTo(gx + T / 2, topY + sag, gx + T - 4, topY);
+    ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+  if (lifted) {
+    ctx.fillStyle = "rgba(242,217,139,0.85)";
+    ctx.beginPath(); ctx.arc(gx + 1, gy - 8, 3.2, 0, 7); ctx.fill();
+    ctx.beginPath(); ctx.arc(gx + T - 1, gy - 8, 3.2, 0, 7); ctx.fill();
+  } else {
+    // a small "hold" ribbon knot mid-gate
+    ctx.fillStyle = PAL.madder;
+    ctx.beginPath(); ctx.arc(gx + T / 2, gy + T / 2 + 6, 3.4, 0, 7); ctx.fill();
+  }
+}
+
+function drawWain(x, y) {
+  var wx = cx(x), wy = cy(y);
+  ctx.save();
+  ctx.fillStyle = "rgba(30,44,22,0.4)";
+  ctx.beginPath(); ctx.ellipse(wx + 3, wy + 12, 19, 6, 0, 0, 7); ctx.fill();
+  // bed
+  ctx.fillStyle = PAL.wainOak;
+  ctx.beginPath();
+  ctx.moveTo(wx - 18, wy + 2); ctx.lineTo(wx + 18, wy + 2);
+  ctx.lineTo(wx + 13, wy - 12); ctx.lineTo(wx - 13, wy - 12);
+  ctx.closePath(); ctx.fill();
+  ctx.fillStyle = PAL.wainWood;
+  ctx.fillRect(wx - 13, wy - 10, 26, 3);
+  ctx.strokeStyle = "#5E4426"; ctx.lineWidth = 1.5;
+  ctx.strokeRect(wx - 13, wy - 11, 26, 4);
+  // hoops of blossom cargo
+  ctx.strokeStyle = PAL.garlandGreen; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.arc(wx - 6, wy - 12, 6, Math.PI, 0); ctx.stroke();
+  ctx.beginPath(); ctx.arc(wx + 7, wy - 12, 5, Math.PI, 0); ctx.stroke();
+  ctx.fillStyle = PAL.rose;
+  ctx.beginPath(); ctx.arc(wx - 12, wy - 12, 1.8, 0, 7); ctx.fill();
+  ctx.fillStyle = PAL.blossom;
+  ctx.beginPath(); ctx.arc(wx + 13, wy - 12, 1.8, 0, 7); ctx.fill();
+  // wheels
+  [[-12, 8], [12, 8]].forEach(function (w) {
+    ctx.fillStyle = "#4E3820";
+    ctx.beginPath(); ctx.arc(wx + w[0], wy + w[1], 7, 0, 7); ctx.fill();
+    ctx.strokeStyle = PAL.madder; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(wx + w[0], wy + w[1], 6, 0, 7); ctx.stroke();
+    ctx.strokeStyle = "#8A6A44"; ctx.lineWidth = 1;
+    for (var s = 0; s < 4; s++) {
+      var a = s * Math.PI / 4;
+      ctx.beginPath();
+      ctx.moveTo(wx + w[0] - Math.cos(a) * 5, wy + w[1] - Math.sin(a) * 5);
+      ctx.lineTo(wx + w[0] + Math.cos(a) * 5, wy + w[1] + Math.sin(a) * 5);
+      ctx.stroke();
+    }
+  });
+  ctx.restore();
+}
+
+function drawGarlandGround(x, y) {
+  var gx = cx(x), gy = cy(y);
+  ctx.save();
+  ctx.strokeStyle = PAL.walnut; ctx.lineWidth = 2.5;
+  ctx.beginPath(); ctx.moveTo(gx - 8, gy + 12); ctx.lineTo(gx - 4, gy - 2); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(gx + 8, gy + 12); ctx.lineTo(gx + 4, gy - 2); ctx.stroke();
+  ctx.strokeStyle = PAL.garlandGreen; ctx.lineWidth = 3.5;
+  ctx.beginPath(); ctx.arc(gx, gy - 4, 12, Math.PI * 0.9, Math.PI * 2.1); ctx.stroke();
+  var cols = [PAL.madder, PAL.blossom, PAL.rose, PAL.saffron, PAL.woad, PAL.blossom];
+  for (var i = 0; i < 6; i++) {
+    var a = Math.PI * 0.9 + (i / 5) * Math.PI * 1.2;
+    ctx.fillStyle = cols[i];
+    ctx.beginPath(); ctx.arc(gx + Math.cos(a) * 12, gy - 4 + Math.sin(a) * 12, 2.5, 0, 7); ctx.fill();
+  }
+  ctx.restore();
+}
+
+/* a dancer: the Fool (solid) or a Footfall (woven of grass & light) */
+function drawDancer(o) {
+  // o: {x, y, facing, walk (0..1 phase), moving, carry, kit (null=Fool), alpha, exitedFade}
+  var x = o.x, y = o.y;
+  var isFool = !o.kit;
+  var kit = o.kit || null;
+  var bob = o.moving ? Math.abs(Math.sin(o.walk * Math.PI)) * 2.5 : Math.sin(o.walk * 0.8) * 0.8;
+  var legA = o.moving ? Math.sin(o.walk * Math.PI * 2) : 0;
+  ctx.save();
+  ctx.globalAlpha = (o.alpha == null ? 1 : o.alpha) * (o.exitedFade == null ? 1 : o.exitedFade);
+  // shadow
+  ctx.fillStyle = isFool ? "rgba(30,44,22,0.42)" : "rgba(242,217,139,0.14)";
+  ctx.beginPath(); ctx.ellipse(x, y + 13, 10, 3.6, 0, 0, 7); ctx.fill();
+
+  if (isFool) {
+    // legs with bell pads
+    var lxo = legA * 3.5;
+    ctx.strokeStyle = "#E8E0C8"; ctx.lineWidth = 3.4; ctx.lineCap = "round";
+    ctx.beginPath(); ctx.moveTo(x - 3, y + 1); ctx.lineTo(x - 3 + lxo, y + 11); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(x + 3, y + 1); ctx.lineTo(x + 3 - lxo, y + 11); ctx.stroke();
+    ctx.fillStyle = "#3A2E1E";
+    ctx.beginPath(); ctx.ellipse(x - 3 + lxo, y + 12, 2.6, 1.8, 0, 0, 7); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(x + 3 - lxo, y + 12, 2.6, 1.8, 0, 0, 7); ctx.fill();
+    ctx.fillStyle = PAL.saffron;
+    ctx.beginPath(); ctx.arc(x - 3 + lxo, y + 6, 1.3, 0, 7); ctx.fill();
+    ctx.beginPath(); ctx.arc(x + 3 - lxo, y + 6, 1.3, 0, 7); ctx.fill();
+    // torso
+    var topY = y - 12 - bob;
+    ctx.fillStyle = "#F0E8D0";
+    ctx.beginPath();
+    ctx.moveTo(x - 6.5, y + 1 - bob); ctx.lineTo(x + 6.5, y + 1 - bob);
+    ctx.lineTo(x + 5, topY + 2); ctx.lineTo(x - 5, topY + 2);
+    ctx.closePath(); ctx.fill();
+    // baldrics
+    ctx.strokeStyle = PAL.madder; ctx.lineWidth = 2.2;
+    ctx.beginPath(); ctx.moveTo(x - 5, topY + 3); ctx.lineTo(x + 5, y - bob); ctx.stroke();
+    ctx.strokeStyle = PAL.saffron;
+    ctx.beginPath(); ctx.moveTo(x + 5, topY + 3); ctx.lineTo(x - 5, y - bob); ctx.stroke();
+    // arms
+    ctx.strokeStyle = "#E8E0C8"; ctx.lineWidth = 2.8;
+    var armSw = o.moving ? Math.sin(o.walk * Math.PI * 2) * 3 : Math.sin(o.walk * 0.8) * 1;
+    ctx.beginPath(); ctx.moveTo(x - 5.5, topY + 4); ctx.lineTo(x - 8 - armSw, y - 6 - bob); ctx.stroke();
+    if (o.carry) {
+      ctx.beginPath(); ctx.moveTo(x + 5.5, topY + 4); ctx.lineTo(x + 10, y - 4 - bob); ctx.stroke();
+    } else {
+      ctx.beginPath(); ctx.moveTo(x + 5.5, topY + 4); ctx.lineTo(x + 8 + armSw, y - 6 - bob); ctx.stroke();
+    }
+    // head + flat cap with flower & feather
+    ctx.fillStyle = "#E9C9A8";
+    ctx.beginPath(); ctx.arc(x, topY - 4, 4.6, 0, 7); ctx.fill();
+    ctx.fillStyle = "#5E4A30";
+    ctx.beginPath(); ctx.ellipse(x, topY - 7.4, 6, 3, 0, 0, Math.PI, true); ctx.fill();
+    ctx.fillRect(x - 6.4, topY - 7.8, 12.8, 2.2);
+    ctx.strokeStyle = PAL.madder; ctx.lineWidth = 1.4;
+    ctx.beginPath(); ctx.moveTo(x + 3, topY - 9); ctx.lineTo(x + 7, topY - 15); ctx.stroke();
+    ctx.fillStyle = PAL.rose;
+    ctx.beginPath(); ctx.arc(x - 3.4, topY - 8.4, 1.4, 0, 7); ctx.fill();
+  } else {
+    // a Footfall: woven of grass strokes and blossom light
+    var topY2 = y - 12 - bob;
+    var shimmer = Math.sin(o.walk * 1.7 + x) * 0.06;
+    ctx.strokeStyle = "rgba(174,196,110," + (0.75 + shimmer) + ")";
+    ctx.lineWidth = 2.2; ctx.lineCap = "round";
+    for (var i = -2; i <= 2; i++) {
+      ctx.beginPath();
+      ctx.moveTo(x + i * 2.4, y + 10);
+      ctx.quadraticCurveTo(x + i * 3 + Math.sin(o.walk + i) * 2, y - 2, x + i * 2.1, topY2);
+      ctx.stroke();
+    }
+    // sash of its rehearsal
+    ctx.strokeStyle = kit.sash; ctx.lineWidth = 2.4; ctx.globalAlpha *= 0.9;
+    ctx.beginPath(); ctx.moveTo(x - 4.5, topY2 + 3); ctx.lineTo(x + 4.5, y - bob - 1); ctx.stroke();
+    ctx.globalAlpha = (o.alpha == null ? 1 : o.alpha) * (o.exitedFade == null ? 1 : o.exitedFade);
+    // head glow
+    ctx.fillStyle = "rgba(242,217,139,0.9)";
+    ctx.beginPath(); ctx.arc(x, topY2 - 4, 4.2, 0, 7); ctx.fill();
+    // hat by rehearsal
+    ctx.fillStyle = "rgba(242,217,139,0.95)";
+    if (kit.hat === "straw") {
+      ctx.fillStyle = "#D9C27A";
+      ctx.beginPath(); ctx.ellipse(x, topY2 - 7, 7, 2.4, 0, 0, 7); ctx.fill();
+      ctx.beginPath(); ctx.arc(x, topY2 - 7.4, 3.4, Math.PI, 0); ctx.fill();
+    } else if (kit.hat === "cap") {
+      ctx.fillStyle = "#4A5A33";
+      ctx.beginPath(); ctx.arc(x, topY2 - 7, 4, Math.PI, 0); ctx.fill();
+      ctx.fillRect(x - 5, topY2 - 7.2, 10, 1.8);
+      ctx.strokeStyle = PAL.madder; ctx.lineWidth = 1.3;
+      ctx.beginPath(); ctx.moveTo(x + 2, topY2 - 10); ctx.lineTo(x + 6, topY2 - 16); ctx.stroke();
+    } else if (kit.hat === "hood") {
+      ctx.fillStyle = "#5C7A3A";
+      ctx.beginPath();
+      ctx.moveTo(x - 4.6, topY2 - 4); ctx.quadraticCurveTo(x, topY2 - 13, x + 4.6, topY2 - 4);
+      ctx.closePath(); ctx.fill();
+    } else {
+      ctx.fillStyle = "#D9C27A";
+      ctx.beginPath(); ctx.ellipse(x, topY2 - 7, 6.4, 2.2, 0, 0, 7); ctx.fill();
+      ctx.beginPath(); ctx.arc(x, topY2 - 7.4, 3, Math.PI, 0); ctx.fill();
+      ctx.fillStyle = PAL.rose;
+      ctx.beginPath(); ctx.arc(x - 2.6, topY2 - 8.6, 1.3, 0, 7); ctx.fill();
+      ctx.fillStyle = PAL.blossom;
+      ctx.beginPath(); ctx.arc(x + 2.4, topY2 - 8.8, 1.3, 0, 7); ctx.fill();
+    }
+    // a few rising petals from a Footfall
+    if (Math.random() < 0.12) spawnBlossom(x, topY2);
+  }
+  ctx.restore();
+}
+var blossoms = [];
+function spawnBlossom(x, y) {
+  if (blossoms.length > 40) return;
+  blossoms.push({ x: x, y: y, vy: -8 - Math.random() * 8, vx: (Math.random() - 0.5) * 6, life: 1 });
+}
+function stepBlossoms(dt) {
+  for (var i = blossoms.length - 1; i >= 0; i--) {
+    var b = blossoms[i];
+    b.y += b.vy * dt; b.x += b.vx * dt + ambient.wind * 6 * dt; b.life -= dt * 0.8;
+    if (b.life <= 0) blossoms.splice(i, 1);
+  }
+}
+function drawBlossoms() {
+  for (var i = 0; i < blossoms.length; i++) {
+    var b = blossoms[i];
+    ctx.globalAlpha = Math.max(0, b.life) * 0.8;
+    ctx.fillStyle = i % 2 ? PAL.blossom : PAL.gold;
+    ctx.beginPath(); ctx.ellipse(b.x, b.y, 2, 1.2, b.life * 3, 0, 7); ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+}
+
+/* carried garland, drawn at a body's shoulder */
+function drawCarriedGarland(x, y, bob) {
+  ctx.save();
+  ctx.strokeStyle = PAL.garlandGreen; ctx.lineWidth = 3.2;
+  ctx.beginPath(); ctx.arc(x + 11, y - 8 - bob, 8.5, Math.PI * 0.8, Math.PI * 2.2); ctx.stroke();
+  var cols = [PAL.madder, PAL.blossom, PAL.rose, PAL.saffron];
+  for (var i = 0; i < 4; i++) {
+    var a = Math.PI * 0.8 + (i / 3) * Math.PI * 1.4;
+    ctx.fillStyle = cols[i];
+    ctx.beginPath(); ctx.arc(x + 11 + Math.cos(a) * 8.5, y - 8 - bob + Math.sin(a) * 8.5, 2.2, 0, 7); ctx.fill();
+  }
+  ctx.globalAlpha = 0.16;
+  var gr = ctx.createRadialGradient(x + 11, y - 8 - bob, 2, x + 11, y - 8 - bob, 30);
+  gr.addColorStop(0, PAL.gold); gr.addColorStop(1, "rgba(242,217,139,0)");
+  ctx.fillStyle = gr;
+  ctx.beginPath(); ctx.arc(x + 11, y - 8 - bob, 30, 0, 7); ctx.fill();
+  ctx.restore();
+}
+
+/* pole ribbons */
+function drawPoleRibbons(sc, crowned, t) {
+  var px = cx(sc.pole.x), py = cy(sc.pole.y);
+  var cols = [PAL.madder, PAL.woad, PAL.sloe, PAL.saffron, PAL.garlandGreen];
+  for (var i = 0; i < 5; i++) {
+    var phase = t * 1.1 + i * 1.25;
+    var sway = Math.sin(phase) * (crowned ? 4 : 7);
+    ctx.strokeStyle = cols[i]; ctx.lineWidth = 2.4; ctx.globalAlpha = 0.95;
+    ctx.beginPath();
+    ctx.moveTo(px, py - 94);
+    ctx.quadraticCurveTo(
+      px + sway * 2 + (i - 2) * 7, py - 60,
+      px + sway + (i - 2) * 14, py - 18 + (crowned ? Math.sin(t * 2 + i) * 3 : 0));
+    ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+}
+
+/* bunting: one pennant per remaining step of this rehearsal */
+function drawBunting(sc, spent, t) {
+  var y0 = 52, n = sc.N;
+  var x0 = 30, x1 = W - 30;
+  ctx.strokeStyle = "rgba(62,45,26,0.8)"; ctx.lineWidth = 1.6;
+  ctx.beginPath(); ctx.moveTo(x0, y0);
+  ctx.quadraticCurveTo((x0 + x1) / 2, y0 + 22, x1, y0);
+  ctx.stroke();
+  var stepW = (x1 - x0) / (n + 1);
+  for (var i = 0; i < n; i++) {
+    var p = i / n;
+    var sx = x0 + stepW * (i + 0.5);
+    var sy = y0 + Math.sin(Math.PI * p) * 10 + 2;
+    var flutter = Math.sin(t * 2 + i) * 1.6;
+    var used = i < spent;
+    ctx.fillStyle = used ? PAL.madder : PAL.parchment;
+    ctx.globalAlpha = used ? 0.92 : 0.8;
+    ctx.beginPath();
+    ctx.moveTo(sx - stepW * 0.32, sy);
+    ctx.lineTo(sx + stepW * 0.32, sy + flutter * 0.4);
+    ctx.lineTo(sx + flutter * 0.5, sy + 12);
+    ctx.closePath(); ctx.fill();
+    ctx.globalAlpha = 1;
+  }
+}
+
+/* the caller's crib: lanes of recorded inputs (the dance notation) */
+function drawCrib(sc, runs, live, t) {
+  var x0 = BX, y0 = 706, laneH = 11.5;
+  ctx.font = FONT(10, "italic");
+  ctx.fillStyle = "rgba(241,230,196,0.55)";
+  ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
+  var lanes = [];
+  runs.forEach(function (r, i) { lanes.push({ label: ROMAN[i], kit: i % 4, inputs: r, live: false }); });
+  lanes.push({ label: "F", kit: null, inputs: live, live: true });
+  var cellW = Math.min(12, (12 * T) / Math.max(sc.N, 1));
+  lanes.forEach(function (lane, li) {
+    var ly = y0 + 4 + li * laneH;
+    ctx.fillStyle = lane.live ? PAL.gold : KITS[lane.kit % 4].sash;
+    ctx.fillRect(x0, ly - 4, 4, 4);
+    ctx.fillStyle = "rgba(241,230,196,0.5)";
+    ctx.fillText(lane.live ? "Fool" : lane.label, x0 + 7, ly);
+    for (var s = 0; s < lane.inputs.length && s < sc.N; s++) {
+      var a = lane.inputs[s];
+      var gx = x0 + 18 + s * cellW;
+      if (gx > BX + 12 * T - 4) break;
+      drawStepGlyph(gx, ly - 2, a, lane.live ? PAL.cream : "rgba(241,230,196,0.72)", lane.live);
+    }
+  });
+  // step marker over the Fool's lane
+  var cur = live.length;
+  if (cur > 0) {
+    var gx2 = x0 + 18 + (cur - 1) * cellW;
+    ctx.fillStyle = PAL.gold;
+    ctx.globalAlpha = 0.6 + 0.3 * Math.sin(t * 4);
+    ctx.beginPath(); ctx.arc(gx2, y0 + 4 + (lanes.length - 1) * laneH - 2, 2.4, 0, 7); ctx.fill();
+    ctx.globalAlpha = 1;
+  }
+}
+function drawStepGlyph(x, y, a, col, strong) {
+  ctx.strokeStyle = col; ctx.fillStyle = col; ctx.lineWidth = strong ? 1.5 : 1.1;
+  if (a === "W") { ctx.beginPath(); ctx.arc(x, y, 1.2, 0, 7); ctx.fill(); return; }
+  if (a === "C") { ctx.beginPath(); ctx.moveTo(x - 2, y - 4); ctx.lineTo(x + 2, y - 4); ctx.lineTo(x + 2, y + 3); ctx.closePath(); ctx.fill(); return; }
+  if (a === "X") { ctx.beginPath(); ctx.arc(x, y, 2.6, 0, 7); ctx.stroke(); return; }
+  var d = DIRS[a];
+  var hx = x + d[0] * 3.4, hy = y + d[1] * 3.4;
+  ctx.beginPath(); ctx.moveTo(x - d[0] * 3.4, y - d[1] * 3.4); ctx.lineTo(hx, hy); ctx.stroke();
+  var px = -d[1], py = d[0];
+  ctx.beginPath();
+  ctx.moveTo(hx, hy); ctx.lineTo(hx - d[0] * 2.6 + px * 2, hy - d[1] * 2.6 + py * 2);
+  ctx.lineTo(hx - d[0] * 2.6 - px * 2, hy - d[1] * 2.6 - py * 2);
+  ctx.closePath(); ctx.fill();
+}
+
+/* the muster board: tonight's side */
+function drawSideBoard(sc, runs, t) {
+  var bx = 796, by = 22, bw = 188, bh = 26 + (runs.length + 1) * 17 + 8;
+  ctx.fillStyle = "#4A3B26";
+  ctx.fillRect(bx, by, bw, bh);
+  ctx.strokeStyle = "#6B5836"; ctx.lineWidth = 2;
+  ctx.strokeRect(bx + 1, by + 1, bw - 2, bh - 2);
+  ctx.fillStyle = PAL.parchment;
+  ctx.font = FONT(11);
+  ctx.textAlign = "center"; ctx.textBaseline = "alphabetic";
+  ctx.fillText("Tonight's Side", bx + bw / 2, by + 16);
+  ctx.strokeStyle = "rgba(241,230,196,0.35)";
+  ctx.beginPath(); ctx.moveTo(bx + 14, by + 21); ctx.lineTo(bx + bw - 14, by + 21); ctx.stroke();
+  ctx.font = FONT(10.5, "italic");
+  runs.forEach(function (r, i) {
+    var yy = by + 36 + i * 17;
+    ctx.fillStyle = KITS[i % 4].sash;
+    ctx.fillRect(bx + 12, yy - 7, 8, 3);
+    ctx.fillStyle = "rgba(241,230,196,0.85)";
+    ctx.textAlign = "left";
+    ctx.fillText("Rehearsal " + ROMAN[i] + " — in the turf", bx + 28, yy - 2);
+  });
+  var fy = by + 36 + runs.length * 17;
+  ctx.fillStyle = PAL.gold;
+  ctx.fillRect(bx + 12, fy - 7, 8, 3);
+  ctx.fillStyle = PAL.gold; ctx.textAlign = "left";
+  ctx.fillText("the Fool — dancing now", bx + 28, fy - 2);
+}
+
+/* the fiddler, down in the left corner, sawing away */
+var fiddler = { saw: 0, lean: 0 };
+function drawFiddler(t) {
+  var x = 88, y = 736;
+  var saw = fiddler.saw > 0 ? Math.sin(fiddler.saw * 40) * 6 * fiddler.saw : 0;
+  ctx.save();
+  // chair
+  ctx.strokeStyle = PAL.walnut; ctx.lineWidth = 2.5;
+  ctx.strokeRect(x - 16, y - 14, 26, 4);
+  ctx.beginPath(); ctx.moveTo(x - 15, y - 10); ctx.lineTo(x - 17, y + 6); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(x + 9, y - 10); ctx.lineTo(x + 11, y + 6); ctx.stroke();
+  // body
+  ctx.fillStyle = "#5E4A60";
+  ctx.beginPath();
+  ctx.moveTo(x - 10, y - 12); ctx.quadraticCurveTo(x - 2, y - 30, x + 8, y - 12);
+  ctx.closePath(); ctx.fill();
+  // head
+  ctx.fillStyle = "#E9C9A8";
+  ctx.beginPath(); ctx.arc(x - 1, y - 34, 5, 0, 7); ctx.fill();
+  ctx.fillStyle = "#EDE4CE";
+  ctx.beginPath(); ctx.arc(x - 1, y - 35.5, 5.2, Math.PI * 0.9, Math.PI * 2.1); ctx.fill();
+  // fiddle
+  ctx.save();
+  ctx.translate(x + 12, y - 16);
+  ctx.rotate(-0.5);
+  ctx.fillStyle = "#8A5A33";
+  ctx.beginPath(); ctx.ellipse(0, 0, 10, 6.5, 0, 0, 7); ctx.fill();
+  ctx.fillStyle = "#5E4426"; ctx.fillRect(8, -1.2, 9, 2.4);
+  ctx.restore();
+  // bow
+  ctx.strokeStyle = "#D8C7A5"; ctx.lineWidth = 1.6;
+  ctx.beginPath();
+  ctx.moveTo(x + 6 + saw * 0.4, y - 30);
+  ctx.lineTo(x + 22 + saw, y - 8);
+  ctx.stroke();
+  ctx.restore();
+}
+
+/* parchment card with ink text */
+function drawCard(lines, opts) {
+  opts = opts || {};
+  var cw = opts.w || 560, ch = opts.h || 0;
+  var x = (W - cw) / 2, y = opts.y || (H - ch) / 2 - 20;
+  ctx.save();
+  ctx.fillStyle = "rgba(20,29,16,0.45)";
+  ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = PAL.parchment;
+  ctx.strokeStyle = "#8A7550"; ctx.lineWidth = 2;
+  ctx.fillRect(x, y, cw, ch); ctx.strokeRect(x + 5, y + 5, cw - 10, ch - 10);
+  // corner sprigs
+  [[x + 14, y + 14, 0], [x + cw - 14, y + 14, Math.PI / 2], [x + cw - 14, y + ch - 14, Math.PI], [x + 14, y + ch - 14, -Math.PI / 2]].forEach(function (c) {
+    ctx.save(); ctx.translate(c[0], c[1]); ctx.rotate(c[2]);
+    ctx.strokeStyle = "#9A8758"; ctx.lineWidth = 1.2;
+    ctx.beginPath(); ctx.moveTo(0, 0); ctx.quadraticCurveTo(6, 2, 10, -2); ctx.stroke();
+    ctx.fillStyle = "#9A8758";
+    ctx.beginPath(); ctx.arc(9, -2.6, 1.4, 0, 7); ctx.fill();
+    ctx.restore();
+  });
+  var yy = y + (opts.padTop || 38);
+  lines.forEach(function (ln) {
+    ctx.fillStyle = ln.col || PAL.ink;
+    ctx.font = FONT(ln.size || 15, ln.style || "");
+    ctx.textAlign = ln.align || "center"; ctx.textBaseline = "alphabetic";
+    if (ln.chip) {
+      var wdt = ctx.measureText(ln.text).width + 26;
+      ctx.strokeStyle = "#8A7550"; ctx.lineWidth = 1.4;
+      ctx.beginPath();
+      if (ctx.roundRect) ctx.roundRect((W - wdt) / 2, yy - 16, wdt, 24, 12);
+      else ctx.rect((W - wdt) / 2, yy - 16, wdt, 24);
+      ctx.stroke();
+    }
+    ctx.fillText(ln.text, W / 2 + (ln.align === "center" ? 0 : 0), yy);
+    yy += ln.gap || (ln.size || 15) + 10;
+  });
+  ctx.restore();
+}
+
+/* =====================================================================
+   7 · GAME STATE MACHINE
+===================================================================== */
+var G = {
+  mode: "title",           // title | intro | play | tangle | crowned | ending | muster
+  sceneIdx: 0,
+  sc: SCENES[0],
+  log: newLog(),
+  sim: null,               // latest simulate() for the live view
+  anim: { bodies: {}, wains: {}, garland: null, t0: 0, gates: {} },
+  beatMs: 190,
+  queued: null,
+  hintUntil: 0,
+  toast: null, toastT: 0,
+  dip: 0,                  // curtain-dip on rehearsal boundary
+  lastMoves: {},           // bodyId -> last moving phase for walk anim
+  titleStep: 0, titleT: 0,
+  endingStep: 0, endingT: 0,
+  musterResult: null,
+  rPress: 0,
+  lastFrameTime: null
+};
+
+function currentSim() {
+  return simulate(G.sc, G.log.runs, G.log.live);
+}
+function resim() {
+  G.sim = currentSim();
+  var frames = G.sim.frames;
+  var last = frames[frames.length - 1];
+  var prev = frames[frames.length - 2] || last;
+  var now = performance.now();
+  // build animation targets
+  var seen = {};
+  last.bodies.forEach(function (b) {
+    seen[b.id] = true;
+    var pr = (prev.bodies.filter(function (p) { return p.id === b.id; })[0]) || b;
+    var old = G.anim.bodies[b.id];
+    var fromX, fromY;
+    if (old) { fromX = old.toX; fromY = old.toY; }
+    else { fromX = pr.x; fromY = pr.y; }
+    G.anim.bodies[b.id] = {
+      fromX: fromX, fromY: fromY, toX: b.x, toY: b.y,
+      facing: b.facing, carry: b.carry, exited: b.exited,
+      ff: b.isFool ? null : b.ff, t0: now
+    };
+  });
+  Object.keys(G.anim.bodies).forEach(function (id) {
+    if (!seen[id]) delete G.anim.bodies[id];
+  });
+  last.wains.forEach(function (w, i) {
+    var pw = (prev.wains[i] != null ? prev.wains[i] : w);
+    var old = G.anim.wains[i];
+    G.anim.wains[i] = {
+      fromX: old ? old.toX : pw.x, fromY: old ? old.toY : pw.y,
+      toX: w.x, toY: w.y, t0: now
+    };
+  });
+  var gprev = (prev.garland || last.garland);
+  var gold = G.anim.garland;
+  var carrierOld = gold ? gold.carrier : gprev.carrier;
+  G.anim.garland = {
+    fromX: (last.garland.carrier === carrierOld && gold) ? gold.toX : gprev.x,
+    fromY: (last.garland.carrier === carrierOld && gold) ? gold.toY : gprev.y,
+    toX: last.garland.x, toY: last.garland.y,
+    carrier: last.garland.carrier, t0: now
+  };
+  Object.keys(last.gates).forEach(function (k) {
+    var raised = last.gates[k];
+    var old = G.anim.gates[k];
+    var from = old ? old.to : (prev.gates[k] != null ? prev.gates[k] : raised);
+    G.anim.gates[k] = { from: from, to: raised, t0: now };
+  });
+  // sound for events of the newest step
+  if (frames.length > 1) {
+    var ev = last.events || [];
+    for (var i = 0; i < ev.length; i++) {
+      if (ev[i].who === "fool") {
+        if (ev[i].kind === "B") Sound.play("blocked");
+        else if (ev[i].kind === "M" || ev[i].kind === "V") { Sound.play("step"); Sound.play("jingle"); }
+        else if (ev[i].kind === "G") Sound.play("pick");
+        else if (ev[i].kind === "D") Sound.play("setdown");
+      } else if (ev[i].who === "gate") {
+        Sound.play(ev[i].kind === "up" ? "gateUp" : "gateDown");
+      }
+    }
+  }
+}
+function toast(text) { G.toast = text; G.toastT = 2.2; }
+
+function startScene(i) {
+  G.sceneIdx = i;
+  G.sc = SCENES[i];
+  G.log = newLog();
+  G.anim.bodies = {}; G.anim.wains = {}; G.anim.gates = {}; G.anim.garland = null;
+  G.sim = null;
+  ambient.init(G.sc.seed);
+  staticSceneId = null; renderStatic(G.sc);
+  G.hintUntil = 14;
+  resim();
+}
+function pushLive(a) {
+  var sc = G.sc;
+  if (!pushInput(sc, G.log, a)) { toast("Your shoulder is empty, Fool."); return; }
+  resim();
+  if (G.sim.divergence) {
+    G.mode = "tangle";
+    Sound.play("tangle");
+    return;
+  }
+  if (G.sim.win) {
+    G.mode = G.sceneIdx < SCENES.length - 1 ? "crowned" : "ending";
+    G.endingStep = 0; G.endingT = 0;
+    Sound.play("crown");
+    return;
+  }
+  if (logEnded(sc, G.log)) {
+    var hadFour = G.log.runs.length === 4;
+    endRun(sc, G.log);
+    resim();
+    G.dip = 1;
+    Sound.play("bow");
+    toast(hadFour ? "The green keeps four — the oldest has worn away." : "The green keeps that one.");
+  }
+}
+function doUndo() {
+  if (G.mode !== "play") return;
+  if (undoLog(G.sc, G.log)) {
+    G.anim.bodies = {}; G.anim.wains = {}; G.anim.gates = {}; G.anim.garland = null;
+    resim();
+    Sound.play("back");
+    fiddler.lean = 1;
+    G.dip = Math.max(G.dip, 0.5);
+  } else {
+    toast("There is naught behind the first step.");
+  }
+}
+function doRestart() {
+  G.log = newLog();
+  G.anim.bodies = {}; G.anim.wains = {}; G.anim.gates = {}; G.anim.garland = null;
+  resim();
+  G.mode = "play";
+  toast("Fresh turf. From the top.");
+}
+
+/* ---- title / intro / ending text ----------------------------------- */
+var TITLE_LINES = [
+  "Evenin'. Sit on the bench — mind the hornets.",
+  "I'm the fiddler. Ninety-one years I've played this green, and the green is older than the church bell.",
+  "Midsummer Eve. The rite wants the garland crowned on the pole before dawn, or summer doesn't come. The old sides are bones in France now — but a green keeps every dance ever stepped on it, worn in like a path to a door.",
+  "So you'll rehearse. Each rehearsal you dance, the turf keeps — and when I play, it steps out beside you, wearing your kit. Cross what you've worn, and the ribbons knot.",
+  "Crown the pole, Fool. Bring the summer."
+];
+var ENDING_LINES = [
+  [
+    "Crowned on the very last step.",
+    "The ribbons took the wind like they used to."
+  ],
+  [
+    "Every rehearsal you kept true steps out of the turf and takes a bow.",
+    "Good side, this one. Small, but good."
+  ],
+  [
+    "Jack in the Green rises out of the hedge — old as the parish,",
+    "green as the week before haymaking — and the summer comes on schedule."
+  ],
+  [
+    "The Footfalls go back into the ground,",
+    "where they have been since the war took the sides that wore them first."
+  ],
+  [
+    "I'll be off, then. You were a Fool, but you kept the figures.",
+    "Bring the summer back next year."
+  ]
+];
+
+/* tangle card text, all in the fiddler's voice */
+function tangleLines(d) {
+  var exp = d.expected.code, act = d.actual.code;
+  var lyric;
+  if (exp === "M" && act === "B") lyric = "The turf kept that way clear, and now it is taken. " + d.actual.desc.replace(/^blocked — /, "The way is blocked: ");
+  else if (exp === "V" && act === "B") lyric = "The turf kept the wain rolling there, and it cannot roll. " + d.actual.desc.replace(/^blocked — /, "It is stopped: ");
+  else if (exp === "G" && (act === "M" || act === "B")) lyric = "The turf kept the garland waiting on its trestle, and someone had already shouldered it.";
+  else if (exp === "M" && act === "G") lyric = "The turf kept that mark bare, and the garland stands on it now.";
+  else if (exp === "M" && act === "V") lyric = "The turf kept that mark clear, and the wain stands in it now — and it rolls.";
+  else if (exp === "B" && act === "M") lyric = "The turf kept that way blocked, and it stands open. That is worse.";
+  else if (exp === "B" && act === "V") lyric = "The turf kept that way blocked, and the wain has gone from it.";
+  else lyric = "What the turf kept and what the green gives no longer agree.";
+  return [
+    { text: "The ribbons knot.", size: 26, gap: 30 },
+    { text: "Rehearsal " + ROMAN[d.run - 1] + ", step " + d.step + ".", size: 16, style: "italic", col: "#6B4A2C", gap: 22 },
+    { text: lyric, size: 15, style: "italic", gap: 22 },
+    { text: "The turf keeps: " + d.expected.desc + ".   The green gives: " + d.actual.desc + ".", size: 12.5, col: "#5A4632", gap: 30 },
+    { text: "U — untread the last rehearsal", size: 14, chip: true, gap: 24 },
+    { text: "R — fresh turf, from the top", size: 14, chip: true }
+  ];
+}
+
+/* =====================================================================
+   8 · INPUT
+===================================================================== */
+var KEYMAP = {
+  ArrowUp: "U", ArrowDown: "D", ArrowLeft: "L", ArrowRight: "R",
+  w: "U", s: "D", a: "L", d: "R", W: "U", S: "D", A: "L", D: "R",
+  " ": "W", x: "X", X: "X", c: "C", C: "C"
+};
+window.addEventListener("keydown", function (e) {
+  if (e.metaKey || e.ctrlKey || e.altKey) return;
+  var k = e.key;
+  Sound.ensure();
+  if (k === "m" || k === "M") {
+    Sound.on = !Sound.on;
+    toast(Sound.on ? "The fiddle plays on." : "Quiet, then.");
+    return;
+  }
+  if (k === "t" || k === "T") {
+    if (G.mode === "muster") { G.mode = "play"; }
+    else if (G.mode === "play" || G.mode === "title") {
+      G.musterResult = runMuster();
+      G.mode = "muster";
+    }
+    return;
+  }
+  switch (G.mode) {
+    case "title":
+      G.mode = "intro"; G.titleStep = 0;
+      return;
+    case "intro":
+      startScene(G.sceneIdx); G.mode = "play";
+      return;
+    case "play":
+      if (k === "u" || k === "U" || k === "Backspace") { doUndo(); e.preventDefault(); return; }
+      if (k === "r" || k === "R") {
+        var now = performance.now();
+        if (now - G.rPress < 650) { doRestart(); G.rPress = 0; }
+        else { G.rPress = now; toast("Again to clear the boards — fresh turf."); }
+        return;
+      }
+      var a = KEYMAP[k];
+      if (a) { pushLive(a); e.preventDefault(); }
+      return;
+    case "tangle":
+      if (k === "u" || k === "U") {
+        // untread the last rehearsal: the newest Footfall is struck from
+        // the turf and the prior rehearsal resumes mid-dance, one step back
+        if (G.log.runs.length) {
+          G.log.live = G.log.runs.pop();
+          G.log.live.pop();
+        } else {
+          G.log.live.pop();
+        }
+        G.anim.bodies = {}; G.anim.wains = {}; G.anim.gates = {}; G.anim.garland = null;
+        resim();
+        G.mode = "play";
+        Sound.play("back");
+        return;
+      }
+      if (k === "r" || k === "R") { doRestart(); return; }
+      return;
+    case "crowned":
+      G.sceneIdx += 1;
+      startScene(G.sceneIdx);
+      G.mode = "intro";
+      return;
+    case "ending":
+      G.endingStep += 1; G.endingT = 0;
+      if (G.endingStep > ENDING_LINES.length) {
+        G.mode = "title"; G.titleStep = 0; G.titleT = 0; G.sceneIdx = 0;
+      }
+      return;
+    case "muster":
+      G.mode = "play";
+      return;
+  }
+});
+window.addEventListener("pointerdown", function () {
+  Sound.ensure();
+  if (G.mode === "title") { G.mode = "intro"; return; }
+  if (G.mode === "intro") { startScene(G.sceneIdx); G.mode = "play"; return; }
+  if (G.mode === "crowned") { G.sceneIdx += 1; startScene(G.sceneIdx); G.mode = "intro"; return; }
+  if (G.mode === "ending") {
+    G.endingStep += 1; G.endingT = 0;
+    if (G.endingStep > ENDING_LINES.length) { G.mode = "title"; G.sceneIdx = 0; }
+  }
+});
+
+/* =====================================================================
+   9 · MAIN LOOP & SCREENS
+===================================================================== */
+function ease(u) { return 1 - Math.pow(1 - u, 3); }
+
+function drawPlayFrame(now, dt) {
+  var sc = G.sc, sim = G.sim;
+  var frames = sim.frames;
+  var last = frames[frames.length - 1];
+  ctx.drawImage(staticLayer, 0, 0);
+
+  // marks (loaded state from the frame)
+  sc.marks.forEach(function (m) {
+    var loaded = false;
+    last.bodies.forEach(function (b) { if (!b.exited && b.x === m.x && b.y === m.y) loaded = true; });
+    last.wains.forEach(function (w) { if (w.x === m.x && w.y === m.y) loaded = true; });
+    drawMark(sc, m.x, m.y, loaded, ambient.t);
+  });
+
+  // gates with lift animation
+  sc.gates.forEach(function (g) {
+    var key = g.x + "," + g.y;
+    var ga = G.anim.gates[key] || { from: last.gates[key] ? 1 : 0, to: last.gates[key] ? 1 : 0, t0: now };
+    var u = Math.min(1, (now - ga.t0) / 220);
+    var lift = ga.from + (ga.to - ga.from) * ease(u);
+    drawGate(sc, g.x, g.y, lift, ambient.t);
+  });
+
+  drawPoleRibbons(sc, sim.win, ambient.t);
+
+  // wains
+  last.wains.forEach(function (w, i) {
+    var wa = G.anim.wains[i] || { fromX: w.x, fromY: w.y, toX: w.x, toY: w.y, t0: now };
+    var u = ease(Math.min(1, (now - wa.t0) / G.beatMs));
+    drawWain(cx(wa.fromX + (wa.toX - wa.fromX) * u) , cy(wa.fromY + (wa.toY - wa.fromY) * u));
+  });
+
+  // garland on its trestle
+  var gar = last.garland;
+  if (!gar.carrier) {
+    var gAn = G.anim.garland;
+    var gu = gAn ? ease(Math.min(1, (now - gAn.t0) / G.beatMs)) : 1;
+    var gx = gAn ? gAn.fromX + (gAn.toX - gAn.fromX) * gu : gar.x;
+    var gy = gAn ? gAn.fromY + (gAn.toY - gAn.fromY) * gu : gar.y;
+    drawGarlandGround(cx(gx), cy(gy));
+  }
+
+  // bodies (draw the Fool last, on top)
+  var order = Object.keys(G.anim.bodies).sort(function (a, b) {
+    var ba = G.anim.bodies[a], bb = G.anim.bodies[b];
+    return (ba.ff === null ? 1 : 0) - (bb.ff === null ? 1 : 0) || (ba.ff == null ? 0 : ba.ff) - (bb.ff == null ? 0 : bb.ff);
+  });
+  var movingNow = {};
+  order.forEach(function (id) {
+    var b = G.anim.bodies[id];
+    var u = Math.min(1, (now - b.t0) / G.beatMs);
+    var eu = ease(u);
+    var px = cx(b.fromX + (b.toX - b.fromX) * eu);
+    var py = cy(b.fromY + (b.toY - b.fromY) * eu);
+    var moving = u < 1 && (b.fromX !== b.toX || b.fromY !== b.toY);
+    if (moving) movingNow[id] = true;
+    var walkPhase = (G.lastMoves[id] || 0) + (moving ? u * 1 : 0);
+    if (u >= 1) G.lastMoves[id] = (G.lastMoves[id] || 0) + 0; // phase advances with steps
+    var fade = 1;
+    if (b.exited) {
+      var since = (now - b.t0);
+      fade = Math.max(0, 1 - since / 320);
+      py -= Math.max(0, (1 - fade)) * 10;
+    }
+    if (fade <= 0) return;
+    drawDancer({
+      x: px, y: py, facing: b.facing,
+      walk: ambient.t * 2 + (b.ff == null ? 0 : b.ff * 1.3),
+      moving: moving, carry: b.carry,
+      kit: b.ff === null ? null : KITS[b.ff % 4],
+      alpha: b.ff === null ? 1 : 0.62,
+      exitedFade: fade
+    });
+    if (b.carry) {
+      var bob = moving ? Math.abs(Math.sin(ambient.t * 6)) * 2.5 : 0;
+      drawCarriedGarland(px, py, bob);
+    }
+  });
+
+  drawBlossoms();
+
+  // offending mark under a tangle
+  if (G.mode === "tangle" && sim.divergence) {
+    var d = sim.divergence;
+    var ox = cx(d.at.x), oy = cy(d.at.y);
+    ctx.save();
+    ctx.globalAlpha = 0.5 + 0.3 * Math.sin(ambient.t * 6);
+    ctx.strokeStyle = PAL.madder; ctx.lineWidth = 2.5;
+    // a knot of ribbons over the offending tile
+    ctx.beginPath();
+    for (var i = 0; i < 5; i++) {
+      var a0 = i * 1.9 + ambient.t;
+      ctx.moveTo(ox + Math.cos(a0) * 4, oy + Math.sin(a0) * 4);
+      ctx.quadraticCurveTo(ox + Math.cos(a0 + 2) * 18, oy + Math.sin(a0 + 2) * 14, ox + Math.cos(a0 + 4) * 8, oy + Math.sin(a0 + 4) * 16);
+    }
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // ambience over the green
+  ambient.draw(0.8);
+  drawBlossoms();
+
+  // bunting = the rehearsal's remaining steps
+  drawBunting(sc, G.log.live.length, ambient.t);
+
+  // boards
+  drawSideBoard(sc, G.log.runs, ambient.t);
+  drawCrib(sc, G.log.runs, G.log.live, ambient.t);
+
+  // scene label
+  ctx.font = FONT(15, "italic");
+  ctx.fillStyle = "rgba(46,36,23,0.85)";
+  ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
+  ctx.fillText("Scene " + sc.id + " — " + sc.name, 34, 40);
+  ctx.font = FONT(10.5, "italic");
+  ctx.fillStyle = "rgba(46,36,23,0.6)";
+  ctx.fillText("the scene holds " + sc.N + " steps", 34, 56);
+
+  // fiddler
+  drawFiddler(ambient.t);
+
+  // controls crib (subordinate)
+  ctx.font = FONT(10, "italic");
+  ctx.fillStyle = "rgba(241,230,196,0.42)";
+  ctx.textAlign = "right";
+  ctx.fillText("walk — arrows / WASD · hold — space · garland down — X · bow out — C", W - 34, H - 46);
+  ctx.fillText("back a step — U · fresh turf — R R · quiet — M · the muster — T", W - 34, H - 32);
+  ctx.textAlign = "left";
+
+  // hint (first rehearsal of a scene)
+  if (G.log.runs.length === 0 && G.log.live.length < G.hintUntil) {
+    ctx.font = FONT(13, "italic");
+    ctx.fillStyle = "rgba(255,244,214,0.75)";
+    ctx.textAlign = "center";
+    wrapText(sc.hint, W / 2, H - 96, 620, 17);
+    ctx.textAlign = "left";
+  }
+
+  // toast
+  if (G.toast && G.toastT > 0) {
+    ctx.globalAlpha = Math.min(1, G.toastT);
+    ctx.font = FONT(13.5, "italic");
+    ctx.fillStyle = PAL.cream;
+    ctx.textAlign = "center";
+    ctx.fillText(G.toast, W / 2, 92);
+    ctx.textAlign = "left";
+    ctx.globalAlpha = 1;
+  }
+
+  // curtain dip on rehearsal boundary
+  if (G.dip > 0) {
+    ctx.fillStyle = "rgba(26,36,21," + (G.dip * 0.85) + ")";
+    ctx.fillRect(0, 0, W, H);
+  }
+}
+
+function wrapText(text, x, y, maxW, lineH) {
+  var words = text.split(" "), line = "", yy = y;
+  for (var i = 0; i < words.length; i++) {
+    var test = line ? line + " " + words[i] : words[i];
+    if (ctx.measureText(test).width > maxW && line) {
+      ctx.fillText(line, x, yy); line = words[i]; yy += lineH;
+    } else line = test;
+  }
+  if (line) ctx.fillText(line, x, yy);
+}
+
+function drawTitle(now, dt) {
+  // dusk green
+  var sky = ctx.createLinearGradient(0, 0, 0, H);
+  sky.addColorStop(0, "#2C3D22"); sky.addColorStop(0.55, "#22311B"); sky.addColorStop(1, "#182413");
+  ctx.fillStyle = sky; ctx.fillRect(0, 0, W, H);
+  // low sun glow behind the maypole
+  var sun = ctx.createRadialGradient(W / 2, 300, 20, W / 2, 300, 300);
+  sun.addColorStop(0, "rgba(242,217,139,0.28)"); sun.addColorStop(1, "rgba(242,217,139,0)");
+  ctx.fillStyle = sun; ctx.fillRect(0, 0, W, H);
+  // the maypole, center, in silhouette
+  var px = W / 2, py = 560;
+  ctx.fillStyle = "#141F10";
+  ctx.fillRect(px - 5, py - 250, 10, 250);
+  ctx.beginPath(); ctx.arc(px, py - 252, 7, 0, 7); ctx.fill();
+  var cols = ["#7E3A2C", "#4A5A73", "#6E4668", "#8A6A2C"];
+  for (var i = 0; i < 4; i++) {
+    var sway = Math.sin(ambient.t * 0.9 + i * 1.4) * 26;
+    ctx.strokeStyle = cols[i]; ctx.lineWidth = 3; ctx.globalAlpha = 0.8;
+    ctx.beginPath();
+    ctx.moveTo(px, py - 246);
+    ctx.quadraticCurveTo(px + sway * 0.6, py - 140, px + sway, py - 40);
+    ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+  // hedge silhouette
+  ctx.fillStyle = "#101A0C";
+  ctx.beginPath(); ctx.moveTo(0, H);
+  for (var hx = 0; hx <= W; hx += 40) ctx.lineTo(hx, 600 + Math.sin(hx * 0.02) * 14);
+  ctx.lineTo(W, H); ctx.closePath(); ctx.fill();
+  // garland hoop hung with the title
+  ambient.draw(1);
+  ctx.textAlign = "center"; ctx.textBaseline = "alphabetic";
+  ctx.fillStyle = PAL.cream;
+  ctx.font = FONT(64);
+  ctx.shadowColor = "rgba(20,29,16,0.8)"; ctx.shadowBlur = 0; ctx.shadowOffsetY = 3;
+  ctx.fillText("Jack in the Green", W / 2, 148);
+  ctx.shadowColor = "transparent";
+  ctx.font = FONT(16, "italic");
+  ctx.fillStyle = "rgba(242,217,139,0.9)";
+  ctx.fillText("a Midsummer Eve in three rehearsals", W / 2, 180);
+
+  // premise lines, one at a time, in the fiddler's voice
+  G.titleT += dt;
+  var shown = Math.floor(G.titleT / 2.4);
+  var yy = 244;
+  for (var li = 0; li < Math.min(shown + 1, TITLE_LINES.length); li++) {
+    var lineAlpha = li === Math.min(shown, TITLE_LINES.length - 1)
+      ? Math.min(1, (G.titleT - li * 2.4) / 0.9) : 1;
+    ctx.globalAlpha = 0.9 * lineAlpha;
+    ctx.fillStyle = PAL.parchment;
+    ctx.font = FONT(15.5, "italic");
+    wrapText(TITLE_LINES[li], W / 2, yy, 640, 21);
+    yy += TITLE_LINES[li].length > 90 ? 52 : 30;
+  }
+  ctx.globalAlpha = 1;
+  if (G.titleT > TITLE_LINES.length * 2.4 + 0.5) {
+    ctx.font = FONT(14, "italic");
+    ctx.fillStyle = "rgba(255,244,214," + (0.55 + 0.3 * Math.sin(ambient.t * 2.5)) + ")";
+    ctx.fillText("any key — the fiddler counts us in", W / 2, H - 60);
+  }
+  // the fiddler waits on his bench at the left
+  drawFiddler(ambient.t);
+  // subordinate controls
+  ctx.font = FONT(10, "italic");
+  ctx.fillStyle = "rgba(241,230,196,0.35)";
+  ctx.textAlign = "right";
+  ctx.fillText("arrows / WASD walk · space hold · X garland down · C bow out · U back a step · R R fresh turf · M quiet · T the muster", W - 30, H - 24);
+  ctx.textAlign = "left";
+}
+
+function drawIntro() {
+  var sc = G.sc;
+  ctx.fillStyle = "#1B2617"; ctx.fillRect(0, 0, W, H);
+  ambient.draw(0.5);
+  var lines = [{ text: "Scene " + sc.id + " — " + sc.name, size: 30, gap: 30 }];
+  sc.intro.forEach(function (l) { lines.push({ text: l, size: 16, style: "italic", gap: 26 }); });
+  lines.push({ text: "any key — play", size: 12.5, style: "italic", col: "#6B4A2C", chip: true });
+  var h = 60 + sc.intro.length * 46 + 80;
+  drawCard(lines, { w: 640, h: h, y: (H - h) / 2 - 10 });
+}
+
+function drawTangle() {
+  drawPlayFrameView();
+  var d = G.sim.divergence;
+  if (d) {
+    ctx.fillStyle = "rgba(74,43,51,0.5)"; ctx.fillRect(0, 0, W, H);
+    drawCard(tangleLines(d), { w: 620, h: 316, y: (H - 316) / 2 - 10 });
+  }
+}
+function drawPlayFrameView() {
+  // redraw the frozen board without interactivity chrome
+  drawPlayFrame(performance.now(), 0);
+}
+
+function drawCrowned() {
+  drawPlayFrame(performance.now(), 0);
+  var sc = G.sc;
+  ctx.fillStyle = "rgba(26,36,21,0.35)"; ctx.fillRect(0, 0, W, H);
+  // flare at the pole
+  var px = cx(sc.pole.x), py = cy(sc.pole.y);
+  var fl = ctx.createRadialGradient(px, py - 40, 4, px, py - 40, 120);
+  fl.addColorStop(0, "rgba(255,244,214,0.5)"); fl.addColorStop(1, "rgba(255,244,214,0)");
+  ctx.fillStyle = fl; ctx.fillRect(px - 120, py - 160, 240, 240);
+  var h = 190;
+  drawCard([
+    { text: sc.outro, size: 20, gap: 26 },
+    { text: "one rehearsal more kept true", size: 13, style: "italic", col: "#6B4A2C", gap: 28 },
+    { text: "any key — onwards", size: 13, style: "italic", chip: true }
+  ], { w: 520, h: h, y: (H - h) / 2 - 10 });
+}
+
+function drawEnding(now, dt) {
+  G.endingT += dt;
+  ctx.fillStyle = "#1B2617"; ctx.fillRect(0, 0, W, H);
+  var sun = ctx.createRadialGradient(W / 2, 260, 10, W / 2, 260, 320);
+  sun.addColorStop(0, "rgba(242,217,139,0.22)"); sun.addColorStop(1, "rgba(242,217,139,0)");
+  ctx.fillStyle = sun; ctx.fillRect(0, 0, W, H);
+  ambient.draw(0.7);
+
+  var step = Math.min(G.endingStep, ENDING_LINES.length - 1);
+  var phase = Math.min(1, G.endingT / 1.1);
+
+  if (G.endingStep < ENDING_LINES.length) {
+    // the side takes its bow: four Footfalls and the Fool, downstage
+    var cols = KITS;
+    for (var i = 0; i < 4; i++) {
+      var bx = W / 2 - 180 + i * 120;
+      var bowTilt = phase * (i === 1 ? 8 : 5);
+      ctx.save();
+      ctx.translate(bx, 470 + Math.sin(i * 2) * 4);
+      ctx.rotate(bowTilt * 0.012);
+      drawDancer({
+        x: 0, y: 0, facing: "D", walk: ambient.t * 1.6 + i,
+        moving: false, carry: false, kit: cols[i], alpha: 0.7 - (1 - phase) * 0.4 + i * 0.05
+      });
+      ctx.restore();
+    }
+    // the Fool, garland shouldered, center
+    ctx.save();
+    ctx.translate(W / 2 + 40, 560);
+    drawDancer({ x: 0, y: 0, facing: "D", walk: ambient.t * 2, moving: false, carry: G.endingStep >= 3 ? false : true, kit: null });
+    if (G.endingStep < 3) drawCarriedGarland(0, 0, 0);
+    ctx.restore();
+  } else {
+    // final card: the green rests
+    ctx.textAlign = "center";
+    ctx.fillStyle = PAL.cream;
+    ctx.font = FONT(44);
+    ctx.fillText("Jack in the Green", W / 2, H / 2 - 40);
+    ctx.font = FONT(16, "italic");
+    ctx.fillStyle = "rgba(242,217,139,0.9)";
+    ctx.fillText("the green rests — summer's come", W / 2, H / 2);
+    ctx.font = FONT(12.5, "italic");
+    ctx.fillStyle = "rgba(241,230,196,0.55)";
+    ctx.fillText("any key — back to the bench", W / 2, H / 2 + 44);
+    // one lamp of blossom light left on the green
+    var lg = ctx.createRadialGradient(W / 2, 620, 2, W / 2, 620, 90);
+    lg.addColorStop(0, "rgba(255,244,214,0.8)"); lg.addColorStop(1, "rgba(255,244,214,0)");
+    ctx.fillStyle = lg; ctx.beginPath(); ctx.arc(W / 2, 620, 90, 0, 7); ctx.fill();
+    ctx.fillStyle = PAL.blossom;
+    ctx.beginPath(); ctx.arc(W / 2, 620, 4, 0, 7); ctx.fill();
+    return;
+  }
+
+  var lines = ENDING_LINES[step];
+  ctx.textAlign = "center";
+  ctx.globalAlpha = phase;
+  ctx.font = FONT(17, "italic");
+  ctx.fillStyle = PAL.parchment;
+  ctx.fillText(lines[0], W / 2, 200);
+  ctx.fillText(lines[1], W / 2, 228);
+  ctx.globalAlpha = 1;
+  ctx.font = FONT(11.5, "italic");
+  ctx.fillStyle = "rgba(241,230,196,0.4)";
+  ctx.fillText("any key — on", W / 2, H - 30);
+}
+
+function drawMuster() {
+  ctx.fillStyle = "#1B2617"; ctx.fillRect(0, 0, W, H);
+  var r = G.musterResult || runMuster();
+  var lines = [
+    { text: "The Muster", size: 30, gap: 26 },
+    { text: r.allPass ? "every rehearsal proved — the side is whole" : "the side is short; something failed to prove", size: 14, style: "italic", col: r.allPass ? "#4F7A34" : PAL.madder, gap: 26 }
+  ];
+  r.checks.forEach(function (c) {
+    lines.push({
+      text: (c.pass ? "✓  " : "✗  ") + c.name + (c.pass ? "" : "  —  " + c.note),
+      size: 12.5, align: "left", gap: 21, col: c.pass ? "#2E2417" : "#8A2A1E"
+    });
+  });
+  lines.push({ text: "T — put the list away", size: 12.5, style: "italic", col: "#6B4A2C", chip: true });
+  var h = 96 + r.checks.length * 21 + 66;
+  drawCard(lines, { w: 780, h: h, y: Math.max(14, (H - h) / 2) });
+}
+
+var lastT = null;
+function frame(ts) {
+  if (lastT == null) lastT = ts;
+  var dt = Math.min(0.05, (ts - lastT) / 1000);
+  lastT = ts;
+  ambient.step(dt);
+  stepBlossoms(dt);
+  if (G.toastT > 0) G.toastT -= dt;
+  if (G.dip > 0) G.dip = Math.max(0, G.dip - dt * 3.4);
+  if (fiddler.saw > 0) fiddler.saw = Math.max(0, fiddler.saw - dt * 2.4);
+  if (fiddler.lean > 0) fiddler.lean = Math.max(0, fiddler.lean - dt * 1.8);
+  // the fiddler saws once per step of the live rehearsal
+  if (G.mode === "play" && G.log.live.length !== fiddler.lastStep) {
+    fiddler.lastStep = G.log.live.length;
+    fiddler.saw = 1;
+  }
+
+  ctx.clearRect(0, 0, W, H);
+  switch (G.mode) {
+    case "title": drawTitle(ts, dt); break;
+    case "intro": drawIntro(); break;
+    case "play": drawPlayFrame(ts, dt); break;
+    case "tangle": drawTangle(); break;
+    case "crowned": drawCrowned(); break;
+    case "ending": drawEnding(ts, dt); break;
+    case "muster": drawMuster(); break;
+  }
+  requestAnimationFrame(frame);
+}
+
+renderStatic(G.sc);
+ambient.init(G.sc.seed);
+requestAnimationFrame(frame);
+
+})(); // end DOM-guarded boot
+</script>
+</body>
+</html>
