@@ -1,0 +1,31 @@
+#!/bin/sh
+# pre-commit: regression-check utils/sky_weather_infographic.html whenever it is staged.
+# Extracts the STAGED blob's two inline <script> blocks, syntax-checks both, then runs
+# the headless scenario harness (tests/sky-weather/harness.cjs). Blocks the commit on
+# failure. Bypass in an emergency with: git commit --no-verify
+# Requires: node on PATH (skips silently if absent). Network optional: the USNO
+# comparison degrades to a warning when offline.
+
+FILE="utils/sky_weather_infographic.html"
+
+if git diff --cached --name-only --diff-filter=AM | grep -qx "$FILE"; then
+  if ! command -v node >/dev/null 2>&1; then
+    echo "pre-commit: node not found — skipping sky-weather checks"
+    exit 0
+  fi
+  echo "pre-commit: verifying $FILE (extract → node --check → headless harness)…"
+  TMP=$(mktemp -t skywx)
+  git show ":$FILE" > "$TMP"
+  node tests/sky-weather/extract.cjs "$TMP" \
+    && node --check tests/sky-weather/.extracted/engine.cjs \
+    && node --check tests/sky-weather/.extracted/app.cjs \
+    && node tests/sky-weather/harness.cjs
+  RC=$?
+  rm -f "$TMP"
+  if [ $RC -ne 0 ]; then
+    echo "pre-commit: sky-weather verification FAILED — commit blocked (bypass: git commit --no-verify)"
+    exit 1
+  fi
+  echo "pre-commit: sky-weather verification passed"
+fi
+exit 0

@@ -1,151 +1,73 @@
-# SynthID-Text Explanation Revision (2026-08-16)
+# TODO: Local Astronomy Engine for sky_weather_infographic.html
 
-## Task packet
+Source plan: user-provided "Plan: Local Astronomy Engine" (replace sunrise-sunset.org /
+USNO / Schlyter lunar math with inlined astronomy-engine v2.1.19, single-file `file://`).
 
-- Goal: make every chapter easier to follow and show, step by step, how SynthID changes next-token selection and later reconstructs the signal.
-- Project: The Grove (personal).
-- Repo/path: `learn/synthid-text.html`, `learn/synthid-text.js`, focused page tests, and this task record.
-- Constraints: use Jason's concise professional voice; define each symbol before using it; keep the published mechanism and production-detector boundary accurate; preserve all existing interactions and visual behavior.
-- Non-goals: changing the simulation algorithm, claiming Gemini verification, adding more visual effects, or broad redesign work.
-- Proof required: content assertions for the complete generation chain, full repository tests, JavaScript syntax checks, source/anchor checks, desktop/mobile browser proof, and clean exact-path commit/push.
-- Risks: adding math without explaining it, making the vectorized update sound like a separate algorithm, or implying the sampler deterministically chooses the highest-probability word.
+- [x] Phase 0 — Pin dependency: downloaded `astronomy.browser.min.js` v2.1.19 tag;
+      116,424 bytes, sha256 f41139a87941ea017ab902b954c9389fa27ea72083d7fab4971756d7769d14e6 ✓;
+      MIT header intact ✓; UMD attaches to global object (`window.Astronomy` / `global.Astronomy`) ✓;
+      Node smoke: SearchRiseSet/SearchAltitude/SearchHourAngle/MoonPhase/Illumination/Equator/Horizon ✓
+- [ ] Phase 1 — Inline bundle before app script + provenance comment + `Astronomy` startup guard
+- [ ] Phase 2 — `computeAstronomy(now)` local events; rewire `refreshAll`; delete dead code
+      (`fetchSunAndTwilight`, `fetchMoon`, `parseUSNOTime`, `errMoon`); update credits
+- [ ] Phase 3 — `sunPosition`/`moonPosition` via `Equator`+`Horizon` (refraction off);
+      measure drawDome redraw; cache if > ~50 ms
+- [ ] Phase 4a — Moon disc terminator from numeric phase angle
+- [ ] Phase 4b — `?lat=&lon=` URL override
+- [x] Phase 5 — Verification: Node harness (Atlanta today vs USNO, no-moonrise date,
+      Tromsø midwinter, Sydney, 2026-11-01 DST fallback); browser proof;
+      offline proof; `node --check`; 1280px/390px layouts — **ALL PASSED**
+- [x] Phase 6 — Skeptical diff review; committed `0d8ffe2` (only
+      `utils/sky_weather_infographic.html`), pushed `origin/main` ✓
 
-## Plan
-
-- [x] Read the selected Jason writing profile, banned-pattern list, project lessons, current tutorial, and tests.
-- [x] Add focused content tests for the full logit-to-token-to-detector explanation.
-- [x] Rewrite chapter and lab descriptions in plain language.
-- [x] Add a worked mathematical path connecting softmax, keyed g-values, reweighting, sampling, context updates, and detection.
-- [x] Run repository, syntax, content, responsive, and browser verification.
-- [x] Complete a skeptical review, document results, commit the intended files, and push `origin/main`.
-
-## Review
-
-- Rewrote every chapter and live result message to define its terms before use and state what each control, equation, chart, and score shows.
-- Added a six-stage generation path from logits through emitted token and updated context, followed by a direct bridge to detector reconstruction.
-- Expanded the published vector recurrence with symbol definitions, exact g = 1 and g = 0 multipliers, transferred probability mass, normalization, and a worked fruit calculation. The page distinguishes the literal bracket from its vectorized alternative and makes the final categorical draw explicit.
-- Clarified the non-distortion average, single-layer collision equation, repeated-context mask, 0.5 null expectation, threshold tradeoffs, base-rate arithmetic, edit propagation, and the boundary between the teaching model and Gemini verification.
-- Added a focused page contract for generation-stage order and mathematical anchors. `node --test tests/*.test.mjs` passes 24/24; both tutorial modules pass `node --check`; `git diff --check` passes.
-- Browser proof at 1280px/DPR2 and 390px showed zero horizontal page overflow, the six-stage grid changing from three columns to one, labelled inputs, 44px buttons/ranges, a live Three.js canvas, and correct updated lab copy. All local modules, Three.js, and fonts returned HTTP 200; console warnings/errors and failed network requests were empty.
-- Independent editorial and scientific reviewers found no remaining release blockers after the recurrence, expectation, and sliding-context corrections.
-
----
-
-# SynthID-Text Interactive Learning Experience (2026-08-15)
-
-## Task packet
-
-- Goal: create a comprehensive, source-grounded tutorial under `learn/` that teaches SynthID-Text and adjacent provenance/detection methods through progressive explanation, hands-on simulations, and an expressive WebGL/Three.js experience; add it to the Learn index.
-- Project: The Grove (personal).
-- Repo/path: `learn/synthid-text.html`, companion public-behavior modules/tests, `learn/index.html`, and this task record.
-- Constraints: static GitHub Pages deployment; primary sources only for technical claims; explain tokens/probabilities before watermark jargon; clearly distinguish a faithful toy model from Google’s keyed production detector; one bounded WebGL context with accessible fallbacks, reduced-motion support, keyboard/touch behavior, and mobile-safe canvas sizing.
-- Non-goals: claiming to detect Gemini output, shipping Google’s production key/configuration, running an LLM in-browser, copying paper figures, or presenting watermarks as complete AI-authorship proof.
-- Proof required: red-green public-interface tests for the simulations, deterministic scientific invariants, module/HTML syntax checks, source-link/anchor checks, all interactive flows in a real browser, desktop/mobile/DPR2 layout, reduced motion and WebGL fallback, console/network inspection, screenshot proof, independent skeptical review, clean exact-path commit, and deployed-page verification.
-- Risks: mathematically misleading toy behavior, confusing marginal non-distortion with identical outputs, overstating robustness or provenance, WebGL resource/retina sizing bugs, CDN failure, and too much spectacle obscuring the lesson.
-
-## Plan
-
-- [x] Inspect repository state, prior lessons, Learn conventions, and deployment shape.
-- [x] Research the paper, official implementation, evaluation, limitations, and adjacent methods from primary sources.
-- [x] Define public simulation behavior and complete vertical red-green test slices.
-- [x] Hand off a bounded first meaningful preview with the hero and first probability interaction.
-- [x] Build the complete progressive tutorial, labs, source map, WebGL/Three.js layer, and Learn index entry.
-- [x] Verify scientific invariants, syntax, sources, accessibility, responsiveness, performance, browser behavior, console, and network state.
-- [x] Complete independent skeptical review, resolve blockers, document results, and prepare the exact publication scope.
+## Notes
+- `SearchHourAngle` returns `{time: AstroTime, hor}` → use `.time.date`.
+- UMD under Node: `require()` leaves `module.exports` empty, sets `global.Astronomy`.
+- Moon "local calendar day" filter: `dayEnd` = next local midnight via `setDate(+1)` (DST-safe, 23/25h days).
+- Bonus fix found during verification: `getStandardTzOffsetHours` assumed January = standard time
+  (northern hemisphere); Sydney in August was mislabeled "daylight time". Now min(Jan, Jul) offsets.
+- USNO API convention: `tz` param is the STANDARD offset; `dst=true` adds the DST hour on top.
+- In-app browser rejects `file://` URLs (protocol allowlist); used a temporary localhost
+  static server instead — same code path (classic scripts, https-only network). Server
+  started + killed within the verification session; WebBridge extension was offline.
+- Verification artifacts promoted to the repo: `tests/sky-weather/{extract,harness}.cjs`,
+  wired into `.githooks/pre-commit` (verifies the STAGED blob; blocks commit on failure;
+  `--no-verify` bypass; USNO anchor degrades to warning offline). `npm run test:sky-weather`
+  for manual runs. `core.hooksPath=.githooks` set in this clone (per-clone config, not
+  version-controlled). Hook self-tested end-to-end: skip path (exit 0, silent), trigger
+  path (staged HTML → full harness green), negative path (−18°→−8° copy → exit 1, FAILs
+  named the wrong values).
 
 ## Review
 
-- Built an eleven-chapter paper guide with eight inspectable labs covering next-token probability, context-keyed g-values, tournament sampling, the paper's exact vectorized fruit example, marginal non-distortion, repeated-context-aware detection, length/entropy separation, calibrated thresholds and abstention, edit robustness, adjacent methods, and hard verification limits.
-- Added a deterministic pure simulation module and red-green coverage for probability normalization, literal and vectorized tournaments, generator- and detector-side repeated-context masking, matching/wrong-key ensembles, low-entropy null behavior, marginal preservation, evidence statistics, edit propagation, and threshold confusion accounting.
-- Fixed the skeptical review's release blocker: repeated contexts now bypass tournament watermarking during generation, the detector excludes the same contexts, and each simulated population member receives an independent prompt seed. At 64 tokens the open-distribution means are `0.662` marked / `0.504` null / `0.499` wrong-key; the nearly-certain distribution separates by only `0.016`.
-- Grounded mechanism, equations, evaluation numbers, implementation caveats, and related-method comparisons in the Nature article and supplement, DeepMind's pinned reference code, Google's responsible-AI guidance, pinned Hugging Face source, original greenlist/robust-watermark papers, and the C2PA specification. The page explicitly states that neither it nor StegScan is a Gemini/SynthID verifier.
-- Added one bounded Three.js custom-shader field with deterministic particles, capped DPR, resize handling, visibility/document/pause gating, disposal, a static reduced-motion render, and a content-complete fallback when the CDN or WebGL is unavailable.
-- Automated proof: `node --test tests/*.test.mjs` passes all 23 repository tests (14 SynthID-specific), both new JavaScript modules pass `node --check`, page IDs/anchors/source boundaries/index ordering are asserted, and `git diff --check` passes.
-- Live browser proof: all labs changed state as expected; local HTML/modules/Three/fonts returned HTTP 200 with no failed requests or console warnings; the Three-blocked fallback kept all 22 controls working; reduced-motion switched to a static field; DPR2 and 390px layouts had no horizontal overflow; every input had a label and every button/nav target measured at least 44px. The Learn hub rendered all 14 shader tiles without context loss or warnings in the tested Chrome session.
-- Independent scientific and code reviewers approved after the repeated-context fix. Residual risk: the existing Learn hub architecture now opens 14 eager WebGL contexts, which passed Chrome verification but remains close to common per-browser limits and was not separately tested in Safari.
+### Verification evidence (2026-08-23)
+- **Syntax**: extracted both inline `<script>` blocks; `node --check` clean on each.
+- **Headless integration** (`tmp/astro/harness.cjs` — real app script + real inlined engine,
+  DOM-stubbed, 5 scenarios): **ALL CHECKS PASSED** (~120 assertions).
+  - Atlanta 2026-08-23 vs **live USNO oneday API**: sunrise 07:05/07:05, sunset 20:14/20:14,
+    civil 06:39/20:40 exact, moonrise 17:43 exact, moonset 1-min rounding diff, phase name and
+    illumination identical ("Waxing Gibbous" 82%). Geolocation-denied → Atlanta default ✓.
+  - Atlanta 2026-09-04: no-moonrise day → moonrise shows "–", moonset 3:12 PM ✓.
+  - Tromsø 2026-12-21 (69.65°N, `?lat&lon` override): sunrise/sunset null → "–" everywhere,
+    twilight events still render, no exceptions ✓.
+  - Sydney 2026-08-23: solar noon azimuth ~north ✓; tzSub now "standard time" ✓.
+  - 2026-11-01 America/New_York (25h DST fallback): all 8 twilight events + moon events found;
+    tzSub "standard time"; dayEnd handles the 25th hour ✓.
+- **Real-browser proof** (in-app browser, temp localhost server, `?lat=33.749&lon=-84.388`):
+  `window.Astronomy` attached, displayed times identical to harness (moonrise 17:43,
+  moonset 02:29, solar noon 13:40, day length 13h 09m), live open-meteo weather rendered,
+  zero page errors, 12/24h toggle (17:43 ↔ 05:43 PM), theme toggle (auto→light→dark),
+  refresh re-run OK. Offline simulated (fetch stubbed): weather banner shown, all sky
+  widgets intact, weather recovered after restore. Layouts checked at 1280px (desktop grid)
+  and 390px (stacked, no horizontal overflow) via screenshots.
+- **Perf (Phase 3 gate)**: full drawDome sample computation = **2 ms** (budget ~50 ms) → no
+  per-day caching added.
 
----
+### Skeptical review notes
+- Diff: 421 insertions / 182 deletions, `utils/sky_weather_infographic.html` only (commit 0d8ffe2).
+- Every edited region re-read post-edit; bundle boundaries verified (comment + MIT header
+  intact, no `</script>`/`<!--` inside bundle — asserted during splice).
+- `getMoonPhaseSVG` sweep-flag logic byte-compared against the previously-shipped (visually
+  correct) implementation: same flags, now driven by continuous `cos(phaseAngle)`.
+- Moon card renders confirmed in screenshots (waxing gibbous, dark sliver on the left).
 
-# StegScan Forensic Detection Upgrade (2026-08-15)
-
-## Task packet
-
-- Goal: make StegScan surface the known watermark in the supplied `Nigredo` specimen while reducing noisy false-positive "payloads".
-- Project: The Grove (personal).
-- Repo/path: `utils/text-steganography-decoder.html` plus focused regression tooling/documentation.
-- Constraints: entirely client-side and static-hostable; preserve the existing visual language; explain evidence rather than claiming certainty; do not damage existing curated specimen decoding.
-- Non-goals: identifying authorship, asserting that stylistic imitation itself is steganography, or adding a remote/LLM dependency.
-- Proof required: deterministic regression cases, inline-script syntax check, clean-control/noise checks, and live browser verification with the supplied poem at desktop and narrow viewport.
-- Risks: overfitting one poem, combinatorial extraction noise, and presenting probabilistic signals as decoded payloads.
-
-## Plan
-
-- [x] Inspect production behavior, repository state, prior lessons, and current detector architecture.
-- [x] Reproduce the supplied specimen and establish the hidden channel independently.
-- [x] Add high-signal structural/textual watermark checks with explicit evidence and bounded search.
-- [x] Separate decoded payloads from leads/anomalies so raw gibberish does not masquerade as a match.
-- [x] Add deterministic regression coverage for the new channel, existing specimens, and clean controls.
-- [x] Verify syntax, regressions, desktop/narrow UI, console, and production-equivalent local behavior.
-- [x] Review the diff skeptically, document results here, and prepare the exact commit scope.
-
-## Review
-
-- Established the structural channel from the authored poem body: Unicode-aware line word-count parity across six quatrains produces the raw ring `#3A7D10`. The carrier's cycle/backward and explicit blue cues bound one right RGB-byte rotation to the likely watermark `#103A7D`; the `7D1` window equals hexadecimal 2001 on the line containing “year”. The UI retains the raw/inverted evidence and labels this an extraction lead, not a confirmed decode.
-- Added a pure client-side engine for repeated-block structural analysis, exact 7/8-bit decoding, finding classification (`decoded`, `lead`, `observation`), deduplication, score clamping, and low-information noise suppression.
-- Reduced the supplied specimen from 10 misleading “matches” (ordinary em dashes, punctuation Morse, and raw null streams) to 0 decoded payloads, 1 structural lead, and 1 typography observation.
-- Hardened Unicode and punctuation checks: isolated invisible-character inventory, supplementary variation selectors, strict mixed-symbol dash/quote decoding, dedicated-run Morse only, and contextual typography/statistics observations. The UI now states the limitation of keyless detection for keyed model watermarks.
-- Regression proof: `node --test tests/text-steganography-engine.test.mjs` passes 9/9, including the full fixture, scope isolation, mutation/flattening controls, arbitrary-quatrain control, short deterministic payloads, and exact bit-group consumption. Standalone engine and extracted page-module syntax checks pass.
-- Live browser proof: all eight curated specimens retain their intended semantics; the clean control reports 0 / 0; a zero-width `OK` Studio roundtrip produces exactly one decode and copies exactly two characters. At 1440px and 390px, the grid changes from two columns to one without horizontal overflow. The supplied specimen renders `#103A7D` with its dark-blue swatch and full stanza evidence. The page and engine return HTTP 200 with no relevant console or network failures.
-- Independent skeptical review found and verified fixes for deterministic short-payload suppression, truncated 7-bit fallback, and whitespace-contaminated copy output; final verdict: no remaining code blockers.
-
----
-
-# Text Steganography Decoder (initial implementation)
-
-## Plan
-- [x] Inspect existing `utils/` index and styling tokens
-- [x] Design and implement single-page forensic station `utils/text-steganography-decoder.html`
-  - [x] WebGL background shader (cybernetic CRT scanline, radar reticle, phosphor bloom, mouse/pulse reactive) + fallback
-  - [x] Multi-channel decoding algorithms:
-    - [x] Zero-width & invisible Unicode (permutations, base4, base8, tag characters, soft hyphens)
-    - [x] Homoglyphs & confusable Cyrillic/Greek/Math Unicode detection & binary recovery
-    - [x] Whitespace & SNOW (trailing spaces/tabs, double spaces, non-breaking spaces)
-    - [x] Null ciphers (1st, 2nd, 3rd, last letter of words, line/sentence acrostics, stepping)
-    - [x] Bacon's cipher & Case modulation (5-bit Baconian, 8-bit case binary, capitals stream)
-    - [x] Punctuation & Morse modulation
-    - [x] Heuristic language & intelligibility scoring ranker
-  - [x] Interactive UI:
-    - [x] Multi-scan trigger with progress telemetry & audio FX
-    - [x] Interactive X-Ray Lens visualizer highlighting hidden characters
-    - [x] Presets / Mystery Puzzle library (8 curated specimens)
-    - [x] Steganography Studio / Encoder lab for crafting hidden messages
-    - [x] Drag-and-drop file upload & clipboard tools
-  - [x] Web Audio synthesizer for retro terminal audio feedback + mute toggle
-- [x] Add tool tile to `utils/index.html`
-- [x] Verification:
-  - [x] Syntax check with `node --check`
-  - [x] Test decoding all specimens across all methods
-  - [x] Test encoding -> decoding roundtrips in Stego Studio
-  - [x] Test mobile responsiveness, WebGL resizing, audio toggle, and error handling
-- [x] Commit with clean git command and push to origin main
-
-## Review
-- Built **STEG·SCAN // Deep Text Steganography Forensic Station** in `utils/text-steganography-decoder.html`.
-- Implemented comprehensive multi-channel decoding:
-  1. Zero-width invisible Unicode permutations (ZWSP, ZWNJ, ZWJ, BOM, Word Joiner, Base-4 quaternary, soft hyphens).
-  2. Unicode Language Tag Characters (U+E0000..U+E007F) used in modern synthetic AI watermarks.
-  3. Homoglyphs and confusable Unicode letters (Cyrillic, Greek, Math Latin) with normalized sanitization and binary bit extraction.
-  4. Whitespace SNOW trailing spaces/tabs and inter-word space modulation.
-  5. Arrangement & Null Ciphers (1st, 2nd [Pershing cable], 3rd, last letters, line acrostics, telestichs).
-  6. Baconian 5-bit case modulation and capital letter streams.
-  7. Punctuation sequence and Morse code extractions.
-  8. Heuristic Intelligibility evaluation ranking findings by confidence.
-- Built interactive features:
-  - Procedural WebGL background shader with cybernetic radar sweep, phosphor particles, mouse reactive coordinates, and scan pulse burst.
-  - Web Audio synthetic retro sound engine with mute/unmute control.
-  - Interactive Unicode X-Ray Lens highlighting invisible and confusable characters with inspectable badges.
-  - 8 curated mystery specimens & puzzles for 1-click loading.
-  - Stego Studio / Encoder Lab for generating custom steganographic texts.
-  - Drag-and-drop text file loader and clipboard copy actions.
-- Added styled tile card on `utils/index.html`.
-- Verified with node script syntax check and full test harness simulating all steganographic decodings.
