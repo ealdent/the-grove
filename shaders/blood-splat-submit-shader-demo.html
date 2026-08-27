@@ -6,15 +6,19 @@
   <title>Blood Splat Submit — WebGL Impact-Spatter Demo</title>
   <style>
     :root {
-      --accent: #6366f1;
-      --accent-strong: #4f46e5;
+      --accent: #2563eb;
+      --accent-hover: #1d4ed8;
+      --accent-down: #1e40af;
+      --lab: #6366f1;
       font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
     }
 
     :root[data-theme="dark"] {
       color-scheme: dark;
       --bg: #0e1013;
-      --panel: rgba(19, 21, 27, 0.80);
+      --bg2: #131722;
+      --panel: rgba(19, 21, 27, 0.82);
+      --card: #161a22;
       --line: rgba(255, 255, 255, 0.09);
       --text: #e9ebf1;
       --muted: #9aa1ae;
@@ -23,12 +27,18 @@
       --ghost-bg: rgba(255, 255, 255, 0.06);
       --ghost-line: rgba(255, 255, 255, 0.14);
       --shadow: rgba(0, 0, 0, 0.45);
+      --input-bg: #0d1017;
+      --input-line: rgba(255, 255, 255, 0.13);
+      --btn-dis-bg: #262b36;
+      --btn-dis-fg: #6b7280;
     }
 
     :root[data-theme="light"] {
       color-scheme: light;
       --bg: #f2f3f5;
-      --panel: rgba(255, 255, 255, 0.86);
+      --bg2: #e8eaee;
+      --panel: rgba(255, 255, 255, 0.88);
+      --card: #ffffff;
       --line: rgba(17, 20, 28, 0.10);
       --text: #191d26;
       --muted: #5f6673;
@@ -36,7 +46,11 @@
       --track: rgba(17, 20, 28, 0.14);
       --ghost-bg: rgba(17, 20, 28, 0.05);
       --ghost-line: rgba(17, 20, 28, 0.14);
-      --shadow: rgba(16, 24, 40, 0.18);
+      --shadow: rgba(16, 24, 40, 0.16);
+      --input-bg: #ffffff;
+      --input-line: rgba(17, 20, 28, 0.18);
+      --btn-dis-bg: #e2e5ea;
+      --btn-dis-fg: #9aa1ad;
     }
 
     *, *::before, *::after { box-sizing: border-box; }
@@ -45,20 +59,24 @@
       width: 100%;
       min-height: 100%;
       margin: 0;
-      background: var(--bg);
+      background: linear-gradient(180deg, var(--bg2), var(--bg));
       color: var(--text);
       transition: background .35s ease, color .35s ease;
     }
 
     body { min-height: 100svh; overflow: hidden; }
 
-    canvas {
+    /* ---------- blood overlay: pure spatter, transparent elsewhere ---------- */
+
+    canvas#gl {
       position: fixed;
       inset: 0;
       width: 100%;
       height: 100%;
       display: block;
-      touch-action: none;
+      pointer-events: none;
+      z-index: 5;
+      background: transparent;
     }
 
     /* ---------- masthead ---------- */
@@ -68,7 +86,7 @@
       z-index: 2;
       top: clamp(18px, 3vw, 34px);
       left: clamp(18px, 3vw, 38px);
-      max-width: min(480px, calc(100vw - 330px));
+      max-width: min(440px, calc(100vw - 330px));
       pointer-events: none;
     }
 
@@ -77,12 +95,12 @@
       font: 600 11px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace;
       letter-spacing: .22em;
       text-transform: uppercase;
-      color: var(--accent);
+      color: var(--lab);
     }
 
     h1 {
       margin: 0;
-      font-size: clamp(26px, 4vw, 44px);
+      font-size: clamp(24px, 3.6vw, 40px);
       font-weight: 700;
       letter-spacing: -.03em;
       line-height: 1.02;
@@ -95,11 +113,107 @@
       line-height: 1.6;
     }
 
+    /* ---------- the ordinary web form ---------- */
+
+    .stage {
+      position: fixed;
+      inset: 0;
+      z-index: 1;
+      display: grid;
+      place-items: center;
+      padding: 24px;
+    }
+
+    .demo-card {
+      width: min(360px, calc(100vw - 48px));
+      padding: 26px 26px 24px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: var(--card);
+      box-shadow: 0 12px 34px var(--shadow);
+      transition: background .35s ease, border-color .35s ease;
+    }
+
+    .demo-card h2 {
+      margin: 0 0 4px;
+      font-size: 18px;
+      font-weight: 600;
+      letter-spacing: -.01em;
+    }
+
+    .demo-card .lede {
+      margin: 0 0 18px;
+      font-size: 13px;
+      line-height: 1.5;
+      color: var(--muted);
+    }
+
+    .field { margin-bottom: 14px; }
+
+    .field label {
+      display: block;
+      margin-bottom: 5px;
+      font-size: 13px;
+      font-weight: 500;
+    }
+
+    .field input {
+      width: 100%;
+      padding: 8px 10px;
+      font: 400 14px/1.4 inherit;
+      color: var(--text);
+      background: var(--input-bg);
+      border: 1px solid var(--input-line);
+      border-radius: 6px;
+      outline: none;
+      transition: border-color .15s ease, box-shadow .15s ease;
+    }
+
+    .field input:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent);
+    }
+
+    /* the whole point: a completely normal submit button */
+    .submit-btn {
+      display: inline-block;
+      margin-top: 4px;
+      padding: 9px 20px;
+      font: 500 14px/1.2 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+      color: #fff;
+      background: var(--accent);
+      border: 1px solid transparent;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: background-color .3s ease, color .3s ease, opacity .3s ease;
+    }
+
+    .submit-btn:hover:not(:disabled) { background: var(--accent-hover); }
+    .submit-btn:active:not(:disabled) { background: var(--accent-down); }
+
+    .submit-btn:focus-visible {
+      outline: 2px solid var(--accent);
+      outline-offset: 2px;
+    }
+
+    .submit-btn:disabled {
+      background: var(--btn-dis-bg);
+      color: var(--btn-dis-fg);
+      cursor: not-allowed;
+    }
+
+    .submit-btn.revived { animation: revive-pulse .7s ease-out; }
+
+    @keyframes revive-pulse {
+      0%   { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 55%, transparent); }
+      100% { box-shadow: 0 0 0 16px transparent; }
+    }
+
     /* ---------- control panel ---------- */
 
     .panel {
       position: fixed;
-      z-index: 3;
+      z-index: 10;
       top: clamp(14px, 2.4vw, 28px);
       right: clamp(14px, 2.4vw, 28px);
       width: 264px;
@@ -148,13 +262,14 @@
       width: 6px;
       height: 6px;
       border-radius: 50%;
-      background: var(--accent);
+      background: var(--lab);
       transition: background .2s ease;
     }
 
     .phase[data-phase="impact"] i { background: #ef4444; }
     .phase[data-phase="wet"] i,
-    .phase[data-phase="drying"] i { background: #b91c1c; }
+    .phase[data-phase="drying"] i,
+    .phase[data-phase="dried"] i { background: #b91c1c; }
     .phase[data-phase="flaking"] i { background: #d97706; }
     .phase[data-phase="restoring"] i { background: #22c55e; }
     .phase[data-phase="disabled"] i { background: #6b7280; }
@@ -183,7 +298,7 @@
       transition: background .18s ease, color .18s ease;
     }
 
-    .seg button.on { background: var(--accent); color: #fff; }
+    .seg button.on { background: var(--lab); color: #fff; }
 
     .panel section { margin-bottom: 12px; }
 
@@ -233,7 +348,7 @@
       width: 13px;
       height: 13px;
       border-radius: 50%;
-      background: var(--accent);
+      background: var(--lab);
       border: 2px solid var(--panel);
       margin-top: -5px;
       box-shadow: 0 1px 4px rgba(0, 0, 0, .35);
@@ -249,11 +364,11 @@
       width: 9px;
       height: 9px;
       border-radius: 50%;
-      background: var(--accent);
+      background: var(--lab);
       border: 2px solid var(--panel);
     }
 
-    input[type="range"]:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+    input[type="range"]:focus-visible { outline: 2px solid var(--lab); outline-offset: 2px; border-radius: 4px; }
     input[type="range"]:disabled { opacity: .35; cursor: default; }
 
     .check {
@@ -266,7 +381,7 @@
       user-select: none;
     }
 
-    .check input { accent-color: var(--accent); width: 14px; height: 14px; margin: 0; }
+    .check input { accent-color: var(--lab); width: 14px; height: 14px; margin: 0; }
 
     .actions {
       display: grid;
@@ -288,8 +403,8 @@
     .actions button:active { transform: translateY(1px); }
 
     .primary {
-      border: 1px solid var(--accent-strong);
-      background: var(--accent);
+      border: 1px solid #4f46e5;
+      background: var(--lab);
       color: #fff;
     }
 
@@ -312,6 +427,7 @@
     .fallback {
       position: fixed;
       inset: 0;
+      z-index: 20;
       display: none;
       place-items: center;
       padding: 24px;
@@ -325,36 +441,55 @@
     @media (max-width: 760px) {
       .masthead { max-width: calc(100vw - 36px); }
       .subtitle { display: none; }
+      .stage { padding-bottom: 46svh; }
       .panel {
         top: auto;
         left: 12px;
         right: 12px;
         bottom: 12px;
         width: auto;
-        max-height: 52svh;
+        max-height: 42svh;
       }
     }
 
     @media (prefers-reduced-motion: reduce) {
       .subtitle::after {
-        content: " Reduced-motion mode: submitting skips straight to the spent state.";
+        content: " Reduced-motion mode: submitting skips straight to the dried state.";
       }
+      .submit-btn.revived { animation: none; }
     }
   </style>
 </head>
 <body>
-  <canvas id="gl" aria-label="A web form whose submit button erupts in impact blood spatter when clicked, then dries, flakes away, and can be re-enabled"></canvas>
-
   <header class="masthead">
     <p class="kicker">Procedural WebGL study</p>
     <h1>Blood Splat Submit</h1>
     <p class="subtitle">
-      An ordinary web form with an unfortunate submit handler. Click the button and it
-      bursts into medium-velocity impact spatter — a scalloped parent stain, radiating
-      spines, satellite droplets, mist — then dries, flakes off the page, and stays
-      disabled until you bring it back. Every dial on the right is live.
+      An ordinary web form with an unfortunate submit handler. The button is a plain
+      HTML <code>&lt;button&gt;</code>; the blood is a WebGL overlay. Click Submit and
+      it takes a medium-velocity impact — scalloped parent stain, radiating spines,
+      satellite droplets, mist — then dries, flakes off the page, and stays disabled
+      until you bring it back. Every dial on the right is live.
     </p>
   </header>
+
+  <main class="stage">
+    <form class="demo-card" id="demoForm" novalidate>
+      <h2>Contact us</h2>
+      <p class="lede">We usually reply within two business days.</p>
+      <div class="field">
+        <label for="f-name">Name</label>
+        <input id="f-name" type="text" autocomplete="off" placeholder="Ada Lovelace" />
+      </div>
+      <div class="field">
+        <label for="f-email">Email</label>
+        <input id="f-email" type="email" autocomplete="off" placeholder="ada@example.com" />
+      </div>
+      <button class="submit-btn" id="submit" type="submit">Submit</button>
+    </form>
+  </main>
+
+  <canvas id="gl" aria-hidden="true"></canvas>
 
   <aside class="panel" aria-label="Splatter lab controls">
     <div class="panel-head">
@@ -401,8 +536,8 @@
       <button id="reset" class="ghost" type="button">Reset</button>
     </div>
 
-    <p class="hint">Tip: click the Submit button on the card. “Re-enable” fast-forwards
-      the drying and flaking so the button comes back to life — quickly, but not instantly.</p>
+    <p class="hint">Tip: click Submit on the card. “Re-enable” fast-forwards the drying
+      and flaking so the button comes back to life — quickly, but not instantly.</p>
   </aside>
 
   <div id="fallback" class="fallback">
@@ -417,6 +552,8 @@
     const fallback = document.getElementById("fallback");
     const phaseEl = document.getElementById("phase");
     const phaseText = document.getElementById("phaseText");
+    const submitBtn = document.getElementById("submit");
+    const demoForm = document.getElementById("demoForm");
     const reenableButton = document.getElementById("reenable");
     const resetButton = document.getElementById("reset");
     const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -450,11 +587,11 @@
     const pinRecover = qs.has("recover") ? num("recover", 0) : null;
     const pinned = pinAge !== null || pinRecover !== null || autoSplat;
 
-    /* ---------------- webgl setup ---------------- */
+    /* ---------------- webgl setup: transparent spatter overlay ---------------- */
 
     const gl = canvas.getContext("webgl", {
-      alpha: false, antialias: false, depth: false, stencil: false,
-      powerPreference: "high-performance"
+      alpha: true, premultipliedAlpha: true, antialias: false,
+      depth: false, stencil: false, powerPreference: "high-performance"
     });
 
     if (!gl) { fallback.style.display = "grid"; return; }
@@ -465,49 +602,36 @@
     `;
 
     // Forensic model (bloodstain pattern analysis):
-    //  - a spatter stain = parent pool + spines + satellite stains (+ mist at high velocity)
+    //  - a spatter stain = irregular parent stain + spines + satellite stains
+    //    (+ aerosolised mist at higher velocity)
     //  - spines are tapered streaks whose points aim in the direction of travel
-    //  - satellites grow more elliptical / spinelike the further they land from the origin
-    //  - droplet size is inversely related to impact velocity; fast impacts aerosolise
-    //    blood into a fine mist near the origin
+    //  - satellites grow more elliptical / smeared the further they land
+    //  - droplet size is inversely related to impact velocity
     //  - on a vertical surface, gravity drags rivulets down from the heaviest pooling
+    // All geometry is expressed in units of uR0 (the pattern radius), so the
+    // pattern is scale-invariant and sized off the real DOM button underneath.
     const fragmentSource = `
       precision highp float;
 
-      uniform vec2 uResolution;
-      uniform float uTime;     // ambient clock, keeps running
-      uniform float uAge;      // seconds since impact, -1 = idle
-      uniform float uSeed;     // per-click pattern seed
-      uniform float uHover;    // 0..1 hover lift
-      uniform float uPress;    // 0..1 pressed / disabled blend
-      uniform float uRevive;   // 1 at revival, decays to 0
-      uniform float uTheme;    // 0 dark, 1 light
-      uniform float uAmount;   // 0..2 quantity of blood
-      uniform float uVel;      // 0.3..2.5 impact velocity
-      uniform float uSpread;   // 0.5..1.8 overall radius
-      uniform float uDrips;    // 0..2 rivulet amount
-      uniform float uMist;     // 0..2 mist amount
-      uniform float uFlake;    // 0..2 flake-off character
-      uniform float uBurst;    // 0..1 eased flight progress
-      uniform float uDryF;     // 0..1 wet to dried
-      uniform float uEr;       // 0..1 flake-off progress
-      uniform float uDripG;    // 0..1 rivulet growth
-      uniform vec2 uImpact;    // q-space impact point
-      uniform float uShiftY;   // lifts the scene clear of the mobile sheet
+      uniform vec2 uResolution; // device px
+      uniform float uTime;      // ambient clock
+      uniform float uAge;       // seconds since impact, -1 = idle
+      uniform float uSeed;      // per-click pattern seed
+      uniform vec2 uImpact;     // impact point, device px, y-up
+      uniform float uR0;        // pattern radius / viewport height
+      uniform float uTheme;     // 0 dark, 1 light
+      uniform float uAmount;    // 0..2 quantity of blood
+      uniform float uVel;       // 0.3..2.5 impact velocity
+      uniform float uDrips;     // 0..2 rivulet amount
+      uniform float uMist;      // 0..2 mist amount
+      uniform float uFlake;     // 0..2 flake-off character
+      uniform float uBurst;     // 0..1 eased flight progress
+      uniform float uDryF;      // 0..1 wet to dried
+      uniform float uEr;        // 0..1 flake-off progress
+      uniform float uDripG;     // 0..1 rivulet growth
 
       #define PI 3.141592653589793
       #define TAU 6.283185307179586
-
-      // form layout (q-space, y up, one unit = half the viewport height)
-      const vec2 CARD_C = vec2(0.0, -0.02);
-      const vec2 CARD_H = vec2(0.27, 0.155);
-      const float CARD_R = 0.018;
-      const vec2 IN_C = vec2(0.0, -0.028);
-      const vec2 IN_H = vec2(0.245, 0.0275);
-      const float IN_R = 0.008;
-      const vec2 BTN_C = vec2(0.0, -0.118);
-      const vec2 BTN_H = vec2(0.245, 0.0305);
-      const float BTN_R = 0.010;
 
       float hash21(vec2 p) {
         p = fract(p * vec2(123.34, 456.21));
@@ -536,192 +660,59 @@
         return v;
       }
 
-      float sdRoundBox(vec2 p, vec2 b, float r) {
-        vec2 q = abs(p) - b + r;
-        return min(max(q.x, q.y), 0.0) + length(max(q, 0.0)) - r;
-      }
-
       float sdSeg(vec2 p, vec2 a, vec2 b) {
         vec2 pa = p - a, ba = b - a;
         float h = clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0);
         return length(pa - ba * h);
       }
 
-      // filled rounded bar, anti-aliased
-      float rbar(vec2 p, vec2 c, vec2 h, float r) {
-        return smoothstep(0.0016, -0.0016, sdRoundBox(p - c, h, r));
-      }
-
-      // ---- the label: SUBMIT, drawn from capsules ----------------------
-      float bar(vec2 l, float x0, float x1, float y, float th) {
-        return smoothstep(th, th * 0.40, sdSeg(l, vec2(x0, y), vec2(x1, y)));
-      }
-      float stem(vec2 l, float x, float y0, float y1, float th) {
-        return smoothstep(th, th * 0.40, sdSeg(l, vec2(x, y0), vec2(x, y1)));
-      }
-
-      float glyph(int ch, vec2 l) {
-        float th = 0.115;
-        float m = 0.0;
-        if (ch == 0) {            // S
-          m += bar(l, 0.16, 0.84, 0.85, th);
-          m += stem(l, 0.19, 0.50, 0.82, th);
-          m += bar(l, 0.16, 0.84, 0.50, th);
-          m += stem(l, 0.81, 0.18, 0.50, th);
-          m += bar(l, 0.16, 0.84, 0.15, th);
-        } else if (ch == 1) {     // U
-          m += stem(l, 0.17, 0.16, 0.87, th);
-          m += stem(l, 0.83, 0.16, 0.87, th);
-          m += bar(l, 0.20, 0.80, 0.18, th);
-        } else if (ch == 2) {     // B
-          m += stem(l, 0.19, 0.14, 0.86, th);
-          m += bar(l, 0.19, 0.80, 0.86, th);
-          m += bar(l, 0.19, 0.76, 0.50, th);
-          m += bar(l, 0.19, 0.82, 0.14, th);
-          m += stem(l, 0.81, 0.52, 0.84, th);
-          m += stem(l, 0.83, 0.16, 0.48, th);
-        } else if (ch == 3) {     // M
-          m += stem(l, 0.13, 0.14, 0.86, th);
-          m += stem(l, 0.87, 0.14, 0.86, th);
-          m += smoothstep(th, th * 0.40, sdSeg(l, vec2(0.15, 0.84), vec2(0.50, 0.44)));
-          m += smoothstep(th, th * 0.40, sdSeg(l, vec2(0.85, 0.84), vec2(0.50, 0.44)));
-        } else if (ch == 4) {     // I
-          m += stem(l, 0.50, 0.14, 0.86, th);
-        } else {                  // T
-          m += bar(l, 0.13, 0.87, 0.84, th);
-          m += stem(l, 0.50, 0.16, 0.82, th);
-        }
-        return min(m, 1.0);
-      }
-
-      float labelMask(vec2 lq) {
-        float cw = 0.042;
-        float sp = 0.0126;
-        float totalW = 6.0 * cw + 5.0 * sp;
-        float x0 = -totalW * 0.5 + cw * 0.5;
-        float m = 0.0;
-        for (int i = 0; i < 6; i++) {
-          float cx = x0 + float(i) * (cw + sp);
-          vec2 lp = vec2(lq.x - cx, lq.y) / cw + 0.5;
-          if (lp.x > 0.0 && lp.x < 1.0 && lp.y > 0.0 && lp.y < 1.0) {
-            m = max(m, glyph(i, lp));
-          }
-        }
-        return m;
-      }
-
       void main() {
-        vec2 frag = gl_FragCoord.xy;
-        vec2 p = (2.0 * frag - uResolution) / uResolution.y;
-        // shrink the scene on narrow viewports so the card always fits
-        float sc = clamp((uResolution.x / uResolution.y) / 0.92, 0.5, 1.0);
-        vec2 q = p / sc - vec2(0.0, uShiftY);
-        float t = uTime;
+        if (uAge < 0.0 || uR0 <= 0.0) { gl_FragColor = vec4(0.0); return; }
 
-        bool alive = uAge >= 0.0;
+        vec2 nb = ((gl_FragCoord.xy - uImpact) / uResolution.y) / uR0;
+        float r = length(nb);
+        if (r > 6.5) { gl_FragColor = vec4(0.0); return; }
+
+        float aa = 1.5 / (uResolution.y * uR0); // ~1.5 device px in local units
         float velN = clamp((uVel - 0.3) / 2.2, 0.0, 1.0);
-        float R0 = 0.23 * uSpread;
+        float amtN = clamp(uAmount * 0.5, 0.0, 1.0);
 
-        /* ---------------- page background ---------------- */
-        vec3 bgTop = mix(vec3(0.056, 0.064, 0.078), vec3(0.965, 0.969, 0.977), uTheme);
-        vec3 bgBot = mix(vec3(0.038, 0.042, 0.053), vec3(0.925, 0.932, 0.945), uTheme);
-        vec3 col = mix(bgBot, bgTop, smoothstep(-1.1, 1.1, q.y));
-        col += mix(0.012, -0.010, uTheme) * (fbm(q * 3.0 + 11.0) - 0.5) * 2.0;
+        float m = 0.0;     // coverage
+        float thick = 0.0; // pooling thickness
 
-        /* ---------------- the form card ---------------- */
-        float sdCard = sdRoundBox(q - CARD_C, CARD_H, CARD_R);
-        float sdCardOff = sdRoundBox(q - CARD_C - vec2(0.0, -0.016),
-                                     CARD_H + vec2(0.004, 0.002), CARD_R + 0.006);
-        float cardSh = exp(-max(sdCardOff, 0.0) * 26.0) * smoothstep(0.001, 0.007, sdCardOff);
-        col *= 1.0 - cardSh * mix(0.50, 0.13, uTheme);
+        // dominant cast-off fan direction for this click
+        float domAng = hash21(vec2(uSeed, 3.3)) * TAU;
 
-        float cardIn = smoothstep(0.0018, -0.0018, sdCard);
-        vec3 cardCol = mix(mix(vec3(0.078, 0.089, 0.118), vec3(0.095, 0.107, 0.138),
-                               smoothstep(CARD_C.y - CARD_H.y, CARD_C.y + CARD_H.y, q.y)),
-                           mix(vec3(0.984, 0.987, 0.992), vec3(1.0),
-                               smoothstep(CARD_C.y - CARD_H.y, CARD_C.y + CARD_H.y, q.y)),
-                           uTheme);
-        col = mix(col, cardCol, cardIn);
-        col = mix(col, mix(vec3(0.300, 0.320, 0.380), vec3(0.855, 0.867, 0.886), uTheme),
-                  exp(-abs(sdCard) * 480.0) * 0.85);
+        // faster impacts atomise: smaller central pooling, longer reach
+        float poolGrow = mix(0.30, 1.0, pow(uBurst, 0.4));
+        float Rp = 0.60 * poolGrow * mix(1.15, 0.55, velN) * mix(0.72, 1.18, amtN);
 
-        // card content: title, subtitle, field label, input + placeholder
-        vec3 inkCol  = mix(vec3(0.90, 0.91, 0.94), vec3(0.11, 0.125, 0.16), uTheme);
-        vec3 muteCol = mix(vec3(0.44, 0.47, 0.54), vec3(0.55, 0.58, 0.64), uTheme);
-        col = mix(col, inkCol,  rbar(q, vec2(-0.160, 0.097), vec2(0.085, 0.0115), 0.005) * cardIn * 0.95);
-        col = mix(col, muteCol, rbar(q, vec2(-0.110, 0.066), vec2(0.135, 0.0060), 0.003) * cardIn * 0.90);
-        col = mix(col, muteCol, rbar(q, vec2(-0.200, 0.022), vec2(0.045, 0.0055), 0.0025) * cardIn * 0.90);
+        if (r < 4.6 && uEr < 1.0) {
 
-        float sdIn = sdRoundBox(q - IN_C, IN_H, IN_R);
-        vec3 inFill = mix(vec3(0.055, 0.067, 0.090), vec3(0.965, 0.969, 0.977), uTheme);
-        col = mix(col, inFill, smoothstep(0.0015, -0.0015, sdIn) * cardIn);
-        col = mix(col, mix(vec3(0.165, 0.188, 0.235), vec3(0.815, 0.835, 0.862), uTheme),
-                  exp(-abs(sdIn) * 520.0) * 0.9 * cardIn);
-        vec3 accent = mix(vec3(0.478, 0.486, 0.961), vec3(0.388, 0.400, 0.945), uTheme);
-        col += accent * exp(-abs(sdIn + 0.004) * 150.0) * 0.10 * cardIn;
-        col = mix(col, mix(vec3(0.365, 0.392, 0.447), vec3(0.647, 0.675, 0.725), uTheme),
-                  rbar(q, vec2(-0.178, -0.028), vec2(0.055, 0.0055), 0.0025) * cardIn);
-
-        /* ---------------- the submit button ---------------- */
-        vec2 bq = q - BTN_C - vec2(0.0, -uPress * 0.004);
-        float sdB = sdRoundBox(bq, BTN_H, BTN_R);
-        float inB = smoothstep(0.0015, -0.0015, sdB);
-
-        // shadow: raised and soft while enabled, pressed flat when disabled
-        float lift = (1.0 - uPress) * (1.0 + uHover * 0.35);
-        float sdBS = sdRoundBox(bq - vec2(0.0, -0.010 * lift - 0.004),
-                                BTN_H + vec2(0.002, 0.004), BTN_R + 0.006);
-        float bSh = exp(-max(sdBS, 0.0) * mix(170.0, 64.0, uTheme))
-                    * smoothstep(0.0005, 0.004, sdBS);
-        col *= 1.0 - bSh * mix(0.55, 0.20, uTheme) * lift;
-
-        float gT = smoothstep(-BTN_H.y, BTN_H.y, bq.y);
-        vec3 accTop = mix(vec3(0.510, 0.518, 0.965), vec3(0.435, 0.447, 0.949), uTheme);
-        vec3 accBot = mix(vec3(0.373, 0.384, 0.925), vec3(0.310, 0.322, 0.886), uTheme);
-        vec3 disTop = mix(vec3(0.176, 0.192, 0.239), vec3(0.905, 0.910, 0.925), uTheme);
-        vec3 disBot = mix(vec3(0.141, 0.153, 0.192), vec3(0.871, 0.878, 0.898), uTheme);
-        vec3 face = mix(mix(accBot, accTop, gT), mix(disBot, disTop, gT), uPress);
-        face *= 1.0 + uHover * 0.07 * (1.0 - uPress);
-        face += vec3(1.0) * smoothstep(BTN_H.y * 0.2, BTN_H.y * 0.95, bq.y) * 0.05 * (1.0 - uPress);
-        col = mix(col, face, inB);
-        col = mix(col, accent * 0.55, exp(-abs(sdB) * 520.0) * 0.45 * (1.0 - uPress * 0.6));
-
-        // label, drawn before the blood so the blood can bury it
-        float lab = labelMask(bq) * inB;
-        vec3 txtEn  = mix(vec3(0.95, 0.96, 1.0), vec3(1.0), uTheme);
-        vec3 txtDis = mix(vec3(0.337, 0.365, 0.416), vec3(0.604, 0.631, 0.678), uTheme);
-        col = mix(col, mix(txtEn, txtDis, uPress), lab * 0.96);
-
-        /* ---------------- the impact spatter ---------------- */
-        vec2 qb = q - uImpact;
-        float rB = length(qb);
-        float reach = R0 * 3.8 + 0.35;
-        float bloodM = 0.0;
-
-        if (alive && uEr < 1.0 && rB < reach) {
-          float m = 0.0;
-          float thick = 0.0;
-
-          // parent pool: scalloped rim, spreads almost instantly
-          float poolGrow = mix(0.35, 1.0, pow(uBurst, 0.4));
-          float Rp = R0 * 0.62 * poolGrow;
-          vec2 ap = qb / max(rB, 1e-4);
-          float rimN = noise(ap * 2.2 + uSeed * 0.31) * 0.40
-                     + noise(ap * 5.0 + uSeed * 0.77) * 0.14;
-          float edge = Rp * (0.70 + rimN);
-          float pool = smoothstep(0.004, -0.009, rB - edge);
-          m += pool;
-          thick += pool;
-
-          // per-click dominant cast-off fan direction
-          float domAng = hash21(vec2(uSeed, 3.3)) * TAU;
-          float effSpines = mix(5.0, 26.0, clamp(uAmount * 0.5, 0.0, 1.0));
+          // parent stain: overlapping lobes with scalloped, noise-driven rims
+          for (int i = 0; i < 3; i++) {
+            float fi = float(i);
+            float h1 = hash21(vec2(fi, 5.1 + uSeed));
+            float h2 = hash21(vec2(fi, 6.7 + uSeed * 1.3));
+            vec2 off = fi < 0.5 ? vec2(0.0)
+                     : vec2(cos(h2 * TAU), sin(h2 * TAU)) * Rp * (0.55 + 0.45 * h1);
+            float rr = (fi < 0.5 ? 1.0 : 0.38 + 0.30 * h1) * Rp;
+            vec2 lp = nb - off;
+            float lr = length(lp);
+            vec2 apx = lp / max(lr, 1e-4);
+            float rim = noise(apx * 2.3 + uSeed * 0.31 + fi * 7.7) * 0.45
+                      + noise(apx * 5.2 + uSeed * 0.77 + fi * 3.1) * 0.17;
+            float pool = smoothstep(aa * 2.0, -0.06, lr - rr * (0.60 + rim));
+            m += pool;
+            thick += pool * (fi < 0.5 ? 1.0 : 0.6);
+          }
 
           // spines: tapered streaks flung outward, tips pointing along travel
+          float effSpines = mix(6.0, 26.0, amtN) * mix(0.8, 1.2, velN);
           for (int i = 0; i < 26; i++) {
             float fi = float(i);
             float wgt = clamp(effSpines - fi, 0.0, 1.0);
-            if (wgt <= 0.0) continue;
+            if (wgt <= 0.0) break;
             float h1 = hash21(vec2(fi, 1.7 + uSeed));
             float h2 = hash21(vec2(fi, 9.3 + uSeed * 1.1));
             float h3 = hash21(vec2(fi, 17.1 + uSeed * 0.7));
@@ -730,30 +721,30 @@
             if (h4 > 0.62) ang = domAng + (h1 - 0.5) * 1.5;
             vec2 dir = vec2(cos(ang), sin(ang));
             // faster impact: longer, thinner spines
-            float len = R0 * (0.30 + 2.1 * pow(h2, 1.7)) * mix(0.45, 1.55, velN);
-            float wid = R0 * (0.011 + 0.020 * h3) * mix(1.9, 0.75, velN);
+            float len = (0.30 + 2.2 * pow(h2, 1.6)) * mix(0.45, 1.6, velN);
+            float wid = (0.013 + 0.022 * h3) * mix(1.9, 0.7, velN);
             float dl = h4 * 0.38;
             float pr = clamp((uBurst - dl * 0.55) / (1.0 - dl * 0.55), 0.0, 1.0);
             pr = 1.0 - (1.0 - pr) * (1.0 - pr);
             if (pr <= 0.0) continue;
-            vec2 root = dir * Rp * 0.30;
+            vec2 root = dir * Rp * 0.35;
             float L = len * pr;
-            float s = clamp(dot(qb - root, dir) / max(L, 1e-4), 0.0, 1.0);
-            float lat = length(qb - root - dir * s * L);
+            float s = clamp(dot(nb - root, dir) / max(L, 1e-4), 0.0, 1.0);
+            float lat = length(nb - root - dir * s * L);
             float wAt = wid * (1.0 - 0.78 * s);
-            float streak = smoothstep(wAt + 0.0035, max(wAt - 0.004, 0.0004), lat);
+            float streak = smoothstep(wAt + aa * 1.5, max(wAt - aa * 1.5, 0.0), lat);
             float tipR = wid * (1.35 + 0.9 * h3);
-            float tip = smoothstep(tipR, tipR * 0.55, length(qb - root - dir * L));
+            float tip = smoothstep(tipR + aa, tipR * 0.5, length(nb - root - dir * L));
             m += (streak * 0.9 + tip) * wgt;
-            thick += tip * wgt * 0.55;
+            thick += tip * wgt * 0.4;
           }
 
-          // satellites: droplets that broke away, elongating with distance
-          float effSats = mix(4.0, 22.0, clamp(uAmount * 0.5, 0.0, 1.0));
+          // satellites: droplets that broke away, smearing with distance
+          float effSats = mix(5.0, 22.0, amtN) * mix(0.75, 1.25, velN);
           for (int j = 0; j < 22; j++) {
             float fj = float(j);
             float wgt = clamp(effSats - fj, 0.0, 1.0);
-            if (wgt <= 0.0) continue;
+            if (wgt <= 0.0) break;
             float h1 = hash21(vec2(fj, 33.7 + uSeed * 0.9));
             float h2 = hash21(vec2(fj, 41.3 + uSeed * 1.2));
             float h3 = hash21(vec2(fj, 47.9 + uSeed * 0.8));
@@ -761,28 +752,28 @@
             float ang = h1 * TAU;
             if (h4 > 0.70) ang = domAng + (h1 - 0.5) * 1.9;
             vec2 dir = vec2(cos(ang), sin(ang));
-            float dist = R0 * (0.55 + 2.1 * pow(h2, 1.25)) * mix(0.5, 1.35, velN);
-            float size = R0 * (0.012 + 0.034 * pow(h3, 2.0)) * mix(1.5, 0.8, velN);
-            float stretch = 1.0 + 2.6 * velN * clamp(dist / (R0 * 1.4), 0.0, 1.5) * (0.4 + 0.6 * h4);
+            float dist = (0.55 + 2.3 * pow(h2, 1.25)) * mix(0.5, 1.45, velN);
+            float size = (0.020 + 0.052 * pow(h3, 1.8)) * mix(1.5, 0.75, velN);
+            float stretch = 1.0 + 2.8 * velN * clamp(dist / 1.4, 0.0, 1.6) * (0.4 + 0.6 * h4);
             float dl = 0.10 + h4 * 0.45;
             float pr = clamp((uBurst - dl * 0.55) / (1.0 - dl * 0.55), 0.0, 1.0);
             pr = 1.0 - (1.0 - pr) * (1.0 - pr);
             if (pr <= 0.0) continue;
             vec2 pos = dir * dist * pr;
-            vec2 lp = qb - pos;
+            vec2 lp = nb - pos;
             vec2 ax = vec2(dot(lp, dir) / stretch, dot(lp, vec2(-dir.y, dir.x)));
-            float blob = smoothstep(size + 0.0025, size * 0.55, length(ax));
-            float smear = smoothstep(size * 0.55 + 0.002, size * 0.30,
-                                     sdSeg(qb, pos - dir * size * stretch * 1.8, pos)) * 0.55;
+            float blob = smoothstep(size + aa * 1.5, size * 0.55, length(ax));
+            float smear = smoothstep(size * 0.55 + aa, size * 0.30,
+                                     sdSeg(nb, pos - dir * size * stretch * 1.9, pos)) * 0.55;
             m += (blob + smear) * wgt;
           }
 
           // mist: aerosolised micro-droplets hugging the origin at high velocity
-          float mistAmt = uMist * (0.10 + velN * velN * 1.7) * clamp(uAmount, 0.0, 1.5);
+          float mistAmt = uMist * (0.10 + velN * velN * 1.8) * clamp(uAmount, 0.0, 1.5);
           if (mistAmt > 0.01) {
-            float fall = exp(-rB / (R0 * (0.45 + 0.45 * velN)));
-            float d1 = smoothstep(0.78, 0.92, noise(qb * 150.0 + uSeed * 0.61));
-            float d2 = smoothstep(0.80, 0.94, noise(qb * 90.0 + uSeed * 0.37 + 31.0));
+            float fall = exp(-r / (0.5 + 0.5 * velN));
+            float d1 = smoothstep(0.78, 0.92, noise(nb * 34.0 + uSeed * 0.61));
+            float d2 = smoothstep(0.80, 0.94, noise(nb * 21.0 + uSeed * 0.37 + 31.0));
             m += (d1 * 0.8 + d2 * 0.5) * fall * mistAmt * min(uBurst * 3.0, 1.0) * 0.55;
           }
 
@@ -791,24 +782,24 @@
           for (int k = 0; k < 6; k++) {
             float fk = float(k);
             float wgt = clamp(effDrips - fk, 0.0, 1.0);
-            if (wgt <= 0.0) continue;
+            if (wgt <= 0.0) break;
             float h1 = hash21(vec2(fk, 61.7 + uSeed));
             float h2 = hash21(vec2(fk, 67.3 + uSeed * 1.1));
             float h3 = hash21(vec2(fk, 71.9 + uSeed * 0.6));
             float h4 = hash21(vec2(fk, 79.1 + uSeed * 1.3));
             float xk = (h1 * 2.0 - 1.0) * Rp * 1.15;
             float y0 = -Rp * (0.55 + 0.30 * h2);
-            float lenMax = (0.05 + 0.20 * h3) * (0.6 + 0.4 * uSpread);
-            float len = lenMax * uDripG;
-            if (len <= 0.002) continue;
-            float w = R0 * (0.010 + 0.009 * h4) * mix(1.2, 0.8, velN);
-            float yy = clamp(qb.y, y0 - len, y0);
-            float xwob = xk + sin(yy * 46.0 + fk * 1.7) * w * 0.5;
-            float d = length(qb - vec2(xwob, yy));
-            float wAt = w * (1.0 + 0.7 * smoothstep(y0, y0 - len, qb.y));
-            float run = smoothstep(wAt + 0.002, wAt * 0.5, d);
-            float bulb = smoothstep(w * 1.9, w * 0.9,
-                                    length(qb - vec2(xk + sin((y0 - len) * 46.0 + fk * 1.7) * w * 0.5, y0 - len)));
+            float len = (0.55 + 2.0 * h3) * uDripG;
+            if (len <= 0.02) continue;
+            float w = (0.020 + 0.018 * h4) * mix(1.25, 0.8, velN);
+            float yy = clamp(nb.y, y0 - len, y0);
+            float xwob = xk + sin(yy * 11.0 + fk * 1.7) * w * 0.6;
+            float d = length(nb - vec2(xwob, yy));
+            float wAt = w * (1.0 + 0.7 * smoothstep(y0, y0 - len, nb.y));
+            float run = smoothstep(wAt + aa * 1.5, wAt * 0.5, d);
+            float bulbY = y0 - len;
+            float bulb = smoothstep(w * 1.9 + aa, w * 0.9,
+                length(nb - vec2(xk + sin(bulbY * 11.0 + fk * 1.7) * w * 0.6, bulbY)));
             m += (run * 0.95 + bulb * 0.8) * wgt;
             thick += (run * 0.4 + bulb * 0.5) * wgt;
           }
@@ -817,82 +808,61 @@
 
           // flake-off: the noise field slides sideways so the crust crumbles away
           if (uEr > 0.0) {
-            float fl = fbm(qb * 90.0 + vec2(uEr * 1.2, uEr * 0.4) + uSeed * 3.0);
-            fl = mix(fl, fbm(qb * 190.0 - vec2(uEr * 2.1, uEr * 0.6) + uSeed * 1.7), 0.4);
+            float fl = fbm(nb * 21.0 + vec2(uEr * 1.2, uEr * 0.4) + uSeed * 3.0);
+            fl = mix(fl, fbm(nb * 44.0 - vec2(uEr * 2.1, uEr * 0.6) + uSeed * 1.7), 0.4);
             float contrast = mix(0.55, 1.35, clamp(uFlake * 0.5, 0.0, 1.0));
             float keep = smoothstep(uEr - 0.10 * contrast, uEr + 0.05, fl) * (1.0 - uEr);
             m *= keep;
             thick *= keep;
           }
-
-          bloodM = m;
-
-          if (m > 0.001) {
-            // wet arterial red drying to brown; thick pooling stays darker
-            vec3 WET = vec3(0.500, 0.026, 0.040);
-            vec3 WET_D = vec3(0.300, 0.012, 0.020);
-            vec3 DRY = vec3(0.270, 0.068, 0.046);
-            vec3 DRY_D = vec3(0.165, 0.042, 0.030);
-            float th2 = clamp(thick, 0.0, 1.5);
-            vec3 bcol = mix(mix(WET, WET_D, th2 * 0.6), mix(DRY, DRY_D, th2 * 0.7), uDryF);
-            bcol *= 0.82 + 0.36 * fbm(qb * 38.0 + uSeed);
-            // the dark theme runs through a filmic shoulder, so blood needs a lift there
-            bcol *= mix(1.30, 1.0, uTheme);
-            // darker crust rim once dried
-            float edgeBand = smoothstep(0.02, 0.15, m) * smoothstep(0.65, 0.30, m);
-            bcol *= 1.0 - edgeBand * uDryF * 0.35;
-            // glossy wet sheen, gone once dry
-            float sheen = pow(smoothstep(0.58, 0.92,
-                fbm(qb * 30.0 + vec2(t * 0.045, -t * 0.03) + uSeed * 0.13)), 2.0);
-            bcol += vec3(1.0, 0.82, 0.70) * sheen * (1.0 - uDryF) * (0.26 + 0.26 * clamp(thick, 0.0, 1.0));
-            col = mix(col, bcol, m * 0.97);
-          }
         }
 
-        /* ---------------- dried flecks blowing off ---------------- */
-        if (alive && uEr > 0.001) {
+        // wet arterial red drying to brown; thick pooling stays darker
+        vec3 WET = vec3(0.42, 0.020, 0.032);
+        vec3 WET_D = vec3(0.24, 0.010, 0.016);
+        vec3 DRY = vec3(0.30, 0.075, 0.050);
+        vec3 DRY_D = vec3(0.17, 0.045, 0.032);
+        float th2 = clamp(thick, 0.0, 1.5);
+        vec3 bcol = mix(mix(WET, WET_D, th2 * 0.6), mix(DRY, DRY_D, th2 * 0.7), uDryF);
+        bcol *= 0.82 + 0.36 * fbm(nb * 9.0 + uSeed);
+        bcol *= mix(1.22, 1.0, uTheme); // dark pages need a lift to read as red
+        // darker crust rim once dried
+        float edgeBand = smoothstep(0.02, 0.15, m) * smoothstep(0.65, 0.30, m);
+        bcol *= 1.0 - edgeBand * uDryF * 0.35;
+        // glossy wet sheen, gone once dry
+        float sheen = pow(smoothstep(0.58, 0.92,
+            fbm(nb * 7.0 + vec2(uTime * 0.045, -uTime * 0.03) + uSeed * 0.13)), 2.0);
+        bcol += vec3(1.0, 0.82, 0.70) * sheen * (1.0 - uDryF) * (0.22 + 0.26 * clamp(thick, 0.0, 1.0));
+
+        float aB = clamp(m, 0.0, 1.0) * 0.985;
+        vec4 outc = vec4(bcol, 1.0) * aB; // premultiplied
+
+        // dried flecks blowing off during the flake phase
+        if (uEr > 0.001) {
           float effFlecks = clamp(uFlake * 7.0, 0.0, 14.0);
+          vec3 fleckCol = vec3(0.27, 0.067, 0.046) * mix(1.22, 1.0, uTheme);
           for (int j = 0; j < 14; j++) {
             float fj = float(j);
             float wgt = clamp(effFlecks - fj, 0.0, 1.0);
-            if (wgt <= 0.0) continue;
+            if (wgt <= 0.0) break;
             float h0 = hash21(vec2(fj, 83.2 + uSeed));
             float birth = h0 * 0.72;
             float lt = (uEr - birth) / 0.28;
             if (lt <= 0.0 || lt >= 1.0) continue;
-            float aa = hash21(vec2(fj, 89.7 + uSeed)) * TAU;
-            float dd = R0 * (0.3 + hash21(vec2(fj, 97.1 + uSeed)) * 1.6);
-            vec2 start = vec2(cos(aa), sin(aa)) * dd;
-            float spd = 0.10 + hash21(vec2(fj, 103.3 + uSeed)) * 0.22;
-            vec2 pos = start + vec2(spd, 0.04 + hash21(vec2(fj, 107.8 + uSeed)) * 0.10) * (lt * lt * 2.2);
-            pos.x += sin(lt * 9.0 + fj * 2.4) * 0.02;
-            pos.y += sin(lt * 7.0 + fj) * 0.008;
-            float sz = 0.005 + hash21(vec2(fj, 113.1 + uSeed)) * 0.009;
-            float fa = sin(lt * PI);
-            col = mix(col, vec3(0.270, 0.067, 0.046),
-                      smoothstep(sz, sz * 0.4, length(qb - pos)) * fa * 0.9 * wgt);
+            float aFl = hash21(vec2(fj, 89.7 + uSeed)) * TAU;
+            float dd = 0.3 + hash21(vec2(fj, 97.1 + uSeed)) * 1.6;
+            vec2 start = vec2(cos(aFl), sin(aFl)) * dd;
+            float spd = 0.45 + hash21(vec2(fj, 103.3 + uSeed)) * 0.95;
+            vec2 pos = start + vec2(spd, 0.17 + hash21(vec2(fj, 107.8 + uSeed)) * 0.45) * (lt * lt * 2.2);
+            pos.x += sin(lt * 9.0 + fj * 2.4) * 0.09;
+            pos.y += sin(lt * 7.0 + fj) * 0.035;
+            float sz = 0.022 + hash21(vec2(fj, 113.1 + uSeed)) * 0.04;
+            float af = smoothstep(sz, sz * 0.4, length(nb - pos)) * sin(lt * PI) * 0.9 * wgt;
+            outc = vec4(fleckCol, 1.0) * af + outc * (1.0 - af);
           }
         }
 
-        /* ---------------- revival sheen sweep ---------------- */
-        if (uRevive > 0.001) {
-          float sw = mix(-BTN_H.x * 1.5, BTN_H.x * 1.5, 1.0 - uRevive);
-          float band = exp(-pow((q.x - BTN_C.x - sw) * 16.0, 2.0));
-          col += vec3(0.9, 0.95, 1.0) * band * inB * uRevive * 0.30;
-        }
-
-        /* ---------------- finish: vignette, grain, tone ---------------- */
-        float vig = smoothstep(1.5, 0.3, length(p * vec2(0.82, 1.0)));
-        col *= mix(0.86, 0.975, uTheme) + vig * mix(0.14, 0.025, uTheme);
-        col += (hash21(frag + fract(t) * 7.0) - 0.5) * mix(0.012, 0.006, uTheme);
-
-        vec3 mapped = col / (0.62 + col);
-        col = mix(mapped, clamp(col, 0.0, 1.0), uTheme);
-        col = pow(col, vec3(mix(0.92, 1.0, uTheme)));
-        // the filmic shoulder desaturates the button in dark mode; restore the brand hue
-        col = mix(col, vec3(0.388, 0.400, 0.945),
-                  inB * (1.0 - uPress) * (1.0 - uTheme) * (1.0 - bloodM) * 0.34);
-        gl_FragColor = vec4(col, 1.0);
+        gl_FragColor = outc;
       }
     `;
 
@@ -935,40 +905,10 @@
     gl.vertexAttribPointer(aPosition, 2, gl.FLOAT, false, 0, 0);
 
     const U = {};
-    for (const name of ["uResolution","uTime","uAge","uSeed","uHover","uPress","uRevive",
-                        "uTheme","uAmount","uVel","uSpread","uDrips","uMist","uFlake",
-                        "uBurst","uDryF","uEr","uDripG","uImpact","uShiftY"]) {
+    for (const name of ["uResolution","uTime","uAge","uSeed","uImpact","uR0","uTheme",
+                        "uAmount","uVel","uDrips","uMist","uFlake",
+                        "uBurst","uDryF","uEr","uDripG"]) {
       U[name] = gl.getUniformLocation(program, name);
-    }
-
-    /* ---------------- geometry mirrored from the shader ---------------- */
-
-    const BTN = { cx: 0.0, cy: -0.118, hx: 0.245, hy: 0.0305, r: 0.010 };
-
-    function sceneScale() {
-      const a = innerWidth / innerHeight;
-      return Math.min(1, Math.max(0.5, a / 0.92));
-    }
-
-    // on narrow screens the panel becomes a bottom sheet; lift the scene clear of it
-    function sceneShift() {
-      return sceneScale() < 0.78 ? 0.30 : 0.0;
-    }
-
-    function toQ(clientX, clientY) {
-      const w = innerWidth, h = innerHeight, sc = sceneScale();
-      return {
-        x: ((2 * clientX - w) / h) / sc,
-        y: ((h - 2 * clientY) / h) / sc - sceneShift()
-      };
-    }
-
-    function inButton(clientX, clientY) {
-      const q = toQ(clientX, clientY);
-      const dx = Math.abs(q.x - BTN.cx) - BTN.hx + BTN.r;
-      const dy = Math.abs(q.y - BTN.cy) - BTN.hy + BTN.r;
-      const ox = Math.max(dx, 0), oy = Math.max(dy, 0);
-      return Math.min(Math.max(dx, dy), 0) + Math.hypot(ox, oy) - BTN.r < 0.01;
     }
 
     /* ---------------- lifecycle state ---------------- */
@@ -977,10 +917,10 @@
     let ageV = -1;                // virtual seconds since impact
     let burst = 0, dryF = 0, er = 0, dripG = 0;
     let seed = 7.0;
-    const impact = { x: BTN.cx, y: BTN.cy };
+    // impact point stored relative to the button so it survives resize/reflow
+    const impactOff = { x: 0, y: 0 }; // in units of button height
     let recoverT = 0, erFrom = 0, dryFrom = 0, recoverDone = false;
-    let hover = 0, hoverT = 0, press = 0, pressT = 0, revive = 0;
-    let themeTarget = null;       // set at boot
+    let themeTarget = 0;
     let themeF = 0;
 
     const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
@@ -1001,33 +941,38 @@
       }
     }
 
+    // re-enable: greatly accelerated drying, then a rapid flake-off — quick, not instant
     function deriveRecover() {
-      dryF = Math.min(1, dryFrom + recoverT / 0.45);
-      const rp = clamp((recoverT - 0.12) / 1.30, 0, 1);
+      dryF = Math.min(1, dryFrom + recoverT / 0.35);
+      const rp = clamp((recoverT - 0.10) / 1.05, 0, 1);
       er = erFrom + (1 - erFrom) * (rp * rp * (3 - 2 * rp));
-      if (recoverT > 0.85) pressT = 0;
     }
 
-    function doSubmit(qx, qy) {
-      if (mode !== "idle") return;
-      mode = "down";
-      seed = pinned ? 7.0 : Math.random() * 100.0;
-      impact.x = clamp(qx, BTN.cx - BTN.hx * 0.85, BTN.cx + BTN.hx * 0.85);
-      impact.y = clamp(qy, BTN.cy - BTN.hy * 0.9, BTN.cy + BTN.hy * 0.9);
-      ageV = 0; burst = 0; dryF = 0; er = 0; dripG = 0;
-      pressT = 1; hoverT = 0; revive = 0;
-      if (reducedMotion) {
-        ageV = 60; burst = 1; dryF = 1; dripG = 1;
-        er = P.flake > 0.02 ? 1 : 0;
+    function doSubmit(clientX, clientY) {
+      if (mode !== "down") {
+        mode = "down";
+        seed = pinned ? 7.0 : Math.random() * 100.0;
+        const rect = submitBtn.getBoundingClientRect();
+        const bh = rect.height || 36;
+        const cx = rect.left + rect.width / 2;
+        const cy = rect.top + rect.height / 2;
+        impactOff.x = clamp((clientX - cx) / bh, -(rect.width / bh) * 0.45, (rect.width / bh) * 0.45);
+        impactOff.y = clamp((clientY - cy) / bh, -0.45, 0.45);
+        ageV = 0; burst = 0; dryF = 0; er = 0; dripG = 0;
+        submitBtn.disabled = true;
+        submitBtn.classList.remove("revived");
+        if (reducedMotion) {
+          ageV = 60; burst = 1; dryF = 1; dripG = 1;
+          er = P.flake > 0.02 ? 1 : 0;
+        }
+        syncControls();
       }
-      syncControls();
     }
 
     function startRecovery() {
       if (mode !== "down") return;
       mode = "recovering";
       recoverT = 0; erFrom = er; dryFrom = dryF; recoverDone = false;
-      hoverT = 0;
       if (reducedMotion) recoverT = 99;
       syncControls();
     }
@@ -1035,16 +980,19 @@
     function finishRecovery() {
       mode = "idle";
       ageV = -1; er = 0; dryF = 0; burst = 0; dripG = 0;
-      pressT = 0;
-      revive = 1;
       recoverDone = true;
+      submitBtn.disabled = false;
+      submitBtn.classList.add("revived");
+      setTimeout(() => submitBtn.classList.remove("revived"), 800);
       syncControls();
     }
 
     function fullReset() {
       mode = "idle";
       ageV = -1; burst = 0; dryF = 0; er = 0; dripG = 0;
-      pressT = 0; revive = 0; recoverDone = false;
+      recoverDone = false;
+      submitBtn.disabled = false;
+      submitBtn.classList.remove("revived");
       syncControls();
     }
 
@@ -1110,27 +1058,24 @@
 
     function syncControls() {
       reenableButton.disabled = mode !== "down";
-      resetButton.disabled = mode === "idle" && pressT === 0;
     }
 
     reenableButton.addEventListener("click", startRecovery);
     resetButton.addEventListener("click", fullReset);
     syncControls();
 
-    /* ---------------- pointer interaction ---------------- */
+    /* ---------------- the real submit button ---------------- */
 
-    canvas.addEventListener("pointermove", (e) => {
-      hoverT = (mode === "idle" && inButton(e.clientX, e.clientY)) ? 1 : 0;
-      canvas.style.cursor = hoverT ? "pointer" : "default";
-    }, { passive: true });
+    demoForm.addEventListener("submit", (e) => e.preventDefault());
 
-    canvas.addEventListener("pointerleave", () => { hoverT = 0; }, { passive: true });
-
-    canvas.addEventListener("pointerdown", (e) => {
-      if (mode !== "idle" || !inButton(e.clientX, e.clientY)) return;
-      const q = toQ(e.clientX, e.clientY);
-      doSubmit(q.x, q.y);
-      canvas.style.cursor = "default";
+    submitBtn.addEventListener("click", (e) => {
+      if (mode !== "idle") return;
+      const rect = submitBtn.getBoundingClientRect();
+      // keyboard activation reports (0,0); use the button centre instead
+      const fromKeyboard = e.clientX === 0 && e.clientY === 0;
+      const cx = fromKeyboard ? rect.left + rect.width / 2 : e.clientX;
+      const cy = fromKeyboard ? rect.top + rect.height / 2 : e.clientY;
+      doSubmit(cx, cy);
     });
 
     /* ---------------- resize + frame loop ---------------- */
@@ -1144,6 +1089,7 @@
         canvas.height = height;
         gl.viewport(0, 0, width, height);
       }
+      return dpr;
     }
     addEventListener("resize", resize, { passive: true });
     resize();
@@ -1158,20 +1104,14 @@
       if (mode === "down") {
         ageV = pinAge !== null ? pinAge : ageV + dt;
         deriveDown();
-        if (!pinned && P.auto && ageV >= P.autoDelay) startRecovery();
+        if (pinAge === null && P.auto && ageV >= P.autoDelay) startRecovery();
       } else if (mode === "recovering") {
         recoverT = pinRecover !== null ? pinRecover : recoverT + dt;
         deriveRecover();
-        if (recoverT >= 1.65 && !recoverDone) finishRecovery();
-        if (pinRecover !== null && recoverDone) { revive = 0.8; }
+        if (recoverT >= 1.35 && !recoverDone && pinRecover === null) finishRecovery();
       }
 
-      hover += (hoverT - hover) * Math.min(1, dt * 10);
-      press += (pressT - press) * Math.min(1, dt * 7);
       themeF += (themeTarget - themeF) * Math.min(1, dt * 6);
-      if (mode !== "idle" || pinRecover === null) {
-        revive = Math.max(0, revive - dt / 0.7);
-      }
 
       const phase = phaseName();
       if (phase !== lastPhase) {
@@ -1180,17 +1120,25 @@
         phaseEl.dataset.phase = phase;
       }
 
+      const dpr = resize();
+      // the spatter is anchored to the live DOM button, so it tracks reflow
+      const rect = submitBtn.getBoundingClientRect();
+      const bh = rect.height || 36;
+      const ix = (rect.left + rect.width / 2 + impactOff.x * bh) * dpr;
+      const iy = canvas.height - (rect.top + rect.height / 2 + impactOff.y * bh) * dpr;
+      const r0 = (bh * 2.4 * P.spread * dpr) / canvas.height;
+
+      gl.clearColor(0, 0, 0, 0);
+      gl.clear(gl.COLOR_BUFFER_BIT);
       gl.uniform2f(U.uResolution, canvas.width, canvas.height);
       gl.uniform1f(U.uTime, now / 1000);
       gl.uniform1f(U.uAge, ageV);
       gl.uniform1f(U.uSeed, seed);
-      gl.uniform1f(U.uHover, hover);
-      gl.uniform1f(U.uPress, press);
-      gl.uniform1f(U.uRevive, revive);
+      gl.uniform2f(U.uImpact, ix, iy);
+      gl.uniform1f(U.uR0, r0);
       gl.uniform1f(U.uTheme, themeF);
       gl.uniform1f(U.uAmount, P.amount);
       gl.uniform1f(U.uVel, P.velocity);
-      gl.uniform1f(U.uSpread, P.spread);
       gl.uniform1f(U.uDrips, P.drips);
       gl.uniform1f(U.uMist, P.mist);
       gl.uniform1f(U.uFlake, P.flake);
@@ -1198,8 +1146,6 @@
       gl.uniform1f(U.uDryF, dryF);
       gl.uniform1f(U.uEr, er);
       gl.uniform1f(U.uDripG, dripG);
-      gl.uniform2f(U.uImpact, impact.x, impact.y);
-      gl.uniform1f(U.uShiftY, sceneShift());
       gl.drawArrays(gl.TRIANGLES, 0, 6);
 
       requestAnimationFrame(frame);
@@ -1211,7 +1157,8 @@
 
     if (autoSplat || pinAge !== null || pinRecover !== null) {
       setTimeout(() => {
-        doSubmit(BTN.cx + 0.09, BTN.cy + 0.008);
+        const rect = submitBtn.getBoundingClientRect();
+        doSubmit(rect.left + rect.width * 0.62, rect.top + rect.height * 0.55);
         if (pinRecover !== null) {
           ageV = 3.2;
           deriveDown();
@@ -1222,7 +1169,7 @@
 
     window.__demo = {
       P, doSubmit, startRecovery, fullReset,
-      state: () => ({ mode, ageV, burst, dryF, er, dripG, press, revive })
+      state: () => ({ mode, ageV, burst, dryF, er, dripG, recoverT })
     };
   })();
   </script>
