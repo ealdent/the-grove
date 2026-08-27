@@ -66,7 +66,9 @@
 
     body { min-height: 100svh; overflow: hidden; }
 
-    /* ---------- blood overlay: pure spatter, transparent elsewhere ---------- */
+    /* ---------- blood overlay: pure spatter, transparent elsewhere.
+         The shader cuts a hole matching the button, so all spatter
+         renders behind it and the real button stays on top. ---------- */
 
     canvas#gl {
       position: fixed;
@@ -174,8 +176,13 @@
       box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent);
     }
 
-    /* the whole point: a completely normal submit button */
+    /* the whole point: a completely normal submit button.
+       It sits above the spatter canvas via the shader's cut-out; when hit,
+       JS drives the custom properties below so the face gets coated in
+       blood that drains off downward, leaving a thinning residue film. */
     .submit-btn {
+      position: relative;
+      overflow: hidden;
       display: inline-block;
       margin-top: 4px;
       padding: 9px 20px;
@@ -186,6 +193,28 @@
       border-radius: 6px;
       cursor: pointer;
       transition: background-color .3s ease, color .3s ease, opacity .3s ease;
+    }
+
+    .submit-btn::before,
+    .submit-btn::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      border-radius: inherit;
+    }
+
+    /* thin residue film left behind after the sheet drains; dries and thins */
+    .submit-btn::before {
+      background: rgb(var(--res-col, 152 10 18) / 0.82);
+      opacity: var(--res-a, 0);
+    }
+
+    /* fresh blood sheet coating the face; slides down and off as it drains */
+    .submit-btn::after {
+      background: linear-gradient(180deg, rgba(158, 12, 18, .86), rgba(96, 3, 8, .95));
+      opacity: var(--sheet-a, 0);
+      transform: translateY(calc(var(--sheet-y, 0) * 115%));
     }
 
     .submit-btn:hover:not(:disabled) { background: var(--accent-hover); }
@@ -466,10 +495,10 @@
     <h1>Blood Splat Submit</h1>
     <p class="subtitle">
       An ordinary web form with an unfortunate submit handler. The button is a plain
-      HTML <code>&lt;button&gt;</code>; the blood is a WebGL overlay. Click Submit and
-      it takes a medium-velocity impact — scalloped parent stain, radiating spines,
-      satellite droplets, mist — then dries, flakes off the page, and stays disabled
-      until you bring it back. Every dial on the right is live.
+      HTML <code>&lt;button&gt;</code>; the blood is a WebGL overlay rendered behind it.
+      Click Submit and it takes a hit like a bug on a windshield — blood squeezes out
+      around the button, spines and droplets fly, the face gets coated and drains dry —
+      then the whole stain flakes away to dust. Every dial on the right is live.
     </p>
   </header>
 
@@ -513,7 +542,7 @@
       <label class="ctl"><span class="row"><span class="name">Mist</span><output id="o-mist"></output></span>
         <input id="s-mist" type="range" min="0" max="2" step="0.01" value="1" aria-label="Fine mist"></label>
       <label class="ctl"><span class="row"><span class="name">Drips</span><output id="o-drips"></output></span>
-        <input id="s-drips" type="range" min="0" max="2" step="0.01" value="1" aria-label="Gravity drips"></label>
+        <input id="s-drips" type="range" min="0" max="2" step="0.01" value="0.35" aria-label="Gravity drips"></label>
     </section>
 
     <section aria-label="Lifecycle">
@@ -563,7 +592,7 @@
     /* ---------------- live configuration ---------------- */
 
     const P = {
-      amount: 1, velocity: 1, spread: 1, mist: 1, drips: 1,
+      amount: 1, velocity: 1, spread: 1, mist: 1, drips: 0.35,
       drySpeed: 1, flake: 1, autoDelay: 14, auto: false
     };
 
@@ -601,15 +630,16 @@
       void main() { gl_Position = vec4(aPosition, 0.0, 1.0); }
     `;
 
-    // Forensic model (bloodstain pattern analysis):
-    //  - a spatter stain = irregular parent stain + spines + satellite stains
-    //    (+ aerosolised mist at higher velocity)
-    //  - spines are tapered streaks whose points aim in the direction of travel
-    //  - satellites grow more elliptical / smeared the further they land
-    //  - droplet size is inversely related to impact velocity
-    //  - on a vertical surface, gravity drags rivulets down from the heaviest pooling
-    // All geometry is expressed in units of uR0 (the pattern radius), so the
-    // pattern is scale-invariant and sized off the real DOM button underneath.
+    // Windshield-bug model: the button is the impact object, so the parent
+    // stain is blood squeezed out around the button's own rounded-rect
+    // perimeter (scalloped by rim noise), spines root on that perimeter and
+    // fly outward, satellites and mist scatter beyond, and rivulets hang only
+    // from the heavy central pooling under the button. The same rounded-rect
+    // cuts a hole in the output so every stain pixel renders BEHIND the real
+    // DOM button. Flake-off is a Thanos-style dissolve: a noise front sweeps
+    // through the stain while a storm of dust flecks drifts away, until at
+    // er = 1 nothing remains. All geometry is in units of uR0 (pattern
+    // radius, sized off the DOM button) so the pattern is scale-invariant.
     const fragmentSource = `
       precision highp float;
 
@@ -617,8 +647,10 @@
       uniform float uTime;      // ambient clock
       uniform float uAge;       // seconds since impact, -1 = idle
       uniform float uSeed;      // per-click pattern seed
-      uniform vec2 uImpact;     // impact point, device px, y-up
+      uniform vec2 uImpact;     // button centre, device px, y-up
       uniform float uR0;        // pattern radius / viewport height
+      uniform vec2 uBtnHalf;    // button half-size, units of uR0
+      uniform float uBtnRad;    // button corner radius, units of uR0
       uniform float uTheme;     // 0 dark, 1 light
       uniform float uAmount;    // 0..2 quantity of blood
       uniform float uVel;       // 0.3..2.5 impact velocity
@@ -660,10 +692,21 @@
         return v;
       }
 
+      float sdRoundBox(vec2 p, vec2 b, float r) {
+        vec2 q = abs(p) - b + r;
+        return min(max(q.x, q.y), 0.0) + length(max(q, 0.0)) - r;
+      }
+
       float sdSeg(vec2 p, vec2 a, vec2 b) {
         vec2 pa = p - a, ba = b - a;
         float h = clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0);
         return length(pa - ba * h);
+      }
+
+      // distance from the button centre to its rect boundary along dir
+      float edgeT(vec2 dir, vec2 h) {
+        vec2 ad = abs(dir) / max(h, vec2(1e-4));
+        return 1.0 / max(max(ad.x, ad.y), 1e-4);
       }
 
       void main() {
@@ -671,43 +714,38 @@
 
         vec2 nb = ((gl_FragCoord.xy - uImpact) / uResolution.y) / uR0;
         float r = length(nb);
-        if (r > 6.5) { gl_FragColor = vec4(0.0); return; }
+        if (r > 7.0) { gl_FragColor = vec4(0.0); return; }
 
         float aa = 1.5 / (uResolution.y * uR0); // ~1.5 device px in local units
         float velN = clamp((uVel - 0.3) / 2.2, 0.0, 1.0);
         float amtN = clamp(uAmount * 0.5, 0.0, 1.0);
 
+        // the impact object: the button's own rounded rect
+        float sdBtn = sdRoundBox(nb, uBtnHalf, uBtnRad);
+
         float m = 0.0;     // coverage
         float thick = 0.0; // pooling thickness
 
-        // dominant cast-off fan direction for this click
         float domAng = hash21(vec2(uSeed, 3.3)) * TAU;
 
-        // faster impacts atomise: smaller central pooling, longer reach
+        // faster impacts atomise: thinner squeeze-out ring, longer reach
         float poolGrow = mix(0.30, 1.0, pow(uBurst, 0.4));
-        float Rp = 0.60 * poolGrow * mix(1.15, 0.55, velN) * mix(0.72, 1.18, amtN);
+        float Rp = 0.55 * poolGrow * mix(1.15, 0.55, velN) * mix(0.72, 1.18, amtN);
 
-        if (r < 4.6 && uEr < 1.0) {
+        if (sdBtn < 4.6 && uEr < 1.0) {
 
-          // parent stain: overlapping lobes with scalloped, noise-driven rims
-          for (int i = 0; i < 3; i++) {
-            float fi = float(i);
-            float h1 = hash21(vec2(fi, 5.1 + uSeed));
-            float h2 = hash21(vec2(fi, 6.7 + uSeed * 1.3));
-            vec2 off = fi < 0.5 ? vec2(0.0)
-                     : vec2(cos(h2 * TAU), sin(h2 * TAU)) * Rp * (0.55 + 0.45 * h1);
-            float rr = (fi < 0.5 ? 1.0 : 0.38 + 0.30 * h1) * Rp;
-            vec2 lp = nb - off;
-            float lr = length(lp);
-            vec2 apx = lp / max(lr, 1e-4);
-            float rim = noise(apx * 2.3 + uSeed * 0.31 + fi * 7.7) * 0.45
-                      + noise(apx * 5.2 + uSeed * 0.77 + fi * 3.1) * 0.17;
-            float pool = smoothstep(aa * 2.0, -0.06, lr - rr * (0.60 + rim));
-            m += pool;
-            thick += pool * (fi < 0.5 ? 1.0 : 0.6);
-          }
+          // parent stain: blood squeezed out around the button perimeter,
+          // rim scalloped by angular noise — the windshield squish
+          vec2 apx = nb / max(r, 1e-4);
+          float rim = noise(apx * 2.3 + uSeed * 0.31) * 0.45
+                    + noise(apx * 5.2 + uSeed * 0.77) * 0.17;
+          float ooze = Rp * (0.60 + rim);
+          float pool = smoothstep(aa * 2.0, -0.06, sdBtn - ooze);
+          m += pool;
+          // heaviest pooling right at the perimeter, thinning outward
+          thick += pool * smoothstep(ooze, 0.0, max(sdBtn, 0.0));
 
-          // spines: tapered streaks flung outward, tips pointing along travel
+          // spines: tapered streaks rooted on the perimeter, tips outward
           float effSpines = mix(6.0, 26.0, amtN) * mix(0.8, 1.2, velN);
           for (int i = 0; i < 26; i++) {
             float fi = float(i);
@@ -720,14 +758,13 @@
             float ang = h1 * TAU;
             if (h4 > 0.62) ang = domAng + (h1 - 0.5) * 1.5;
             vec2 dir = vec2(cos(ang), sin(ang));
-            // faster impact: longer, thinner spines
             float len = (0.30 + 2.2 * pow(h2, 1.6)) * mix(0.45, 1.6, velN);
             float wid = (0.013 + 0.022 * h3) * mix(1.9, 0.7, velN);
             float dl = h4 * 0.38;
             float pr = clamp((uBurst - dl * 0.55) / (1.0 - dl * 0.55), 0.0, 1.0);
             pr = 1.0 - (1.0 - pr) * (1.0 - pr);
             if (pr <= 0.0) continue;
-            vec2 root = dir * Rp * 0.35;
+            vec2 root = dir * edgeT(dir, uBtnHalf) * 0.92;
             float L = len * pr;
             float s = clamp(dot(nb - root, dir) / max(L, 1e-4), 0.0, 1.0);
             float lat = length(nb - root - dir * s * L);
@@ -739,7 +776,7 @@
             thick += tip * wgt * 0.4;
           }
 
-          // satellites: droplets that broke away, smearing with distance
+          // satellites: droplets flung off the perimeter, smearing with distance
           float effSats = mix(5.0, 22.0, amtN) * mix(0.75, 1.25, velN);
           for (int j = 0; j < 22; j++) {
             float fj = float(j);
@@ -752,14 +789,14 @@
             float ang = h1 * TAU;
             if (h4 > 0.70) ang = domAng + (h1 - 0.5) * 1.9;
             vec2 dir = vec2(cos(ang), sin(ang));
-            float dist = (0.55 + 2.3 * pow(h2, 1.25)) * mix(0.5, 1.45, velN);
+            float dist = (0.25 + 2.2 * pow(h2, 1.3)) * mix(0.5, 1.45, velN);
             float size = (0.020 + 0.052 * pow(h3, 1.8)) * mix(1.5, 0.75, velN);
             float stretch = 1.0 + 2.8 * velN * clamp(dist / 1.4, 0.0, 1.6) * (0.4 + 0.6 * h4);
             float dl = 0.10 + h4 * 0.45;
             float pr = clamp((uBurst - dl * 0.55) / (1.0 - dl * 0.55), 0.0, 1.0);
             pr = 1.0 - (1.0 - pr) * (1.0 - pr);
             if (pr <= 0.0) continue;
-            vec2 pos = dir * dist * pr;
+            vec2 pos = dir * (edgeT(dir, uBtnHalf) + dist * pr);
             vec2 lp = nb - pos;
             vec2 ax = vec2(dot(lp, dir) / stretch, dot(lp, vec2(-dir.y, dir.x)));
             float blob = smoothstep(size + aa * 1.5, size * 0.55, length(ax));
@@ -768,16 +805,17 @@
             m += (blob + smear) * wgt;
           }
 
-          // mist: aerosolised micro-droplets hugging the origin at high velocity
+          // mist: aerosolised micro-droplets hugging the impact at high velocity
           float mistAmt = uMist * (0.10 + velN * velN * 1.8) * clamp(uAmount, 0.0, 1.5);
           if (mistAmt > 0.01) {
-            float fall = exp(-r / (0.5 + 0.5 * velN));
+            float fall = exp(-max(sdBtn, 0.0) / (0.5 + 0.5 * velN));
             float d1 = smoothstep(0.78, 0.92, noise(nb * 34.0 + uSeed * 0.61));
             float d2 = smoothstep(0.80, 0.94, noise(nb * 21.0 + uSeed * 0.37 + 31.0));
             m += (d1 * 0.8 + d2 * 0.5) * fall * mistAmt * min(uBurst * 3.0, 1.0) * 0.55;
           }
 
-          // rivulets: gravity drags thin runs down from the lower pool rim
+          // rivulets: hang only from the heavy pooling under the button,
+          // rooted inside the ooze so they are structurally connected
           float effDrips = clamp(uDrips * 3.0, 0.0, 6.0);
           for (int k = 0; k < 6; k++) {
             float fk = float(k);
@@ -787,11 +825,11 @@
             float h2 = hash21(vec2(fk, 67.3 + uSeed * 1.1));
             float h3 = hash21(vec2(fk, 71.9 + uSeed * 0.6));
             float h4 = hash21(vec2(fk, 79.1 + uSeed * 1.3));
-            float xk = (h1 * 2.0 - 1.0) * Rp * 1.15;
-            float y0 = -Rp * (0.55 + 0.30 * h2);
+            float xk = (h1 * 2.0 - 1.0) * uBtnHalf.x * 0.8;
+            float y0 = -(uBtnHalf.y + Rp * (0.20 + 0.15 * h2));
             float len = (0.55 + 2.0 * h3) * uDripG;
             if (len <= 0.02) continue;
-            float w = (0.020 + 0.018 * h4) * mix(1.25, 0.8, velN);
+            float w = (0.028 + 0.020 * h4) * mix(1.25, 0.8, velN);
             float yy = clamp(nb.y, y0 - len, y0);
             float xwob = xk + sin(yy * 11.0 + fk * 1.7) * w * 0.6;
             float d = length(nb - vec2(xwob, yy));
@@ -806,12 +844,15 @@
 
           m = clamp(m, 0.0, 1.0);
 
-          // flake-off: the noise field slides sideways so the crust crumbles away
+          // Thanos-style dissolve: a noise front sweeps through the stain;
+          // every pixel has a fixed field value and vanishes crisply as the
+          // front passes it, so by er = 1 nothing at all remains
           if (uEr > 0.0) {
-            float fl = fbm(nb * 21.0 + vec2(uEr * 1.2, uEr * 0.4) + uSeed * 3.0);
-            fl = mix(fl, fbm(nb * 44.0 - vec2(uEr * 2.1, uEr * 0.6) + uSeed * 1.7), 0.4);
-            float contrast = mix(0.55, 1.35, clamp(uFlake * 0.5, 0.0, 1.0));
-            float keep = smoothstep(uEr - 0.10 * contrast, uEr + 0.05, fl) * (1.0 - uEr);
+            float field = fbm(nb * 7.0 + uSeed * 3.0) * 0.75
+                        + fbm(nb * 23.0 - uSeed * 1.7) * 0.25;
+            field = clamp(field + dot(nb, vec2(-0.06, 0.045)), 0.06, 0.97);
+            float band = mix(0.10, 0.045, clamp(uFlake * 0.5, 0.0, 1.0));
+            float keep = 1.0 - smoothstep(field - band, field + band, uEr * 1.06);
             m *= keep;
             thick *= keep;
           }
@@ -837,30 +878,41 @@
         float aB = clamp(m, 0.0, 1.0) * 0.985;
         vec4 outc = vec4(bcol, 1.0) * aB; // premultiplied
 
-        // dried flecks blowing off during the flake phase
-        if (uEr > 0.001) {
-          float effFlecks = clamp(uFlake * 7.0, 0.0, 14.0);
-          vec3 fleckCol = vec3(0.27, 0.067, 0.046) * mix(1.22, 1.0, uTheme);
-          for (int j = 0; j < 14; j++) {
+        // the dust storm: dried flecks streaming off during the dissolve.
+        // Each lives inside the er window and all are finished by er = 1.
+        if (uEr > 0.001 && uEr < 1.0) {
+          float effFlecks = clamp(uFlake * 30.0, 0.0, 48.0);
+          vec3 fleckCol = mix(vec3(0.40, 0.03, 0.04), vec3(0.27, 0.067, 0.046), uDryF)
+                        * mix(1.22, 1.0, uTheme);
+          vec2 wind = normalize(vec2(0.62, 0.42));
+          for (int j = 0; j < 48; j++) {
             float fj = float(j);
             float wgt = clamp(effFlecks - fj, 0.0, 1.0);
             if (wgt <= 0.0) break;
             float h0 = hash21(vec2(fj, 83.2 + uSeed));
-            float birth = h0 * 0.72;
-            float lt = (uEr - birth) / 0.28;
+            float h1 = hash21(vec2(fj, 89.7 + uSeed));
+            float h2 = hash21(vec2(fj, 97.1 + uSeed));
+            float h3 = hash21(vec2(fj, 103.3 + uSeed));
+            float h4 = hash21(vec2(fj, 113.1 + uSeed));
+            float birth = h0 * 0.75;
+            float lt = (uEr - birth) / 0.25;
             if (lt <= 0.0 || lt >= 1.0) continue;
-            float aFl = hash21(vec2(fj, 89.7 + uSeed)) * TAU;
-            float dd = 0.3 + hash21(vec2(fj, 97.1 + uSeed)) * 1.6;
-            vec2 start = vec2(cos(aFl), sin(aFl)) * dd;
-            float spd = 0.45 + hash21(vec2(fj, 103.3 + uSeed)) * 0.95;
-            vec2 pos = start + vec2(spd, 0.17 + hash21(vec2(fj, 107.8 + uSeed)) * 0.45) * (lt * lt * 2.2);
-            pos.x += sin(lt * 9.0 + fj * 2.4) * 0.09;
-            pos.y += sin(lt * 7.0 + fj) * 0.035;
-            float sz = 0.022 + hash21(vec2(fj, 113.1 + uSeed)) * 0.04;
-            float af = smoothstep(sz, sz * 0.4, length(nb - pos)) * sin(lt * PI) * 0.9 * wgt;
+            // spawn anywhere in the stain footprint: perimeter + flight range
+            float aFl = h1 * TAU;
+            vec2 dirF = vec2(cos(aFl), sin(aFl));
+            vec2 start = dirF * (edgeT(dirF, uBtnHalf) * (0.5 + 0.5 * h2) + h2 * h2 * 2.0);
+            vec2 drift = wind * (0.6 + 0.8 * h3) + vec2(-dirF.y, dirF.x) * (h4 - 0.5) * 0.5;
+            vec2 pos = start + drift * pow(lt, 1.4) * 2.6;
+            pos.x += sin(lt * 9.0 + fj * 2.4) * 0.10;
+            pos.y += sin(lt * 7.0 + fj) * 0.045;
+            float sz = (0.034 + 0.06 * h4) * (1.0 - 0.55 * lt);
+            float af = smoothstep(sz, sz * 0.4, length(nb - pos)) * sin(lt * PI) * 0.95 * wgt;
             outc = vec4(fleckCol, 1.0) * af + outc * (1.0 - af);
           }
         }
+
+        // everything renders behind the real DOM button: cut its hole
+        outc *= smoothstep(-aa, aa, sdBtn);
 
         gl_FragColor = outc;
       }
@@ -905,7 +957,8 @@
     gl.vertexAttribPointer(aPosition, 2, gl.FLOAT, false, 0, 0);
 
     const U = {};
-    for (const name of ["uResolution","uTime","uAge","uSeed","uImpact","uR0","uTheme",
+    for (const name of ["uResolution","uTime","uAge","uSeed","uImpact","uR0",
+                        "uBtnHalf","uBtnRad","uTheme",
                         "uAmount","uVel","uDrips","uMist","uFlake",
                         "uBurst","uDryF","uEr","uDripG"]) {
       U[name] = gl.getUniformLocation(program, name);
@@ -917,9 +970,7 @@
     let ageV = -1;                // virtual seconds since impact
     let burst = 0, dryF = 0, er = 0, dripG = 0;
     let seed = 7.0;
-    // impact point stored relative to the button so it survives resize/reflow
-    const impactOff = { x: 0, y: 0 }; // in units of button height
-    let recoverT = 0, erFrom = 0, dryFrom = 0, recoverDone = false;
+    let recoverT = 0, erFrom = 0, dryFrom = 0, dripFrom = 0, recoverDone = false;
     let themeTarget = 0;
     let themeF = 0;
 
@@ -941,29 +992,24 @@
       }
     }
 
-    // re-enable: greatly accelerated drying, then a rapid flake-off — quick, not instant
+    // re-enable: greatly accelerated drying and draining, then a rapid
+    // dissolve — quick, not instant
     function deriveRecover() {
       dryF = Math.min(1, dryFrom + recoverT / 0.35);
+      dripG = Math.min(1, dripFrom + recoverT / 0.40);
       const rp = clamp((recoverT - 0.10) / 1.05, 0, 1);
       er = erFrom + (1 - erFrom) * (rp * rp * (3 - 2 * rp));
     }
 
-    function doSubmit(clientX, clientY) {
+    function doSubmit() {
       if (mode !== "down") {
         mode = "down";
         seed = pinned ? 7.0 : Math.random() * 100.0;
-        const rect = submitBtn.getBoundingClientRect();
-        const bh = rect.height || 36;
-        const cx = rect.left + rect.width / 2;
-        const cy = rect.top + rect.height / 2;
-        impactOff.x = clamp((clientX - cx) / bh, -(rect.width / bh) * 0.45, (rect.width / bh) * 0.45);
-        impactOff.y = clamp((clientY - cy) / bh, -0.45, 0.45);
         ageV = 0; burst = 0; dryF = 0; er = 0; dripG = 0;
         submitBtn.disabled = true;
         submitBtn.classList.remove("revived");
         if (reducedMotion) {
-          ageV = 60; burst = 1; dryF = 1; dripG = 1;
-          er = P.flake > 0.02 ? 1 : 0;
+          ageV = 60; burst = 1; dryF = 1; dripG = 1; er = 0;
         }
         syncControls();
       }
@@ -972,7 +1018,7 @@
     function startRecovery() {
       if (mode !== "down") return;
       mode = "recovering";
-      recoverT = 0; erFrom = er; dryFrom = dryF; recoverDone = false;
+      recoverT = 0; erFrom = er; dryFrom = dryF; dripFrom = dripG; recoverDone = false;
       if (reducedMotion) recoverT = 99;
       syncControls();
     }
@@ -1067,16 +1113,23 @@
     /* ---------------- the real submit button ---------------- */
 
     demoForm.addEventListener("submit", (e) => e.preventDefault());
+    submitBtn.addEventListener("click", () => { if (mode === "idle") doSubmit(); });
 
-    submitBtn.addEventListener("click", (e) => {
-      if (mode !== "idle") return;
-      const rect = submitBtn.getBoundingClientRect();
-      // keyboard activation reports (0,0); use the button centre instead
-      const fromKeyboard = e.clientX === 0 && e.clientY === 0;
-      const cx = fromKeyboard ? rect.left + rect.width / 2 : e.clientX;
-      const cy = fromKeyboard ? rect.top + rect.height / 2 : e.clientY;
-      doSubmit(cx, cy);
-    });
+    // per-frame blood coat on the button face: a sheet that drains off
+    // downward as the rivulets grow, leaving a residue that dries and thins
+    function coatButton() {
+      const alive = ageV >= 0;
+      const sheetA = alive ? 0.92 * burst * (1 - er) : 0;
+      const sheetY = alive ? dripG : 0;
+      const resA = alive ? burst * (1 - er) * (0.60 - 0.22 * dryF) : 0;
+      const w = [168, 12, 20], d = [112, 52, 38]; // wet red -> dried brown
+      const c = w.map((v, i) => Math.round(v + (d[i] - v) * dryF));
+      const st = submitBtn.style;
+      st.setProperty("--sheet-a", sheetA.toFixed(3));
+      st.setProperty("--sheet-y", sheetY.toFixed(3));
+      st.setProperty("--res-a", resA.toFixed(3));
+      st.setProperty("--res-col", c[0] + " " + c[1] + " " + c[2]);
+    }
 
     /* ---------------- resize + frame loop ---------------- */
 
@@ -1120,13 +1173,19 @@
         phaseEl.dataset.phase = phase;
       }
 
+      coatButton();
+
       const dpr = resize();
       // the spatter is anchored to the live DOM button, so it tracks reflow
       const rect = submitBtn.getBoundingClientRect();
       const bh = rect.height || 36;
-      const ix = (rect.left + rect.width / 2 + impactOff.x * bh) * dpr;
-      const iy = canvas.height - (rect.top + rect.height / 2 + impactOff.y * bh) * dpr;
-      const r0 = (bh * 2.4 * P.spread * dpr) / canvas.height;
+      const ix = (rect.left + rect.width / 2) * dpr;
+      const iy = canvas.height - (rect.top + rect.height / 2) * dpr;
+      const scalePx = bh * 2.4 * P.spread;      // one pattern unit in CSS px
+      const r0 = (scalePx * dpr) / canvas.height;
+      const bhx = rect.width / (2 * scalePx);   // button half-size in pattern units
+      const bhy = bh / (2 * scalePx);
+      const brad = 6 / scalePx;                 // matches the CSS border-radius
 
       gl.clearColor(0, 0, 0, 0);
       gl.clear(gl.COLOR_BUFFER_BIT);
@@ -1136,6 +1195,8 @@
       gl.uniform1f(U.uSeed, seed);
       gl.uniform2f(U.uImpact, ix, iy);
       gl.uniform1f(U.uR0, r0);
+      gl.uniform2f(U.uBtnHalf, bhx, bhy);
+      gl.uniform1f(U.uBtnRad, brad);
       gl.uniform1f(U.uTheme, themeF);
       gl.uniform1f(U.uAmount, P.amount);
       gl.uniform1f(U.uVel, P.velocity);
@@ -1157,8 +1218,7 @@
 
     if (autoSplat || pinAge !== null || pinRecover !== null) {
       setTimeout(() => {
-        const rect = submitBtn.getBoundingClientRect();
-        doSubmit(rect.left + rect.width * 0.62, rect.top + rect.height * 0.55);
+        doSubmit();
         if (pinRecover !== null) {
           ageV = 3.2;
           deriveDown();
