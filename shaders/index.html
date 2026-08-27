@@ -15,11 +15,12 @@
       --ink-faint: #625f75;
       --line: rgba(160, 155, 190, 0.16);
       --glass: rgba(10, 10, 17, 0.72);
-      /* the four experiments' own accents */
+      /* each experiment's own accent */
       --ember: #ff9b48;
       --phosphor: #6ac8ff;
       --leaf: #8fd96a;
       --sepia: #c8a35f;
+      --blood: #e5484d;
     }
 
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -34,7 +35,7 @@
       overflow-x: hidden;
     }
 
-    /* The one canvas. Background aurora and all four previews render here. */
+    /* The one canvas. The background aurora and every card preview render here. */
     #gl {
       position: fixed;
       inset: 0;
@@ -170,6 +171,9 @@
     .no-webgl .exp[data-shader="type"] .exp-still {
       background: linear-gradient(180deg, #f4edda 0%, #e9dec2 100%);
     }
+    .no-webgl .exp[data-shader="blood"] .exp-still {
+      background: radial-gradient(85% 110% at 50% 62%, #6e1010 0%, #380808 32%, #131722 68%, #0b0d12 100%);
+    }
 
     .exp-body {
       display: flex;
@@ -275,11 +279,11 @@
     <p class="eyebrow">The Grove &middot; Fragment Works</p>
     <h1>Shaders</h1>
     <p class="lede">
-      Border experiments written straight against the GPU — frames that burn, type,
-      grow, and drift around whatever they are given.
+      Experiments written straight against the GPU — frames that burn, type,
+      grow, drift, and bleed around whatever they are given.
       <em>Everything glowing on this page is computed live:</em> the dark behind this
-      text and the four windows below share a single canvas, five programs, no
-      textures but one typewriter atlas.
+      text and every window below share a single canvas, one fragment program per
+      experiment.
     </p>
 
     <div class="exp-grid">
@@ -339,6 +343,21 @@
           <span class="exp-foot">
             <span class="exp-open">Open experiment &rarr;</span>
             <span class="exp-meta">2 passes &middot; 1 atlas</span>
+          </span>
+        </span>
+      </a>
+
+      <a class="exp" href="blood-splat-submit-shader-demo.html" data-shader="blood" style="--accent: var(--blood)">
+        <span class="exp-window"><span class="exp-still"></span></span>
+        <span class="exp-body">
+          <span class="exp-no">EXPERIMENT 05</span>
+          <h2>Blood Splat Submit</h2>
+          <p>A plain HTML submit button takes a hit like a bug on a windshield —
+             spatter squeezes out around it, coats the face, dries to a crust, and
+             flakes away to dust before the button comes back to life.</p>
+          <span class="exp-foot">
+            <span class="exp-open">Open experiment &rarr;</span>
+            <span class="exp-meta">1 pass &middot; no textures</span>
           </span>
         </span>
       </a>
@@ -679,6 +698,120 @@
       }
     `;
 
+    /* 05 — the submit button taking its hit, on a loop. */
+    const BLOOD_FRAG = `
+      precision highp float;
+      uniform vec4 uRect;
+      uniform float uTime;
+      uniform float uHover;
+      ${NOISE}
+      float edgeT(vec2 dir, vec2 h) {
+        vec2 ad = abs(dir) / max(h, vec2(1e-4));
+        return 1.0 / max(max(ad.x, ad.y), 1e-4);
+      }
+      void main() {
+        vec2 uv = (gl_FragCoord.xy - uRect.xy) / uRect.zw;
+        vec2 c = gl_FragCoord.xy - (uRect.xy + uRect.zw * 0.5);
+        vec2 half_ = uRect.zw * 0.5;
+        float scale = min(half_.x, half_.y);
+
+        // the demo's dark page with its little form card
+        vec3 col = mix(vec3(0.045, 0.052, 0.070), vec3(0.070, 0.082, 0.110), uv.y);
+        float sdCard = sdRoundBox(c, vec2(scale * 0.66, scale * 0.72), 8.0);
+        col = mix(col, vec3(0.088, 0.102, 0.132), smoothstep(1.5, -1.5, sdCard));
+        col = mix(col, vec3(0.22, 0.25, 0.32), exp(-abs(sdCard) * 0.9) * 0.4);
+        float rows = smoothstep(1.2, -1.2, sdRoundBox(c - vec2(0.0, scale * 0.32), vec2(scale * 0.46, scale * 0.065), 4.0))
+                   + smoothstep(1.2, -1.2, sdRoundBox(c - vec2(0.0, scale * 0.04), vec2(scale * 0.46, scale * 0.065), 4.0));
+        col = mix(col, vec3(0.052, 0.063, 0.086), clamp(rows, 0.0, 1.0));
+        col = mix(col, vec3(0.55, 0.58, 0.66),
+                  smoothstep(1.0, -1.0, sdRoundBox(c - vec2(-scale * 0.20, scale * 0.55),
+                                                   vec2(scale * 0.26, scale * 0.035), 3.0)) * 0.8);
+
+        // the hit, on a loop: impact, coat, dry, flake to dust, revive
+        float ph = fract(uTime / 12.0);
+        float burst = 1.0 - pow(1.0 - min(ph / 0.05, 1.0), 3.0);
+        float dry = smoothstep(0.12, 0.52, ph);
+        float er = smoothstep(0.58, 0.90, ph);
+        float down = smoothstep(0.0, 0.035, ph) * (1.0 - smoothstep(0.905, 0.95, ph));
+
+        vec2 bpos = vec2(0.0, -scale * 0.42);
+        vec2 bh = vec2(scale * 0.30, scale * 0.115);
+        vec2 nb = (c - bpos) / (scale * 0.55);
+        vec2 bhn = bh / (scale * 0.55);
+
+        // spatter first — it lands behind the button
+        float m = 0.0;
+        if (down > 0.0 && er < 0.999) {
+          float sdB = sdRoundBox(c - bpos, bh, 6.0) / (scale * 0.55);
+          vec2 apx = nb / max(length(nb), 1e-4);
+          float rim = noise(apx * 2.3 + 7.0) * 0.45 + noise(apx * 5.2 + 3.0) * 0.17;
+          float ooze = mix(0.3, 1.0, pow(burst, 0.4)) * 0.30 * (0.60 + rim);
+          m += smoothstep(0.015, -0.03, sdB - ooze);
+          for (int i = 0; i < 12; i++) {
+            float fi = float(i);
+            float h1 = hash21(vec2(fi, 1.7));
+            float h2 = hash21(vec2(fi, 9.3));
+            float h3 = hash21(vec2(fi, 17.1));
+            vec2 dir = vec2(cos(h1 * 6.2831853), sin(h1 * 6.2831853));
+            vec2 root = dir * edgeT(dir, bhn) * 0.95;
+            float L = (0.14 + 0.75 * h2 * h2) * burst;
+            float s = clamp(dot(nb - root, dir) / max(L, 1e-4), 0.0, 1.0);
+            float lat = length(nb - root - dir * s * L);
+            float wAt = (0.010 + 0.016 * h3) * (1.0 - 0.75 * s);
+            m += smoothstep(wAt + 0.008, wAt * 0.4, lat) * 0.9;
+            m += smoothstep(0.030 + 0.02 * h3, 0.008, length(nb - root - dir * L * 1.06));
+          }
+          // one rivulet from the pooling under the button
+          float dripG = smoothstep(0.05, 0.45, ph);
+          float dy = clamp(nb.y, -bhn.y - 0.10 - 0.55 * dripG, -bhn.y + 0.05);
+          float dx = 0.14 + sin(dy * 6.0) * 0.02;
+          m += smoothstep(0.035, 0.012, length(nb - vec2(dx, dy)));
+          m = clamp(m, 0.0, 1.0);
+          // the dissolve front sweeps through until nothing remains
+          if (er > 0.0) {
+            float field = clamp(fbm(nb * 5.0 + 3.0) * 0.9 + 0.05, 0.05, 0.95);
+            m *= 1.0 - smoothstep(field - 0.07, field + 0.05, er * 1.08);
+          }
+        }
+        vec3 blood = mix(vec3(0.52, 0.030, 0.048), vec3(0.30, 0.095, 0.058), dry);
+        blood *= (0.82 + 0.36 * fbm(nb * 5.0)) * (1.0 + uHover * 0.25);
+        col = mix(col, blood, m * 0.96);
+
+        // dust drifting off during the flake
+        if (er > 0.001 && er < 1.0) {
+          for (int j = 0; j < 8; j++) {
+            float fj = float(j);
+            float b0 = hash21(vec2(fj, 83.2)) * 0.7;
+            float lt = (er - b0) / 0.3;
+            if (lt <= 0.0 || lt >= 1.0) continue;
+            float aFl = hash21(vec2(fj, 89.7)) * 6.2831853;
+            vec2 start = vec2(cos(aFl), sin(aFl)) * (0.35 + hash21(vec2(fj, 97.1)) * 0.5);
+            vec2 pos = start + vec2(0.55, 0.35) * lt * (0.8 + 0.6 * hash21(vec2(fj, 103.3)));
+            pos.x += sin(lt * 9.0 + fj) * 0.05;
+            float szf = 0.018 + 0.02 * hash21(vec2(fj, 113.1));
+            col = mix(col, vec3(0.30, 0.095, 0.058),
+                      smoothstep(szf, szf * 0.4, length(nb - pos)) * sin(lt * 3.14159) * 0.9);
+          }
+        }
+
+        // the button on top: blue, coated red, drains to disabled grey, revives
+        float sdBtn = sdRoundBox(c - bpos, bh, 6.0);
+        vec3 face = mix(vec3(0.145, 0.388, 0.922) * (1.0 + uHover * 0.15),
+                        vec3(0.148, 0.168, 0.212), down);
+        float coat = down * burst * (1.0 - er);
+        vec3 coatCol = mix(vec3(0.62, 0.05, 0.08), vec3(0.42, 0.19, 0.14), dry);
+        face = mix(face, coatCol, coat * (0.92 - 0.55 * dry));
+        col = mix(col, face, smoothstep(1.2, -1.2, sdBtn));
+        float lbl = smoothstep(1.0, -1.0, sdRoundBox(c - bpos, vec2(bh.x * 0.42, scale * 0.030), 3.0));
+        vec3 lblCol = mix(vec3(0.97), vec3(0.42, 0.45, 0.52), down);
+        lblCol = mix(lblCol, coatCol * 1.5, coat * 0.6);
+        col = mix(col, lblCol, lbl * 0.92);
+
+        col += (hash21(gl_FragCoord.xy + fract(uTime) * 5.0) - 0.5) * 0.02;
+        gl_FragColor = vec4(col, 1.0);
+      }
+    `;
+
     /* ---------------- plumbing ---------------- */
 
     function compile(type, source) {
@@ -710,7 +843,8 @@
         ember: program(EMBER_FRAG),
         holo: program(HOLO_FRAG),
         vines: program(VINES_FRAG),
-        type: program(TYPE_FRAG)
+        type: program(TYPE_FRAG),
+        blood: program(BLOOD_FRAG)
       };
     } catch (error) {
       console.error("Shader gallery:", error);
@@ -768,8 +902,9 @@
     }
 
     let frames = 0, fpsStamp = performance.now(), fps = 0;
+    const programCount = Object.keys(programs).length;
     function updateHud(dpr) {
-      hud.innerHTML = `1 canvas &middot; 5 programs &middot; <b>${canvas.width}&times;${canvas.height}px</b>` +
+      hud.innerHTML = `1 canvas &middot; ${programCount} programs &middot; <b>${canvas.width}&times;${canvas.height}px</b>` +
         (reducedMotion ? " &middot; still frame" : ` &middot; <b>${fps}</b> fps`);
     }
 
@@ -791,7 +926,7 @@
       gl.uniform2f(u.mouse, mouse.sx, mouse.sy);
       gl.drawArrays(gl.TRIANGLES, 0, 3);
 
-      // the four windows
+      // the experiment windows
       gl.enable(gl.SCISSOR_TEST);
       for (const card of cards) {
         card.hover += (card.target - card.hover) * (reducedMotion ? 1 : 0.08);
