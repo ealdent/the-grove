@@ -21,6 +21,7 @@
       --leaf: #8fd96a;
       --sepia: #c8a35f;
       --blood: #e5484d;
+      --sun: #e8b86a;
     }
 
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -174,6 +175,9 @@
     .no-webgl .exp[data-shader="blood"] .exp-still {
       background: radial-gradient(85% 110% at 50% 62%, #6e1010 0%, #380808 32%, #131722 68%, #0b0d12 100%);
     }
+    .no-webgl .exp[data-shader="sun"] .exp-still {
+      background: radial-gradient(80% 140% at 18% 22%, #c9a05a 0%, #6a4a1c 14%, #1a120c 32%, #080705 58%, #040302 100%);
+    }
 
     .exp-body {
       display: flex;
@@ -280,7 +284,7 @@
     <h1>Shaders</h1>
     <p class="lede">
       Experiments written straight against the GPU — frames that burn, type,
-      grow, drift, and bleed around whatever they are given.
+      grow, drift, bleed, and catch the light around whatever they are given.
       <em>Everything glowing on this page is computed live:</em> the dark behind this
       text and every window below share a single canvas, one fragment program per
       experiment.
@@ -361,10 +365,25 @@
           </span>
         </span>
       </a>
+
+      <a class="exp" href="stillroom-shaft-shader-demo.html" data-shader="sun" style="--accent: var(--sun)">
+        <span class="exp-window"><span class="exp-still"></span></span>
+        <span class="exp-body">
+          <span class="exp-no">EXPERIMENT 06</span>
+          <h2>Stillroom Shaft</h2>
+          <p>A dark, still room cut by one late-sun ray through the shutters —
+             volumetric air that absorbs as well as it glows, and dust motes that
+             only catch when they drift into the beam.</p>
+          <span class="exp-foot">
+            <span class="exp-open">Open experiment &rarr;</span>
+            <span class="exp-meta">1 pass &middot; no textures</span>
+          </span>
+        </span>
+      </a>
     </div>
 
     <footer>
-      <span class="hud" id="hud">1 canvas &middot; 5 programs</span>
+      <span class="hud" id="hud">1 canvas &middot; 6 programs</span>
       <span class="credit">Part of <a href="../">Fun with AI</a></span>
     </footer>
   </div>
@@ -812,6 +831,71 @@
       }
     `;
 
+    /* 06 — late sun through shutters, dust in a still room. */
+    const SUN_FRAG = `
+      precision highp float;
+      uniform vec4 uRect;
+      uniform float uTime;
+      uniform float uHover;
+      ${NOISE}
+      void main() {
+        vec2 p = (gl_FragCoord.xy - (uRect.xy + uRect.zw * 0.5)) / uRect.w;
+
+        vec3 col = vec3(0.018, 0.014, 0.010);
+        col += vec3(0.012, 0.008, 0.004) * fbm(p * 3.2);
+
+        float floorY = -0.32;
+        float onFloor = smoothstep(floorY + 0.02, floorY - 0.01, p.y);
+        float fy = max(floorY - p.y, 0.0);
+        float plank = fract((p.x + fy * 0.2) * 4.2);
+        vec3 wood = vec3(0.045, 0.026, 0.012) * (0.7 + 0.4 * noise(vec2(p.x * 6.0, fy * 20.0)));
+        wood *= 1.0 - smoothstep(0.02, 0.0, abs(plank - 0.5) - 0.46) * 0.4;
+        col = mix(col, wood, onFloor);
+
+        vec2 origin = vec2(-0.42, 0.28);
+        vec2 dir = normalize(vec2(0.95, -0.72));
+        vec2 toP = p - origin;
+        float along = dot(toP, dir);
+        float across = dot(toP, vec2(-dir.y, dir.x));
+        float slat = mix(0.10, 1.0, smoothstep(0.30, 0.64, 0.5 + 0.5 * sin(dot(toP, vec2(0.12, 1.0)) * 22.0)));
+        float halfW = mix(0.028, 0.16, clamp(along * 0.7, 0.0, 1.0));
+        float radial = exp(-pow(across / max(halfW, 1e-4), 2.0));
+        float alongM = smoothstep(-0.02, 0.08, along) * smoothstep(1.15, 0.28, along);
+        float shaft = radial * alongM * slat;
+        float core = exp(-pow(across / max(halfW * 0.36, 1e-4), 2.0)) * alongM * slat;
+
+        vec3 sun = vec3(1.70, 1.12, 0.42);
+        float density = shaft * (0.55 + uHover * 0.25);
+        float trans = exp(-density * 2.2);
+        col = col * trans + sun * (1.0 - trans);
+        col += sun * core * (0.22 + uHover * 0.18);
+
+        vec2 hit = origin + dir * ((floorY - origin.y) / dir.y);
+        vec2 fq = (p - hit) * vec2(1.0, 3.2);
+        col += sun * exp(-dot(fq, fq) / 0.06) * onFloor * slat * 0.45;
+
+        float motes = 0.0;
+        for (int i = 0; i < 2; i++) {
+          float fi = float(i);
+          vec2 q = p * (14.0 + fi * 11.0) + vec2(uTime * (0.012 + fi * 0.006), uTime * 0.008);
+          vec2 id = floor(q);
+          float h = hash21(id + fi * 9.0);
+          vec2 pos = 0.2 + 0.6 * vec2(hash21(id + 3.1), hash21(id + 8.7));
+          vec2 dlt = fract(q) - pos;
+          motes += step(0.93 - uHover * 0.02, h) * exp(-dot(dlt, dlt) * 140.0)
+                 * (0.5 + 0.5 * sin(uTime * 1.4 + h * 30.0));
+        }
+        col += vec3(1.5, 1.2, 0.65) * motes * (0.12 + 0.88 * clamp(shaft * 1.5, 0.0, 1.0));
+
+        float vg = smoothstep(1.15, 0.22, length(p * vec2(0.85, 1.0)));
+        col *= 0.40 + vg * 0.72;
+        col += (hash21(gl_FragCoord.xy + fract(uTime) * 4.0) - 0.5) * 0.018;
+        col = col / (1.0 + col * 0.55);
+        col = pow(max(col, vec3(0.0)), vec3(1.10));
+        gl_FragColor = vec4(col, 1.0);
+      }
+    `;
+
     /* ---------------- plumbing ---------------- */
 
     function compile(type, source) {
@@ -844,7 +928,8 @@
         holo: program(HOLO_FRAG),
         vines: program(VINES_FRAG),
         type: program(TYPE_FRAG),
-        blood: program(BLOOD_FRAG)
+        blood: program(BLOOD_FRAG),
+        sun: program(SUN_FRAG)
       };
     } catch (error) {
       console.error("Shader gallery:", error);
