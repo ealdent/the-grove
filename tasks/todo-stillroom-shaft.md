@@ -10,12 +10,19 @@ demo page plus a live preview tile on `shaders/index.html`.
 - `shaders/index.html` — experiment 06 card + miniature preview program
 
 ## Plan
-- [ ] Write the fullscreen demo (one pass, no textures, no backticks in GLSL)
-- [ ] Tile + preview shader + still fallback on the shaders index
-- [ ] Syntax-check extracted `<script>` with `node --check`
-- [ ] Compile-check both fragment programs in a headless WebGL context
-- [ ] Screenshot / pixel-probe the shaft (bright diagonal) vs the room (near-black)
-- [ ] Commit and push to `origin/main`
+- [x] Write the fullscreen demo (one pass, no textures, no backticks in GLSL)
+- [x] Tile + preview shader + still fallback on the shaders index
+- [x] Syntax-check extracted `<script>` with `node --check`
+- [x] Compile-check both fragment programs in a headless WebGL context
+- [x] Screenshot / pixel-probe the shaft (bright diagonal) vs the room (near-black)
+- [x] Commit and push to `origin/main`
+
+## Review
+- Files: `shaders/stillroom-shaft-shader-demo.html`, tile + `SUN_FRAG` on `shaders/index.html`.
+- Pushed to `origin/main` as `a83e84b`.
+- `node --check` clean on both extracted scripts. No backticks in GLSL.
+- Headless SwiftShader screenshot of `?pin=8`: dark room, shuttered golden shaft, dust motes, chair silhouette. Midframe contrast p95/p05 = 93.8; shaft_upper luma 108 vs dark corners ~1–2.5; shaft is warm (r > b).
+- Index Experiment 06 card live-previews the same look. Interactive pass: SHAFT dims/brightens, DUST clears/densifies, Pause/Resume, click-through from the index.
 
 ## Visual spec
 - Dark plaster walls, wood floor, high window with shutter slats
