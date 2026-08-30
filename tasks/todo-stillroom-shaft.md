@@ -37,4 +37,4 @@ demo page plus a live preview tile on `shaders/index.html`.
 - [x] Remove periodic slat bands; replace with diffuse leaf fbm
 - [x] Per-mote wander so dust moves more freely
 - [x] Match the index preview and copy
-- [ ] Re-verify: no fixture, one continuous shaft, motes wander
+- [x] Re-verify: no fixture, one continuous shaft, motes wander
