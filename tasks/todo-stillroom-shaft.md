@@ -25,8 +25,16 @@ demo page plus a live preview tile on `shaders/index.html`.
 - Index Experiment 06 card live-previews the same look. Interactive pass: SHAFT dims/brightens, DUST clears/densifies, Pause/Resume, click-through from the index.
 
 ## Visual spec
-- Dark plaster walls, wood floor, high window with shutter slats
-- One warm volumetric shaft (absorb + emit; not additive wash)
-- Slow dust motes that only catch in the beam
+- Dark plaster walls, wood floor; no visible window or fixture
+- One warm volumetric shaft from the top-left of the screen
+- Soft leaf-like fbm dents in the beam, not shutter slats
+- Dust motes that wander freely and catch in the beam
 - Stark contrast: crushed shadows, bright core, floor patch
 - Reduced-motion still frame; `?pin=` and `window.__demo` for harnesses
+
+## Follow-up (no source, no slats, freer motes)
+- [x] Hide the window / light source; origin off the top-left of the frame
+- [x] Remove periodic slat bands; replace with diffuse leaf fbm
+- [x] Per-mote wander so dust moves more freely
+- [x] Match the index preview and copy
+- [ ] Re-verify: no fixture, one continuous shaft, motes wander

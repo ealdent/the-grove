@@ -210,7 +210,7 @@
     <p class="kicker">Procedural WebGL study</p>
     <h1>Stillroom Shaft</h1>
     <p class="subtitle">
-      A dark, still room. One ray of late sun through the shutters.
+      A dark, still room. One ray of late sun from the upper left.
       Dust hanging in the air. Stark contrast — almost nothing else.
     </p>
   </header>
@@ -320,23 +320,31 @@
         float acc = 0.0;
         for (int layer = 0; layer < 3; layer++) {
           float fl = float(layer);
-          float scale = 16.0 + fl * 13.0;
+          float scale = 13.0 + fl * 10.0;
           vec2 drift = vec2(
-            t * (0.011 + fl * 0.005),
-            t * (0.007 + fl * 0.0035)
+            t * (0.042 + fl * 0.020),
+            t * (0.028 + fl * 0.014)
           );
+          drift += vec2(
+            sin(t * (0.23 + fl * 0.08) + fl * 1.7),
+            cos(t * (0.19 + fl * 0.06) + fl * 2.4)
+          ) * (0.45 + fl * 0.18);
           vec2 q = p * scale + drift + vec2(fl * 5.1, fl * 2.7);
           vec2 id = floor(q);
           vec2 fv = fract(q);
           vec2 h = hash22(id + fl * 19.0);
-          float sparse = step(0.905, h.x);
-          vec2 pos = 0.18 + 0.64 * hash22(id + 7.3);
-          vec2 dlt = fv - pos;
-          float twinkle = 0.50 + 0.50 * sin(t * (0.9 + h.y * 1.8) + h.x * 31.0);
-          float size = mix(70.0, 210.0, h.y);
+          float sparse = step(0.88, h.x);
+          vec2 pos = 0.16 + 0.68 * hash22(id + 7.3);
+          vec2 wander = vec2(
+            sin(t * (0.62 + h.x * 0.95) + h.y * 6.2831853),
+            cos(t * (0.48 + h.y * 0.82) + h.x * 4.2)
+          ) * 0.22;
+          vec2 dlt = fv - pos - wander;
+          float twinkle = 0.45 + 0.55 * sin(t * (1.1 + h.y * 2.0) + h.x * 31.0);
+          float size = mix(55.0, 190.0, h.y);
           acc += sparse * exp(-dot(dlt, dlt) * size) * twinkle;
         }
-        return acc * (0.08 + 0.92 * inBeam);
+        return acc * (0.22 + 0.78 * inBeam);
       }
 
       void main() {
@@ -348,8 +356,9 @@
 
         float t = uTime;
 
-        vec2 origin = vec2(-0.78, 0.42) + par * 0.18;
-        vec2 beamDir = normalize(vec2(0.92, -0.78));
+        float aspect = uResolution.x / uResolution.y;
+        vec2 origin = vec2(-aspect - 0.22, 1.22) + par * 0.12;
+        vec2 beamDir = normalize(vec2(aspect * 0.42 + 0.55, -1.22));
         vec2 beamPerp = vec2(-beamDir.y, beamDir.x);
 
         vec2 toP = p - origin;
@@ -391,52 +400,31 @@
         color = mix(color, vec3(0.016, 0.013, 0.010), smoothstep(0.008, -0.002, pic) * 0.55);
         color = mix(color, vec3(0.040, 0.030, 0.018), exp(-abs(pic) * 90.0) * 0.35);
 
-        vec2 winC = origin + vec2(-0.02, 0.02);
-        vec2 winH = vec2(0.105, 0.30);
-        float winSd = sdRoundBox(p - winC, winH, 0.008);
-        float winInside = smoothstep(0.004, -0.006, winSd);
-        float frame = exp(-abs(winSd) * 70.0) * (1.0 - winInside);
-        color = mix(color, vec3(0.22, 0.16, 0.08), frame * 0.9);
+        vec2 leafP = vec2(across * 1.65, along * 0.72);
+        float warp = fbm(leafP * 0.85 + vec2(t * 0.022, -t * 0.010));
+        float canopy = fbm(leafP * 1.25 + vec2(warp * 0.6, t * 0.016) + 3.1);
+        float leaves = mix(0.78, 1.05, smoothstep(0.24, 0.76, canopy));
 
-        float mullionV = smoothstep(0.012, 0.0, abs((p - winC).x));
-        float mullionH = smoothstep(0.010, 0.0, abs((p - winC).y));
-        color = mix(color, vec3(0.10, 0.07, 0.035), winInside * max(mullionV, mullionH) * 0.7);
-
-        vec3 sky = vec3(1.85, 1.45, 0.72);
-        color = mix(color, sky * 0.55, winInside * 0.35);
-        color += sky * winInside * 0.22;
-
-        vec2 slatAxis = normalize(vec2(0.12, 1.0));
-        float slatU = dot(p - origin, slatAxis);
-        float slatWave = 0.5 + 0.5 * sin(slatU * 26.0 + 0.4);
-        float slat = mix(0.08, 1.0, smoothstep(0.28, 0.62, slatWave));
-        slat *= 1.0 - 0.12 * noise(vec2(slatU * 8.0, along * 2.0));
-
-        float halfW = mix(0.038, 0.24, clamp(along * 0.48, 0.0, 1.0));
+        float halfW = mix(0.055, 0.26, clamp(along * 0.38, 0.0, 1.0));
         float radial = exp(-pow(across / max(halfW, 1e-4), 2.0));
-        float alongMask = smoothstep(-0.03, 0.10, along) * smoothstep(1.95, 0.42, along);
-        float core = exp(-pow(across / max(halfW * 0.38, 1e-4), 2.0));
-        float shaft = radial * alongMask * slat;
-        float haze = shaft * (0.55 + 0.45 * fbm(p * 2.6 + vec2(t * 0.03, -t * 0.02)));
+        float alongMask = smoothstep(0.05, 0.28, along) * smoothstep(3.4, 2.0, along);
+        float core = exp(-pow(across / max(halfW * 0.40, 1e-4), 2.0));
+        float shaft = radial * alongMask * leaves;
+        float haze = shaft * (0.58 + 0.42 * fbm(p * 2.2 + vec2(t * 0.03, -t * 0.02)));
 
         float density = haze * 0.62 * uShaft;
         float trans = exp(-density * 2.4);
         vec3 sun = vec3(1.75, 1.18, 0.48);
         color = color * trans + sun * (1.0 - trans);
-        color += sun * core * alongMask * slat * 0.28 * uShaft;
+        color += sun * core * alongMask * leaves * 0.26 * uShaft;
         color += vec3(1.0, 0.72, 0.32) * shaft * 0.08 * uShaft;
 
         float tHit = (floorY - origin.y) / beamDir.y;
         vec2 hit = origin + beamDir * tHit;
         vec2 fq = p - hit;
         fq.y *= 3.4;
-        float patch = exp(-dot(fq, fq) / 0.085) * onFloor;
-        float patchSlat = mix(0.25, 1.0, smoothstep(0.30, 0.65, 0.5 + 0.5 * sin(dot(p - origin, slatAxis) * 26.0)));
-        color += sun * patch * patchSlat * 0.55 * uShaft;
-
-        float wallWash = exp(-pow(length((p - winC) * vec2(1.6, 1.0)) - 0.22, 2.0) * 8.0);
-        wallWash *= (1.0 - winInside) * (1.0 - onFloor);
-        color += sun * wallWash * 0.07 * uShaft;
+        float patch = exp(-dot(fq, fq) / 0.10) * onFloor * leaves;
+        color += sun * patch * 0.50 * uShaft;
 
         float inBeam = clamp(shaft * 1.4, 0.0, 1.0);
         float motes = moteField(p, t, inBeam) * uDust;

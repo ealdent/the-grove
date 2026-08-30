@@ -176,7 +176,7 @@
       background: radial-gradient(85% 110% at 50% 62%, #6e1010 0%, #380808 32%, #131722 68%, #0b0d12 100%);
     }
     .no-webgl .exp[data-shader="sun"] .exp-still {
-      background: radial-gradient(80% 140% at 18% 22%, #c9a05a 0%, #6a4a1c 14%, #1a120c 32%, #080705 58%, #040302 100%);
+      background: linear-gradient(128deg, #b89048 0%, #5a3c14 12%, #16100b 28%, #080705 52%, #040302 100%);
     }
 
     .exp-body {
@@ -371,9 +371,9 @@
         <span class="exp-body">
           <span class="exp-no">EXPERIMENT 06</span>
           <h2>Stillroom Shaft</h2>
-          <p>A dark, still room cut by one late-sun ray through the shutters —
+          <p>A dark, still room cut by one late-sun ray from the upper left —
              volumetric air that absorbs as well as it glows, and dust motes that
-             only catch when they drift into the beam.</p>
+             wander freely and only catch when they pass through the beam.</p>
           <span class="exp-foot">
             <span class="exp-open">Open experiment &rarr;</span>
             <span class="exp-meta">1 pass &middot; no textures</span>
@@ -831,7 +831,7 @@
       }
     `;
 
-    /* 06 — late sun through shutters, dust in a still room. */
+    /* 06 — late sun from the upper left, dust in a still room. */
     const SUN_FRAG = `
       precision highp float;
       uniform vec4 uRect;
@@ -852,17 +852,19 @@
         wood *= 1.0 - smoothstep(0.02, 0.0, abs(plank - 0.5) - 0.46) * 0.4;
         col = mix(col, wood, onFloor);
 
-        vec2 origin = vec2(-0.42, 0.28);
-        vec2 dir = normalize(vec2(0.95, -0.72));
+        vec2 origin = vec2(-1.05, 0.62);
+        vec2 dir = normalize(vec2(0.95, -0.78));
         vec2 toP = p - origin;
         float along = dot(toP, dir);
         float across = dot(toP, vec2(-dir.y, dir.x));
-        float slat = mix(0.10, 1.0, smoothstep(0.30, 0.64, 0.5 + 0.5 * sin(dot(toP, vec2(0.12, 1.0)) * 22.0)));
-        float halfW = mix(0.028, 0.16, clamp(along * 0.7, 0.0, 1.0));
+        vec2 leafP = vec2(across * 1.6, along * 0.7);
+        float warp = fbm(leafP * 0.85 + vec2(uTime * 0.02, -uTime * 0.01));
+        float leaves = mix(0.78, 1.05, smoothstep(0.24, 0.76, fbm(leafP * 1.2 + warp * 0.55)));
+        float halfW = mix(0.040, 0.18, clamp(along * 0.55, 0.0, 1.0));
         float radial = exp(-pow(across / max(halfW, 1e-4), 2.0));
-        float alongM = smoothstep(-0.02, 0.08, along) * smoothstep(1.15, 0.28, along);
-        float shaft = radial * alongM * slat;
-        float core = exp(-pow(across / max(halfW * 0.36, 1e-4), 2.0)) * alongM * slat;
+        float alongM = smoothstep(0.04, 0.20, along) * smoothstep(2.15, 1.05, along);
+        float shaft = radial * alongM * leaves;
+        float core = exp(-pow(across / max(halfW * 0.38, 1e-4), 2.0)) * alongM * leaves;
 
         vec3 sun = vec3(1.70, 1.12, 0.42);
         float density = shaft * (0.55 + uHover * 0.25);
@@ -872,20 +874,23 @@
 
         vec2 hit = origin + dir * ((floorY - origin.y) / dir.y);
         vec2 fq = (p - hit) * vec2(1.0, 3.2);
-        col += sun * exp(-dot(fq, fq) / 0.06) * onFloor * slat * 0.45;
+        col += sun * exp(-dot(fq, fq) / 0.07) * onFloor * leaves * 0.42;
 
         float motes = 0.0;
         for (int i = 0; i < 2; i++) {
           float fi = float(i);
-          vec2 q = p * (14.0 + fi * 11.0) + vec2(uTime * (0.012 + fi * 0.006), uTime * 0.008);
+          vec2 drift = vec2(uTime * (0.038 + fi * 0.016), uTime * 0.024)
+                     + vec2(sin(uTime * (0.22 + fi * 0.07) + fi), cos(uTime * (0.18 + fi * 0.05))) * 0.4;
+          vec2 q = p * (12.0 + fi * 9.0) + drift;
           vec2 id = floor(q);
           float h = hash21(id + fi * 9.0);
-          vec2 pos = 0.2 + 0.6 * vec2(hash21(id + 3.1), hash21(id + 8.7));
-          vec2 dlt = fract(q) - pos;
-          motes += step(0.93 - uHover * 0.02, h) * exp(-dot(dlt, dlt) * 140.0)
-                 * (0.5 + 0.5 * sin(uTime * 1.4 + h * 30.0));
+          vec2 pos = 0.18 + 0.64 * vec2(hash21(id + 3.1), hash21(id + 8.7));
+          vec2 wander = vec2(sin(uTime * (0.6 + h * 0.9) + h * 20.0), cos(uTime * (0.45 + h * 0.7))) * 0.20;
+          vec2 dlt = fract(q) - pos - wander;
+          motes += step(0.88 - uHover * 0.02, h) * exp(-dot(dlt, dlt) * 120.0)
+                 * (0.5 + 0.5 * sin(uTime * 1.6 + h * 30.0));
         }
-        col += vec3(1.5, 1.2, 0.65) * motes * (0.12 + 0.88 * clamp(shaft * 1.5, 0.0, 1.0));
+        col += vec3(1.5, 1.2, 0.65) * motes * (0.20 + 0.80 * clamp(shaft * 1.5, 0.0, 1.0));
 
         float vg = smoothstep(1.15, 0.22, length(p * vec2(0.85, 1.0)));
         col *= 0.40 + vg * 0.72;
