@@ -1,0 +1,3211 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>ESSENTIA: The Spagyric Perfumery</title>
+  <style>
+    :root {
+      --bg-slate: #0d1117;
+      --panel-bg: #141a24;
+      --panel-border: #2c384a;
+      --brass-bright: #e5b358;
+      --brass-dim: #99732e;
+      --brass-dark: #4d3a17;
+      --amber-glow: #ff9d24;
+      --rose-attar: #e83a62;
+      --lavender-frost: #a78bfa;
+      --bergamot-lime: #4ade80;
+      --clove-spark: #38bdf8;
+      --text-main: #f1f5f9;
+      --text-muted: #94a3b8;
+      --danger: #ef4444;
+      --font-display: 'Georgia', 'Palatino', serif;
+      --font-mono: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    body {
+      background-color: var(--bg-slate);
+      color: var(--text-main);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow-x: hidden;
+      touch-action: manipulation;
+    }
+
+    /* Top Navigation / HUD */
+    header {
+      background: linear-gradient(180deg, #18202d 0%, #0e141d 100%);
+      border-bottom: 2px solid var(--brass-dim);
+      padding: 0.6rem 1.2rem;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.8rem;
+      z-index: 20;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+    }
+
+    .brand-block {
+      display: flex;
+      align-items: center;
+      gap: 0.8rem;
+    }
+
+    .brand-icon {
+      font-size: 1.8rem;
+      filter: drop-shadow(0 0 8px var(--amber-glow));
+    }
+
+    .brand-title h1 {
+      font-family: var(--font-display);
+      font-size: 1.25rem;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      color: var(--brass-bright);
+      text-shadow: 0 0 10px rgba(229, 179, 88, 0.4);
+      margin: 0;
+      line-height: 1.1;
+    }
+
+    .brand-title p {
+      font-size: 0.72rem;
+      color: var(--text-muted);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .hud-metrics {
+      display: flex;
+      align-items: center;
+      gap: 1.2rem;
+      flex-wrap: wrap;
+    }
+
+    .metric-chip {
+      background: var(--panel-bg);
+      border: 1px solid var(--panel-border);
+      border-radius: 6px;
+      padding: 0.35rem 0.75rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-family: var(--font-mono);
+      font-size: 0.9rem;
+    }
+
+    .metric-chip.purity {
+      border-color: rgba(232, 58, 98, 0.4);
+    }
+    .metric-chip.purity .val {
+      color: var(--rose-attar);
+      font-weight: 700;
+    }
+
+    .metric-chip.essence {
+      border-color: rgba(229, 179, 88, 0.4);
+    }
+    .metric-chip.essence .val {
+      color: var(--brass-bright);
+      font-weight: 700;
+    }
+
+    .metric-chip.wave .val {
+      color: var(--clove-spark);
+      font-weight: 700;
+    }
+
+    .hud-controls {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    button.btn-ctrl {
+      background: #1e2837;
+      border: 1px solid var(--brass-dim);
+      color: var(--text-main);
+      padding: 0.4rem 0.75rem;
+      border-radius: 4px;
+      font-size: 0.85rem;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 0.3rem;
+      transition: all 0.15s ease;
+      font-family: inherit;
+    }
+
+    button.btn-ctrl:hover:not(:disabled) {
+      background: #2a374b;
+      border-color: var(--brass-bright);
+      box-shadow: 0 0 10px rgba(229, 179, 88, 0.25);
+    }
+
+    button.btn-ctrl:active:not(:disabled) {
+      transform: translateY(1px);
+    }
+
+    button.btn-ctrl.active {
+      background: var(--brass-dark);
+      border-color: var(--brass-bright);
+      color: var(--brass-bright);
+    }
+
+    /* Main Stage Layout */
+    main {
+      flex: 1;
+      display: grid;
+      grid-template-columns: 1fr 340px;
+      position: relative;
+      background: #090c10;
+      min-height: 0;
+    }
+
+    @media (max-width: 980px) {
+      main {
+        grid-template-columns: 1fr;
+        grid-template-rows: auto auto;
+      }
+    }
+
+    .canvas-container {
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0.75rem;
+      background: radial-gradient(circle at 50% 50%, #151c27 0%, #090c10 100%);
+      overflow: hidden;
+    }
+
+    canvas#gameCanvas {
+      display: block;
+      border: 2px solid var(--brass-dim);
+      border-radius: 8px;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.7), inset 0 0 40px rgba(0, 0, 0, 0.8);
+      cursor: default;
+      max-width: 100%;
+      height: auto;
+    }
+
+    /* Overlay Card for Inter-wave & Notifications */
+    .stage-overlay {
+      position: absolute;
+      top: 1.5rem;
+      left: 1.5rem;
+      right: 1.5rem;
+      max-width: 620px;
+      margin: 0 auto;
+      background: rgba(14, 20, 30, 0.94);
+      border: 1.5px solid var(--brass-bright);
+      border-radius: 8px;
+      padding: 1rem 1.4rem;
+      box-shadow: 0 12px 40px rgba(0, 0, 0, 0.8), 0 0 20px rgba(229, 179, 88, 0.15);
+      z-index: 15;
+      pointer-events: auto;
+      transition: opacity 0.25s ease, transform 0.25s ease;
+    }
+
+    .stage-overlay.hidden {
+      opacity: 0;
+      pointer-events: none;
+      transform: translateY(-10px);
+    }
+
+    .overlay-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      border-bottom: 1px solid var(--brass-dark);
+      padding-bottom: 0.4rem;
+      margin-bottom: 0.6rem;
+    }
+
+    .overlay-header h3 {
+      font-family: var(--font-display);
+      color: var(--brass-bright);
+      font-size: 1.15rem;
+      letter-spacing: 0.05em;
+    }
+
+    .overlay-header .wave-badge {
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      color: var(--amber-glow);
+    }
+
+    .overlay-quote {
+      font-family: var(--font-display);
+      font-style: italic;
+      color: #d1d5db;
+      font-size: 0.88rem;
+      line-height: 1.4;
+      margin-bottom: 0.8rem;
+    }
+
+    .overlay-intel {
+      background: #0f1520;
+      border: 1px solid #1f2a3a;
+      border-radius: 4px;
+      padding: 0.5rem 0.8rem;
+      font-size: 0.82rem;
+      color: var(--text-muted);
+      margin-bottom: 1rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.3rem;
+    }
+
+    .overlay-intel strong {
+      color: var(--text-main);
+    }
+
+    .overlay-actions {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+    }
+
+    .btn-commence {
+      background: linear-gradient(180deg, #d99a38 0%, #a36b17 100%);
+      border: 1px solid #ffcc66;
+      color: #0b0f14;
+      font-weight: 800;
+      font-family: var(--font-display);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      padding: 0.65rem 1.4rem;
+      border-radius: 6px;
+      font-size: 0.95rem;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      box-shadow: 0 0 15px rgba(229, 179, 88, 0.4);
+      transition: all 0.15s ease;
+    }
+
+    .btn-commence:hover {
+      background: linear-gradient(180deg, #f0ae43 0%, #b8791c 100%);
+      box-shadow: 0 0 25px rgba(229, 179, 88, 0.7);
+      transform: scale(1.02);
+    }
+
+    .auto-toggle-label {
+      font-size: 0.82rem;
+      color: var(--text-muted);
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      cursor: pointer;
+    }
+
+    /* Sidebar / Right Inspector & Palette */
+    aside.sidebar {
+      background: #111722;
+      border-left: 2px solid var(--brass-dim);
+      display: flex;
+      flex-direction: column;
+      overflow-y: auto;
+      z-index: 10;
+    }
+
+    .sidebar-section {
+      padding: 1rem;
+      border-bottom: 1px solid var(--panel-border);
+    }
+
+    .section-title {
+      font-family: var(--font-display);
+      font-size: 0.85rem;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      color: var(--brass-bright);
+      margin-bottom: 0.75rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    /* Tower Build Palette */
+    .tower-palette {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 0.6rem;
+    }
+
+    .tower-card {
+      background: #18202d;
+      border: 1.5px solid var(--panel-border);
+      border-radius: 6px;
+      padding: 0.65rem;
+      cursor: pointer;
+      display: grid;
+      grid-template-columns: 44px 1fr auto;
+      align-items: center;
+      gap: 0.7rem;
+      transition: all 0.15s ease;
+    }
+
+    .tower-card:hover:not(.disabled) {
+      border-color: var(--brass-bright);
+      background: #202b3c;
+      transform: translateX(-2px);
+    }
+
+    .tower-card.selected {
+      border-color: var(--amber-glow);
+      background: #222e42;
+      box-shadow: 0 0 12px rgba(255, 157, 36, 0.3);
+    }
+
+    .tower-card.disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .tower-card-icon {
+      width: 44px;
+      height: 44px;
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.5rem;
+      background: #0d131b;
+      border: 1px solid #2d3b4f;
+    }
+
+    .tower-card-info h4 {
+      font-size: 0.88rem;
+      color: var(--text-main);
+      margin-bottom: 0.2rem;
+      font-family: var(--font-display);
+    }
+
+    .tower-card-info p {
+      font-size: 0.72rem;
+      color: var(--text-muted);
+      line-height: 1.2;
+    }
+
+    .tower-card-cost {
+      font-family: var(--font-mono);
+      font-size: 0.85rem;
+      color: var(--brass-bright);
+      font-weight: 700;
+      text-align: right;
+    }
+
+    /* Tower Inspector Details */
+    .inspector-empty {
+      text-align: center;
+      padding: 2rem 1rem;
+      color: var(--text-muted);
+      font-size: 0.85rem;
+      font-style: italic;
+    }
+
+    .inspector-content {
+      display: flex;
+      flex-direction: column;
+      gap: 0.8rem;
+    }
+
+    .inspector-header {
+      display: flex;
+      align-items: center;
+      gap: 0.8rem;
+    }
+
+    .inspector-icon {
+      width: 50px;
+      height: 50px;
+      border-radius: 8px;
+      background: #17212e;
+      border: 1.5px solid var(--brass-dim);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.8rem;
+    }
+
+    .inspector-title h3 {
+      font-family: var(--font-display);
+      font-size: 1.05rem;
+      color: var(--brass-bright);
+    }
+
+    .inspector-title .tier-pips {
+      color: var(--amber-glow);
+      font-size: 0.85rem;
+      letter-spacing: 0.2em;
+    }
+
+    .stat-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.5rem;
+      background: #0d121a;
+      border: 1px solid #1f2a3a;
+      border-radius: 6px;
+      padding: 0.6rem;
+    }
+
+    .stat-item {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .stat-label {
+      font-size: 0.7rem;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .stat-val {
+      font-family: var(--font-mono);
+      font-size: 0.88rem;
+      color: var(--text-main);
+      font-weight: 600;
+    }
+
+    .target-prio-block {
+      display: flex;
+      flex-direction: column;
+      gap: 0.4rem;
+    }
+
+    .prio-buttons {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 0.3rem;
+    }
+
+    .btn-prio {
+      background: #182230;
+      border: 1px solid #2b394e;
+      color: var(--text-muted);
+      border-radius: 4px;
+      padding: 0.35rem 0.2rem;
+      font-size: 0.72rem;
+      cursor: pointer;
+      text-align: center;
+      transition: all 0.1s;
+    }
+
+    .btn-prio:hover {
+      border-color: var(--brass-dim);
+      color: var(--text-main);
+    }
+
+    .btn-prio.active {
+      background: var(--brass-dark);
+      border-color: var(--brass-bright);
+      color: var(--brass-bright);
+      font-weight: 700;
+    }
+
+    .upgrade-box {
+      background: #17212e;
+      border: 1.5px solid var(--brass-dim);
+      border-radius: 6px;
+      padding: 0.75rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+
+    .upgrade-name {
+      font-family: var(--font-display);
+      color: var(--brass-bright);
+      font-size: 0.95rem;
+      font-weight: bold;
+    }
+
+    .upgrade-desc {
+      font-size: 0.78rem;
+      color: #cbd5e1;
+      line-height: 1.35;
+    }
+
+    .btn-upgrade {
+      background: linear-gradient(180deg, #3b82f6 0%, #1d4ed8 100%);
+      border: 1px solid #60a5fa;
+      color: white;
+      font-weight: 700;
+      padding: 0.5rem;
+      border-radius: 4px;
+      font-size: 0.85rem;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.4rem;
+      transition: all 0.15s;
+    }
+
+    .btn-upgrade:hover:not(:disabled) {
+      background: linear-gradient(180deg, #60a5fa 0%, #2563eb 100%);
+      box-shadow: 0 0 12px rgba(59, 130, 246, 0.4);
+    }
+
+    .btn-upgrade:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      background: #334155;
+      border-color: #475569;
+    }
+
+    .btn-sell {
+      background: #271a1d;
+      border: 1px solid #6e2735;
+      color: #fca5a5;
+      padding: 0.45rem;
+      border-radius: 4px;
+      font-size: 0.8rem;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.4rem;
+      transition: all 0.15s;
+    }
+
+    .btn-sell:hover {
+      background: #3f1d24;
+      border-color: var(--danger);
+    }
+
+    /* Journal Modal */
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.75);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 100;
+      padding: 1.5rem;
+    }
+
+    .modal-backdrop.hidden {
+      display: none;
+    }
+
+    .journal-modal {
+      background: #141a24;
+      border: 2px solid var(--brass-bright);
+      border-radius: 8px;
+      max-width: 680px;
+      width: 100%;
+      max-height: 85vh;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.9);
+    }
+
+    .journal-modal-header {
+      padding: 1rem 1.4rem;
+      border-bottom: 1.5px solid var(--brass-dim);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .journal-modal-header h2 {
+      font-family: var(--font-display);
+      color: var(--brass-bright);
+      font-size: 1.3rem;
+    }
+
+    .journal-body {
+      padding: 1.2rem 1.4rem;
+      overflow-y: auto;
+      font-size: 0.9rem;
+      line-height: 1.6;
+      color: #cbd5e1;
+    }
+
+    .journal-body p {
+      margin-bottom: 1rem;
+    }
+
+    .journal-body h4 {
+      color: var(--amber-glow);
+      font-family: var(--font-display);
+      margin-top: 1rem;
+      margin-bottom: 0.4rem;
+    }
+
+    /* Game Over / Victory Modal */
+    .endgame-modal {
+      background: #121822;
+      border: 2px solid var(--brass-bright);
+      border-radius: 8px;
+      padding: 2rem;
+      text-align: center;
+      max-width: 480px;
+      width: 100%;
+      box-shadow: 0 25px 60px rgba(0, 0, 0, 0.9);
+    }
+
+    .endgame-modal h2 {
+      font-family: var(--font-display);
+      font-size: 1.8rem;
+      margin-bottom: 0.6rem;
+    }
+
+    .endgame-modal.victory h2 {
+      color: var(--brass-bright);
+      text-shadow: 0 0 15px rgba(229, 179, 88, 0.5);
+    }
+
+    .endgame-modal.defeat h2 {
+      color: var(--danger);
+      text-shadow: 0 0 15px rgba(239, 68, 68, 0.5);
+    }
+
+    .endgame-modal p {
+      color: #94a3b8;
+      font-size: 0.95rem;
+      margin-bottom: 1.5rem;
+      line-height: 1.5;
+    }
+
+    /* Responsive footer bar */
+    footer.bottom-bar {
+      background: #0a0d13;
+      border-top: 1px solid #1f2a3a;
+      padding: 0.4rem 1rem;
+      font-size: 0.72rem;
+      color: #64748b;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Top Header HUD -->
+  <header>
+    <div class="brand-block">
+      <div class="brand-icon">⚗️</div>
+      <div class="brand-title">
+        <h1>Essentia</h1>
+        <p>The Spagyric Perfumery • Grasse 1888</p>
+      </div>
+    </div>
+
+    <div class="hud-metrics">
+      <div class="metric-chip purity" title="Flacon Purity (Lives)">
+        <span>Flacon:</span>
+        <span class="val" id="hudPurity">100%</span>
+      </div>
+      <div class="metric-chip essence" title="Distilled Essence (Gold)">
+        <span>Essence:</span>
+        <span class="val" id="hudEssence">400</span>
+      </div>
+      <div class="metric-chip wave" title="Current Distillation Watch">
+        <span>Watch:</span>
+        <span class="val" id="hudWave">1 / 20</span>
+      </div>
+      <div class="metric-chip score" title="Score">
+        <span>Score:</span>
+        <span class="val" id="hudScore">0</span>
+      </div>
+    </div>
+
+    <div class="hud-controls">
+      <button class="btn-ctrl" id="btnSpeed1" title="Normal Speed (1x)">1x</button>
+      <button class="btn-ctrl" id="btnSpeed2" title="Fast Speed (2x)">2x</button>
+      <button class="btn-ctrl" id="btnSpeed3" title="Super Speed (3x)">3x</button>
+      <button class="btn-ctrl" id="btnPause" title="Pause Game (Space)">❚❚</button>
+      <button class="btn-ctrl" id="btnMute" title="Toggle Sound">🔊</button>
+      <button class="btn-ctrl" id="btnNewTrack" title="Generate New Track">⚗ New Track</button>
+      <button class="btn-ctrl" id="btnJournal" title="View Perfumer's Journal">📖 Lore</button>
+    </div>
+  </header>
+
+  <!-- Main Playing Field & Side Panel -->
+  <main>
+    <div class="canvas-container">
+      <canvas id="gameCanvas" width="960" height="620"></canvas>
+
+      <!-- Inter-wave Stage Overlay -->
+      <div class="stage-overlay" id="stageOverlay">
+        <div class="overlay-header">
+          <h3 id="overlayTitle">Watch I: First Steam</h3>
+          <span class="wave-badge" id="overlayWaveBadge">WATCH 1 OF 20</span>
+        </div>
+        <div class="overlay-quote" id="overlayQuote">
+          "The grease traps shudder. Fragile tallow creeps have caught scent of the Seventh Distillate..."
+        </div>
+        <div class="overlay-intel" id="overlayIntel">
+          <div><strong>Incoming Threat:</strong> <span id="intelEnemies">12x Tallow Mites (Fast, Swarming)</span></div>
+          <div><strong>Apothecary Advice:</strong> <span id="intelAdvice">Deploy Bergamot Pipettes near corners to puncture creeping tallow.</span></div>
+        </div>
+        <div class="overlay-actions">
+          <label class="auto-toggle-label">
+            <input type="checkbox" id="chkAutoWave"> Auto-commence next watch
+          </label>
+          <button class="btn-commence" id="btnCommenceWave">
+            <span>🔥 Open Steam Valve</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Right Sidebar: Palette and Tower Inspector -->
+    <aside class="sidebar">
+      <!-- Section 1: Spagyric Stills (Palette) -->
+      <div class="sidebar-section">
+        <div class="section-title">
+          <span>Spagyric Stills</span>
+          <span style="font-size:0.75rem; color:var(--text-muted);">Click to place</span>
+        </div>
+        <div class="tower-palette" id="towerPalette">
+          <!-- Populated by JS -->
+        </div>
+      </div>
+
+      <!-- Section 2: Tower Inspector & Crucible -->
+      <div class="sidebar-section" style="flex:1;">
+        <div class="section-title">
+          <span>Alembic Crucible</span>
+          <span id="inspectSub">Inspect</span>
+        </div>
+
+        <div class="inspector-empty" id="inspectorEmpty">
+          Click on any still on the workbench to inspect stats, tune targeting priority, or distill upgrades.
+        </div>
+
+        <div class="inspector-content hidden" id="inspectorContent">
+          <div class="inspector-header">
+            <div class="inspector-icon" id="inspectIcon">🌱</div>
+            <div class="inspector-title">
+              <h3 id="inspectName">Bergamot Pipette</h3>
+              <div class="tier-pips" id="inspectTierPips">◆◇◇◇◇</div>
+            </div>
+          </div>
+
+          <div class="stat-grid">
+            <div class="stat-item">
+              <span class="stat-label">Power (DPS)</span>
+              <span class="stat-val" id="inspectDPS">32</span>
+            </div>
+            <div class="stat-item">
+              <span class="stat-label">Range</span>
+              <span class="stat-val" id="inspectRange">140 px</span>
+            </div>
+            <div class="stat-item">
+              <span class="stat-label">Rate of Fire</span>
+              <span class="stat-val" id="inspectFireRate">2.2 / s</span>
+            </div>
+            <div class="stat-item">
+              <span class="stat-label">Total Slain</span>
+              <span class="stat-val" id="inspectKills">0</span>
+            </div>
+          </div>
+
+          <!-- Targeting Priority -->
+          <div class="target-prio-block">
+            <span class="stat-label">Targeting Priority</span>
+            <div class="prio-buttons">
+              <button class="btn-prio" data-prio="first">First</button>
+              <button class="btn-prio" data-prio="last">Last</button>
+              <button class="btn-prio" data-prio="strong">Strong</button>
+              <button class="btn-prio" data-prio="close">Close</button>
+            </div>
+          </div>
+
+          <!-- Upgrade Box -->
+          <div class="upgrade-box" id="upgradeBox">
+            <div class="upgrade-name" id="upgradeTitle">Next: Cold-Press Needle</div>
+            <div class="upgrade-desc" id="upgradeDesc">+35% fire rate, +20% range. Sharpened citrus jet.</div>
+            <button class="btn-upgrade" id="btnUpgradeTower">
+              <span>Distill Upgrade</span> (<span id="upgradeCost">75</span> Essence)
+            </button>
+          </div>
+
+          <button class="btn-sell" id="btnSellTower">
+            <span>♻ Salvage Still</span> (<span id="sellRefund">75</span> Essence)
+          </button>
+        </div>
+      </div>
+    </aside>
+  </main>
+
+  <footer class="bottom-bar">
+    <span>ESSENTIA © 1888 — Pure Vanilla HTML5 Canvas • Procedural Audio • Responsive</span>
+    <span>Hotkeys: Space (Play/Pause) • 1/2/3 (Speed) • Esc (Deselect)</span>
+  </footer>
+
+  <!-- Lore Journal Modal -->
+  <div class="modal-backdrop hidden" id="journalModal">
+    <div class="journal-modal">
+      <div class="journal-modal-header">
+        <h2>Field Notes of Jean-Luc Vaneau (1888)</h2>
+        <button class="btn-ctrl" id="btnCloseJournal">✕ Close</button>
+      </div>
+      <div class="journal-body">
+        <p><em>"They told me at the Guild that scent is transient — that once the stopper is pulled, memory disperses into the ceiling plaster and is gone forever. They are blind fools. Smell is the only bridge to the primordial soul."</em></p>
+        
+        <h4>The Discovery of the Septième Distillat</h4>
+        <p>In November of 1888, sixty fathoms beneath the limestone vaults of Grasse, my alembics condensed the Seventh Essence. It radiates the soft warmth of childhood dawn: sunlit linen, rain on warm stone, and orange blossom honey. But its distillation created an ethereal fracture. The Abyssal Malodors — ancient spirits of sour tallow, stagnant bile, and corrosive industrial vapor — smell its purity and crawl toward the Grand Flacon.</p>
+
+        <h4>The Five Distillation Stills</h4>
+        <p><strong>The Bergamot Pipette:</strong> Rapidly drops acidic citrus darts. Upgrades grant needle piercing, armor dissolution, and tri-burst solar ignitions.</p>
+        <p><strong>The Lavender Cryo-Condenser:</strong> Emits frosty mist coils that chill approaching vapors. High tiers flash-freeze enemies into shattering ice.</p>
+        <p><strong>The Ambergris Mortar:</strong> Catapults heavy blobs of sticky sperm-whale resin that detonate into burning, slowing craters.</p>
+        <p><strong>The Clove-Spark Coil:</strong> Discharges crackling arcs of eugenol bio-electricity that leap between multiple targets with micro-stuns.</p>
+        <p><strong>The Rose-Attar Prism:</strong> Ramps an unbroken beam of thermal Damascena ruby light that incinerates heavy monstrosities.</p>
+
+        <h4>The Watches of the Night</h4>
+        <p>Survive 20 escalating watches of distillation. Beware the Putrefactive Goliath at Watch 5 & 15, the Ammonia Chimera at Watch 10, and the Grand Miasma Lord at Watch 20.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Game Over / Victory Modal -->
+  <div class="modal-backdrop hidden" id="endgameModal">
+    <div class="endgame-modal" id="endgameBox">
+      <h2 id="endgameHeading">Distillation Complete!</h2>
+      <p id="endgameMessage">The Grand Flacon remains unblemished. The Seventh Distillate is sealed in amber forever.</p>
+      <button class="btn-commence" id="btnRestartGame" style="margin: 0 auto;">
+        <span>⚗ Re-Ignite Alembic</span>
+      </button>
+    </div>
+  </div>
+
+  <script>
+    /* ==========================================================================
+       ESSENTIA: The Spagyric Perfumery — Game Engine
+       ========================================================================== */
+
+    (function() {
+      'use strict';
+
+      // Audio System using Procedural Web Audio API
+      const AudioSys = {
+        ctx: null,
+        muted: false,
+        initialized: false,
+
+        init() {
+          if (this.initialized) return;
+          try {
+            const AudioContext = window.AudioContext || window.webkitAudioContext;
+            if (AudioContext) {
+              this.ctx = new AudioContext();
+              this.initialized = true;
+            }
+          } catch(e) {
+            console.warn('Web Audio not available:', e);
+          }
+        },
+
+        playDrop() {
+          if (this.muted || !this.ctx) return;
+          const t = this.ctx.currentTime;
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(1400, t);
+          osc.frequency.exponentialRampToValueAtTime(700, t + 0.08);
+          gain.gain.setValueAtTime(0.2, t);
+          gain.gain.exponentialRampToValueAtTime(0.001, t + 0.08);
+          osc.connect(gain);
+          gain.connect(this.ctx.destination);
+          osc.start(t);
+          osc.stop(t + 0.09);
+        },
+
+        playHiss() {
+          if (this.muted || !this.ctx) return;
+          const t = this.ctx.currentTime;
+          const bSize = this.ctx.sampleRate * 0.15;
+          const buffer = this.ctx.createBuffer(1, bSize, this.ctx.sampleRate);
+          const data = buffer.getChannelData(0);
+          for (let i = 0; i < bSize; i++) {
+            data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (bSize * 0.3));
+          }
+          const noise = this.ctx.createBufferSource();
+          noise.buffer = buffer;
+          const filter = this.ctx.createBiquadFilter();
+          filter.type = 'bandpass';
+          filter.frequency.value = 3200;
+          const gain = this.ctx.createGain();
+          gain.gain.setValueAtTime(0.15, t);
+          gain.gain.exponentialRampToValueAtTime(0.001, t + 0.15);
+          noise.connect(filter);
+          filter.connect(gain);
+          gain.connect(this.ctx.destination);
+          noise.start(t);
+        },
+
+        playThud() {
+          if (this.muted || !this.ctx) return;
+          const t = this.ctx.currentTime;
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = 'triangle';
+          osc.frequency.setValueAtTime(160, t);
+          osc.frequency.exponentialRampToValueAtTime(35, t + 0.2);
+          gain.gain.setValueAtTime(0.35, t);
+          gain.gain.exponentialRampToValueAtTime(0.001, t + 0.2);
+          osc.connect(gain);
+          gain.connect(this.ctx.destination);
+          osc.start(t);
+          osc.stop(t + 0.22);
+        },
+
+        playZap() {
+          if (this.muted || !this.ctx) return;
+          const t = this.ctx.currentTime;
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = 'sawtooth';
+          osc.frequency.setValueAtTime(650, t);
+          osc.frequency.linearRampToValueAtTime(180, t + 0.1);
+          gain.gain.setValueAtTime(0.18, t);
+          gain.gain.exponentialRampToValueAtTime(0.001, t + 0.1);
+          osc.connect(gain);
+          gain.connect(this.ctx.destination);
+          osc.start(t);
+          osc.stop(t + 0.11);
+        },
+
+        playGong() {
+          if (this.muted || !this.ctx) return;
+          const t = this.ctx.currentTime;
+          [220, 440, 660, 880].forEach((freq, idx) => {
+            const osc = this.ctx.createOscillator();
+            const gain = this.ctx.createGain();
+            osc.type = idx % 2 === 0 ? 'sine' : 'triangle';
+            osc.frequency.value = freq;
+            gain.gain.setValueAtTime(0.15 / (idx + 1), t);
+            gain.gain.exponentialRampToValueAtTime(0.0001, t + 1.2);
+            osc.connect(gain);
+            gain.connect(this.ctx.destination);
+            osc.start(t);
+            osc.stop(t + 1.25);
+          });
+        },
+
+        playUpgrade() {
+          if (this.muted || !this.ctx) return;
+          const t = this.ctx.currentTime;
+          [523.25, 659.25, 783.99, 1046.50].forEach((freq, i) => {
+            const osc = this.ctx.createOscillator();
+            const gain = this.ctx.createGain();
+            osc.type = 'sine';
+            osc.frequency.value = freq;
+            const startT = t + i * 0.05;
+            gain.gain.setValueAtTime(0.12, startT);
+            gain.gain.exponentialRampToValueAtTime(0.001, startT + 0.25);
+            osc.connect(gain);
+            gain.connect(this.ctx.destination);
+            osc.start(startT);
+            osc.stop(startT + 0.26);
+          });
+        }
+      };
+
+      // Game Configuration & Definitions
+      const VIRTUAL_WIDTH = 960;
+      const VIRTUAL_HEIGHT = 620;
+
+      // 5 Distinct Towers with 4 Upgrades Each (Tiers 0 to 4)
+      const TOWER_TYPES = {
+        pipette: {
+          id: 'pipette',
+          name: 'Bergamot Pipette',
+          icon: '🍋',
+          desc: 'Rapid citrus acid darts that puncture miasma.',
+          baseCost: 100,
+          color: '#4ade80',
+          bulletColor: '#86efac',
+          tiers: [
+            {
+              tierName: 'Bergamot Pipette',
+              cost: 0,
+              range: 140,
+              fireRate: 2.4, // attacks per second
+              damage: 16,
+              perk: 'Fast citrus kinetic dart.'
+            },
+            {
+              tierName: 'Cold-Press Needle',
+              cost: 75,
+              range: 165,
+              fireRate: 3.4,
+              damage: 22,
+              perk: '+40% attack speed, extended range.'
+            },
+            {
+              tierName: 'Neroli Puncture',
+              cost: 130,
+              range: 180,
+              fireRate: 3.8,
+              damage: 32,
+              shred: 0.35,
+              perk: 'Punctures armor; reduces physical resistance by 35%.'
+            },
+            {
+              tierName: 'Solar Limonene',
+              cost: 220,
+              range: 200,
+              fireRate: 4.4,
+              damage: 46,
+              pierce: 2,
+              shred: 0.35,
+              perk: 'Darts pierce through up to 2 consecutive enemies.'
+            },
+            {
+              tierName: 'Sun of Calabria',
+              cost: 380,
+              range: 220,
+              fireRate: 5.2,
+              damage: 64,
+              pierce: 3,
+              triBurst: true,
+              ignite: 60,
+              perk: 'Tri-burst fire; ignites enemies in searing citrus flame.'
+            }
+          ]
+        },
+        cryo: {
+          id: 'cryo',
+          name: 'Lavender Cryo-Condenser',
+          icon: '❄️',
+          desc: 'Aura of chilled mist that slows and freezes creeps.',
+          baseCost: 130,
+          color: '#a78bfa',
+          bulletColor: '#c4b5fd',
+          tiers: [
+            {
+              tierName: 'Lavender Cryo-Condenser',
+              cost: 0,
+              range: 115,
+              fireRate: 1.5,
+              damage: 10,
+              slow: 0.25,
+              slowDuration: 2.2,
+              isAura: true,
+              perk: 'Pulsing frosty mist slows enemies by 25%.'
+            },
+            {
+              tierName: 'Herbal Mist Coil',
+              cost: 90,
+              range: 140,
+              fireRate: 1.8,
+              damage: 16,
+              slow: 0.35,
+              slowDuration: 2.8,
+              isAura: true,
+              perk: 'Aura radius +25%, slow increased to 35%.'
+            },
+            {
+              tierName: 'Absolute Hydrosol',
+              cost: 150,
+              range: 160,
+              fireRate: 2.0,
+              damage: 24,
+              slow: 0.45,
+              vuln: 0.25,
+              isAura: true,
+              perk: 'Vulnerable: Chilled targets suffer +25% damage from all stills.'
+            },
+            {
+              tierName: 'Cryo-Coumarin Glaze',
+              cost: 240,
+              range: 175,
+              fireRate: 2.2,
+              damage: 36,
+              slow: 0.50,
+              vuln: 0.25,
+              flashFreeze: true,
+              isAura: true,
+              perk: 'Every 4th pulse flash-freezes enemies in place for 1.2s.'
+            },
+            {
+              tierName: 'Permafrost Still',
+              cost: 420,
+              range: 195,
+              fireRate: 2.5,
+              damage: 54,
+              slow: 0.60,
+              vuln: 0.35,
+              shatterDeath: true,
+              isAura: true,
+              perk: 'Enemies slain while frozen shatter into icy shrapnel.'
+            }
+          ]
+        },
+        mortar: {
+          id: 'mortar',
+          name: 'Ambergris Mortar',
+          icon: '🪨',
+          desc: 'Catapults viscous resin blobs that explode in sticky pools.',
+          baseCost: 150,
+          color: '#f59e0b',
+          bulletColor: '#fbbf24',
+          tiers: [
+            {
+              tierName: 'Ambergris Mortar',
+              cost: 0,
+              range: 220,
+              fireRate: 0.65,
+              damage: 55,
+              splashRadius: 50,
+              isLobber: true,
+              perk: 'High-arc lobbed resin orb with heavy splash.'
+            },
+            {
+              tierName: 'Balsamic Munition',
+              cost: 110,
+              range: 245,
+              fireRate: 0.75,
+              damage: 90,
+              splashRadius: 65,
+              isLobber: true,
+              perk: '+30% blast radius, +60% explosion damage.'
+            },
+            {
+              tierName: 'Smoldering Frankincense',
+              cost: 180,
+              range: 260,
+              fireRate: 0.85,
+              damage: 135,
+              splashRadius: 75,
+              burningPuddle: 4.0, // seconds
+              isLobber: true,
+              perk: 'Leaves a sticky burning puddle on the track for 4s.'
+            },
+            {
+              tierName: 'Supercritical Resin',
+              cost: 280,
+              range: 280,
+              fireRate: 0.95,
+              damage: 190,
+              splashRadius: 85,
+              knockback: 35, // impulse capped
+              burningPuddle: 5.0,
+              isLobber: true,
+              perk: 'Direct blast impacts knock back non-boss targets.'
+            },
+            {
+              tierName: 'Imperial Oudh Cataclysm',
+              cost: 480,
+              range: 300,
+              fireRate: 1.1,
+              damage: 320,
+              splashRadius: 105,
+              knockback: 45,
+              burningPuddle: 6.0,
+              armorCrusher: true,
+              isLobber: true,
+              perk: 'Crushes armored foes for 2.5x damage; massive toxic crater.'
+            }
+          ]
+        },
+        coil: {
+          id: 'coil',
+          name: 'Clove-Spark Coil',
+          icon: '⚡',
+          desc: 'Chains crackling eugenol electricity between targets.',
+          baseCost: 175,
+          color: '#38bdf8',
+          bulletColor: '#7dd3fc',
+          tiers: [
+            {
+              tierName: 'Clove-Spark Coil',
+              cost: 0,
+              range: 135,
+              fireRate: 1.1,
+              damage: 30,
+              chainCount: 3,
+              chainDecay: 0.8,
+              isBeamChain: true,
+              perk: 'Chains electrical eugenol arc up to 3 nearby targets.'
+            },
+            {
+              tierName: 'Zanzibar Electrode',
+              cost: 125,
+              range: 155,
+              fireRate: 1.3,
+              damage: 45,
+              chainCount: 5,
+              chainDecay: 0.85,
+              isBeamChain: true,
+              perk: 'Chains up to 5 targets; +15% range.'
+            },
+            {
+              tierName: 'Hyper-Eugenol Surge',
+              cost: 190,
+              range: 170,
+              fireRate: 1.5,
+              damage: 65,
+              chainCount: 6,
+              chainDecay: 0.9,
+              stunChance: 0.25,
+              isBeamChain: true,
+              perk: '25% chance per chain hit to micro-stun for 0.5s.'
+            },
+            {
+              tierName: 'Conductive Vapor',
+              cost: 310,
+              range: 185,
+              fireRate: 1.8,
+              damage: 95,
+              chainCount: 8,
+              chainDecay: 1.0, // no falloff
+              stunChance: 0.35,
+              isBeamChain: true,
+              perk: 'Zero damage falloff across chains; 35% stun chance.'
+            },
+            {
+              tierName: 'Storm of Madagascar',
+              cost: 520,
+              range: 205,
+              fireRate: 2.2,
+              damage: 150,
+              chainCount: 10,
+              chainDecay: 1.0,
+              stunChance: 0.45,
+              empNova: true,
+              isBeamChain: true,
+              perk: 'Chains 10 targets; triggers EMP plasma shockwaves.'
+            }
+          ]
+        },
+        prism: {
+          id: 'prism',
+          name: 'Rose-Attar Prism',
+          icon: '🌹',
+          desc: 'Continuous ruby laser beam with escalating thermal intensity.',
+          baseCost: 220,
+          color: '#e83a62',
+          bulletColor: '#fb7185',
+          tiers: [
+            {
+              tierName: 'Rose-Attar Prism',
+              cost: 0,
+              range: 155,
+              fireRate: 10.0, // ticks per second
+              damage: 4, // base per tick (ramp up to 3x)
+              maxRamp: 3.5,
+              isLaser: true,
+              perk: 'Locks onto target, ramping damage up to 3.5x over time.'
+            },
+            {
+              tierName: 'Crimson Decanter',
+              cost: 150,
+              range: 180,
+              fireRate: 10.0,
+              damage: 6.5,
+              maxRamp: 4.5,
+              isLaser: true,
+              perk: 'Beam ramps faster and scales up to 4.5x damage.'
+            },
+            {
+              tierName: 'Damascena Focal Point',
+              cost: 240,
+              range: 200,
+              fireRate: 10.0,
+              damage: 10,
+              maxRamp: 5.5,
+              laserSlow: 0.30,
+              isLaser: true,
+              perk: 'Blinds target in radiant glare, slowing it by 30%.'
+            },
+            {
+              tierName: 'Thermal Splitter',
+              cost: 360,
+              range: 220,
+              fireRate: 10.0,
+              damage: 15,
+              maxRamp: 6.5,
+              laserSlow: 0.35,
+              splitTarget: true,
+              isLaser: true,
+              perk: 'Refracts a secondary ruby beam at an adjacent target.'
+            },
+            {
+              tierName: 'The Eternal Soliflore',
+              cost: 600,
+              range: 245,
+              fireRate: 10.0,
+              damage: 24,
+              maxRamp: 8.0,
+              laserSlow: 0.40,
+              splitTarget: true,
+              floralBurst: true,
+              isLaser: true,
+              perk: 'Enemies vaporized by the beam burst into lethal petal clouds.'
+            }
+          ]
+        }
+      };
+
+      // 8 Enemy Archetypes
+      const ENEMY_TYPES = {
+        mite: {
+          name: 'Tallow Mite',
+          speed: 2.2,
+          hp: 55,
+          armor: 0,
+          reward: 12,
+          radius: 9,
+          color: '#d1d5db',
+          eyeColor: '#ef4444',
+          desc: 'Fragile skittering fat-droplet.'
+        },
+        shade: {
+          name: 'Vinegar Shade',
+          speed: 2.8,
+          hp: 85,
+          armor: 0,
+          physResist: 0.4,
+          immuneSlow: true,
+          reward: 16,
+          radius: 11,
+          color: '#c084fc',
+          eyeColor: '#f43f5e',
+          desc: 'Vaporous phantom; immune to cold slows.'
+        },
+        bruiser: {
+          name: 'Smog Bruiser',
+          speed: 0.85,
+          hp: 310,
+          armor: 0.25,
+          reward: 28,
+          radius: 16,
+          color: '#475569',
+          eyeColor: '#f59e0b',
+          desc: 'Dense industrial smoke; high durability.'
+        },
+        spore: {
+          name: 'Mold Sporeling',
+          speed: 1.35,
+          hp: 150,
+          armor: 0,
+          splits: 2,
+          reward: 20,
+          radius: 13,
+          color: '#84cc16',
+          eyeColor: '#10b981',
+          desc: 'Splits into 2 Mini-Spores upon defeat.'
+        },
+        minispore: {
+          name: 'Mini-Spore',
+          speed: 2.1,
+          hp: 45,
+          armor: 0,
+          reward: 6,
+          radius: 7,
+          color: '#bef264',
+          eyeColor: '#059669',
+          desc: 'Fast budding fungal spore.'
+        },
+        carapace: {
+          name: 'Ferrous Rust-Carapace',
+          speed: 0.7,
+          hp: 520,
+          armor: 0.55,
+          reward: 42,
+          radius: 17,
+          color: '#9a3412',
+          eyeColor: '#ea580c',
+          desc: 'Heavy oxidized plate; 55% physical armor.'
+        },
+        skater: {
+          name: 'Camphor Skater',
+          speed: 1.9,
+          hp: 180,
+          armor: 0,
+          reward: 32,
+          radius: 12,
+          canDash: true,
+          color: '#e0e7ff',
+          eyeColor: '#38bdf8',
+          desc: 'Crystalline insect; performs sudden speed dashes.'
+        },
+        goliath: {
+          name: 'Putrefactive Goliath',
+          speed: 0.6,
+          hp: 1600,
+          armor: 0.35,
+          reward: 130,
+          radius: 22,
+          isBoss: true,
+          color: '#15803d',
+          eyeColor: '#facc15',
+          desc: 'Miniboss: Putrid rotting sludge titan.'
+        },
+        chimera: {
+          name: 'The Ammonia Chimera',
+          speed: 0.75,
+          hp: 3400,
+          armor: 0.2,
+          reward: 220,
+          radius: 24,
+          isBoss: true,
+          silencesTowers: true,
+          color: '#38bdf8',
+          eyeColor: '#ffffff',
+          desc: 'Miniboss: Emits pungent clouds that silence stills.'
+        },
+        miasmaLord: {
+          name: 'The Grand Miasma Lord',
+          speed: 0.5,
+          hp: 9500,
+          armor: 0.45,
+          reward: 500,
+          radius: 30,
+          isBoss: true,
+          color: '#581c87',
+          eyeColor: '#f43f5e',
+          desc: 'Grand Boss: Three-phase living apocalypse of decay.'
+        }
+      };
+
+      // 20 Narrative Waves with Story & Balanced Spawns
+      const WAVES = [
+        {
+          title: 'Watch I: First Steam',
+          quote: '"The grease traps shudder. Fragile tallow creeps have caught scent of the Seventh Distillate..."',
+          advice: 'Bergamot Pipettes puncture fast tallow skitterers with ease.',
+          spawns: [ { type: 'mite', count: 12, interval: 0.85 } ]
+        },
+        {
+          title: 'Watch II: Sour Whispers',
+          quote: '"Vinegar fumes seep through mortar joints. The vapor moves with uncanny haste."',
+          advice: 'Vinegar Shades ignore cold slows. Use rapid kinetic or electrical stills.',
+          spawns: [ { type: 'mite', count: 8, interval: 0.7 }, { type: 'shade', count: 6, interval: 1.0 } ]
+        },
+        {
+          title: 'Watch III: Soot in the Flue',
+          quote: '"Dark industrial chimney soot condenses into thick hulking forms."',
+          advice: 'Smog Bruisers absorb direct hits; Cryo-Condensers keep them in firing zones.',
+          spawns: [ { type: 'mite', count: 10, interval: 0.6 }, { type: 'bruiser', count: 4, interval: 1.8 } ]
+        },
+        {
+          title: 'Watch IV: The Mold Bloom',
+          quote: '"Wet limestone produces green mycelium bulbs that burst into mini-spores."',
+          advice: 'Ambergris Mortars or Clove-Spark Coils clear clusters of split spores.',
+          spawns: [ { type: 'spore', count: 8, interval: 1.2 }, { type: 'shade', count: 8, interval: 0.9 } ]
+        },
+        {
+          title: 'Watch V: The Goliath of the Sump',
+          quote: '"A monstrous mound of rancid tallow and rotting grease heaves up from the cellar drain."',
+          advice: 'Focus your stills! Upgrade to Neroli Puncture or Rose-Attar Prism to melt boss HP.',
+          spawns: [ { type: 'goliath', count: 1, interval: 0, hpMult: 1.0 }, { type: 'mite', count: 14, interval: 0.7 } ]
+        },
+        {
+          title: 'Watch VI: Camphor Crystals',
+          quote: '"Sublimated camphor needles skate along the brass tubes in sudden velocity bursts."',
+          advice: 'Camphor Skaters sprint forward in surges. Cryo-Condensers help blunt their dashes.',
+          spawns: [ { type: 'skater', count: 10, interval: 1.0 }, { type: 'bruiser', count: 5, interval: 1.6 } ]
+        },
+        {
+          title: 'Watch VII: Oxidized Bile',
+          quote: '"Flakes of corrosive red oxide encase the creeping vapors in heavy iron plate."',
+          advice: 'Rust-Carapaces shrug off physical darts. Use Clove-Spark or Rose-Attar beams!',
+          spawns: [ { type: 'carapace', count: 8, interval: 1.5 }, { type: 'shade', count: 10, interval: 0.8 } ]
+        },
+        {
+          title: 'Watch VIII: Hyphal Explosion',
+          quote: '"The cellar humidity spikes. Fungal nodules bud by the dozens."',
+          advice: 'Area-of-effect damage is vital against massive swarms of splitting spores.',
+          spawns: [ { type: 'spore', count: 16, interval: 0.8 }, { type: 'skater', count: 6, interval: 1.2 } ]
+        },
+        {
+          title: 'Watch IX: The Smog Escort',
+          quote: '"Heavy coal soot pillows the approach of lightning-fast vinegar phantoms."',
+          advice: 'Set some stills to Strongest to prioritize armored escorts, others to First.',
+          spawns: [ { type: 'bruiser', count: 10, interval: 1.4 }, { type: 'shade', count: 12, interval: 0.6 } ]
+        },
+        {
+          title: 'Watch X: The Ammonia Chimera',
+          quote: '"A suffocating cloud of caustic spirit descends, choking the breath from our alembic burners."',
+          advice: 'The Chimera intermittently silences nearby stills. Spread your defense in depth!',
+          spawns: [ { type: 'chimera', count: 1, interval: 0, hpMult: 1.0 }, { type: 'skater', count: 10, interval: 0.9 }, { type: 'carapace', count: 5, interval: 1.6 } ]
+        },
+        {
+          title: 'Watch XI: The Rancid Torrent',
+          quote: '"The secondary exhaust flues fail! Millions of tallow droplets fuse into a living river."',
+          advice: 'Clove-Spark Coils with Hyper-Eugenol Surge can stun chain through swarms.',
+          spawns: [ { type: 'mite', count: 26, interval: 0.4 }, { type: 'bruiser', count: 7, interval: 1.2 } ]
+        },
+        {
+          title: 'Watch XII: Acetic Phantoms',
+          quote: '"Pure glacial acetic acid vaporizes, bypassing physical barriers like specters."',
+          advice: 'Rose-Attar prisms pierce spiritual resistance with pure focused light.',
+          spawns: [ { type: 'shade', count: 18, interval: 0.6 }, { type: 'carapace', count: 7, interval: 1.5 } ]
+        },
+        {
+          title: 'Watch XIII: Sublimated Blitz',
+          quote: '"Camphor needles swarm across the workspace in synchronized dashing wedges."',
+          advice: 'Lavender permafrost stills shatter swift runners as they burst past.',
+          spawns: [ { type: 'skater', count: 20, interval: 0.7 }, { type: 'spore', count: 10, interval: 1.0 } ]
+        },
+        {
+          title: 'Watch XIV: The Iron Vanguard',
+          quote: '"Ancient boiler rust plates march forward in dense phalanxes."',
+          advice: 'Deploy Ambergris Mortars with Imperial Oudh to crush heavy iron plate.',
+          spawns: [ { type: 'carapace', count: 15, interval: 1.2 }, { type: 'bruiser', count: 8, interval: 1.4 } ]
+        },
+        {
+          title: 'Watch XV: The Caustic Colossus',
+          quote: '"The sump goliath returns, steeped in boiling caustic lye and necrotic mold."',
+          advice: 'A colossal threat! Maximize your Rose-Attar ramp damage to melt its vast health.',
+          spawns: [ { type: 'goliath', count: 1, interval: 0, hpMult: 2.8 }, { type: 'carapace', count: 8, interval: 1.1 }, { type: 'shade', count: 14, interval: 0.5 } ]
+        },
+        {
+          title: 'Watch XVI: Fungal Deluge',
+          quote: '"The walls dissolve into carpet-thick spore bulbs. They split upon every breath."',
+          advice: 'Smoldering Frankincense puddles incinerate budding mini-spores instantly.',
+          spawns: [ { type: 'spore', count: 24, interval: 0.6 }, { type: 'skater', count: 12, interval: 0.8 } ]
+        },
+        {
+          title: 'Watch XVII: The Stygian Inversion',
+          quote: '"Pitch-black smog rolls over the bench, choking the copper condensers."',
+          advice: 'Combine Cryo vulnerability with high-tier Clove-Spark Storms.',
+          spawns: [ { type: 'bruiser', count: 16, interval: 1.0 }, { type: 'carapace', count: 10, interval: 1.2 }, { type: 'shade', count: 14, interval: 0.6 } ]
+        },
+        {
+          title: 'Watch XVIII: The Grand Malodor Cadence',
+          quote: '"Every forgotten failure in alchemy unites: tallow, soot, acid, and iron."',
+          advice: 'All five still types must sing in harmony. Check your targeting priorities.',
+          spawns: [ { type: 'carapace', count: 12, interval: 1.1 }, { type: 'skater', count: 14, interval: 0.7 }, { type: 'spore', count: 14, interval: 0.7 }, { type: 'shade', count: 14, interval: 0.7 } ]
+        },
+        {
+          title: 'Watch XIX: The Darkness Before Dawn',
+          quote: '"The room grows freezing cold. The scent of sweet orange blossom shines like a lone torch."',
+          advice: 'Sell outdated stills to fund Tier 4 masterworks before the final watch.',
+          spawns: [ { type: 'bruiser', count: 18, interval: 0.8 }, { type: 'carapace', count: 14, interval: 1.0 }, { type: 'mite', count: 30, interval: 0.3 } ]
+        },
+        {
+          title: 'Watch XX: THE GRAND MIASMA LORD',
+          quote: '"The primordial avatar of decay descends from the abyss to claim the Seventh Essence."',
+          advice: 'THE FINAL TEST! The Lord shifts forms and summons waves of minions. Do not let the Flacon shatter!',
+          spawns: [ { type: 'miasmaLord', count: 1, interval: 0, hpMult: 1.0 }, { type: 'skater', count: 12, interval: 1.5 }, { type: 'carapace', count: 8, interval: 2.0 }, { type: 'spore', count: 10, interval: 1.8 } ]
+        }
+      ];
+
+      // Procedural Spline Path Generator
+      class SplineTrack {
+        constructor(width, height) {
+          this.width = width;
+          this.height = height;
+          this.samples = [];
+          this.totalLength = 0;
+          this.waypoints = [];
+          this.generate();
+        }
+
+        generate() {
+          let valid = false;
+          let attempts = 0;
+
+          while (!valid && attempts < 100) {
+            attempts++;
+            const startX = 35;
+            const startY = 100 + Math.random() * (this.height - 200);
+            const endX = this.width - 45;
+            const endY = 100 + Math.random() * (this.height - 200);
+
+            const pts = [{ x: startX, y: startY }];
+            const numMid = 4 + Math.floor(Math.random() * 2);
+            const sliceW = (endX - startX) / (numMid + 1);
+
+            for (let i = 1; i <= numMid; i++) {
+              const x = startX + i * sliceW + (Math.random() - 0.5) * sliceW * 0.4;
+              let y;
+              if (i % 2 === 1) {
+                y = 90 + Math.random() * (this.height * 0.35);
+              } else {
+                y = this.height * 0.55 + Math.random() * (this.height * 0.35);
+              }
+              y = Math.max(75, Math.min(this.height - 75, y));
+              pts.push({ x, y });
+            }
+            pts.push({ x: endX, y: endY });
+
+            const samples = this.sampleCatmullRom(pts, 1200);
+            const len = this.calcLength(samples);
+
+            if (len >= this.width * 1.55) {
+              this.waypoints = pts;
+              this.samples = samples;
+              this.totalLength = len;
+              valid = true;
+            }
+          }
+
+          if (!valid) {
+            const fallbackPts = [
+              { x: 40, y: 120 },
+              { x: 260, y: 480 },
+              { x: 480, y: 140 },
+              { x: 720, y: 500 },
+              { x: 915, y: 280 }
+            ];
+            this.waypoints = fallbackPts;
+            this.samples = this.sampleCatmullRom(fallbackPts, 1200);
+            this.totalLength = this.calcLength(this.samples);
+          }
+
+          this.samples[0].dist = 0;
+          for (let i = 1; i < this.samples.length; i++) {
+            const dx = this.samples[i].x - this.samples[i - 1].x;
+            const dy = this.samples[i].y - this.samples[i - 1].y;
+            this.samples[i].dist = this.samples[i - 1].dist + Math.hypot(dx, dy);
+            this.samples[i - 1].angle = Math.atan2(dy, dx);
+          }
+          this.samples[this.samples.length - 1].angle = this.samples[this.samples.length - 2].angle;
+        }
+
+        sampleCatmullRom(pts, count) {
+          const samples = [];
+          const n = pts.length;
+          for (let i = 0; i < count; i++) {
+            const t = i / (count - 1);
+            const p = t * (n - 1);
+            const idx = Math.floor(p);
+            const frac = p - idx;
+
+            const p0 = pts[Math.max(0, idx - 1)];
+            const p1 = pts[idx];
+            const p2 = pts[Math.min(n - 1, idx + 1)];
+            const p3 = pts[Math.min(n - 1, idx + 2)];
+
+            const tt = frac * frac;
+            const ttt = tt * frac;
+
+            const q0 = -ttt + 2 * tt - frac;
+            const q1 = 3 * ttt - 5 * tt + 2;
+            const q2 = -3 * ttt + 4 * tt + frac;
+            const q3 = ttt - tt;
+
+            const x = 0.5 * (p0.x * q0 + p1.x * q1 + p2.x * q2 + p3.x * q3);
+            const y = 0.5 * (p0.y * q0 + p1.y * q1 + p2.y * q2 + p3.y * q3);
+            samples.push({ x, y });
+          }
+          return samples;
+        }
+
+        calcLength(samples) {
+          let sum = 0;
+          for (let i = 1; i < samples.length; i++) {
+            sum += Math.hypot(samples[i].x - samples[i - 1].x, samples[i].y - samples[i - 1].y);
+          }
+          return sum;
+        }
+
+        getPointAtDistance(d) {
+          if (d <= 0) return this.samples[0];
+          if (d >= this.totalLength) return this.samples[this.samples.length - 1];
+
+          let low = 0;
+          let high = this.samples.length - 1;
+          while (low <= high) {
+            const mid = (low + high) >> 1;
+            if (this.samples[mid].dist < d) low = mid + 1;
+            else high = mid - 1;
+          }
+
+          const idx = Math.max(0, Math.min(this.samples.length - 2, high));
+          const p1 = this.samples[idx];
+          const p2 = this.samples[idx + 1];
+          const segLen = p2.dist - p1.dist;
+          const frac = segLen > 0 ? (d - p1.dist) / segLen : 0;
+
+          return {
+            x: p1.x + (p2.x - p1.x) * frac,
+            y: p1.y + (p2.y - p1.y) * frac,
+            angle: p1.angle
+          };
+        }
+
+        distanceToPoint(x, y) {
+          let minDist = Infinity;
+          for (let i = 0; i < this.samples.length; i += 4) {
+            const dx = this.samples[i].x - x;
+            const dy = this.samples[i].y - y;
+            const dist = Math.hypot(dx, dy);
+            if (dist < minDist) minDist = dist;
+          }
+          return minDist;
+        }
+      }
+
+      // Game Engine Main State
+      class GameEngine {
+        constructor() {
+          this.canvas = document.getElementById('gameCanvas');
+          this.ctx = this.canvas.getContext('2d');
+
+          this.dpr = window.devicePixelRatio || 1;
+          this.setupCanvasDPR();
+
+          this.bgCanvas = document.createElement('canvas');
+          this.bgCtx = this.bgCanvas.getContext('2d');
+          this.bgCanvas.width = VIRTUAL_WIDTH;
+          this.bgCanvas.height = VIRTUAL_HEIGHT;
+
+          this.track = new SplineTrack(VIRTUAL_WIDTH, VIRTUAL_HEIGHT);
+          this.towers = [];
+          this.enemies = [];
+          this.projectiles = [];
+          this.particles = [];
+          this.puddles = [];
+
+          this.purity = 100;
+          this.essence = 400;
+          this.score = 0;
+          this.currentWave = 0;
+          this.maxWaves = 20;
+
+          this.state = 'PREPARATION';
+          this.gameSpeed = 1.0;
+          this.isPaused = false;
+          this.autoWave = false;
+          this.lastTime = null;
+
+          this.spawner = {
+            queue: [],
+            timer: 0,
+            active: false
+          };
+
+          this.selectedTowerType = null;
+          this.selectedPlacedTower = null;
+          this.mousePos = { x: -100, y: -100, onCanvas: false };
+
+          this.initOffscreenBackground();
+          this.bindEvents();
+          this.renderPalette();
+          this.updateHUD();
+          this.showWaveOverlay();
+
+          requestAnimationFrame(this.loop.bind(this));
+        }
+
+        setupCanvasDPR() {
+          this.canvas.width = VIRTUAL_WIDTH * this.dpr;
+          this.canvas.height = VIRTUAL_HEIGHT * this.dpr;
+          this.canvas.style.width = VIRTUAL_WIDTH + 'px';
+          this.canvas.style.height = VIRTUAL_HEIGHT + 'px';
+          this.ctx.scale(this.dpr, this.dpr);
+        }
+
+        initOffscreenBackground() {
+          const bg = this.bgCtx;
+          bg.fillStyle = '#0c1017';
+          bg.fillRect(0, 0, VIRTUAL_WIDTH, VIRTUAL_HEIGHT);
+
+          bg.fillStyle = 'rgba(255, 255, 255, 0.015)';
+          for (let i = 0; i < 600; i++) {
+            const rx = Math.random() * VIRTUAL_WIDTH;
+            const ry = Math.random() * VIRTUAL_HEIGHT;
+            const rw = 1 + Math.random() * 2;
+            bg.fillRect(rx, ry, rw, rw);
+          }
+
+          bg.strokeStyle = 'rgba(229, 179, 88, 0.05)';
+          bg.lineWidth = 1;
+          for (let x = 40; x < VIRTUAL_WIDTH; x += 40) {
+            bg.beginPath();
+            bg.moveTo(x, 0);
+            bg.lineTo(x, VIRTUAL_HEIGHT);
+            bg.stroke();
+          }
+          for (let y = 40; y < VIRTUAL_HEIGHT; y += 40) {
+            bg.beginPath();
+            bg.moveTo(0, y);
+            bg.lineTo(VIRTUAL_WIDTH, y);
+            bg.stroke();
+          }
+
+          bg.strokeStyle = '#4d3a17';
+          bg.lineWidth = 4;
+          bg.strokeRect(2, 2, VIRTUAL_WIDTH - 4, VIRTUAL_HEIGHT - 4);
+
+          bg.fillStyle = '#99732e';
+          [ [16, 16], [VIRTUAL_WIDTH - 16, 16], [16, VIRTUAL_HEIGHT - 16], [VIRTUAL_WIDTH - 16, VIRTUAL_HEIGHT - 16] ].forEach(([cx, cy]) => {
+            bg.beginPath();
+            bg.arc(cx, cy, 5, 0, Math.PI * 2);
+            bg.fill();
+          });
+
+          // Conduit road bed
+          bg.strokeStyle = '#1a2332';
+          bg.lineWidth = 44;
+          bg.lineCap = 'round';
+          bg.lineJoin = 'round';
+          bg.beginPath();
+          for (let i = 0; i < this.track.samples.length; i++) {
+            const pt = this.track.samples[i];
+            if (i === 0) bg.moveTo(pt.x, pt.y);
+            else bg.lineTo(pt.x, pt.y);
+          }
+          bg.stroke();
+
+          bg.strokeStyle = '#7c531d';
+          bg.lineWidth = 32;
+          bg.stroke();
+
+          bg.strokeStyle = '#c8863c';
+          bg.lineWidth = 24;
+          bg.stroke();
+
+          bg.strokeStyle = 'rgba(255, 230, 180, 0.35)';
+          bg.lineWidth = 8;
+          bg.stroke();
+
+          // Start Hopper (Brass Vapor Funnel)
+          const startPt = this.track.samples[0];
+          bg.fillStyle = '#99732e';
+          bg.beginPath();
+          bg.arc(startPt.x, startPt.y, 24, 0, Math.PI * 2);
+          bg.fill();
+          bg.fillStyle = '#e5b358';
+          bg.beginPath();
+          bg.arc(startPt.x, startPt.y, 16, 0, Math.PI * 2);
+          bg.fill();
+          bg.fillStyle = '#1e2837';
+          bg.beginPath();
+          bg.arc(startPt.x, startPt.y, 8, 0, Math.PI * 2);
+          bg.fill();
+
+          // Terminal: Grand Crystal Flacon
+          const endPt = this.track.samples[this.track.samples.length - 1];
+          bg.fillStyle = 'rgba(232, 58, 98, 0.2)';
+          bg.beginPath();
+          bg.arc(endPt.x, endPt.y, 28, 0, Math.PI * 2);
+          bg.fill();
+          bg.strokeStyle = '#e83a62';
+          bg.lineWidth = 2;
+          bg.stroke();
+
+          bg.fillStyle = '#e5b358';
+          bg.fillRect(endPt.x - 12, endPt.y - 12, 24, 24);
+          bg.fillStyle = '#ff9d24';
+          bg.beginPath();
+          bg.arc(endPt.x, endPt.y, 8, 0, Math.PI * 2);
+          bg.fill();
+        }
+
+        bindEvents() {
+          window.addEventListener('resize', () => {
+            this.setupCanvasDPR();
+          });
+
+          const getPos = (e) => {
+            const rect = this.canvas.getBoundingClientRect();
+            const scaleX = VIRTUAL_WIDTH / rect.width;
+            const scaleY = VIRTUAL_HEIGHT / rect.height;
+            return {
+              x: (e.clientX - rect.left) * scaleX,
+              y: (e.clientY - rect.top) * scaleY
+            };
+          };
+
+          this.canvas.addEventListener('mousemove', (e) => {
+            const p = getPos(e);
+            this.mousePos.x = p.x;
+            this.mousePos.y = p.y;
+            this.mousePos.onCanvas = true;
+          });
+
+          this.canvas.addEventListener('mouseleave', () => {
+            this.mousePos.onCanvas = false;
+          });
+
+          this.canvas.addEventListener('click', (e) => {
+            AudioSys.init();
+            const p = getPos(e);
+
+            if (this.selectedTowerType) {
+              if (this.canPlaceTower(p.x, p.y)) {
+                this.placeTower(this.selectedTowerType, p.x, p.y);
+                this.selectedTowerType = null;
+                this.renderPalette();
+              } else {
+                AudioSys.playZap();
+              }
+              return;
+            }
+
+            let clickedTower = null;
+            for (let i = this.towers.length - 1; i >= 0; i--) {
+              const t = this.towers[i];
+              if (Math.hypot(t.x - p.x, t.y - p.y) <= 22) {
+                clickedTower = t;
+                break;
+              }
+            }
+
+            if (clickedTower) {
+              this.selectedPlacedTower = clickedTower;
+              AudioSys.playDrop();
+              this.updateInspector();
+            } else {
+              this.selectedPlacedTower = null;
+              this.updateInspector();
+            }
+          });
+
+          this.canvas.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+            this.selectedTowerType = null;
+            this.selectedPlacedTower = null;
+            this.renderPalette();
+            this.updateInspector();
+          });
+
+          document.getElementById('btnSpeed1').addEventListener('click', () => this.setSpeed(1.0));
+          document.getElementById('btnSpeed2').addEventListener('click', () => this.setSpeed(2.0));
+          document.getElementById('btnSpeed3').addEventListener('click', () => this.setSpeed(3.0));
+
+          document.getElementById('btnPause').addEventListener('click', () => {
+            AudioSys.init();
+            this.togglePause();
+          });
+
+          document.getElementById('btnMute').addEventListener('click', () => {
+            AudioSys.init();
+            AudioSys.muted = !AudioSys.muted;
+            document.getElementById('btnMute').textContent = AudioSys.muted ? '🔇' : '🔊';
+          });
+
+          document.getElementById('btnNewTrack').addEventListener('click', () => {
+            if (this.state === 'WAVE_ACTIVE') {
+              if (!confirm('Generating a new track will reset active defense progress. Proceed?')) return;
+            }
+            this.resetWithNewTrack();
+          });
+
+          document.getElementById('btnJournal').addEventListener('click', () => {
+            document.getElementById('journalModal').classList.remove('hidden');
+          });
+
+          document.getElementById('btnCloseJournal').addEventListener('click', () => {
+            document.getElementById('journalModal').classList.add('hidden');
+          });
+
+          document.getElementById('btnCommenceWave').addEventListener('click', () => {
+            AudioSys.init();
+            this.startNextWave();
+          });
+
+          document.getElementById('chkAutoWave').addEventListener('change', (e) => {
+            this.autoWave = e.target.checked;
+          });
+
+          document.getElementById('btnUpgradeTower').addEventListener('click', () => {
+            if (this.selectedPlacedTower) {
+              this.upgradeTower(this.selectedPlacedTower);
+            }
+          });
+
+          document.getElementById('btnSellTower').addEventListener('click', () => {
+            if (this.selectedPlacedTower) {
+              this.sellTower(this.selectedPlacedTower);
+            }
+          });
+
+          document.querySelectorAll('.btn-prio').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+              if (this.selectedPlacedTower) {
+                const prio = e.target.getAttribute('data-prio');
+                this.selectedPlacedTower.priority = prio;
+                this.updateInspector();
+                AudioSys.playDrop();
+              }
+            });
+          });
+
+          document.getElementById('btnRestartGame').addEventListener('click', () => {
+            document.getElementById('endgameModal').classList.add('hidden');
+            this.restartGame();
+          });
+
+          window.addEventListener('keydown', (e) => {
+            if (e.code === 'Space') {
+              e.preventDefault();
+              AudioSys.init();
+              if (this.state === 'PREPARATION') {
+                this.startNextWave();
+              } else {
+                this.togglePause();
+              }
+            } else if (e.code === 'Digit1') {
+              this.setSpeed(1.0);
+            } else if (e.code === 'Digit2') {
+              this.setSpeed(2.0);
+            } else if (e.code === 'Digit3') {
+              this.setSpeed(3.0);
+            } else if (e.code === 'Escape') {
+              this.selectedTowerType = null;
+              this.selectedPlacedTower = null;
+              this.renderPalette();
+              this.updateInspector();
+              document.getElementById('journalModal').classList.add('hidden');
+            }
+          });
+        }
+
+        setSpeed(spd) {
+          AudioSys.init();
+          this.gameSpeed = spd;
+          ['btnSpeed1', 'btnSpeed2', 'btnSpeed3'].forEach(id => {
+            document.getElementById(id).classList.remove('active');
+          });
+          if (spd === 1.0) document.getElementById('btnSpeed1').classList.add('active');
+          if (spd === 2.0) document.getElementById('btnSpeed2').classList.add('active');
+          if (spd === 3.0) document.getElementById('btnSpeed3').classList.add('active');
+        }
+
+        togglePause() {
+          this.isPaused = !this.isPaused;
+          const btn = document.getElementById('btnPause');
+          btn.textContent = this.isPaused ? '▶' : '❚❚';
+          btn.classList.toggle('active', this.isPaused);
+        }
+
+        canPlaceTower(x, y) {
+          if (x < 35 || x > VIRTUAL_WIDTH - 35 || y < 35 || y > VIRTUAL_HEIGHT - 35) return false;
+          if (this.track.distanceToPoint(x, y) < 36) return false;
+          for (let i = 0; i < this.towers.length; i++) {
+            const t = this.towers[i];
+            if (Math.hypot(t.x - x, t.y - y) < 40) return false;
+          }
+          return true;
+        }
+
+        placeTower(typeId, x, y) {
+          const def = TOWER_TYPES[typeId];
+          if (!def || this.essence < def.baseCost) return;
+
+          this.essence -= def.baseCost;
+          const newTower = {
+            id: 't_' + Math.random().toString(36).substr(2, 9),
+            typeId: typeId,
+            x: x,
+            y: y,
+            tier: 0,
+            priority: 'first',
+            cooldown: 0,
+            beamTarget: null,
+            rampTimer: 0,
+            totalKills: 0,
+            totalDamage: 0,
+            totalInvested: def.baseCost,
+            silencedTimer: 0,
+            flashTimer: 0
+          };
+
+          this.towers.push(newTower);
+          this.selectedPlacedTower = newTower;
+          AudioSys.playThud();
+          this.addSparks(x, y, def.color, 12);
+          this.updateHUD();
+          this.updateInspector();
+        }
+
+        upgradeTower(tower) {
+          const def = TOWER_TYPES[tower.typeId];
+          if (tower.tier >= def.tiers.length - 1) return;
+
+          const nextTier = def.tiers[tower.tier + 1];
+          if (this.essence < nextTier.cost) return;
+
+          this.essence -= nextTier.cost;
+          tower.totalInvested += nextTier.cost;
+          tower.tier++;
+          AudioSys.playUpgrade();
+          this.addSparks(tower.x, tower.y, def.color, 18);
+          this.updateHUD();
+          this.updateInspector();
+        }
+
+        sellTower(tower) {
+          const refund = Math.floor(tower.totalInvested * 0.75);
+          this.essence += refund;
+          this.addSparks(tower.x, tower.y, '#e5b358', 15);
+          AudioSys.playHiss();
+
+          this.towers = this.towers.filter(t => t !== tower);
+          this.selectedPlacedTower = null;
+          this.updateHUD();
+          this.updateInspector();
+        }
+
+        renderPalette() {
+          const container = document.getElementById('towerPalette');
+          container.innerHTML = '';
+
+          Object.values(TOWER_TYPES).forEach(def => {
+            const card = document.createElement('div');
+            card.className = 'tower-card' + (this.selectedTowerType === def.id ? ' selected' : '');
+            if (this.essence < def.baseCost) card.classList.add('disabled');
+
+            card.innerHTML = `
+              <div class="tower-card-icon">${def.icon}</div>
+              <div class="tower-card-info">
+                <h4>${def.name}</h4>
+                <p>${def.desc}</p>
+              </div>
+              <div class="tower-card-cost">${def.baseCost} ⚗</div>
+            `;
+
+            card.addEventListener('click', () => {
+              AudioSys.init();
+              if (this.essence >= def.baseCost) {
+                this.selectedTowerType = this.selectedTowerType === def.id ? null : def.id;
+                this.selectedPlacedTower = null;
+                this.renderPalette();
+                this.updateInspector();
+              }
+            });
+
+            container.appendChild(card);
+          });
+        }
+
+        updateHUD() {
+          document.getElementById('hudPurity').textContent = Math.max(0, this.purity) + '%';
+          document.getElementById('hudEssence').textContent = this.essence;
+          document.getElementById('hudWave').textContent = `${Math.min(this.currentWave + 1, this.maxWaves)} / ${this.maxWaves}`;
+          document.getElementById('hudScore').textContent = this.score;
+
+          this.renderPalette();
+        }
+
+        updateInspector() {
+          const empty = document.getElementById('inspectorEmpty');
+          const content = document.getElementById('inspectorContent');
+
+          if (!this.selectedPlacedTower) {
+            empty.classList.remove('hidden');
+            content.classList.add('hidden');
+            document.getElementById('inspectSub').textContent = 'Inspect';
+            return;
+          }
+
+          empty.classList.add('hidden');
+          content.classList.remove('hidden');
+
+          const t = this.selectedPlacedTower;
+          const def = TOWER_TYPES[t.typeId];
+          const curTier = def.tiers[t.tier];
+          const hasNext = t.tier < def.tiers.length - 1;
+          const nextTier = hasNext ? def.tiers[t.tier + 1] : null;
+
+          document.getElementById('inspectSub').textContent = `Tier ${t.tier + 1}`;
+          document.getElementById('inspectIcon').textContent = def.icon;
+          document.getElementById('inspectName').textContent = curTier.tierName;
+
+          let pips = '';
+          for (let i = 0; i < def.tiers.length; i++) {
+            pips += i <= t.tier ? '◆' : '◇';
+          }
+          document.getElementById('inspectTierPips').textContent = pips;
+
+          let dps = Math.round(curTier.damage * curTier.fireRate);
+          if (curTier.isLaser) dps = Math.round(curTier.damage * curTier.fireRate * 2.2);
+          document.getElementById('inspectDPS').textContent = dps;
+          document.getElementById('inspectRange').textContent = curTier.range + ' px';
+          document.getElementById('inspectFireRate').textContent = curTier.fireRate + ' / s';
+          document.getElementById('inspectKills').textContent = t.totalKills;
+
+          document.querySelectorAll('.btn-prio').forEach(btn => {
+            btn.classList.toggle('active', btn.getAttribute('data-prio') === t.priority);
+          });
+
+          const upBox = document.getElementById('upgradeBox');
+          if (hasNext) {
+            upBox.classList.remove('hidden');
+            document.getElementById('upgradeTitle').textContent = `Next: ${nextTier.tierName}`;
+            document.getElementById('upgradeDesc').textContent = nextTier.perk;
+            document.getElementById('upgradeCost').textContent = nextTier.cost;
+            document.getElementById('btnUpgradeTower').disabled = this.essence < nextTier.cost;
+          } else {
+            upBox.classList.add('hidden');
+          }
+
+          const refund = Math.floor(t.totalInvested * 0.75);
+          document.getElementById('sellRefund').textContent = refund;
+        }
+
+        showWaveOverlay() {
+          const overlay = document.getElementById('stageOverlay');
+          if (this.currentWave >= this.maxWaves) {
+            overlay.classList.add('hidden');
+            return;
+          }
+
+          const w = WAVES[this.currentWave];
+          document.getElementById('overlayTitle').textContent = w.title;
+          document.getElementById('overlayWaveBadge').textContent = `WATCH ${this.currentWave + 1} OF ${this.maxWaves}`;
+          document.getElementById('overlayQuote').textContent = w.quote;
+          document.getElementById('intelAdvice').textContent = w.advice;
+
+          const enemyText = w.spawns.map(s => {
+            const ed = ENEMY_TYPES[s.type];
+            return `${s.count}x ${ed.name}`;
+          }).join(', ');
+          document.getElementById('intelEnemies').textContent = enemyText;
+
+          overlay.classList.remove('hidden');
+        }
+
+        startNextWave() {
+          if (this.state === 'WAVE_ACTIVE') return;
+
+          document.getElementById('stageOverlay').classList.add('hidden');
+          this.state = 'WAVE_ACTIVE';
+          AudioSys.playGong();
+
+          const waveDef = WAVES[this.currentWave];
+          const queue = [];
+
+          waveDef.spawns.forEach(group => {
+            for (let i = 0; i < group.count; i++) {
+              queue.push({
+                typeId: group.type,
+                delay: i === 0 ? 0.4 : group.interval,
+                hpMult: group.hpMult || 1.0
+              });
+            }
+          });
+
+          this.spawner.queue = queue;
+          this.spawner.timer = 0.5;
+          this.spawner.active = true;
+        }
+
+        spawnEnemy(item) {
+          const def = ENEMY_TYPES[item.typeId];
+          const hpScaling = 1 + (this.currentWave * 0.12);
+          const maxHp = Math.round(def.hp * item.hpMult * hpScaling);
+
+          const enemy = {
+            id: 'e_' + Math.random().toString(36).substr(2, 9),
+            typeId: item.typeId,
+            def: def,
+            dist: 0,
+            x: this.track.samples[0].x,
+            y: this.track.samples[0].y,
+            angle: 0,
+            hp: maxHp,
+            maxHp: maxHp,
+            speed: def.speed,
+            radius: def.radius,
+            armor: def.armor || 0,
+            physResist: def.physResist || 0,
+            slowFactor: 0,
+            slowTimer: 0,
+            freezeTimer: 0,
+            burnDamage: 0,
+            burnTimer: 0,
+            acidShredTimer: 0,
+            acidShredVal: 0,
+            vulnVal: 0,
+            vulnTimer: 0,
+            dashCooldown: 3.5,
+            dashTimer: 0,
+            knockbackCooldown: 0,
+            totalKnockback: 0
+          };
+
+          this.enemies.push(enemy);
+        }
+
+        resetWithNewTrack() {
+          this.track = new SplineTrack(VIRTUAL_WIDTH, VIRTUAL_HEIGHT);
+          this.initOffscreenBackground();
+          this.towers = [];
+          this.enemies = [];
+          this.projectiles = [];
+          this.particles = [];
+          this.puddles = [];
+          this.purity = 100;
+          this.essence = 400;
+          this.score = 0;
+          this.currentWave = 0;
+          this.state = 'PREPARATION';
+          this.spawner.active = false;
+          this.spawner.queue = [];
+          this.selectedPlacedTower = null;
+          this.selectedTowerType = null;
+          this.updateHUD();
+          this.updateInspector();
+          this.showWaveOverlay();
+        }
+
+        restartGame() {
+          this.resetWithNewTrack();
+        }
+
+        addSparks(x, y, color, count) {
+          for (let i = 0; i < count; i++) {
+            const ang = Math.random() * Math.PI * 2;
+            const spd = 1.2 + Math.random() * 3.5;
+            this.particles.push({
+              x: x,
+              y: y,
+              vx: Math.cos(ang) * spd,
+              vy: Math.sin(ang) * spd,
+              color: color,
+              life: 0.4 + Math.random() * 0.4,
+              maxLife: 0.8,
+              size: 2 + Math.random() * 2.5
+            });
+          }
+        }
+
+        addFloatingText(x, y, text, color) {
+          this.particles.push({
+            x: x,
+            y: y,
+            vx: (Math.random() - 0.5) * 0.8,
+            vy: -1.2,
+            text: text,
+            color: color,
+            life: 0.8,
+            maxLife: 0.8,
+            isText: true
+          });
+        }
+
+        // Core Update Loop
+        update(dt) {
+          if (dt <= 0 || isNaN(dt)) return;
+          dt = Math.min(dt, 0.1);
+
+          const scaledDt = dt * this.gameSpeed;
+
+          // 1. Spawner
+          if (this.spawner.active && this.spawner.queue.length > 0) {
+            this.spawner.timer -= scaledDt;
+            if (this.spawner.timer <= 0) {
+              const next = this.spawner.queue.shift();
+              this.spawnEnemy(next);
+              this.spawner.timer = next.delay;
+            }
+          }
+
+          // 2. Smoldering Puddles
+          for (let i = this.puddles.length - 1; i >= 0; i--) {
+            const pud = this.puddles[i];
+            pud.life -= scaledDt;
+            if (pud.life <= 0) {
+              this.puddles.splice(i, 1);
+              continue;
+            }
+
+            for (let j = 0; j < this.enemies.length; j++) {
+              const e = this.enemies[j];
+              if (Math.hypot(e.x - pud.x, e.y - pud.y) <= pud.radius) {
+                e.hp -= 28 * scaledDt;
+                if (Math.random() < 0.15) {
+                  this.addSparks(e.x, e.y, '#f59e0b', 1);
+                }
+              }
+            }
+          }
+
+          // 3. Enemies Update
+          for (let i = this.enemies.length - 1; i >= 0; i--) {
+            const e = this.enemies[i];
+
+            if (e.knockbackCooldown > 0) e.knockbackCooldown -= scaledDt;
+            if (e.burnTimer > 0) {
+              e.burnTimer -= scaledDt;
+              e.hp -= e.burnDamage * scaledDt;
+              if (Math.random() < 0.2) this.addSparks(e.x, e.y, '#fb923c', 1);
+            }
+            if (e.acidShredTimer > 0) e.acidShredTimer -= scaledDt;
+            if (e.vulnTimer > 0) e.vulnTimer -= scaledDt;
+
+            if (e.freezeTimer > 0) {
+              e.freezeTimer -= scaledDt;
+            } else {
+              let curSpeed = e.speed;
+              if (e.slowTimer > 0) {
+                e.slowTimer -= scaledDt;
+                if (!e.def.immuneSlow) curSpeed *= (1 - e.slowFactor);
+              }
+
+              if (e.def.canDash) {
+                e.dashCooldown -= scaledDt;
+                if (e.dashCooldown <= 0) {
+                  e.dashTimer = 0.9;
+                  e.dashCooldown = 4.0;
+                }
+                if (e.dashTimer > 0) {
+                  e.dashTimer -= scaledDt;
+                  curSpeed *= 2.6;
+                }
+              }
+
+              e.dist += curSpeed * 60 * scaledDt;
+            }
+
+            const pos = this.track.getPointAtDistance(e.dist);
+            e.x = pos.x;
+            e.y = pos.y;
+            e.angle = pos.angle;
+
+            if (e.def.silencesTowers) {
+              for (let k = 0; k < this.towers.length; k++) {
+                const tw = this.towers[k];
+                if (Math.hypot(tw.x - e.x, tw.y - e.y) <= 120) {
+                  tw.silencedTimer = 0.8;
+                }
+              }
+            }
+
+            if (e.dist >= this.track.totalLength) {
+              const leakDmg = e.def.isBoss ? 25 : 5;
+              this.purity = Math.max(0, this.purity - leakDmg);
+              AudioSys.playThud();
+              this.addSparks(e.x, e.y, '#e83a62', 20);
+              this.enemies.splice(i, 1);
+              this.updateHUD();
+
+              if (this.purity <= 0) {
+                this.triggerGameOver(false);
+                return;
+              }
+              continue;
+            }
+
+            if (e.hp <= 0) {
+              this.handleEnemyDeath(e);
+              this.enemies.splice(i, 1);
+              continue;
+            }
+          }
+
+          // 4. Towers Update
+          for (let i = 0; i < this.towers.length; i++) {
+            const t = this.towers[i];
+            const def = TOWER_TYPES[t.typeId];
+            const tier = def.tiers[t.tier];
+
+            if (t.silencedTimer > 0) {
+              t.silencedTimer -= scaledDt;
+              continue;
+            }
+
+            if (t.flashTimer > 0) t.flashTimer -= scaledDt;
+            if (t.cooldown > 0) t.cooldown -= scaledDt;
+
+            if (tier.isLaser) {
+              this.updateLaserTower(t, tier, def, scaledDt);
+              continue;
+            }
+
+            if (t.cooldown <= 0) {
+              const target = this.findTargetForTower(t, tier.range, t.priority);
+              if (target) {
+                this.fireTower(t, tier, def, target);
+                t.cooldown = 1.0 / tier.fireRate;
+              }
+            }
+          }
+
+          // 5. Projectiles Update
+          for (let i = this.projectiles.length - 1; i >= 0; i--) {
+            const p = this.projectiles[i];
+
+            if (p.isLobbed) {
+              p.progress += scaledDt / p.duration;
+              p.x = p.startX + (p.targetX - p.startX) * p.progress;
+              p.y = p.startY + (p.targetY - p.startY) * p.progress;
+              p.arcH = Math.sin(p.progress * Math.PI) * 55;
+
+              if (p.progress >= 1.0) {
+                this.detonateMortar(p);
+                this.projectiles.splice(i, 1);
+              }
+              continue;
+            }
+
+            p.x += p.vx * 60 * scaledDt;
+            p.y += p.vy * 60 * scaledDt;
+            p.distTraveled += Math.hypot(p.vx, p.vy) * 60 * scaledDt;
+
+            let hit = false;
+            for (let j = 0; j < this.enemies.length; j++) {
+              const e = this.enemies[j];
+              if (p.hitEnemies && p.hitEnemies.includes(e.id)) continue;
+
+              if (Math.hypot(e.x - p.x, e.y - p.y) <= e.radius + 6) {
+                this.applyProjectileDamage(p, e);
+                hit = true;
+                if (!p.hitEnemies) p.hitEnemies = [];
+                p.hitEnemies.push(e.id);
+
+                if (!p.pierce || p.hitEnemies.length >= p.pierce) {
+                  break;
+                }
+              }
+            }
+
+            if (hit && (!p.pierce || p.hitEnemies.length >= p.pierce)) {
+              this.projectiles.splice(i, 1);
+            } else if (p.distTraveled >= p.maxRange) {
+              this.projectiles.splice(i, 1);
+            }
+          }
+
+          // 6. Particles Update (Lesson 6: fast iteration)
+          for (let i = this.particles.length - 1; i >= 0; i--) {
+            const part = this.particles[i];
+            part.life -= scaledDt;
+            if (part.life <= 0) {
+              this.particles.splice(i, 1);
+              continue;
+            }
+            if (part.vx) part.x += part.vx * 60 * scaledDt;
+            if (part.vy) part.y += part.vy * 60 * scaledDt;
+          }
+
+          // 7. Check Wave Completion
+          if (this.state === 'WAVE_ACTIVE') {
+            if (this.spawner.queue.length === 0 && this.enemies.length === 0) {
+              this.onWaveCleared();
+            }
+          }
+        }
+
+        findTargetForTower(tower, range, priority) {
+          const candidates = [];
+          for (let i = 0; i < this.enemies.length; i++) {
+            const e = this.enemies[i];
+            const dist = Math.hypot(e.x - tower.x, e.y - tower.y);
+            if (dist <= range) {
+              candidates.push({ enemy: e, dist: dist, trackDist: e.dist });
+            }
+          }
+
+          if (candidates.length === 0) return null;
+
+          if (priority === 'first') {
+            candidates.sort((a, b) => b.trackDist - a.trackDist);
+          } else if (priority === 'last') {
+            candidates.sort((a, b) => a.trackDist - b.trackDist);
+          } else if (priority === 'strong') {
+            candidates.sort((a, b) => b.enemy.hp - a.enemy.hp);
+          } else if (priority === 'close') {
+            candidates.sort((a, b) => a.dist - b.dist);
+          }
+
+          return candidates[0].enemy;
+        }
+
+        fireTower(tower, tier, def, target) {
+          tower.flashTimer = 0.15;
+
+          if (tier.isAura) {
+            AudioSys.playHiss();
+            this.addSparks(tower.x, tower.y, def.color, 16);
+
+            for (let i = 0; i < this.enemies.length; i++) {
+              const e = this.enemies[i];
+              if (Math.hypot(e.x - tower.x, e.y - tower.y) <= tier.range) {
+                let dmg = tier.damage;
+                if (e.vulnTimer > 0) dmg *= (1 + e.vulnVal);
+                e.hp -= dmg;
+                tower.totalDamage += dmg;
+                if (e.hp <= 0) tower.totalKills++;
+
+                if (!e.def.immuneSlow) {
+                  e.slowFactor = tier.slow;
+                  e.slowTimer = tier.slowDuration || 2.5;
+                }
+
+                if (tier.vuln) {
+                  e.vulnVal = tier.vuln;
+                  e.vulnTimer = 3.0;
+                }
+
+                if (tier.flashFreeze && Math.random() < 0.25) {
+                  e.freezeTimer = 1.2;
+                  this.addFloatingText(e.x, e.y - 10, 'FROZEN!', '#a78bfa');
+                }
+              }
+            }
+            return;
+          }
+
+          if (tier.isBeamChain) {
+            AudioSys.playZap();
+            this.executeChainLightning(tower, tier, def, target);
+            return;
+          }
+
+          if (tier.isLobber) {
+            AudioSys.playThud();
+            const dur = 0.65;
+            const leadDist = target.dist + target.speed * 60 * dur * 0.75;
+            const predPos = this.track.getPointAtDistance(leadDist);
+
+            this.projectiles.push({
+              isLobbed: true,
+              startX: tower.x,
+              startY: tower.y,
+              targetX: predPos.x,
+              targetY: predPos.y,
+              x: tower.x,
+              y: tower.y,
+              progress: 0,
+              duration: dur,
+              damage: tier.damage,
+              splashRadius: tier.splashRadius,
+              burningPuddle: tier.burningPuddle,
+              knockback: tier.knockback,
+              armorCrusher: tier.armorCrusher,
+              sourceTower: tower,
+              color: def.bulletColor
+            });
+            return;
+          }
+
+          AudioSys.playDrop();
+          const dx = target.x - tower.x;
+          const dy = target.y - tower.y;
+          const dist = Math.hypot(dx, dy);
+          const spd = 12.0;
+
+          if (tier.triBurst) {
+            [-0.15, 0, 0.15].forEach(offset => {
+              const ang = Math.atan2(dy, dx) + offset;
+              this.projectiles.push({
+                x: tower.x,
+                y: tower.y,
+                vx: Math.cos(ang) * spd,
+                vy: Math.sin(ang) * spd,
+                damage: tier.damage,
+                maxRange: tier.range * 1.15,
+                distTraveled: 0,
+                shred: tier.shred,
+                pierce: tier.pierce,
+                ignite: tier.ignite,
+                sourceTower: tower,
+                color: def.bulletColor
+              });
+            });
+          } else {
+            this.projectiles.push({
+              x: tower.x,
+              y: tower.y,
+              vx: (dx / dist) * spd,
+              vy: (dy / dist) * spd,
+              damage: tier.damage,
+              maxRange: tier.range * 1.15,
+              distTraveled: 0,
+              shred: tier.shred,
+              pierce: tier.pierce,
+              ignite: tier.ignite,
+              sourceTower: tower,
+              color: def.bulletColor
+            });
+          }
+        }
+
+        executeChainLightning(tower, tier, def, primaryTarget) {
+          const hit = [primaryTarget];
+          let current = primaryTarget;
+          let currentDmg = tier.damage;
+
+          this.applyChainDamage(tower, tier, current, currentDmg);
+
+          for (let c = 1; c < tier.chainCount; c++) {
+            let nextTarget = null;
+            let minDist = 110;
+
+            for (let i = 0; i < this.enemies.length; i++) {
+              const candidate = this.enemies[i];
+              if (hit.includes(candidate)) continue;
+              const d = Math.hypot(candidate.x - current.x, candidate.y - current.y);
+              if (d < minDist) {
+                minDist = d;
+                nextTarget = candidate;
+              }
+            }
+
+            if (!nextTarget) break;
+
+            hit.push(nextTarget);
+            currentDmg *= (tier.chainDecay || 0.85);
+            this.applyChainDamage(tower, tier, nextTarget, currentDmg);
+
+            this.addLightningBolt(current.x, current.y, nextTarget.x, nextTarget.y, def.bulletColor);
+            current = nextTarget;
+          }
+
+          this.addLightningBolt(tower.x, tower.y, primaryTarget.x, primaryTarget.y, def.color);
+        }
+
+        applyChainDamage(tower, tier, enemy, dmg) {
+          let effArmor = enemy.armor;
+          if (enemy.acidShredTimer > 0) effArmor = Math.max(0, effArmor - enemy.acidShredVal);
+          const finalDmg = dmg * (1 - effArmor * 0.4);
+
+          enemy.hp -= finalDmg;
+          tower.totalDamage += finalDmg;
+          if (enemy.hp <= 0) tower.totalKills++;
+
+          this.addSparks(enemy.x, enemy.y, '#7dd3fc', 3);
+
+          if (tier.stunChance && Math.random() < tier.stunChance) {
+            enemy.freezeTimer = 0.4;
+          }
+        }
+
+        addLightningBolt(x1, y1, x2, y2, color) {
+          this.particles.push({
+            x1, y1, x2, y2,
+            isBolt: true,
+            color: color,
+            life: 0.12,
+            maxLife: 0.12
+          });
+        }
+
+        updateLaserTower(tower, tier, def, dt) {
+          let target = tower.beamTarget;
+          if (target) {
+            if (target.hp <= 0 || Math.hypot(target.x - tower.x, target.y - tower.y) > tier.range || !this.enemies.includes(target)) {
+              tower.beamTarget = null;
+              tower.rampTimer = 0;
+              target = null;
+            }
+          }
+
+          if (!target) {
+            target = this.findTargetForTower(tower, tier.range, tower.priority);
+            tower.beamTarget = target;
+            tower.rampTimer = 0;
+          }
+
+          if (target) {
+            tower.rampTimer = Math.min(3.0, tower.rampTimer + dt);
+            const rampFactor = 1.0 + (tower.rampTimer / 3.0) * (tier.maxRamp - 1.0);
+            const dmg = tier.damage * rampFactor * dt * 10;
+
+            let effArmor = target.armor;
+            if (target.acidShredTimer > 0) effArmor = Math.max(0, effArmor - target.acidShredVal);
+            const finalDmg = dmg * (1 - effArmor * 0.3);
+
+            target.hp -= finalDmg;
+            tower.totalDamage += finalDmg;
+            if (target.hp <= 0) tower.totalKills++;
+
+            if (tier.laserSlow && !target.def.immuneSlow) {
+              target.slowFactor = tier.laserSlow;
+              target.slowTimer = 0.3;
+            }
+
+            if (Math.random() < 0.3) {
+              this.addSparks(target.x, target.y, def.bulletColor, 1);
+            }
+          }
+        }
+
+        detonateMortar(p) {
+          AudioSys.playThud();
+          this.addSparks(p.targetX, p.targetY, p.color, 24);
+
+          // Lesson 92: Safe knockback impulse with per-target cooldown & max cap
+          for (let i = 0; i < this.enemies.length; i++) {
+            const e = this.enemies[i];
+            const dist = Math.hypot(e.x - p.targetX, e.y - p.targetY);
+            if (dist <= p.splashRadius) {
+              let dmg = p.damage * (1 - (dist / p.splashRadius) * 0.4);
+              if (p.armorCrusher && e.armor > 0.2) dmg *= 2.2;
+
+              let effArmor = e.armor;
+              if (e.acidShredTimer > 0) effArmor = Math.max(0, effArmor - e.acidShredVal);
+              const finalDmg = dmg * (1 - effArmor);
+
+              e.hp -= finalDmg;
+              p.sourceTower.totalDamage += finalDmg;
+              if (e.hp <= 0) p.sourceTower.totalKills++;
+
+              if (p.knockback && !e.def.isBoss && e.knockbackCooldown <= 0) {
+                const maxDistBack = 35;
+                const push = Math.min(maxDistBack, p.knockback);
+                e.dist = Math.max(0, e.dist - push);
+                e.knockbackCooldown = 3.0;
+                this.addFloatingText(e.x, e.y - 12, 'KNOCKBACK', '#f59e0b');
+              }
+            }
+          }
+
+          if (p.burningPuddle) {
+            this.puddles.push({
+              x: p.targetX,
+              y: p.targetY,
+              radius: p.splashRadius * 0.7,
+              life: p.burningPuddle
+            });
+          }
+        }
+
+        applyProjectileDamage(p, e) {
+          let effArmor = e.armor;
+          if (e.acidShredTimer > 0) effArmor = Math.max(0, effArmor - e.acidShredVal);
+          let finalDmg = p.damage * (1 - effArmor) * (1 - e.physResist);
+
+          if (e.vulnTimer > 0) finalDmg *= (1 + e.vulnVal);
+
+          e.hp -= finalDmg;
+          p.sourceTower.totalDamage += finalDmg;
+          if (e.hp <= 0) p.sourceTower.totalKills++;
+
+          this.addSparks(e.x, e.y, p.color, 4);
+
+          if (p.shred) {
+            e.acidShredTimer = 4.0;
+            e.acidShredVal = p.shred;
+          }
+
+          if (p.ignite) {
+            e.burnTimer = 3.0;
+            e.burnDamage = p.ignite / 3.0;
+          }
+        }
+
+        handleEnemyDeath(enemy) {
+          this.essence += enemy.def.reward;
+          this.score += enemy.def.reward * 10;
+          this.addSparks(enemy.x, enemy.y, enemy.def.color, 14);
+          this.addFloatingText(enemy.x, enemy.y - 8, `+${enemy.def.reward}⚗`, '#e5b358');
+          this.updateHUD();
+
+          if (enemy.def.splits) {
+            for (let s = 0; s < enemy.def.splits; s++) {
+              const mini = {
+                id: 'e_' + Math.random().toString(36).substr(2, 9),
+                typeId: 'minispore',
+                def: ENEMY_TYPES.minispore,
+                dist: Math.max(0, enemy.dist + (s === 0 ? 12 : -12)),
+                x: enemy.x,
+                y: enemy.y,
+                angle: enemy.angle,
+                hp: ENEMY_TYPES.minispore.hp * (1 + this.currentWave * 0.1),
+                maxHp: ENEMY_TYPES.minispore.hp * (1 + this.currentWave * 0.1),
+                speed: ENEMY_TYPES.minispore.speed,
+                radius: ENEMY_TYPES.minispore.radius,
+                armor: 0,
+                physResist: 0,
+                slowFactor: 0,
+                slowTimer: 0,
+                freezeTimer: 0,
+                burnDamage: 0,
+                burnTimer: 0,
+                acidShredTimer: 0,
+                acidShredVal: 0,
+                vulnVal: 0,
+                vulnTimer: 0,
+                dashCooldown: 0,
+                dashTimer: 0,
+                knockbackCooldown: 0,
+                totalKnockback: 0
+              };
+              this.enemies.push(mini);
+            }
+          }
+        }
+
+        onWaveCleared() {
+          this.state = 'PREPARATION';
+          this.spawner.active = false;
+          this.currentWave++;
+
+          const waveBonus = 50 + this.currentWave * 15;
+          this.essence += waveBonus;
+          this.addFloatingText(VIRTUAL_WIDTH / 2, 80, `Watch Cleared! +${waveBonus}⚗ Bonus`, '#e5b358');
+          AudioSys.playUpgrade();
+          this.updateHUD();
+
+          if (this.currentWave >= this.maxWaves) {
+            this.triggerGameOver(true);
+            return;
+          }
+
+          if (this.autoWave) {
+            setTimeout(() => {
+              if (this.state === 'PREPARATION') this.startNextWave();
+            }, 1200);
+          } else {
+            this.showWaveOverlay();
+          }
+        }
+
+        triggerGameOver(victory) {
+          const modal = document.getElementById('endgameModal');
+          const box = document.getElementById('endgameBox');
+          const heading = document.getElementById('endgameHeading');
+          const message = document.getElementById('endgameMessage');
+
+          modal.classList.remove('hidden');
+          box.className = 'endgame-modal ' + (victory ? 'victory' : 'defeat');
+
+          if (victory) {
+            heading.textContent = 'Distillation Sealed in Eternity!';
+            message.textContent = `Magnificent, Master! The Seventh Distillate has survived all 20 watches with ${this.purity}% purity! Final Score: ${this.score}. The Memory of Dawn is immortalized.`;
+            AudioSys.playGong();
+          } else {
+            heading.textContent = 'The Flacon Has Shattered';
+            message.textContent = `The Abyssal Malodors have contaminated the Seventh Essence at Watch ${this.currentWave + 1}. The cellar plunges into rancid darkness. Final Score: ${this.score}.`;
+            AudioSys.playThud();
+          }
+        }
+
+        // Render Loop
+        draw() {
+          const ctx = this.ctx;
+
+          ctx.drawImage(this.bgCanvas, 0, 0);
+
+          // Puddles
+          for (let i = 0; i < this.puddles.length; i++) {
+            const pud = this.puddles[i];
+            ctx.fillStyle = 'rgba(245, 158, 11, 0.35)';
+            ctx.beginPath();
+            ctx.arc(pud.x, pud.y, pud.radius, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.strokeStyle = '#f59e0b';
+            ctx.lineWidth = 1.5;
+            ctx.stroke();
+          }
+
+          // Range indicator
+          if (this.selectedPlacedTower) {
+            const t = this.selectedPlacedTower;
+            const def = TOWER_TYPES[t.typeId];
+            const tier = def.tiers[t.tier];
+            ctx.strokeStyle = def.color;
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            ctx.arc(t.x, t.y, tier.range, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.fillStyle = 'rgba(229, 179, 88, 0.06)';
+            ctx.fill();
+          }
+
+          // Placement halo
+          if (this.selectedTowerType && this.mousePos.onCanvas) {
+            const def = TOWER_TYPES[this.selectedTowerType];
+            const range = def.tiers[0].range;
+            const valid = this.canPlaceTower(this.mousePos.x, this.mousePos.y);
+
+            ctx.beginPath();
+            ctx.arc(this.mousePos.x, this.mousePos.y, range, 0, Math.PI * 2);
+            ctx.strokeStyle = valid ? '#4ade80' : '#ef4444';
+            ctx.lineWidth = 1.5;
+            ctx.stroke();
+            ctx.fillStyle = valid ? 'rgba(74, 222, 128, 0.1)' : 'rgba(239, 68, 68, 0.15)';
+            ctx.fill();
+
+            ctx.font = '22px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(def.icon, this.mousePos.x, this.mousePos.y);
+          }
+
+          // Enemies
+          for (let i = 0; i < this.enemies.length; i++) {
+            this.drawEnemy(ctx, this.enemies[i]);
+          }
+
+          // Towers
+          for (let i = 0; i < this.towers.length; i++) {
+            this.drawTower(ctx, this.towers[i]);
+          }
+
+          // Projectiles
+          for (let i = 0; i < this.projectiles.length; i++) {
+            const p = this.projectiles[i];
+            if (p.isLobbed) {
+              ctx.fillStyle = p.color;
+              ctx.beginPath();
+              ctx.arc(p.x, p.y - (p.arcH || 0), 6, 0, Math.PI * 2);
+              ctx.fill();
+              ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
+              ctx.beginPath();
+              ctx.arc(p.x, p.y, 4, 0, Math.PI * 2);
+              ctx.fill();
+            } else {
+              ctx.fillStyle = p.color;
+              ctx.beginPath();
+              ctx.arc(p.x, p.y, 3.5, 0, Math.PI * 2);
+              ctx.fill();
+            }
+          }
+
+          // Laser beams
+          for (let i = 0; i < this.towers.length; i++) {
+            const t = this.towers[i];
+            if (t.beamTarget && t.rampTimer > 0) {
+              const def = TOWER_TYPES[t.typeId];
+              ctx.strokeStyle = def.bulletColor;
+              ctx.lineWidth = 2 + (t.rampTimer / 3.0) * 4;
+              ctx.beginPath();
+              ctx.moveTo(t.x, t.y);
+              ctx.lineTo(t.beamTarget.x, t.beamTarget.y);
+              ctx.stroke();
+
+              ctx.strokeStyle = '#ffffff';
+              ctx.lineWidth = 1;
+              ctx.stroke();
+            }
+          }
+
+          // Particles (Lesson 6: fillRect for performance)
+          for (let i = 0; i < this.particles.length; i++) {
+            const part = this.particles[i];
+            if (part.isText) {
+              ctx.font = 'bold 12px var(--font-mono)';
+              ctx.fillStyle = part.color;
+              ctx.textAlign = 'center';
+              ctx.fillText(part.text, part.x, part.y);
+            } else if (part.isBolt) {
+              ctx.strokeStyle = part.color;
+              ctx.lineWidth = 2;
+              ctx.beginPath();
+              ctx.moveTo(part.x1, part.y1);
+              const mx = (part.x1 + part.x2) * 0.5 + (Math.random() - 0.5) * 16;
+              const my = (part.y1 + part.y2) * 0.5 + (Math.random() - 0.5) * 16;
+              ctx.lineTo(mx, my);
+              ctx.lineTo(part.x2, part.y2);
+              ctx.stroke();
+            } else {
+              ctx.fillStyle = part.color;
+              ctx.fillRect(part.x - part.size * 0.5, part.y - part.size * 0.5, part.size, part.size);
+            }
+          }
+        }
+
+        drawTower(ctx, t) {
+          const def = TOWER_TYPES[t.typeId];
+
+          ctx.fillStyle = '#141a24';
+          ctx.beginPath();
+          ctx.arc(t.x, t.y, 20, 0, Math.PI * 2);
+          ctx.fill();
+
+          ctx.strokeStyle = t === this.selectedPlacedTower ? '#ff9d24' : def.color;
+          ctx.lineWidth = t === this.selectedPlacedTower ? 2.5 : 1.5;
+          ctx.stroke();
+
+          if (t.flashTimer > 0) {
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
+            ctx.fill();
+          }
+
+          if (t.silencedTimer > 0) {
+            ctx.fillStyle = 'rgba(56, 189, 248, 0.4)';
+            ctx.fill();
+          }
+
+          ctx.font = '18px sans-serif';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(def.icon, t.x, t.y);
+
+          for (let i = 0; i < 4; i++) {
+            const ang = -Math.PI * 0.5 + (i * Math.PI * 0.5);
+            const bx = t.x + Math.cos(ang) * 16;
+            const by = t.y + Math.sin(ang) * 16;
+            ctx.fillStyle = i < t.tier ? '#ff9d24' : '#334155';
+            ctx.beginPath();
+            ctx.arc(bx, by, 2.5, 0, Math.PI * 2);
+            ctx.fill();
+          }
+        }
+
+        drawEnemy(ctx, e) {
+          ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
+          ctx.beginPath();
+          ctx.arc(e.x + 2, e.y + 3, e.radius, 0, Math.PI * 2);
+          ctx.fill();
+
+          ctx.fillStyle = e.def.color;
+          ctx.beginPath();
+          ctx.arc(e.x, e.y, e.radius, 0, Math.PI * 2);
+          ctx.fill();
+
+          ctx.fillStyle = e.def.eyeColor;
+          ctx.beginPath();
+          ctx.arc(e.x + Math.cos(e.angle) * (e.radius * 0.4), e.y + Math.sin(e.angle) * (e.radius * 0.4), Math.max(2, e.radius * 0.25), 0, Math.PI * 2);
+          ctx.fill();
+
+          if (e.freezeTimer > 0) {
+            ctx.strokeStyle = '#c4b5fd';
+            ctx.lineWidth = 2.5;
+            ctx.stroke();
+          }
+
+          const barW = Math.max(20, e.radius * 2);
+          const barH = 3.5;
+          const barX = e.x - barW * 0.5;
+          const barY = e.y - e.radius - 8;
+          const pct = Math.max(0, e.hp / e.maxHp);
+
+          ctx.fillStyle = '#0f172a';
+          ctx.fillRect(barX - 1, barY - 1, barW + 2, barH + 2);
+          ctx.fillStyle = pct > 0.5 ? '#22c55e' : pct > 0.25 ? '#f59e0b' : '#ef4444';
+          ctx.fillRect(barX, barY, barW * pct, barH);
+        }
+
+        // Main RAF Loop with Lesson 64 Clock Consistency
+        loop(timestamp) {
+          if (this.lastTime === null) {
+            this.lastTime = timestamp;
+          }
+          const dt = (timestamp - this.lastTime) / 1000;
+          this.lastTime = timestamp;
+
+          if (!this.isPaused) {
+            this.update(dt);
+          }
+
+          this.draw();
+          requestAnimationFrame(this.loop.bind(this));
+        }
+      }
+
+      window.addEventListener('DOMContentLoaded', () => {
+        window.__game = new GameEngine();
+      });
+
+    })();
+  </script>
+</body>
+</html>

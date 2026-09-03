@@ -1,3 +1,61 @@
+# ESSENTIA: The Spagyric Perfumery — gemini-3.8-flash-high-tower-def-2
+
+## Concept & Lore (Locked)
+In 1888, high above Grasse in the limestone caves of Provence, Master Perfumer Jean-Luc Vaneau unsealed the *Septième Distillat* — an eternal fragrance capable of distilling human memory into golden liquid. The uncorking pierced the olfactory ether, summoning the **Abyssal Malodors**: rancid tallow creeps, vinegar wraiths, rotting mold-mites, and sulfurous colossi hungry to spoil the Great Flacon. Players command Jean-Luc's brass spagyric stills, cryogenic condenser coils, and aromatic atomizers to preserve the Flacon across 20 escalating watches of distillation.
+
+## Key Files
+- `tower-def/gemini-3.8-flash-high-tower-def-2.html`: Self-contained, dependency-free HTML5/Canvas/WebAudio tower defense game.
+- `tower-def/index.html`: Alphabetically ordered tile under Gemini 3.8 Flash (High).
+
+## Plan Checklist
+- [x] 1. Architecture & Lore Specification: finalize lore journal, 5 towers with 4 upgrade tiers each, 8 enemy archetypes, 20 distinct wave compositions, procedural spline track generator.
+- [x] 2. Implementation of `gemini-3.8-flash-high-tower-def-2.html`:
+  - Canvas 2D render pipeline with offscreen cached background (slate lab table, brass grid, alembic flourishes)
+  - Procedural spline track generation with guaranteed valid paths, entry hopper & exit Flacon
+  - 5 towers: Bergamot Pipette (Sniper/Dart), Lavender Cryo-Condenser (Aura Slow), Ambergris Mortar (Splash Catapult), Clove-Spark Coil (Chain Lightning), Rose-Attar Prism (Searing Beam)
+  - 4 upgrade tiers per tower (Tier 0 to Tier 4) with distinctive mechanics, stats, and visual upgrades
+  - Targeting priorities: First, Last, Strongest, Closest
+  - 8 enemy types with varied speeds, hitpoints, armor/shields, and distinct visual animations
+  - 20 varied waves with wave lore journal excerpts, swarms, fast scouts, shield carriers, splitters, and boss encounters (Wave 5, 10, 15, and 20 Grand Miasma Lord)
+  - Inter-wave preparation phase with tower inspection, upgrading, selling, wave intel
+  - Web Audio procedural sound synthesis (glass clinks, steam hisses, electrical sparks, brass resonant gongs, ambient chime chords) with mute toggle
+  - Responsive HUD, speed controls (1x, 2x, 3x), pause/resume, new track generation, restart
+- [x] 3. Verification & Testing:
+  - Extract script and verify syntax with `node --check`
+  - Run headless Node verification script to verify game engine, path generation, wave progression, tower placements, upgrade mechanics, audio context initialization
+  - Test responsive layout and retina devicePixelRatio rendering
+- [x] 4. Add tile to `tower-def/index.html` in alphabetical order by model (`Gemini 3.8 Flash`, `High`)
+- [x] 5. Document results in `tasks/todo.md` review section
+- [x] 6. Commit and push to main with specific pathspecs
+
+## Review
+- **Files Created / Modified**:
+  - `tower-def/gemini-3.8-flash-high-tower-def-2.html`: Completely self-contained, dependency-free HTML5/Canvas/WebAudio tower defense game.
+  - `tower-def/index.html`: Added "Essentia" game tile in alphabetical order by model (Gemini 3.8 Flash, High).
+- **Theme & Lore**: Set in an 1888 subterranean laboratory in Grasse, Provence. Master Perfumer Jean-Luc Vaneau has distilled the *Septième Distillat* ("The Memory of Dawn"). Players defend the Great Flacon from creeping Abyssal Malodors (tallow mites, vinegar phantoms, rust carapaces, mold sporelings, and the Grand Miasma Lord).
+- **Towers & Upgrades**: 5 distinct towers, each with 4 upgrade tiers (Tiers 0 to 4):
+  1. *Bergamot Pipette*: Rapid kinetic citrus darts, armor shred, piercing, and tri-burst solar ignition.
+  2. *Lavender Cryo-Condenser*: Pulsing frost aura, slow scaling up to 60%, vulnerability debuff, flash-freeze, and death shattering.
+  3. *Ambergris Mortar*: Viscous resin catapult with arc physics, area blast, burning puddles, lesson 92-compliant knockback impulse, and 2.5x armor crushing.
+  4. *Clove-Spark Coil*: High-voltage eugenol electrical arcs chaining up to 10 targets, micro-stuns, zero falloff, and EMP shockwaves.
+  5. *Rose-Attar Prism*: Continuous ruby laser beam with escalating ramp DPS (up to 8x), blinding slow, refracted dual beams, and petal explosion cascades.
+- **Enemies & Waves**: 10 enemy archetypes with varied speeds, armor, resistances, split behaviors, and dashes across 20 escalating narrative waves with journal dispatches and miniboss/boss encounters (Wave 5, 10, 15, and 20).
+- **Inter-wave Preparation & Inspection**: Full control during prep phase to inspect stats (DPS, kills, range, fire rate), upgrade tiers, set targeting priority (First, Last, Strongest, Closest), sell for 75% refund, review enemy intel, or roll a new procedural track.
+- **Engine Quality & Optimization**:
+  - Offscreen canvas background caching (Lesson 6).
+  - Explicit canvas styles and high-DPI scaling via `devicePixelRatio` (Lessons 41, 80).
+  - `dt * 60` scaling for frame-rate independence (Lesson 7).
+  - Capped knockback impulse with per-target cooldowns (Lesson 92).
+  - `fillRect` particle rendering (Lesson 6).
+  - Procedural Web Audio API polyphonic sound synth (drops, hisses, thuds, zaps, gongs, chimes).
+- **Automated Verification**:
+  - `node --check` extracted script: 100% syntax valid.
+  - 50 procedural spline tracks tested: 100% valid geometry without NaN or loops.
+  - Tower placement & upgrade matrix: all 5 towers and all 4 upgrade tiers verified for costs, stat scaling, and sell refunds.
+  - 20-wave automated combat simulation: verified wave progression, kill rewards, and clean loop.
+
+---
+
 # PARISON — grok-4.6-xhigh rail shooter
 
 ## Concept (locked)
