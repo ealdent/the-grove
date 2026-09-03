@@ -102,4 +102,50 @@ down brush-stroke demons with water beads so you can dot a blind dragon's eye."
 - Juice: screen shake (trauma²), hitstop, zoom punch, ink splats on lens, near-miss sparks + whoosh, floating score calligraphy, streak multiplier x1..x8, ripples when flying low.
 - Audio: generative hirajoshi score (koto plucks, shakuhachi pad, taiko heartbeat) w/ per-act intensity/BPM, rain + ember layers, boss roars, full SFX set, compressor, M mute.
 - Rendering: paper texture offscreen, per-act palettes w/ crossfade, parallax brush mountains, converging river w/ flow lines, mist bands, rain streaks + lightning, rising embers, prerendered glow sprites, seeded brush-stroke helpers.
-- Debug: `window.__game` — start()/toAct()/boss()/god()/step(dt)/params/stats/probe().
+---
+
+# CODEX IMPERIUM — gemini-3.8-flash-high tower defense
+
+## Concept & Backstory (Locked)
+In 1888 of the Aether-Era, deep within the subterranean archives of the Imperial Alexandria-on-Thames, the legendary automated steam-press—the *Codex Aegis*—is printing the Universal Compendium of Human Memory onto endless ribbons of living vellum parchment. 
+From the mists of the forgotten censors emerges the **Obscurantist Rot**: typographical abominations, redaction bars, punctuation mites, and ink-leeches marching along the vellum feeder track to destroy the Master Matrix.
+As Master Typographer, deploy five brass-engineered press defenses along procedural vellum tracks, tuning them through four masterwork upgrade tiers across 20 distinct waves to defend the Archive of Truth.
+
+One-liner: "Defend the Grand Steam-Press of Alexandria against swarms of living ink-blots, redaction beasts, and errata across procedural vellum scrolls with molten typecasters, hydraulic platens, and prismatic solar optics."
+
+## File & Destination
+- Game: `tower-def/gemini-3.8-flash-high-tower-def.html` (single-page HTML, zero dependencies, no CDN, procedural Web Audio, pure Canvas 2D)
+- Tile: `tower-def/index.html` (inserted in alphabetical order: right after `Gemini 3.7 Flash High` and before `GLM-5`)
+
+## Plan
+- [x] Research & Lore Document: Deep lore integration, 5 tower blueprint systems with 4 upgrades each, 7 enemy classes + 3 bosses, 20-wave progression table.
+- [x] Architectural Design: Responsive canvas engine with DPR scaling, procedural self-avoiding spline vellum track generator (exempting previous two cells per lesson 91), particle system using fillRect (lesson 6), sound synthesizer via Web Audio.
+- [x] Create `tower-def/gemini-3.8-flash-high-tower-def.html`:
+  - [x] UI & Shell: Victorian brass/parchment styling, responsive layout, HUD, speed controls (1x, 2x, 4x), sound toggle, codex lore modal.
+  - [x] Procedural Web Audio: Mechanical clatter, hydraulic thumps, laser hums, ink splats, fanfare, ambient drone.
+  - [x] Procedural Map Generator: Smooth Catmull-Rom spline track on parchment with brass rivets, ink wells, and non-overlapping build zones.
+  - [x] 5 Towers with 4 Upgrades each (25 total tier designs with unique graphics, projectiles, and mechanics):
+    1. Hot-Lead Typecaster (Rapid kinetic lead slugs / flying letters)
+    2. Vitriol Illuminator (Corrosive ink mist & slow puddles)
+    3. Gilded Platen (Hydraulic shockwave / impulse knockback with target cooldown per lesson 92)
+    4. Optic Prism Loupe (Extreme range sniper / concentrated solar laser)
+    5. Bookbinder's Coil (Chain electric thread arcing & binding tethers)
+  - [x] 7 Enemy Types + 3 Bosses across 20 distinct waves with lore briefings.
+  - [x] Tower targeting system (First, Last, Strongest, Weakest, Closest), upgrade panel, refund on sell.
+  - [x] Juice: hit flashes, damage numbers, ink splatters, screen shake, floating victory/defeat banners, endless mode.
+- [x] Verification & Testing:
+  - [x] Syntax check: `node --check` on inline script (clean, 0 parse errors).
+  - [x] Simulation test: verified track generation, all 5 tower placements, all 4 upgrades each (to tier 5), sell refunds, targeting modes, and 0 runtime errors.
+  - [x] 20-wave full campaign test: cleared waves 1 through 20 including Wave 5 Miniboss (Censor's Shears), Wave 10 Boss (Palimpsest Phantom), and Wave 20 Final Boss (THE OBLIVION LEXICON).
+  - [x] Lesson compliance check: DPR canvas sizing (L41, L80), knockback cooldown (L92), frame-rate independence (L7), audio volume normalization (L61).
+- [x] Add Tile to `tower-def/index.html` (Google / Gemini 3.8 Flash / High).
+- [ ] Git commit and push to main.
+- [x] Document results in `tasks/todo.md` review section.
+
+## Review
+- **Game File**: `tower-def/gemini-3.8-flash-high-tower-def.html` (single-page self-contained HTML file, zero CDN/external dependencies, pure Canvas 2D + Web Audio).
+- **Index Tile**: Added to `tower-def/index.html` in alphabetical order by model between `Gemini 3.7 Flash High` and `GLM-5`.
+- **Lore & Aesthetics**: Victorian Steampunk Print-Vault setting (Imperial Alexandria-on-Thames, 1888) with living vellum ribbons, brass guide-rails, ink wells, and typographic errata. Integrated lore compendium modal.
+- **Towers**: 5 mechanically distinct towers, each with 4 masterwork upgrades (5 tiers total = 25 tiers).
+- **Enemies & Waves**: 7 distinct enemy archetypes + 3 bosses across 20 narrative chapters, plus Endless Folio mode.
+- **Verification**: Verified with custom Node.js test drivers executing full simulation cycles, verifying economy balance, upgrade ladders, sell refunds, and complete 20-wave clears without exceptions.
