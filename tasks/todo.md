@@ -323,3 +323,29 @@ One-liner: "Defend the Grand Steam-Press of Alexandria against swarms of living 
 - **Towers**: 5 mechanically distinct towers, each with 4 masterwork upgrades (5 tiers total = 25 tiers).
 - **Enemies & Waves**: 7 distinct enemy archetypes + 3 bosses across 20 narrative chapters, plus Endless Folio mode.
 - **Verification**: Verified with custom Node.js test drivers executing full simulation cycles, verifying economy balance, upgrade ladders, sell refunds, and complete 20-wave clears without exceptions.
+
+
+## 2026-09-04 — The Rainkeeper (greenfield tower defense)
+
+Goal: Deliver an original, dependency-free, single-file tower defense game and gallery tile; commit and push to main.
+Project: Personal / The Grove. Scope: new tower-def HTML, tower-def/index.html, this task record.
+Constraints: No previous games, chats, or repo content used as creative/implementation references. Read index only for integration. Preserve unrelated work.
+Design: The last ocean is carried by a glass snail; a miniature weather bureau defends it against drought. Procedural atlas map, five weather instruments, four sequential upgrades each, 24 authored waves, build/upgrade intermissions, touch and keyboard controls.
+Proof: Static dependency/syntax checks, deterministic simulation and gameplay-state tests, real desktop/mobile browser checks, screenshots, independent skeptical review, clean exact-file commit and verified push.
+
+- [x] Develop the world, visual direction, and combat rules before implementation.
+- [x] Build the standalone responsive game and integrate its model/effort tile.
+- [x] Verify randomized maps, progression, all upgrades, and terminal states.
+- [x] Playtest desktop/mobile and address independent review findings.
+- [x] Prepare exact task files for the authorized main commit/push; verify a clean baseline and current remote.
+
+Review:
+- Delivered `tower-def/gpt-6-astra-ultra-tower-def.html` (about 98 KB), all CSS/JS/vector artwork/audio inline. Gallery metadata uses GPT-6 Astra / Ultra, between GPT-5.6 Terra and Grok 4.2.
+- Lore was developed before implementation: Vesper carries the last ocean; four acts end with its return as rain. Five instruments each have four named sequential refits, seven enemy types, 24 authored fronts, two randomized route families, wet/slow/lightning interactions, and bosses on fronts 6/12/18/24.
+- Simulation: 250 map seeds across both families passed no-intersection, clearance, and placement checks; 29–32 docks each. Twenty legal greedy expeditions cleared all 24 fronts using earned condensate. Undefended play lost; invalid purchase/refit, upgrade cap, cumulative salvage, splitting, wet suppression, wave-clear gating, and terminal state checks passed.
+- Independent static review found three issues, all corrected and rechecked: artwork selection hit area, act boundaries at boss fronts, and mobile zoom sizing.
+- UI proof URL: `file:///Users/jason/dev/personal/the-grove/tower-def/gpt-6-astra-ultra-tower-def.html`. Environment: installed Chrome, Playwright headless, offline context; role: local player. All 24 fronts cleared using legal game APIs and earned money. Actual UI clicks verified purchase/refit/salvage, instrument artwork selection, pause/resume, guide, audio toggle, rain availability, victory/defeat/retry, restart confirmation, mobile placement, zoom, persisted best score, blocked storage, and reduced motion.
+- Responsive widths 320/390/768/1440 passed without horizontal page overflow. Console errors: 0. Failed requests: 0. External requests: 0. Script syntax and dependency scans passed. Gallery tile is unique, correctly labeled, and alphabetically positioned.
+- Screenshots: `/private/tmp/rainkeeper-desktop-final.png`, `/private/tmp/rainkeeper-mobile-final.png`, `/private/tmp/rainkeeper-battle-final.png`, `/private/tmp/rainkeeper-victory.png`. Test tools are temporary development artifacts; players need only the HTML file.
+- Not verified: Firefox, Safari, physical-device touch, or subjective audio output. The page documents that refresh starts a fresh expedition; only best completed front persists where storage is available.
+- Publication preflight: main checked out; origin is `git@github.com:ealdent/the-grove.git`; fetched origin/main has zero divergence; only the three intended task files changed and no pre-existing staged changes. Commit/push outcome is recorded in the final task response and Git history.
