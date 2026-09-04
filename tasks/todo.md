@@ -1,11 +1,68 @@
-# THE REPEATER AT PONT-NEUF — gemini-3.8-flash-high time-loop puzzle
+# CHRONOSTRATA: THE PETRIFIED ORRERY — gemini-3.8-flash-high pure SVG 3D exploration game
 
-## Concept & Creative Brief (Locked)
-In the vaulted sub-basement of the Central Telegraph Bureau at Pont-Neuf, October 1897, the pneumatic sorting room faces catastrophic pressure collapse. Henri, third assistant telegraphist, must punch mechanical ribbons to deploy Maelzel Automata—clockwork brass mannequins that slavishly replay his exact footsteps, turns, and shoves to hold pneumatic treadles, clear wicker cable hampers, and feed the gold seal diplomatic cylinder into the master delivery hopper. Any deviation between punched paper and physical reality causes catastrophic escapement derangement.
+## Concept & Creative Brief
+In the petrified sea-bed of the Chronostrata, colossal bronze astrolabes, crystalline resonance spires, bioluminescent phosphor lotus pods, and nomadic automaton seraphs stand silent beneath a fractured celestial ring. The player explores this infinite procedural expanse in first-person perspective, with a full 3D/2.5D SVG projection engine, smooth head-bobbing, dynamic chunk generation, desktop WASD + drag controls, and true multitouch dual virtual joysticks for mobile.
 
 ## Files
-- `time-loop/gemini-3.8-flash-high-time-loop-puzzle.html`: Single self-contained HTML file (Vanilla JS + Canvas 2D + Web Audio). Zero dependencies.
-- `time-loop/index.html`: Alphabetically sorted card under Gemini 3.8 Flash (High) (added ONLY after game is finished without reading other game files).
+- `svg-forest/gemini-3.8-flash-high-svg-forest.html`: Single self-contained HTML/CSS/JS file. Zero external dependencies, pure SVG graphics & rendering engine.
+- `svg-forest/index.html`: Alphabetically sorted card under Gemini 3.8 Flash (High) (added ONLY after game is finished without reading other game files).
+
+## Plan Checklist
+- [x] 1. Lore & Art Direction Specification:
+  - Atmospheric backstory: The Silent Sea of Kyros and the Petrified Orrery.
+  - Color palette: Twilight obsidian, starlight cyan, antique brass, celestial amethyst, and phosphor gold.
+  - Detailed SVG asset definitions for Sky (rings, moons, aurora, parallax ridges), Ground (perspective depth grid, glowing fault lines), and 4 distinct props (Chrono-Orrery, Phosphor Lotus, Resonance Spire, Seraph Automaton) plus Ancient Relic Altars.
+- [x] 2. Mathematical 3D-to-SVG Projection Engine:
+  - Camera system: position (x, y, z), yaw, pitch, focal length, eye height + dynamic head-bob.
+  - 3D coordinate transform (world-to-camera rotation, near-plane clipping, perspective division).
+  - Depth sorting (painter's algorithm) and atmospheric depth haze attenuation.
+  - Smooth ground perspective grid & 360-degree celestial panorama wrapping.
+- [x] 3. Endless Procedural World Generation & Object Pooling:
+  - Deterministic spatial hash grid (infinite chunks) ensuring consistency when revisiting coordinates.
+  - Dynamic chunk activation and culling based on distance.
+  - High-performance SVG element pooling (fixed pool of 45 `<g>` instances with transform updates to avoid DOM churn).
+  - Wandering atmospheric aether motes / spore particles in 3D space.
+- [x] 4. Responsive Controls & Mobile Joysticks:
+  - Desktop: WASD/Arrows movement, mouse drag look (and optional pointer lock), smooth interpolation.
+  - Mobile: True multitouch dual virtual joysticks (Pointer Events with `pointerId` tracking, left = move, right = turn/look).
+  - Mobile browser gesture prevention (`touch-action: none`, `overscroll-behavior: none`, user-scalable=no).
+  - Diegetic UI: Brass compass rose, coordinate readout, discovery radar, help overlay, Web Audio ambient synth with mute toggle [M].
+- [x] 5. Verification & Testing:
+  - Code syntax check with `node --check` / `vm.Script` (100% clean).
+  - In-game headless test harness (`__runChronostrataTests`) passing all 12 assertions.
+  - JSDOM simulation verifying keyboard walking and concurrent multitouch joystick control.
+- [x] 6. Index Tile & Release:
+  - Add card to `svg-forest/index.html` sorted alphabetically under `Gemini 3.8 Flash (High)`.
+  - Verify index page rendering, dropdown population, and links.
+  - Document results in `tasks/todo.md` review section.
+  - Commit and push to main with specific pathspecs (`git commit -- ...`).
+
+## Review: Chronostrata (Gemini 3.8 Flash High)
+- **Game File**: `svg-forest/gemini-3.8-flash-high-svg-forest.html` (single self-contained HTML/CSS/JS file, zero `<canvas>`, zero WebGL, pure SVG rendering engine).
+- **Index Tile**: Added to `svg-forest/index.html` sorted alphabetically by model between `Gemini 3.7 Flash` and `GLM-5.2` with `badge--brass` styling.
+- **Lore & Aesthetics**:
+  - Setting: The Petrified Orrery of Kyros-V. A dried ammonia seabed beneath a fractured planetary ring system, twin crescent moons, and sweeping auroral curtains.
+  - Visuals: Multi-faceted obsidian ridges, perspective ground depth lines, glowing mineral faults, and 5 distinct SVG prop models (`#prop-orrery`, `#prop-lotus`, `#prop-spire`, `#prop-seraph`, `#prop-relic`).
+- **Mathematical 3D Projection**:
+  - Full perspective projection: world-to-camera matrix rotation, near-plane clipping, perspective division $scale = F / rz$, screen-space downward Y mapping, and painter's depth sorting ($rz$ descending).
+  - Subtle head-bobbing: sinusoidal vertical displacement and subtle camera roll during movement with smooth exponential decay upon stopping.
+- **Performance & Object Pooling**:
+  - Fixed SVG element pool of 45 `<g>` slots updated via transforms (`translate`, `scale`, `opacity`) without DOM allocation during traversal.
+  - Infinite procedural chunk engine with deterministic hash seeding so revisiting coordinates always yields identical flora, spires, and orreries.
+- **Responsive Controls & Mobile Multitouch**:
+  - Desktop: WASD / Arrow keys, mouse drag-to-look with pointer capture, keyboard typing guard.
+  - Mobile: Dual on-screen virtual joysticks with independent pointer ID tracking, enabling simultaneous walking and turning without touch gesture conflicts.
+  - Gesture suppression via `touch-action: none` and `overscroll-behavior: none`.
+- **Sound & Exploration**:
+  - Web Audio API procedural soundscape: cosmic drone synth in Dorian mode, bandpass-filtered atmospheric wind, and celestial crystal chime harmonics on relic discovery.
+  - 8 discoverable Ancient Astrolabe Altars scattered across the landscape with discovery telemetry and notifications.
+- **Verification**:
+  - In-engine test suite (`__runChronostrataTests()`) verifies 12 technical assertions covering SVG constraints, projection depth decay, coordinate hash determinism, object pool stability, and touch controls.
+  - Simulation confirmed keyboard movement, coordinate HUD updates, and dual multitouch pointers.
+
+---
+
+
 
 ## Plan Checklist
 - [x] 1. Architecture & Design Document: Header comment block with Title, Premise (150-300 words), Art Direction (hex values, light source, typography), and Voice.
