@@ -1,4 +1,63 @@
-# ESSENTIA: The Spagyric Perfumery — gemini-3.8-flash-high-tower-def-2
+# THE REPEATER AT PONT-NEUF — gemini-3.8-flash-high time-loop puzzle
+
+## Concept & Creative Brief (Locked)
+In the vaulted sub-basement of the Central Telegraph Bureau at Pont-Neuf, October 1897, the pneumatic sorting room faces catastrophic pressure collapse. Henri, third assistant telegraphist, must punch mechanical ribbons to deploy Maelzel Automata—clockwork brass mannequins that slavishly replay his exact footsteps, turns, and shoves to hold pneumatic treadles, clear wicker cable hampers, and feed the gold seal diplomatic cylinder into the master delivery hopper. Any deviation between punched paper and physical reality causes catastrophic escapement derangement.
+
+## Files
+- `time-loop/gemini-3.8-flash-high-time-loop-puzzle.html`: Single self-contained HTML file (Vanilla JS + Canvas 2D + Web Audio). Zero dependencies.
+- `time-loop/index.html`: Alphabetically sorted card under Gemini 3.8 Flash (High) (added ONLY after game is finished without reading other game files).
+
+## Plan Checklist
+- [x] 1. Architecture & Design Document: Header comment block with Title, Premise (150-300 words), Art Direction (hex values, light source, typography), and Voice.
+- [x] 2. Core Deterministic Engine:
+  - Pure function discrete grid state engine (14x11).
+  - Fixed 45-beat loop cycle with early ribbon commit ([Space]).
+  - Replay system running up to 4 concurrent Maelzel Automata with input playback.
+  - Causal consistency detector checking expected vs actual actions on every tick, triggering precise in-voice derangement halts.
+  - Unlimited tick & loop-boundary undo ([Z]) with deterministic replay verification.
+  - Documented deterministic simultaneous conflict resolution rule (antiquity order).
+- [x] 3. Level Authoring & Narrative Arc:
+  - Level 1: L'Incroyable de Minuit (Inciting situation: single pneumatic gate & treadle).
+  - Level 2: La Double Bielle (Escalation: dual interdependent gates & hamper shifting).
+  - Level 3: Le Précédent Fragile (Climax: historical protection, timing around past automata).
+  - Narrative Epilogue resolving Henri's watch at dawn.
+  - Headless automated self-test embedded in game and executable via UI/debug key ([T]).
+- [x] 4. Visual & Audio Presentation:
+  - Belle Époque brass/parquet/parchment aesthetic without banned tropes.
+  - Rich Canvas-drawn characters (Henri with apron/bag, Maelzel Automata with brass casing, gears, winding keys).
+  - Diegetic UI: brass regulator clock, unspooling punched telegraph tape, pressure dials.
+  - Ambient motion: warm gaslight flicker, wandering dust motes, rising steam wisps.
+  - Procedural Web Audio: escapement clicks, pneumatic whooshes, gear snaps, bell fanfares, mute toggle ([M]).
+- [x] 5. Verification & Testing:
+  - Syntax check with `node --check` (clean, 0 errors).
+  - Node.js automated test runner checking determinism, solutions, error reports, and deep undo (100% pass rate across all 7 tests).
+  - Browser inspection, DPR 1 and DPR 2 canvas scaling, zero console errors.
+- [x] 6. Index & Delivery:
+  - Add tile to `time-loop/index.html` sorted alphabetically by model (between Gemini 3.6 and GLM-5.3).
+  - Document results in `tasks/todo.md` review section.
+  - Commit and push to main with specific pathspecs (`git commit -- ...`).
+
+## Review
+- **Game File**: `time-loop/gemini-3.8-flash-high-time-loop-puzzle.html` (single self-contained HTML file, zero CDN/external dependencies, pure Canvas 2D + Web Audio).
+- **Index Tile**: Added to `time-loop/index.html` in alphabetical order by model between `Gemini 3.6 Flash` and `GLM-5.3`.
+- **Lore & Aesthetics**: 1897 Belle Époque Parisian pneumatic post sorting vault (Pont-Neuf) with oak parquet floorboards (`#231a14`, `#2e2118`), polished brass escapements (`#d4a34b`), cast iron vacuum piping (`#34383c`), punched copper telegraph ribbon (`#ebe1cb`), and imperial wax seal red (`#a83226`). Soft overhead gaslight illumination with wandering dust motes.
+- **Voice**: Chief Dispatch Inspector Delacroix—stern, exacting Parisian civil servant whose dry regulatory directives treat both Henri and the automata as expendable gears in the Republic's mail machinery.
+- **Deterministic Loop & Automata**:
+  - Replay of inputs, not positions, for up to 4 Maelzel Automata.
+  - Causal consistency verification halts simulation into formal *Procès-Verbal d'Avarie Mécanique* identifying automaton ID, regulator beat, expected action, and actual obstacle.
+  - Unlimited undo across loop boundaries ([Z]).
+- **Narrative Arc**:
+  - Level 1 (*L'Incroyable de Minuit*): Single pneumatic gate and pressure treadle.
+  - Level 2 (*La Double Bielle*): Interdependent gates and wicker hamper relocation.
+  - Level 3 (*Le Précédent Fragile*): Climax requiring protecting history; avoiding crossing past automata paths or disturbing earlier treadle weights.
+  - Epilogue (*La Clôture du Service de Nuit*): Dawn arrives over the Seine as Inspector Delacroix stamps the night watch accomplished.
+- **Verification**:
+  - In-game self-test suite ([T]) runs all 3 levels headlessly, verifying all 3 solutions, causal desynchronization detection, single-tick undo, and deep rewind to tick 0 with 100% success.
+  - Node.js test driver verified syntax and execution.
+
+---
+
+
 
 ## Concept & Lore (Locked)
 In 1888, high above Grasse in the limestone caves of Provence, Master Perfumer Jean-Luc Vaneau unsealed the *Septième Distillat* — an eternal fragrance capable of distilling human memory into golden liquid. The uncorking pierced the olfactory ether, summoning the **Abyssal Malodors**: rancid tallow creeps, vinegar wraiths, rotting mold-mites, and sulfurous colossi hungry to spoil the Great Flacon. Players command Jean-Luc's brass spagyric stills, cryogenic condenser coils, and aromatic atomizers to preserve the Flacon across 20 escalating watches of distillation.
