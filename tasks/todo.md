@@ -349,3 +349,32 @@ Review:
 - Screenshots: `/private/tmp/rainkeeper-desktop-final.png`, `/private/tmp/rainkeeper-mobile-final.png`, `/private/tmp/rainkeeper-battle-final.png`, `/private/tmp/rainkeeper-victory.png`. Test tools are temporary development artifacts; players need only the HTML file.
 - Not verified: Firefox, Safari, physical-device touch, or subjective audio output. The page documents that refresh starts a fresh expedition; only best completed front persists where storage is available.
 - Publication preflight: main checked out; origin is `git@github.com:ealdent/the-grove.git`; fetched origin/main has zero divergence; only the three intended task files changed and no pre-existing staged changes. Commit/push outcome is recorded in the final task response and Git history.
+
+## 2026-09-04 — GPT-6 Astra Ultra SVG exploration
+
+Goal: Build a complete, original first-person exploration game in one HTML file; add its alphabetically sorted gallery tile; commit and push to main.
+Project: Personal / The Grove.
+Files: `svg-forest/gpt-6-astra-ultra-svg-forest.html`, `svg-forest/index.html`, this task record.
+Constraints: All world graphics and rendering use SVG only, no canvas/WebGL/images/dependencies. Do not inspect other games in svg-forest before the new game is finished. Preserve other work.
+Design brief: An endless dry ocean and an orchard of porcelain sound archives; warmly colored illustrated sky, patterned mineral ground, architectural bell trees, shell archives, and airborne folded creatures. Recover six memories with a listening instrument; exploration continues afterward.
+Implementation: Perspective projection of reusable SVG symbols; bounded deterministic chunk generation and pooled visible SVG nodes; depth sorting/fog; delta-time movement and subtle head bob; keyboard/drag and two independently captured pointer joysticks; responsive field journal and optional procedural audio.
+Proof: Parse/dependency checks, live Chromium desktop/mobile flows, simultaneous touch-pointer test, long-travel node bounds and deterministic generation, offline loading, visual screenshots, independent skeptical review. Verify exact-file diff, clean baseline, remote main, and published commit.
+
+- [x] Finish the lore and visual specification before artwork implementation.
+- [x] Build the single-file SVG world, exploration loop, and responsive controls.
+- [x] Playtest, inspect rendered desktop/mobile views, and address independent review.
+- [x] After the game is complete, add and validate the alphabetically placed gallery tile.
+- [x] Prepare the exact-file main commit and push; verify remote outcome in the final response and Git history.
+
+Lore locked: Porcelain Tide — an orchard for vanished oceans. The vanished keepers stored sea sounds in porcelain Brinebells; stilted nautilus Tide Archives and folded Sailmoths tend the endless salt. Six recovered human memories return a tide to the air, after which exploration remains open. Palette: coral, celadon, ivory, ink; engraved botanical forms beneath an eclipsed sun.
+
+Review:
+- Delivered `svg-forest/gpt-6-astra-ultra-svg-forest.html` (52,730 bytes), a standalone SVG-only perspective game with original inline artwork, synthesized optional audio, six recovered memories, a returning tide, persistent position/progress, field notes, and indefinite exploration. No existing SVG game or gallery content was opened until this game was finished.
+- Added one unique GPT-6 Astra / Ultra tile to `svg-forest/index.html`, between GPT-5.6 Terra and Grok 4.5. All 30 model tiles remain alphabetically ordered; clicking the tile launches the new game.
+- Independent final behavioral proof: 24/24 checks passed. Real keyboard and mouse events; all six unique memories; movement after completion; pause/blur cleanup; saved progress and invalid/blocked storage; true Chromium CDP multitouch with independent pointer identities, simultaneous walking/turning, individual release, cancellation, and no page zoom/pan. Zero runtime errors, failed requests, or external game asset requests.
+- Streaming proof: 360 jumps through both positive and negative world coordinates (roughly 24,000 units from origin); fixed 121 chunks and fixed SVG node count throughout, maximum 650 entities and 88 visible sprites, within a 180-slot pool. Regenerated chunks matched deterministically.
+- UI proof: installed Google Chrome in isolated Playwright contexts, offline `file://` game and local HTTP gallery at `http://127.0.0.1:8786/svg-forest/index.html`; local player, no authentication. Desktop 1440×960, tablet 768×1024, mobile 390×844 and 320×568, landscape 844×390 all checked for layout and overflow. Journal pause/focus trap, optional sound toggle/audio context, reduced-motion default, gentle camera, six-memory finale, and gallery link passed. Measured 120-frame median/p95 intervals of 16.7 ms; renderer median 0.2 ms and p95 0.4 ms on this machine.
+- Skeptical review found and resolved backward head-bob asymmetry and a tide clipping chord. Reviewer verified both corrections. Syntax, SVG-only dependency scan, local link, unique metadata, ordering, and `git diff --check` passed.
+- Screenshots: `/private/tmp/porcelain-1440-intro-final.png`, `/private/tmp/porcelain-390-play-final.png`, `/private/tmp/porcelain-320-intro-final.png`, `/private/tmp/porcelain-844-play-final.png`, `/private/tmp/porcelain-complete-final.png`, `/private/tmp/porcelain-gallery-tile.png`. Reproducible temporary harnesses and JSON reports live under `/private/tmp/porcelain-*`; the game itself has no runtime dependencies.
+- Not verified: Safari, Firefox, physical touchscreen devices or device-specific browser edge gestures, and subjective audio output. Chrome mobile testing used emulated touch; timing applies to this machine. No known remaining blockers.
+- Publication preflight: clean initial main checkout, origin `git@github.com:ealdent/the-grove.git`, fetched remote main with zero divergence. Only the new game, gallery index, and this task record are included in the authorized commit/push. Local playable preview served at `http://127.0.0.1:8786/svg-forest/gpt-6-astra-ultra-svg-forest.html`.
