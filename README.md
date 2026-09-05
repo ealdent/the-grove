@@ -113,7 +113,7 @@ A collection of games, tools, and experiments built with AI — hosted on GitHub
 
 *Type, infographics, visualizers & data tools*
 
-- **[Phosphor Wake](utils/phosphor-wake.html)** — Original pixel monospace with Regular and distressed Burn cuts, broad coding and terminal character coverage, a live CRT specimen, and downloadable TTF/WOFF2 fonts with editable source. (*typeface*)
+- **[Phosphor Wake](utils/phosphor-wake.html)** — Original pixel monospace with clean Regular and fuller Burn cuts, broad coding and terminal character coverage, a CRT specimen with raw-pixel inspection up to 240px, and downloadable TTF/WOFF2 fonts with editable source. (*typeface*)
 
 - **[App Adoption & Usage Model](utils/app-adoption-model.html)** — Cohort calculator for subscription-app growth — trial funnel, month-over-month retention, and how a heavy-using few drive most usage. Tuned with real fitness-app benchmarks. (*calculator*)
 - **[AI Design Palette](utils/ai_design_palette_catalog.html)** — Catalog of AI app and agentic tool design systems — typography, colors, and UI patterns from leading products. (*catalog*)

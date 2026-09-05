@@ -2,8 +2,9 @@
 """Build the original Phosphor Wake font family, webfonts, manifest, and kit.
 
 No external font is read. All outlines come from glyphs.py or the deterministic
-pixel constructions below. Coordinates are integer 20-unit microcells; the
-letter skeleton uses an 80-unit pixel. See README.md for reproduction commands.
+pixel constructions below. Source geometry uses integer 20-unit microcells;
+the letter skeleton uses an 80-unit pixel. Burn expands the resulting contours
+by eight font units. See README.md for reproduction commands.
 """
 from __future__ import annotations
 
@@ -24,6 +25,9 @@ ROOT = Path(__file__).resolve().parent
 UPM, ADVANCE, STEP = 1200, 720, 20
 ASCENT, DESCENT = 1120, -320
 FIXED_TIMESTAMP = 3871324800  # 2026-09-04 UTC, in the OpenType epoch
+MODIFIED_TIMESTAMP = FIXED_TIMESTAMP + 86400
+VERSION = '1.100'
+BURN_SPREAD = 8  # Sub-pixel contour bloom; less than half a microcell gap.
 LIGATURES = ['===', '!==', '>>>', '<<<', '<=>', '<|>', '|>>', '<<|', '=>', '->', '<-', '|>', '<|', '==', '!=', '<=', '>=', '&&', '||', '::', '++', '--', '**', '??', '?.', '<<', '>>', ':=', '=~', '!~', '..', '...']
 
 
@@ -378,33 +382,33 @@ def make_characters():
     return chars
 
 
-def burn(shape, key, advance=ADVANCE, edge_to_edge=False):
-    if not shape: return set()
-    # A solid one-microcell bloom makes the face heavier. A second sparse halo
-    # scatters along the horizontal scan rhythm. These are monochrome outlines,
-    # not alpha, colour, a bitmap strike, or a baked soft blur.
-    result=set(shape)
-    near=set()
-    for x,y in shape:
-        for dx,dy in ((1,0),(-1,0),(0,1),(0,-1)):
-            if (x+dx,y+dy) not in shape: near.add((x+dx,y+dy))
-    result |= near
-    seed=sum(ord(c) for c in key)
-    for x,y in near:
-        for dx,dy in ((2,0),(-2,0),(1,1),(-1,-1)):
-            nx,ny=x+dx,y+dy
-            if (nx*11+ny*7+seed)%7 in (0,1) and (nx,ny) not in shape:
-                result.add((nx,ny))
-    # One 20-unit scan slit through broad strokes every 160 units. The two end
-    # microcells are retained so stems stay connected and small marks survive.
-    for x,y in tuple(shape):
-        if y%8==3 and all((x+dx,y+dy) in shape for dx in (-1,0,1) for dy in (-1,0,1)):
-            result.discard((x,y))
-    # Preserve adjoining cell boundaries for terminal frames and separators.
-    return {(x,y) for x,y in result if 0 <= x < advance//STEP and DESCENT//STEP <= y < ASCENT//STEP}
+def simple_contours(points):
+    """Separate loops which meet only at a vertex before offsetting edges.
+
+    A raster boundary can visit the same point twice (for example where a
+    branch icon's ring touches its stem). It has the same nonzero fill as its
+    separate loops, but expanding the self-touching path would fold it over.
+    """
+    seen={}
+    for i,point in enumerate(points):
+        if point in seen:
+            j=seen[point]
+            yield from simple_contours(points[j:i])
+            yield from simple_contours(points[:j]+points[i:])
+            return
+        seen[point]=i
+    yield points
 
 
-def outline(shape):
+def outline(shape, spread=0, advance=ADVANCE):
+    """Trace the pixel silhouette, optionally expanding each contour evenly.
+
+    Ink is on the right of every directed boundary, including counter paths.
+    Moving the two axis-aligned edges at a corner to their left therefore
+    expands the stroke without inventing points, scratches, or loose pixels.
+    The eight-unit Burn spread leaves even a twenty-unit counter open. Cell
+    boundaries are clipped so terminal frames still meet at the same edges.
+    """
     pen=TTGlyphPen(None)
     if not shape: return pen.glyph()
     outgoing=defaultdict(set)
@@ -430,15 +434,33 @@ def outline(shape):
             previous,current=current,next_point
             if current==start: break
             points.append(current)
-        corners=[]
-        for i,p in enumerate(points):
-            before,after=points[i-1],points[(i+1)%len(points)]
-            if (p[0]-before[0])*(after[1]-p[1]) != (p[1]-before[1])*(after[0]-p[0]): corners.append(p)
-        assert len(corners)>=4
-        pen.moveTo(tuple(c*STEP for c in corners[0]))
-        for point in corners[1:]: pen.lineTo(tuple(c*STEP for c in point))
-        pen.closePath()
-    return pen.glyph()
+        for loop in simple_contours(points):
+            corners=[]
+            for i,p in enumerate(loop):
+                before,after=loop[i-1],loop[(i+1)%len(loop)]
+                if (p[0]-before[0])*(after[1]-p[1]) != (p[1]-before[1])*(after[0]-p[0]): corners.append(p)
+            assert len(corners)>=4
+            expanded=[]
+            for i,(x,y) in enumerate(corners):
+                before,after=corners[i-1],corners[(i+1)%len(corners)]
+                incoming=(x-before[0],y-before[1])
+                outgoing_edge=(after[0]-x,after[1]-y)
+                def normal(edge):
+                    dx,dy=edge
+                    return (-dy//abs(dy) if dy else 0, dx//abs(dx) if dx else 0)
+                a,b=normal(incoming),normal(outgoing_edge)
+                point=(min(advance,max(0,x*STEP+spread*(a[0]+b[0]))),
+                       min(ASCENT,max(DESCENT,y*STEP+spread*(a[1]+b[1]))))
+                expanded.append(point)
+            pen.moveTo(expanded[0])
+            for point in expanded[1:]: pen.lineTo(point)
+            pen.closePath()
+    glyph=pen.glyph()
+    if spread and glyph.numberOfContours:
+        # Expanded pixels which previously touched at a corner can overlap.
+        # TrueType's nonzero fill rule keeps them one continuous ink region.
+        glyph.flags[0] |= 0x40  # OVERLAP_SIMPLE rasterizer flag.
+    return glyph
 
 
 def glyph_name(character): return f'uni{ord(character):04X}'
@@ -484,18 +506,17 @@ def build_font(chars, burned=False):
     glyphs={}
     metrics={}
     for name,(shape,width,key) in raw.items():
-        if burned: shape=burn(shape,key,width)
-        glyphs[name]=outline(shape)
-        metrics[name]=(width,min((x*STEP for x,y in shape),default=0))
+        glyphs[name]=outline(shape,spread=BURN_SPREAD if burned else 0,advance=width)
+        metrics[name]=(width,max(0,min((x*STEP for x,y in shape),default=0)-(BURN_SPREAD if burned else 0)))
     fb.setupGlyf(glyphs)
     fb.setupHorizontalMetrics(metrics)
     fb.setupHorizontalHeader(ascent=ASCENT,descent=DESCENT,lineGap=0)
     fb.setupNameTable({
-        'familyName':family,'styleName':'Regular','uniqueFontIdentifier':f'1.000;JADA;{stem}',
-        'fullName':family+' Regular','psName':stem,'version':'Version 1.000',
+        'familyName':family,'styleName':'Regular','uniqueFontIdentifier':f'{VERSION};JADA;{stem}',
+        'fullName':family+' Regular','psName':stem,'version':f'Version {VERSION}',
         'copyright':'Copyright 2026 Jason Adams. Original Phosphor Wake font software.',
         'manufacturer':'The Grove','designer':'Jason Adams / The Grove',
-        'description':'Original heavy pixel monospace. Burn has monochrome scanline texture and a dithered outline halo. Web CSS adds optional soft phosphor glow.',
+        'description':'Original heavy pixel monospace. Burn has continuous, subtly expanded pixel contours for display and code sizes. Web CSS supplies phosphor glow and scanlines.',
         'licenseDescription':'MIT License. Free to use, install, embed, modify and redistribute, including commercially. Preserve the copyright and license notice.',
         'licenseInfoURL':'https://opensource.org/license/mit',
     })
@@ -508,7 +529,8 @@ def build_font(chars, burned=False):
     font=fb.font
     font['OS/2'].xAvgCharWidth=ADVANCE
     font['head'].created=FIXED_TIMESTAMP
-    font['head'].modified=FIXED_TIMESTAMP
+    font['head'].modified=MODIFIED_TIMESTAMP
+    font['head'].fontRevision=float(VERSION)
     font.recalcTimestamp=False
     # Longest source sequences precede their prefixes. calt can be disabled by
     # editors, and the source text/copy operation remains ordinary ASCII.
@@ -545,13 +567,13 @@ def manifest(chars,glyph_count):
         groups.append({'id':gid,'label':label,'count':len(selected),'characters':''.join(selected),
                        'codepoints':[f'U+{ord(c):04X}' for c in selected]})
     pua_names={0xe0a0:'POWERLINE BRANCH',0xe0a1:'POWERLINE LINE NUMBER',0xe0a2:'POWERLINE PADLOCK',0xe0b0:'POWERLINE RIGHT SOLID SEPARATOR',0xe0b1:'POWERLINE RIGHT THIN SEPARATOR',0xe0b2:'POWERLINE LEFT SOLID SEPARATOR',0xe0b3:'POWERLINE LEFT THIN SEPARATOR'}
-    return {'name':'Phosphor Wake','version':'1.000','characterCount':len(chars),'glyphCount':glyph_count,
+    return {'name':'Phosphor Wake','version':VERSION,'characterCount':len(chars),'glyphCount':glyph_count,
             'unitsPerEm':UPM,'cellWidth':ADVANCE,'capHeight':880,'xHeight':560,
             'ascent':ASCENT,'descent':DESCENT,'lineGap':0,'groups':groups,'ligatures':LIGATURES,
             'families':[{'name':'Phosphor Wake','ttf':'PhosphorWake-Regular.ttf','woff2':'PhosphorWake-Regular.woff2'},
                         {'name':'Phosphor Wake Burn','ttf':'PhosphorWake-Burn.ttf','woff2':'PhosphorWake-Burn.woff2'}],
             'characters':[{'character':c,'codepoint':f'U+{ord(c):04X}','name':unicodedata.name(c,pua_names.get(ord(c),'UNNAMED'))} for c in ordered],
-            'coverageNotes':['Complete printable ASCII, Latin-1 supplement and Latin Extended-A.','Complete Unicode Box Drawing (U+2500–U+257F) and Block Elements (U+2580–U+259F).','Selected arrows, mathematics, punctuation, keyboard symbols, and seven standard Powerline private-use glyphs.','Combining marks are not encoded separately; precomposed Latin letters are covered.','Space, nonbreaking space and soft hyphen have intentionally empty outlines.','The Burn face has physical monochrome texture. Soft luminous blur and colour require a rendering effect, supplied in the web CSS.']}
+            'coverageNotes':['Complete printable ASCII, Latin-1 supplement and Latin Extended-A.','Complete Unicode Box Drawing (U+2500–U+257F) and Block Elements (U+2580–U+259F).','Selected arrows, mathematics, punctuation, keyboard symbols, and seven standard Powerline private-use glyphs.','Combining marks are not encoded separately; precomposed Latin letters are covered.','Space, nonbreaking space and soft hyphen have intentionally empty outlines.','The Burn face has continuous expanded pixel contours. Soft luminous blur, colour and scanlines are rendering effects supplied in the web CSS.']}
 
 
 def main():
@@ -568,7 +590,7 @@ def main():
         for name in files:
             path=ROOT/name
             if not path.exists(): raise FileNotFoundError(f'Kit source missing: {path}')
-            info=zipfile.ZipInfo('PhosphorWake/'+name,date_time=(2026,9,4,0,0,0))
+            info=zipfile.ZipInfo('PhosphorWake/'+name,date_time=(2026,9,5,0,0,0))
             info.compress_type=zipfile.ZIP_DEFLATED
             info.external_attr=0o644<<16
             archive.writestr(info,path.read_bytes())

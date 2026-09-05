@@ -23,6 +23,7 @@ def shape(path,text,calt):
 
 def main():
     manifest=json.loads((ROOT/'coverage.json').read_text())
+    assert manifest['version']=='1.100'
     expected={int(c['codepoint'][2:],16) for c in manifest['characters']}
     assert len(expected)==manifest['characterCount']
     grouped=''.join(group['characters'] for group in manifest['groups'])
@@ -40,6 +41,9 @@ def main():
         assert font['post'].isFixedPitch==1
         assert font['OS/2'].fsType==0
         assert font['name'].getDebugName(1)==family['name']
+        assert font['name'].getDebugName(5)==f'Version {manifest["version"]}'
+        assert font['name'].getDebugName(3).startswith(manifest['version']+';')
+        assert abs(font['head'].fontRevision-float(manifest['version']))<0.0001
         for cp,name in font.getBestCmap().items():
             assert font['hmtx'][name][0]==720,(hex(cp),'advance')
             glyph=font['glyf'][name]
@@ -80,6 +84,32 @@ def main():
                 assert all(g.codepoint!=0 for g in infos),sample
                 assert sum(p.x_advance for p in positions)==len(line)*720,sample
         print(f'PASS {family["ttf"]}: {len(expected)} encoded characters; {len(manifest["ligatures"])} ligatures; fixed cell and round-trip checks')
+    regular=TTFont(ROOT/'PhosphorWake-Regular.ttf')
+    burned=TTFont(ROOT/'PhosphorWake-Burn.ttf')
+    # Display-scale regression: Burn may gently expand the existing silhouette,
+    # but must not add the islands, edge teeth, or cut-out scores from v1.000.
+    # Compare the actual font paths, including every encoded glyph and ligature.
+    def signed_areas(glyph):
+        start=0
+        areas=[]
+        for end in glyph.endPtsOfContours:
+            points=list(glyph.coordinates[start:end+1])
+            areas.append(sum(a[0]*b[1]-b[0]*a[1] for a,b in zip(points,points[1:]+points[:1])))
+            start=end+1
+        return areas
+    for name in regular.getGlyphOrder():
+        clean,full=regular['glyf'][name],burned['glyf'][name]
+        assert full.numberOfContours==clean.numberOfContours,(name,'added damage contours')
+        if not clean.numberOfContours: continue
+        assert full.endPtsOfContours==clean.endPtsOfContours,(name,'added edge teeth')
+        assert all(a*b>0 for a,b in zip(signed_areas(clean),signed_areas(full))),(name,'collapsed or reversed counter')
+        assert all(max(abs(x1-x2),abs(y1-y2))<=10 for (x1,y1),(x2,y2) in zip(clean.coordinates,full.coordinates)),(name,'excessive contour expansion')
+    glyph_set=burned.getGlyphSet()
+    for point in [(160,y) for y in (70,230,390,550,710,870)]+[(x,790) for x in (320,480,600)]:
+        pen=PointInsidePen(glyph_set,point)
+        glyph_set[burned.getBestCmap()[ord('E')]].draw(pen)
+        assert pen.getResult(),('display-scale stroke cut',point)
+    print('PASS continuous display contours, open counters, no added spikes/scores, and versioned font metadata')
     with zipfile.ZipFile(ROOT/'PhosphorWake-font-kit.zip') as kit:
         assert kit.testzip() is None
         for entry in kit.namelist():

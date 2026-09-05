@@ -1,4 +1,4 @@
-# Phosphor Wake
+# Phosphor Wake 1.1
 
 An original heavy pixel monospace for terminals that stayed awake too long.
 Faceted capitals, blunt lowercase, a diagonal zero, a flagged one, barred I,
@@ -12,8 +12,11 @@ system's font installer. On macOS, use Font Book's Install button; on Windows,
 right-click and choose Install; on Linux, copy to `~/.local/share/fonts/` and
 run `fc-cache -f`. Restart an editor that was open during installation.
 
+If you installed an earlier release, replace both fonts with these v1.100
+files and restart apps using them. The font family names are unchanged.
+
 Select **Phosphor Wake** for the solid pixel face or **Phosphor Wake Burn** for
-the scan-cut face with a dithered outline halo. The two are separate font
+the fuller phosphor face with clean, continuous pixel contours. The two are separate font
 families so editors can select either one. Both are static, upright faces.
 The regular face is intentionally heavy; the Burn face is heavier again.
 
@@ -71,20 +74,28 @@ the underlying 80-unit design pixels become 1.6 CSS pixels; at 30px they become
 
 ## Burn versus glow
 
-The Burn face contains real monochrome scanline cuts, heavier ink, and small
-pixel sparks around the contours. Those outlines survive desktop installation,
-PDF embedding, print, and environments with no CSS support. A conventional
+The Burn face gives the original pixel skeleton a small, even contour spread.
+Its solid strokes and open counters stay clean when enlarged; no scratches,
+scanline cuts, or scattered edge pixels are baked into the glyphs. Those
+outlines survive desktop installation, PDF embedding, print, and environments
+with no CSS support. A conventional
 outline font cannot create translucent light, coloured bloom, screen curvature,
 or soft blur by itself. The web CSS supplies optional true phosphor glow using
-`text-shadow`; your editor will show the Burn texture but needs its own effect
-support for luminous bloom.
+`text-shadow`; your editor will show the fuller Burn contours but needs its own
+effect support for luminous bloom. The specimen page adds subtle scanlines as
+a separate screen effect. Its **Raw pixels** button disables both effects so
+you can inspect the installed font's shape, including at 160–240px.
+
+Release 1.1 keeps the original Regular outlines, character coverage, spacing,
+and coding ligatures. Burn replaces the first release's distressed edges and
+horizontal cuts with a continuous silhouette.
 
 ## Web use
 
 Keep the CSS and fonts in the same folder, then:
 
 ```html
-<link rel="stylesheet" href="./phosphor-wake.css">
+<link rel="stylesheet" href="./phosphor-wake.css?v=1.100">
 <pre class="phosphor-wake-burn phosphor-glow">signal |> remember()</pre>
 ```
 
@@ -92,6 +103,10 @@ Use a dark background and roomy type for the glow effect. For terminal box
 art, use `line-height: 1.2`, no letter spacing, and a `<pre>` element. Box and
 block glyphs reach the full line cell. Glow and Burn ink can visually soften
 tight gaps; use the solid face for dense source code.
+
+The stylesheet's versioned URLs load the current font files without changing
+their filenames. When updating an existing site, replace its CSS and fonts
+together so browsers pick up the new release.
 
 ## Rebuild and verify
 
@@ -107,8 +122,10 @@ python3 -m venv .venv
 All build inputs are local and original. `build.py` reads no existing font,
 uses deterministic geometry, fixes font and ZIP timestamps, and writes the two
 TTFs, two WOFF2s, the coverage manifest, and `PhosphorWake-font-kit.zip`.
-`verify.py` checks exact coverage, fixed cell advances, names, embedding flags,
-WOFF2 round trips, bounding boxes, archive integrity, and real HarfBuzz shaping
-with contextual ligatures both enabled and disabled.
+`verify.py` checks exact coverage, fixed cell advances, version metadata,
+embedding flags, WOFF2 round trips, bounding boxes, archive integrity, and real
+HarfBuzz shaping with contextual ligatures both enabled and disabled. Display
+regressions check that Burn adds no damage contours, edge teeth, or stroke
+cuts, and that expanded counters retain their winding and remain open.
 
 Copyright 2026 Jason Adams. Released under the MIT License; see `LICENSE.txt`.
