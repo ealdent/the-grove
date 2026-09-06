@@ -428,3 +428,29 @@ Review:
 - Browser proof: 65 checks passed in installed Chrome/Playwright at `http://127.0.0.1:8788/utils/phosphor-wake.html`, anonymous local visitor. Coverage groups, controls, raw/preset/max-size behavior, preserved code font, clipboard, downloads, failure fallbacks, reduced motion, touch navigation, and 320/390/701/768/1050/1440px document overflow checks all passed; no page errors or failed/external requests. Final package pass independently downloaded all six assets with exact byte comparisons and loaded both versioned families through the bundled CSS. Reports: `/private/tmp/phosphor-v110-browser-report.json`, `/private/tmp/phosphor-v110-package-report.json`.
 - Two rebuilds yielded identical TTF/WOFF2/manifest/ZIP hashes. Final ZIP: 102,799 bytes, SHA-256 `94804b1ea555e79a2d34ab3e8fa787ca77074d6f2105e253577a919e4f4c7238`. Independent static reviewer approved geometry/loops/overlap flags, metadata, links, and tester behavior with no actionable findings.
 - Publication preflight: fresh origin/main fetch matches local main (zero divergence), correct GitHub remote and clean initial checkout; only these font/demo/documentation/task files are included. Not verified: Windows/Linux font installation, Safari/Firefox or individual consuming apps. Existing installations or bundled copies must be replaced with v1.100; soft light remains a rendering effect.
+
+## Hub redesign — three directions (2026-09-06)
+
+Brief: survey the hub and every section, then propose three organisation and
+design options that read as something new rather than a templated landing.
+
+- [x] Survey `index.html`, all 11 section indexes, taste evidence in `tasks/`, `reviews/`, the palette catalog
+- [x] Screenshot the current hub, section indexes and flagship works
+- [x] Build `redesign/manifest.json` (123 works, 40 models) from the section indexes + git dates
+- [x] Capture a title-screen thumbnail for every work (122 of 123)
+- [x] Mockup A — The Register (`redesign/a-register.html`)
+- [x] Mockup B — The Cyanotype (`redesign/b-cyanotype.html`)
+- [x] Mockup C — The Playbill (`redesign/c-playbill.html`)
+- [ ] Jason picks a direction (or a hybrid); then implement as the real `index.html`
+- [ ] If adopted: have `build.py` also render `README.md` from the manifest, replacing `scripts/update_readme.py`'s regex scrape
+
+### Review
+Findings that shaped the options: 86 of 123 works are four briefs run across
+40 models, which the current hub hides behind eleven equal tiles; there are no
+dates, thumbnails or a manifest anywhere; the hub uses `backdrop-filter`, which
+the greenhouse notes ban on performance grounds. The current photo backdrop is
+mostly covered by the tiles. All three mockups drop the tile grid, add
+previews, and make the same-brief-many-models structure visible. Fonts could
+not be verified in the sandbox's headless Chromium (Google Fonts CSS resolves;
+font files did not load within the virtual-time budget), so typography was
+checked against the CSS response only.
