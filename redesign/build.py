@@ -44,11 +44,15 @@ for w in M['works']:
 print(f'{len(thumbs_file)} of {len(M["works"])} works have a thumbnail')
 
 manifest_json = json.dumps(M, ensure_ascii=False, separators=(',', ':')).replace('</', '<\\/')
+# The Grove's own pixel face, embedded so the teletext page needs no font host
+_pw = os.path.join(ROOT, 'utils', 'phosphor-wake', 'PhosphorWake-Regular.woff2')
+phosphor_uri = 'data:font/woff2;base64,' + base64.b64encode(open(_pw, 'rb').read()).decode() if os.path.exists(_pw) else ''
 
 def render(src, thumbs, site):
     return (src.replace('__MANIFEST_JSON__', manifest_json)
                .replace('__THUMBS_JSON__', json.dumps(thumbs))
-               .replace('__SITE_BASE__', site))
+               .replace('__SITE_BASE__', site)
+               .replace('__PHOSPHOR_WOFF2__', phosphor_uri))
 
 for name in sorted(os.listdir(os.path.join(RD, 'src'))):
     if not name.endswith('.html'): continue

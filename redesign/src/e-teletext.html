@@ -1,0 +1,238 @@
+<meta charset="utf-8">
+<title>Grove Teletext</title>
+<meta name="description" content="The Grove as a teletext service set in its own Phosphor Wake face: page 100 is the index, every work has a three-digit page, sections roll through subpages, and REVEAL shows each work as a mosaic.">
+<style>
+@font-face{font-family:"Phosphor Wake";src:url("__PHOSPHOR_WOFF2__") format("woff2");font-weight:400 700;font-style:normal;font-display:swap}
+:root{
+  --room:#090a0e; --bezel:#15161b; --bezel-2:#2b2d35; --k:#000;
+  --w:#f4f4f4; --y:#ffe94a; --c:#3af0ff; --g:#3dff5c; --m:#ff5cff; --r:#ff3b2e; --b:#3d6dff;
+  --lh:1.15em; --sx:1.3;
+  --f:"Phosphor Wake",ui-monospace,SFMono-Regular,Menlo,monospace;
+}
+*{box-sizing:border-box}
+html{background:var(--room)}
+body{margin:0;min-height:100vh;background:var(--room);color:var(--w);font-family:var(--f);font-variant-ligatures:contextual;font-feature-settings:"calt" 1;font-synthesis:none;display:grid;place-items:start center;padding:clamp(12px,3vh,36px) 10px 40px;gap:18px;
+  background-image:radial-gradient(ellipse 70% 55% at 50% 35%,#121420,transparent 70%)}
+a{color:inherit;text-decoration:none}
+a:hover,a:focus-visible{text-decoration:underline;text-underline-offset:3px;outline:none}
+.tv{font-size:clamp(10px,min(2.2vw,3.1vh),22px);background:var(--k);border-radius:1.1em;padding:.9em 1.1em;position:relative;
+  box-shadow:0 0 0 .55em var(--bezel),0 0 0 .7em var(--bezel-2),0 3em 5em -2em #000,inset 0 0 3em rgba(0,0,0,.9);width:calc(40ch * var(--sx) + 2.2em)}
+.tv::after{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;opacity:.13;background:repeating-linear-gradient(180deg,transparent 0 2px,#000 2px 3px)}
+.screen{width:40ch;transform:scaleX(var(--sx));transform-origin:0 0;line-height:var(--lh);white-space:pre;text-shadow:0 0 1px currentColor,0 0 .35em rgba(255,255,255,.18)}
+.row{height:var(--lh);overflow:hidden}
+.row.dh{height:calc(var(--lh) * 2)}
+.row.dh > span{display:inline-block;transform:scaleY(2);transform-origin:0 0}
+.w{color:var(--w)}.y{color:var(--y)}.c{color:var(--c)}.g{color:var(--g)}.m{color:var(--m)}.r{color:var(--r)}.b{color:var(--b)}
+.bg-r{background:var(--r);color:var(--k)}.bg-g{background:var(--g);color:var(--k)}.bg-y{background:var(--y);color:var(--k)}.bg-c{background:var(--c);color:var(--k)}.bg-b{background:var(--b);color:var(--w)}.bg-w{background:var(--w);color:var(--k)}
+.pg{cursor:pointer}
+.fast{display:flex;gap:1ch}
+.fast a,.fast button{font:inherit;line-height:inherit;border:0;padding:0 .5ch;cursor:pointer;text-shadow:none}
+.mosaic{display:block;width:40ch;height:calc(var(--lh) * 12);image-rendering:pixelated;image-rendering:crisp-edges;background:#000}
+.hidden{display:none}
+.btn{font:inherit;color:var(--m);background:none;border:0;padding:0;cursor:pointer;line-height:inherit;text-shadow:inherit}
+.btn:hover,.btn:focus-visible{text-decoration:underline;text-underline-offset:3px;outline:none}
+.caption{font-size:clamp(11px,1.2vw,13.5px);color:#8f93a3;text-align:center;max-width:64ch;line-height:1.5;letter-spacing:.02em}
+.caption b{color:#c9ccd8;font-weight:400}
+.caption details{margin-top:12px;font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;font-size:14px;color:#9a9eae;text-align:left}
+.caption summary{cursor:pointer;color:#8f93a3;font-family:var(--f);font-size:12px;letter-spacing:.08em;text-transform:uppercase;text-align:center}
+.caption details p{margin:8px 0 0;font-style:italic;text-wrap:pretty}
+@media (prefers-reduced-motion:reduce){.tv::after{display:none}}
+</style>
+
+<div class="tv" role="application" aria-label="The Grove teletext service">
+  <div class="screen" id="screen" aria-live="polite"></div>
+</div>
+<p class="caption">Type a <b>page number</b> · <b>↑ ↓</b> next and previous page · <b>← →</b> subpages · <b>R G Y C</b> the coloured keys · <b>V</b> reveal the plate · <b>100</b> index
+  <details><summary>About this direction</summary>
+  <p>The Grove as a teletext service, set in the site's own Phosphor Wake pixel face. Page 100 is the index; every work has a permanent three-digit page you can type, link to, or reach with the coloured keys, and the four benchmark briefs sit on the four coloured buttons. A section rolls through its subpages the way a listings page did, the index carousel changes what is showing, and REVEAL turns each work's title screen into a forty-column mosaic in the seven teletext colours before you open the real thing. Nothing here is a picture of a screen: every row is text you can select, and every page number is a link.</p></details></p>
+
+<script>
+(() => {
+  const M = __MANIFEST_JSON__;
+  const THUMBS = __THUMBS_JSON__;
+  const SITE = "__SITE_BASE__";
+  const COLS = 40;
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  const href = w => SITE + w.path.replace(/\/index\.html$/, '/');
+  const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const secOf = k => M.sections.find(s => s.key === k) || {};
+  const PNAME = k => M.providers[k] || (k ? k : '');
+  const len = s => [...String(s)].length;
+  const pad = (s, n) => { const a = [...String(s)]; return a.length >= n ? a.slice(0, n).join('') : a.join('') + ' '.repeat(n - a.length); };
+  const rpad = (s, n) => { const a = [...String(s)]; return a.length >= n ? a.slice(-n).join('') : ' '.repeat(n - a.length) + a.join(''); };
+  const leader = (a, b, w = COLS) => { const d = Math.max(1, w - len(a) - len(b) - 2); return a + ' ' + '.'.repeat(d) + ' ' + b; };
+  const wrap = (t, w = COLS) => { const out = []; let line = ''; for (const word of String(t).split(/\s+/)) { if (!word) continue; if (len(line) + len(word) + (line ? 1 : 0) > w) { if (line) out.push(line); line = word.length > w ? word.slice(0, w) : word; } else line += (line ? ' ' : '') + word; } if (line) out.push(line); return out; };
+  const c = (cls, s) => `<span class="${cls}">${esc(s)}</span>`;
+  const pg = (n, cls = 'y') => `<a class="pg ${cls}" href="#${n}">${n}</a>`;
+
+  // ---- page numbers: hundreds by section, works alphabetical within ----
+  const GROUPS = [
+    { h: 1, keys: ['tower-def'] }, { h: 2, keys: ['svg-forest'] }, { h: 3, keys: ['time-loop'] }, { h: 4, keys: ['rail-shooter'] },
+    { h: 5, keys: ['arcade'] }, { h: 6, keys: ['learn'] }, { h: 7, keys: ['utils'] }, { h: 8, keys: ['shaders'] },
+    { h: 9, keys: ['depths', 'greenhouse-todo', 'vector-defense'], name: 'Depths & apps', tagline: 'spinners, trackers and things kept running' },
+  ];
+  GROUPS.forEach(g => { g.name = g.name || secOf(g.keys[0]).name; g.tagline = g.tagline || secOf(g.keys[0]).tagline; g.family = secOf(g.keys[0]).family; g.href = SITE + g.keys[0] + '/';
+    g.works = M.works.filter(w => g.keys.includes(w.section)).sort((a, b) => a.title.localeCompare(b.title)); g.works.forEach((w, i) => { w.page = g.h * 100 + i + 1; w.group = g; }); });
+  const byPage = {}; M.works.forEach(w => byPage[w.page] = w);
+  const dates = [...new Set(M.works.map(w => w.added).filter(Boolean))].sort();
+  const hands = new Set(M.works.filter(w => w.model).map(w => w.provider + '|' + w.model)).size;
+  const fd = iso => new Date(iso + 'T00:00:00').toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+  const FAST = [[1, 'r', 'Towers'], [2, 'g', 'Forests'], [3, 'y', 'Loops'], [4, 'c', 'Rails']];
+
+  // ---- state ----
+  let page = 100, sub = 0, buffer = '', revealed = false, rotateT = null, showT = null, nowIdx = 0;
+  const day = Math.floor(Date.now() / 864e5);
+  const showing = M.works.filter(w => THUMBS[w.id]).sort((a, b) => ((a.id.charCodeAt(0) * 31 + day) % 97) - ((b.id.charCodeAt(0) * 31 + day) % 97) || a.title.localeCompare(b.title));
+
+  // ---- rows ----
+  const header = (n, subs) => {
+    const d = new Date();
+    const WD = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'], MO = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    const date = `${WD[d.getDay()]} ${String(d.getDate()).padStart(2, '0')} ${MO[d.getMonth()]}`;
+    const time = d.toTimeString().slice(0, 5) + '/' + String(d.getSeconds()).padStart(2, '0');
+    const left = buffer ? 'P' + pad(buffer, 3).replace(/ /g, '_') : 'P' + n;
+    const mid = subs > 1 ? `${sub + 1}/${subs}` : '   ';
+    return `<div class="row" id="hdr">${c('w', pad(left, 4))} ${c(subs > 1 ? 'c' : 'w', pad(mid, 3))} ${c('y', 'THE GROVE')}${' '.repeat(Math.max(1, COLS - 4 - 1 - 3 - 1 - 9 - 10 - 1 - 8))}${c('w', date)} ${c('g', time)}</div>`;
+  };
+  const dh = (s, cls) => `<div class="row dh">${c(cls, s)}</div>`;
+  const row = html => `<div class="row">${html}</div>`;
+  const blank = () => '<div class="row"></div>';
+  const band = () => row(c('r', '▄▀'.repeat(10)) + c('y', '▄▀'.repeat(10)));
+  const fastext = () => `<div class="row fast">${FAST.map(([h, k, l]) => `<a class="bg-${k}" href="#${h}00">${esc(l)}</a>`).join('')}<a class="bg-w" href="#100">Index</a></div>`;
+  const footNav = () => row(c('g', 'Latest ') + pg(190, 'w') + c('g', ' · A-Z ') + pg(199, 'w') + c('g', ' · About ') + pg(198, 'w'));
+  const fill = (rows, upTo) => { while (rows.length < upTo) rows.push(blank()); return rows; };
+
+  function pageIndex() {
+    const now = showing[nowIdx % showing.length];
+    const rows = [dh('THE GROVE', 'y'), band(), row(c('c', 'Games & tools from the machine')), blank(),
+      row(c('g', 'NOW SHOWING') + '  ' + c('m', 'type a page number to tune in')),
+      row(`<span class="w">${esc(pad(now.title.toUpperCase(), 36))}</span>${pg(now.page)}`),
+      row(c('c', pad((now.model ? now.model + (now.effort ? ' ' + now.effort : '') + ' · ' : '') + now.group.name, COLS))),
+      blank(),
+      row(c('y', 'SAME BRIEF, EVERY MODEL'))];
+    GROUPS.filter(g => g.family === 'benchmark').forEach(g => rows.push(row(c('w', pad(g.name, 20)) + c('c', rpad(g.works.length + ' works', 12)) + '   ' + pg(g.h * 100))));
+    rows.push(blank(), row(c('y', 'THE WORKSHOP')));
+    GROUPS.filter(g => g.family !== 'benchmark').forEach(g => rows.push(row(c('w', pad(g.name, 20)) + c('c', rpad(g.works.length + (g.works.length === 1 ? ' work' : ' works'), 12)) + '   ' + pg(g.h * 100))));
+    fill(rows, 21);
+    rows.push(row(c('g', `${M.works.length} works · ${hands} models · since ${fd(dates[0]).slice(3)}`)), footNav());
+    return { rows, subs: 1 };
+  }
+  function pageSection(g) {
+    const per = 8, subs = Math.ceil(g.works.length / per), ws = g.works.slice(sub * per, sub * per + per);
+    const rows = [dh(g.name.toUpperCase(), 'y'), row(c('c', pad(`${g.works.length} works · ${g.tagline}`, COLS))), blank()];
+    for (const w of ws) { rows.push(row(pg(w.page) + ' ' + c('w', pad(w.title.toUpperCase(), 35))), row(c('c', '    ' + pad(w.model ? w.model + (w.effort ? ' ' + w.effort : '') : (w.tag || 'the house'), 36)))); }
+    fill(rows, 20);
+    rows.push(row(c('g', subs > 1 ? `Subpage ${sub + 1} of ${subs} · → for the next` : ' ') ), row(c('m', 'Open the section index → ') + `<a class="w" href="${g.href}">${esc(g.name)}</a>`), footNav());
+    return { rows, subs };
+  }
+  function pageWork(w) {
+    const g = w.group, prev = byPage[w.page - 1], next = byPage[w.page + 1];
+    const title = wrap(w.title.toUpperCase(), COLS).slice(0, 2);
+    const rows = [dh(g.name.toUpperCase(), 'y'), blank()];
+    title.forEach(t => rows.push(dh(t, 'w')));
+    if (title.length === 1) rows.push(blank(), blank());
+    rows.push(row(c('c', pad(w.model ? `${w.model}${w.effort ? ' ' + w.effort : ''} · ${PNAME(w.provider)}` : (w.tag ? w.tag + ' · the house' : 'the house'), COLS))), blank());
+    if (revealed && THUMBS[w.id]) rows.push(`<canvas class="mosaic" id="mosaic" width="80" height="36" aria-label="Mosaic of ${esc(w.title)}"></canvas>`);
+    else { const d = wrap(w.desc, COLS); d.slice(0, 11).forEach((l, i) => rows.push(row(c('w', i === 10 && d.length > 11 ? pad(l, COLS - 1).slice(0, COLS - 1) + '…' : l)))); fill(rows, rows.length + (12 - Math.min(d.length, 12))); }
+    fill(rows, 20);
+    rows.push(row(c('g', `First shown ${fd(w.added)} · page ${w.page}`)));
+    rows.push(row(`<button class="btn" id="reveal" type="button">${revealed ? 'CONCEAL' : 'REVEAL'}</button>` + c('m', revealed ? ' the text · ' : ' the plate · ') + `<a class="y" href="${href(w)}">OPEN THE WORK →</a>`));
+    const L = prev ? pg(prev.page, 'w') + c('c', ' ← previous') : '', R = next ? c('c', 'next → ') + pg(next.page, 'w') : '';
+    rows.push(row(L + ' '.repeat(Math.max(1, COLS - (prev ? 14 : 0) - (next ? 10 : 0))) + R));
+    return { rows, subs: 1 };
+  }
+  function pageLatest() {
+    const groups = dates.slice().reverse().map(d => ({ d, ws: M.works.filter(w => w.added === d).sort((a, b) => a.title.localeCompare(b.title)) }));
+    const lines = []; groups.forEach(gp => { lines.push(row(c('y', fd(gp.d)) + c('c', gp.d === dates[0] ? `  the service opened with ${gp.ws.length}` : `  ${gp.ws.length} added`))); if (gp.d !== dates[0]) gp.ws.forEach(w => lines.push(row(pg(w.page) + ' ' + c('w', pad(w.title.toUpperCase(), 22)) + c('c', pad(w.group.name, 13))))); });
+    const per = 17, subs = Math.ceil(lines.length / per);
+    const rows = [dh('LATEST ADDITIONS', 'y'), row(c('c', 'newest first')), blank(), ...lines.slice(sub * per, sub * per + per)];
+    fill(rows, 21); rows.push(row(c('g', subs > 1 ? `Subpage ${sub + 1} of ${subs}` : ' ')), footNav());
+    return { rows, subs };
+  }
+  function pageAZ() {
+    const all = M.works.slice().sort((a, b) => a.title.localeCompare(b.title)), per = 18, subs = Math.ceil(all.length / per);
+    const rows = [dh('A–Z OF EVERY WORK', 'y'), row(c('c', `${all.length} works, alphabetically`)), blank()];
+    all.slice(sub * per, sub * per + per).forEach(w => rows.push(row(pg(w.page) + ' ' + c('w', pad(w.title, 24)) + c('c', pad(w.model || w.group.name, 11)))));
+    fill(rows, 21); rows.push(row(c('g', `Subpage ${sub + 1} of ${subs} · → for the next`)), footNav());
+    return { rows, subs };
+  }
+  function pageAbout() {
+    const txt = wrap(`Four briefs were handed, unchanged, to every frontier model that came through the door: a tower defense, a first-person SVG world, a time loop, an on-rails flight. Each entry is usually a single one-shot generation with a light pass afterwards to fit a small screen. The rest of the service is the keeper's own workshop. ${M.works.length} works, ${hands} models, first shown ${fd(dates[0])}, latest ${fd(dates[dates.length - 1])}.`, COLS);
+    const rows = [dh('ABOUT THIS SERVICE', 'y'), blank(), ...txt.map(l => row(c('w', l)))];
+    fill(rows, 21); rows.push(row(c('g', 'Set in Phosphor Wake, the house face · ') + `<a class="w" href="${SITE}utils/phosphor-wake.html">${esc('p.706')}</a>`), footNav());
+    return { rows, subs: 1 };
+  }
+  function pageNotFound(n) {
+    const rows = [dh('NOT IN SERVICE', 'r'), blank(), row(c('w', `Page ${n} is not in service.`)), row(c('c', 'Sections start at 100, 200 … 900.')), blank(), row(c('w', 'Press ') + pg(100) + c('w', ' for the index.'))];
+    fill(rows, 22); rows.push(footNav());
+    return { rows, subs: 1 };
+  }
+
+  function build() {
+    let out;
+    if (page === 100) out = pageIndex();
+    else if (page === 190) out = pageLatest();
+    else if (page === 199) out = pageAZ();
+    else if (page === 198) out = pageAbout();
+    else if (byPage[page]) out = pageWork(byPage[page]);
+    else { const g = GROUPS.find(g => g.h * 100 === page); out = g ? pageSection(g) : pageNotFound(page); }
+    if (sub >= out.subs) { sub = 0; return build(); }
+    const rows = out.rows.slice(0, 23); fill(rows, 23);
+    screen.innerHTML = header(page, out.subs) + rows.join('') + fastext();
+    const cv = document.getElementById('mosaic'); if (cv) drawMosaic(byPage[page], cv);
+    const rv = document.getElementById('reveal'); if (rv) rv.onclick = () => { revealed = !revealed; build(); };
+    clearInterval(rotateT);
+    if (out.subs > 1 && !reduced) rotateT = setInterval(() => { sub = (sub + 1) % out.subs; build(); }, 9000);
+    document.title = page === 100 ? 'Grove Teletext' : `P${page} · Grove Teletext`;
+  }
+  const screen = document.getElementById('screen');
+
+  // ---- mosaic: the title screen in the seven teletext colours, 2x3 cells per character ----
+  const PAL = [[0, 0, 0], [255, 59, 46], [61, 255, 92], [255, 233, 74], [61, 109, 255], [255, 92, 255], [58, 240, 255], [244, 244, 244]];
+  function drawMosaic(w, cv) {
+    const img = new Image(); img.onload = () => {
+      const W = 80, H = 36, off = document.createElement('canvas'); off.width = W; off.height = H; const o = off.getContext('2d');
+      o.drawImage(img, 0, 0, W, H); const d = o.getImageData(0, 0, W, H).data, ctx = cv.getContext('2d'), out = ctx.createImageData(W, H);
+      for (let i = 0; i < d.length; i += 4) {
+        let r = d[i], g = d[i + 1], b = d[i + 2]; const lum = .2126 * r + .7152 * g + .0722 * b; let best = 0;
+        if (lum > 34) { const m = (r + g + b) / 3, k = 2.2; r = Math.min(255, Math.max(0, m + (r - m) * k)); g = Math.min(255, Math.max(0, m + (g - m) * k)); b = Math.min(255, Math.max(0, m + (b - m) * k));
+          let bd = 1e9; PAL.forEach((p, j) => { if (!j) return; const dd = (p[0] - r) ** 2 + (p[1] - g) ** 2 + (p[2] - b) ** 2; if (dd < bd) { bd = dd; best = j; } });
+          if (lum > 190 && Math.max(r, g, b) - Math.min(r, g, b) < 70) best = 7; }
+        const p = PAL[best]; out.data[i] = p[0]; out.data[i + 1] = p[1]; out.data[i + 2] = p[2]; out.data[i + 3] = 255;
+      }
+      ctx.putImageData(out, 0, 0);
+    }; img.src = THUMBS[w.id];
+  }
+
+  // ---- navigation ----
+  function goto(n, s = 0) {
+    n = +n; buffer = ''; revealed = false;
+    const land = () => { page = n; sub = s; if (location.hash !== '#' + n) history.replaceState(null, '', '#' + n); build(); };
+    if (reduced) return land();
+    let i = 0; const roll = setInterval(() => { const h = document.getElementById('hdr'); if (h) h.firstChild.textContent = pad('P' + (100 + Math.floor(Math.random() * 899)), 4); if (++i > 6) { clearInterval(roll); land(); } }, 60);
+  }
+  const existing = [100, 190, 198, 199, ...GROUPS.map(g => g.h * 100), ...M.works.map(w => w.page)].sort((a, b) => a - b);
+  const step = dir => { const i = existing.indexOf(page); goto(existing[(i + dir + existing.length) % existing.length]); };
+  addEventListener('hashchange', () => { const n = +location.hash.slice(1); if (n && n !== page) goto(n); });
+  document.addEventListener('keydown', e => {
+    if (e.target.matches('input,textarea')) return;
+    if (/^[0-9]$/.test(e.key)) { buffer += e.key; if (buffer.length === 3) { const n = +buffer; buffer = ''; goto(n); } else { const h = document.getElementById('hdr'); if (h) h.firstChild.textContent = 'P' + pad(buffer, 3).replace(/ /g, '_'); } e.preventDefault(); return; }
+    buffer = '';
+    if (e.key === 'ArrowDown') { step(1); e.preventDefault(); }
+    else if (e.key === 'ArrowUp') { step(-1); e.preventDefault(); }
+    else if (e.key === 'ArrowRight') { sub++; build(); e.preventDefault(); }
+    else if (e.key === 'ArrowLeft') { sub = Math.max(0, sub - 1); build(); e.preventDefault(); }
+    else if (/^[rgyc]$/i.test(e.key)) { const f = FAST.find(x => x[1] === e.key.toLowerCase()); goto(f[0] * 100); }
+    else if (/^v$/i.test(e.key) && byPage[page]) { revealed = !revealed; build(); }
+    else if (e.key === 'Escape') goto(100);
+  });
+  screen.addEventListener('click', e => { const a = e.target.closest('a.pg, .fast a'); if (a) { e.preventDefault(); goto(+a.getAttribute('href').slice(1)); } });
+  screen.addEventListener('click', e => { if (e.target.closest('#hdr')) { sub++; build(); } });
+
+  // clock and the index carousel
+  setInterval(() => { const h = document.getElementById('hdr'); if (!h || buffer) return; const spans = h.querySelectorAll('span'); const d = new Date(); spans[spans.length - 1].textContent = d.toTimeString().slice(0, 5) + '/' + String(d.getSeconds()).padStart(2, '0'); }, 1000);
+  if (!reduced) showT = setInterval(() => { if (page === 100) { nowIdx++; build(); } }, 7000);
+
+  const start = +location.hash.slice(1); page = start && (existing.includes(start)) ? start : 100; build();
+})();
+</script>
