@@ -1,0 +1,79 @@
+<meta charset="utf-8">
+<title>Grove Contact Sheet</title>
+<meta name="description" content="The Grove as a photographer's contact sheet: one film strip per category, a frame per work, the day's pick circled in grease pencil.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600&display=swap">
+<style>
+:root{--base:#0a0a0b;--rebate:#161310;--edge:#e3a04a;--pencil:#ff7d2e;--ink:#e6e1d8;--dim:#6a655d;
+  --fw:clamp(100px,calc(((100vh - 92px) / 7 - 44px) / .625),240px);--f:'Barlow Condensed','Arial Narrow',Arial,sans-serif}
+*{box-sizing:border-box}
+html{background:var(--base)}
+body{margin:0;min-height:100vh;background:var(--base);color:var(--ink);font-family:var(--f);font-weight:500;overflow-x:hidden}
+.sheet{padding:16px 2.5vw 24px;display:grid;gap:6px;min-width:0}
+.sheet > *{min-width:0}
+#strips{display:grid;gap:6px;min-width:0}
+.head{display:flex;justify-content:space-between;align-items:baseline;padding:0 12px 4px;font-size:13px;font-weight:600;letter-spacing:.24em;text-transform:uppercase;color:var(--edge)}
+.strip{position:relative;background:var(--rebate);padding:17px 0 9px;border-radius:2px;min-width:0}
+.edge{position:absolute;top:3px;left:14px;right:14px;display:flex;justify-content:space-between;gap:16px;font-size:11.5px;font-weight:600;letter-spacing:.22em;text-transform:uppercase;color:var(--edge);white-space:nowrap;overflow:hidden}
+.edge a{color:inherit;text-decoration:none}
+.edge a:hover,.edge a:focus-visible{color:#fff;outline:none}
+.edge .n{color:var(--dim);margin-left:.6em}
+.edge .now{overflow:hidden;text-overflow:ellipsis;font-weight:500;letter-spacing:.16em}
+.edge .now b{font-weight:600;color:var(--ink)}
+.frames{display:flex;gap:10px;overflow-x:auto;scroll-snap-type:x proximity;padding:0 14px;scrollbar-width:none;min-width:0}
+.frames::-webkit-scrollbar{display:none}
+.frame{position:relative;flex:0 0 var(--fw);scroll-snap-align:start;display:block;text-decoration:none;outline:none}
+.frame::before,.frame::after{content:"";display:block;height:6px;background:radial-gradient(circle,#000 0 1.8px,transparent 2.2px) 6px 0/15px 6px repeat-x}
+.frame img{display:block;width:100%;aspect-ratio:8/5;object-fit:cover;object-position:top;filter:brightness(.7) saturate(.85);transition:filter .18s;border:1px solid #000;background:#000}
+.frame:hover img,.frame:focus-visible img{filter:none}
+.frame .no{position:absolute;bottom:-1px;right:3px;font-size:9.5px;letter-spacing:.16em;color:var(--edge);opacity:.75}
+.pencil{position:absolute;inset:-6px -9px -4px;pointer-events:none;overflow:visible}
+.pencil ellipse{fill:none;stroke:var(--pencil);stroke-width:2.4;stroke-linecap:round;vector-effect:non-scaling-stroke;opacity:.92}
+@media (max-width:640px){:root{--fw:38vw}}
+</style>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><filter id="wob" x="-10%" y="-10%" width="120%" height="120%"><feTurbulence type="fractalNoise" baseFrequency=".04" numOctaves="2" seed="5"/><feDisplacementMap in="SourceGraphic" scale="5"/></filter></svg>
+
+<main class="sheet">
+  <div class="head"><span>The Grove</span><span id="total"></span></div>
+  <div id="strips"></div>
+</main>
+
+<script>
+(() => {
+  const M = __MANIFEST_JSON__;
+  const THUMBS = __THUMBS_JSON__;
+  const SITE = "__SITE_BASE__";
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  const href = w => SITE + w.path.replace(/\/index\.html$/, '/');
+  const CATS = [
+    { name: 'Tower Defense', sections: ['tower-def'], href: 'tower-def/' },
+    { name: 'SVG Forest', sections: ['svg-forest'], href: 'svg-forest/' },
+    { name: 'Time Loop', sections: ['time-loop'], href: 'time-loop/' },
+    { name: 'Rail Shooter', sections: ['rail-shooter'], href: 'rail-shooter/' },
+    { name: 'Arcade', sections: ['arcade', 'vector-defense'], href: 'arcade/' },
+    { name: 'Learn', sections: ['learn'], href: 'learn/' },
+    { name: 'Workshop', sections: ['utils', 'shaders', 'greenhouse-todo', 'depths'], href: 'utils/' },
+  ];
+  const day = Math.floor(Date.now() / 864e5);
+  let seed = day; const rng = () => { seed |= 0; seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
+  const who = w => w.model ? `${esc(w.model)}${w.effort ? ' ' + esc(w.effort) : ''}` : '';
+
+  const root = document.getElementById('strips');
+  root.innerHTML = CATS.map((c, ci) => {
+    // shooting order: the day it entered, then name
+    const ws = M.works.filter(w => c.sections.includes(w.section)).sort((a, b) => a.added.localeCompare(b.added) || a.title.localeCompare(b.title));
+    const pickable = ws.slice(0, Math.min(5, ws.length)).filter(w => THUMBS[w.id]);
+    const pick = pickable.length ? pickable[Math.floor(rng() * pickable.length)] : ws[0];
+    return `<section class="strip" data-ci="${ci}">
+      <div class="edge"><span><a href="${SITE + c.href}">${esc(c.name)}</a><span class="n">${ws.length}</span></span><span class="now" data-rest="<b>${esc(pick.title)}</b>${who(pick) ? ' · ' + who(pick) : ''}"><b>${esc(pick.title)}</b>${who(pick) ? ' · ' + who(pick) : ''}</span></div>
+      <div class="frames">${ws.map((w, i) => `<a class="frame" href="${href(w)}" data-title="<b>${esc(w.title)}</b>${who(w) ? ' · ' + who(w) : ''}" aria-label="${esc(w.title)}">${THUMBS[w.id] ? `<img src="${THUMBS[w.id]}" alt="">` : '<span style="display:block;aspect-ratio:8/5;border:1px solid #000"></span>'}<span class="no">${i + 1}</span>${w === pick ? `<svg class="pencil" viewBox="0 0 100 70" preserveAspectRatio="none"><ellipse cx="50" cy="35" rx="47" ry="31" transform="rotate(-5 50 35)" stroke-dasharray="230 60" filter="url(#wob)"/></svg>` : ''}</a>`).join('')}</div>
+    </section>`;
+  }).join('');
+  document.getElementById('total').textContent = `${M.works.length} frames`;
+
+  root.addEventListener('pointerover', e => { const f = e.target.closest('.frame'); if (!f) return; f.closest('.strip').querySelector('.now').innerHTML = f.dataset.title; });
+  root.addEventListener('pointerout', e => { const f = e.target.closest('.frame'); if (!f) return; const now = f.closest('.strip').querySelector('.now'); now.innerHTML = now.dataset.rest; });
+  root.addEventListener('focusin', e => { const f = e.target.closest('.frame'); if (f) f.closest('.strip').querySelector('.now').innerHTML = f.dataset.title; });
+})();
+</script>

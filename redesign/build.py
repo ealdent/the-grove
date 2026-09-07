@@ -48,7 +48,16 @@ manifest_json = json.dumps(M, ensure_ascii=False, separators=(',', ':')).replace
 _pw = os.path.join(ROOT, 'utils', 'phosphor-wake', 'PhosphorWake-Regular.woff2')
 phosphor_uri = 'data:font/woff2;base64,' + base64.b64encode(open(_pw, 'rb').read()).decode() if os.path.exists(_pw) else ''
 
+import re, mimetypes
+def img_token(path, inline):
+    full = os.path.join(ROOT, path)
+    if inline:
+        mime = mimetypes.guess_type(full)[0] or 'application/octet-stream'
+        return f'data:{mime};base64,' + base64.b64encode(open(full, 'rb').read()).decode()
+    return os.path.relpath(full, RD).replace(os.sep, '/')
+
 def render(src, thumbs, site):
+    src = re.sub(r'__IMG:([^_]+?)__', lambda m: img_token(m.group(1), site != '../'), src)
     return (src.replace('__MANIFEST_JSON__', manifest_json)
                .replace('__THUMBS_JSON__', json.dumps(thumbs))
                .replace('__SITE_BASE__', site)

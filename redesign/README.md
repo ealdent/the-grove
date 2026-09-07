@@ -12,10 +12,21 @@ Nothing in the live site is changed by this folder.
 | `e-teletext.html` | **The Teletext** | The Grove as a teletext service, set in the site's own Phosphor Wake face (embedded WOFF2). Page 100 is the index; every work has a permanent three-digit page you can type or link to (`#112`); sections roll through subpages; the four briefs sit on the four coloured keys; REVEAL renders a work's title screen as a 40-column mosaic in the seven teletext colours. Every row is selectable text. |
 | `f-field-guide.html` | **The Field Guide** | A mid-century pocket natural-history guide: a frontispiece drawn with the date, a dichotomous key that walks a newcomer to the right family by asking what they want, plates numbered and grouped by family, and species accounts where the model stands where a taxonomic authority stands. A checklist at the back keeps what a visitor has seen (localStorage). |
 
+| `g-seven-words.html` | **Seven Words** | The hub is seven category words set huge in Bricolage Grotesque, each with its count. The lit word is filled with its own works' title screens, changing every couple of seconds; resting on another word moves the light. One caption line names the work showing. Nothing else on the page. |
+| `h-contact-sheet.html` | **The Contact Sheet** | A photographer's contact sheet: one film strip per category, one frame per work in shooting order, frame numbers in the rebate, the category and count as edge print, the day's pick circled in grease pencil. Strips scroll sideways; a hovered frame brightens and is named in the rebate. |
+| `i-lantern.html` | **The Lantern** | The current hub kept and quieted. The illustration, the painted icons, the grain, vignette, ash and Special Elite title stay; the glass card grid and taglines go. Eight lanterns along the bottom with counts; resting on one projects that category's title screens onto the scene, tinted to the hub's palette, and names the work. |
+
 Round two (D, E, F) followed the owner's preference for the Playbill over the
 Register and the Cyanotype: a recognisable document form mapped onto the
 collection, a real front page with a rotating lead, and typographic
 personality over information-design abstraction.
+
+Round three (G, H, I) followed the correction that D–F were information
+overload: the hub keeps a handful of high-level categories (seven, or eight
+with the Greenhouse on its own), the works stay behind them, previews do the
+describing, and copy is limited to names, counts and the hovered title. The
+Workshop category folds Utils, Shaders and Depths (and in G/H the Greenhouse)
+into one door; its link points at `utils/` until a combined index exists.
 
 ## Data
 
