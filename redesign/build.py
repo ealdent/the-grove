@@ -47,6 +47,8 @@ manifest_json = json.dumps(M, ensure_ascii=False, separators=(',', ':')).replace
 # The Grove's own pixel face, embedded so the teletext page needs no font host
 _pw = os.path.join(ROOT, 'utils', 'phosphor-wake', 'PhosphorWake-Regular.woff2')
 phosphor_uri = 'data:font/woff2;base64,' + base64.b64encode(open(_pw, 'rb').read()).decode() if os.path.exists(_pw) else ''
+_pb = os.path.join(ROOT, 'utils', 'phosphor-wake', 'PhosphorWake-Burn.woff2')
+phosphor_burn_uri = 'data:font/woff2;base64,' + base64.b64encode(open(_pb, 'rb').read()).decode() if os.path.exists(_pb) else ''
 
 import re, mimetypes
 def img_token(path, inline):
@@ -61,6 +63,7 @@ def render(src, thumbs, site):
     return (src.replace('__MANIFEST_JSON__', manifest_json)
                .replace('__THUMBS_JSON__', json.dumps(thumbs))
                .replace('__SITE_BASE__', site)
+               .replace('__PHOSPHOR_BURN_WOFF2__', phosphor_burn_uri)
                .replace('__PHOSPHOR_WOFF2__', phosphor_uri))
 
 for name in sorted(os.listdir(os.path.join(RD, 'src'))):

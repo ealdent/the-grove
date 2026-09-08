@@ -21,12 +21,18 @@ Register and the Cyanotype: a recognisable document form mapped onto the
 collection, a real front page with a rotating lead, and typographic
 personality over information-design abstraction.
 
+| `g2-seven-words.html` | **Seven Words, four ways** | Iterations of G on identical data, switched with keys 1–4 or the corner labels: **1 Block** — every line scaled to one measure, a justified wood-type block; **2 Serif** — Fraunces in title case on bone, the lit word's picture panning slowly; **3 Phosphor** — the words in Phosphor Wake Burn with a phosphor halo; **4 Split** — the words solid, the picture full-height beside them, the lit word in ember. The switcher is review tooling, not part of any design. |
+
 Round three (G, H, I) followed the correction that D–F were information
 overload: the hub keeps a handful of high-level categories (seven, or eight
 with the Greenhouse on its own), the works stay behind them, previews do the
 describing, and copy is limited to names, counts and the hovered title. The
 Workshop category folds Utils, Shaders and Depths (and in G/H the Greenhouse)
 into one door; its link points at `utils/` until a combined index exists.
+
+Round four iterates on Seven Words alone, the direction the owner called
+"much closer": one page, four variants, each changing one or two axes
+(composition, typeface and ground, the house face, where the picture sits).
 
 ## Data
 

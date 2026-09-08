@@ -443,6 +443,7 @@ design options that read as something new rather than a templated landing.
 - [x] Mockup C — The Playbill (`redesign/c-playbill.html`)
 - [x] Round two after feedback ("the playbill is pretty good, 3 more"): D Seed Catalogue, E Teletext (Phosphor Wake, embedded), F Field Guide
 - [x] Round three after correction (keep high-level categories, no overload, no filler copy): G Seven Words, H Contact Sheet, I Lantern
+- [x] Round four: Seven Words iterated four ways on one page (block, serif on bone, Phosphor Wake, split)
 - [ ] Jason picks a direction (or a hybrid); then implement as the real `index.html`
 - [ ] If adopted: have `build.py` also render `README.md` from the manifest, replacing `scripts/update_readme.py`'s regex scrape
 
