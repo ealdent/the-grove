@@ -1,0 +1,877 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>What the Cylinder Keeps</title>
+<!--
+=====================================================================
+  WHAT THE CYLINDER KEEPS
+  a music-box puzzle in three airs
+=====================================================================
+
+TITLE
+  What the Cylinder Keeps
+
+PREMISE
+  You are the dancer of a Swiss cylinder music box: an enamelled tin
+  figure, four inches tall, standing on a stage of walnut and red
+  velvet under an open lid. Someone has wound the box and walked away.
+  The comb plays one air, the cylinder turns once, and the air begins
+  again. That is all a music box knows how to do.
+
+  But this box was made by a repairer who over-reached. Its cylinder
+  is not fixed. Whatever the dancer does while the air plays, the
+  mechanism pins into the brass: every step she takes becomes a new
+  row of pins, and when the cylinder comes round again the comb reads
+  that row and drives a second figure through it. The "past selves"
+  are the PINNED: tarnished brass automata, stamped from her own
+  pattern, stepping exactly where she stepped, on exactly the notes
+  she stepped there. The comb has room for four such voices beside
+  hers. They are not ghosts and they are not memories. They are
+  mechanism, and mechanism does not improvise.
+
+  That is the danger. A pinned figure expects the stage as it was:
+  the scenery flat it shoved, the curtain that stood open, the tile
+  that was empty. If the dancer changes any of that, the pin strikes
+  a tooth that is no longer there. The comb SNAGS. The air stops on
+  a wrong note, the governor locks, and the whole box must be lifted
+  back to the last turn that still agreed with itself.
+
+  The dancer wants one thing: the winding key the repairer left lying
+  on the stage, carried to the escapement at the heart of the works.
+  A hand on the escapement stops the air. To reach it she must use
+  the pinned figures as the extra hands she does not have, and then,
+  when the route is finally clear, she must resist the fastest path
+  across the stage, because the fastest path runs straight through
+  the dances that made it possible.
+
+ART DIRECTION
+  Palette (used verbatim in the code):
+    walnut case      #3b2314   deep case shadow  #24140b
+    stage floor      #5a3a22   floor grain       #6b4629
+    red velvet       #7a1f2b   velvet highlight  #a33a46
+    brass            #c9a54e   bright brass      #e8cc7a
+    tarnished brass  #8f6b2e   old brass shadow  #5c4218
+    steel comb       #b8bcc0   steel shadow      #6f757b
+    ivory enamel     #efe3c6   rose sash         #b5485a
+    ink / engraving  #1d1109   lamp glow         #ffd9a0
+    snag copper      #d8642a
+  Light source: a single warm lamp above and to the left of the open
+  lid. Everything casts a short shadow down-right; brass takes a
+  highlight on its upper-left edge.
+  Shape language: turned cylinders, small teeth, flat stamped tin
+  figures on pin stems, painted scenery flats with rounded frames,
+  velvet folds, engraved brass plates with bevelled edges. Nothing
+  glows on its own; light is reflected, never emitted, except the
+  lamp itself and the copper flash of a snag.
+  Era / texture: a late-nineteenth-century Sainte-Croix cylinder box,
+  a little worn: veneer grain, dust in lamplight, a mirror in the lid.
+  Typography: an old-style serif (Georgia / Iowan Old Style / Palatino
+  fallbacks). Plates use small caps and roman numerals; the repairer's
+  voice is set in italic serif. No monospace anywhere; this is not a
+  terminal, it is furniture.
+
+VOICE
+  Everything is spoken by the box's old repairer, addressing the
+  dancer as an apprentice: precise about mechanism, fond, unhurried,
+  and never once surprised.
+
+GLOSSARY (fiction -> mechanic)
+  the dancer      the live protagonist
+  the pinned      recordings of previous turns (up to four)
+  a turn          one iteration of the loop (36 notes)
+  a note          one tick
+  an air          a level
+  the cylinder    the input timeline: one row of pins per turn
+  the comb        the playhead; a snag is the catastrophe
+  a treadle       an occupancy-triggered floor key
+  a curtain       a doorway held open only while its treadle is weighted
+  a flat          a pushable painted scenery piece (Sokoban rules)
+  the key         the carryable winding key
+  the escapement  the goal tile (needs the key and an open path)
+  lifting a turn  undo the current iteration
+  taking back a step   undo one tick
+
+RULES DECIDED WHERE THE BRIEF WAS SILENT
+  * Resolution order within a note: pinned figures move first, oldest
+    turn first, then the dancer. Each move is checked against the
+    stage exactly as it stands at that instant. Two figures never
+    share a tile; whoever resolves later is the one who is blocked.
+    A blocked dancer simply loses the note. A blocked pinned figure
+    is a snag, because in its own turn it was not blocked.
+  * A pinned figure is compared, every note, against what it did in
+    its own turn: the tile it ended on, whether it pushed a flat, and
+    whether it lifted the key. Any difference is a snag.
+  * The stage resets at the start of every turn (flats, key, curtains).
+    The pinned rebuild the past by repeating it.
+  * A curtain is open exactly while some figure or flat weights any
+    treadle linked to it. A figure already standing in a curtain tile
+    when it closes is draped, not crushed: she may step out, but
+    nothing may step in.
+  * The key is lifted by whoever steps onto its tile first, pinned or
+    dancer; the pinned lift it again every turn if they did before.
+  * Letting the air run out (Enter) fills the remaining notes with
+    stillness. The undo lever treats that as one step.
+  * The comb holds four spare voices. If a fifth turn ends without the
+    escapement reached, the box halts: lift a turn or begin the air
+    again.
+  * Game state is a pure function of (air, input log). Undo pops one
+    token and recomputes from the first note, so undo-then-replay is
+    identical by construction.
+=====================================================================
+-->
+<style>
+  :root{
+    --walnut:#3b2314; --case:#24140b; --floor:#5a3a22; --grain:#6b4629;
+    --velvet:#7a1f2b; --velvet2:#a33a46; --brass:#c9a54e; --brass2:#e8cc7a;
+    --brass3:#8f6b2e; --brass4:#5c4218; --steel:#b8bcc0; --steel2:#6f757b;
+    --ivory:#efe3c6; --rose:#b5485a; --ink:#1d1109; --lamp:#ffd9a0; --copper:#d8642a;
+    --serif: Georgia, "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Palatino, serif;
+  }
+  html,body{margin:0;height:100%;background:var(--case);color:var(--ivory);font-family:var(--serif);overflow:hidden}
+  body{display:flex;align-items:center;justify-content:center}
+  #stage{position:relative;width:min(100vw,calc(100vh*1.28));aspect-ratio:1.28;max-height:100vh}
+  canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+  .card{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:min(560px,80%);
+    background:linear-gradient(160deg,#e9dcbf,#d9c8a3 60%,#cbb78f);color:var(--ink);
+    border:2px solid var(--brass3);box-shadow:0 0 0 6px #3a2a12,0 18px 40px rgba(0,0,0,.6),inset 0 0 40px rgba(92,66,24,.25);
+    padding:26px 34px 22px;text-align:center;display:none}
+  .card.show{display:block}
+  .card h1{font-weight:normal;font-size:2.1em;margin:0 0 4px;font-variant:small-caps;letter-spacing:.02em;color:#3a2410}
+  .card h2{font-weight:normal;font-size:1.25em;margin:0 0 10px;font-variant:small-caps;color:#5c4218}
+  .card p{font-style:italic;line-height:1.45;margin:0 0 12px;font-size:1.02em}
+  .card .plate{display:inline-block;margin-top:6px;padding:8px 18px;background:linear-gradient(#e8cc7a,#c9a54e 55%,#8f6b2e);
+    color:#2a1a0a;border:1px solid #5c4218;box-shadow:inset 0 1px 0 #f4e2a8,0 2px 4px rgba(0,0,0,.5);
+    font-variant:small-caps;font-size:1.05em;cursor:pointer;user-select:none}
+  .card .plate:hover{filter:brightness(1.08)}
+  .card .keys{font-style:normal;font-size:.86em;color:#4a3418;margin-top:12px;line-height:1.6}
+  .card .keys b{font-weight:normal;display:inline-block;border:1px solid #8f6b2e;border-radius:3px;padding:0 6px;background:#f0e4c6;margin:0 2px}
+  .card.snag{background:linear-gradient(160deg,#2a1a12,#3b2314);color:var(--ivory);border-color:var(--copper);
+    box-shadow:0 0 0 6px #1d1109,0 0 60px rgba(216,100,42,.35),0 18px 40px rgba(0,0,0,.7)}
+  .card.snag{left:auto;right:2.2%;top:15%;transform:none;width:min(300px,23%);padding:18px 22px 16px;text-align:left}
+  .card.snag h2{color:var(--copper);font-size:1.1em}
+  .card.snag p{font-size:.92em;margin-bottom:9px}
+  .card.snag .keys{font-size:.8em;line-height:1.7}
+  .card.snag .keys{color:#c9b58f}
+  .card.snag .keys b{background:#24140b;color:var(--ivory);border-color:var(--brass3)}
+  .card small{display:block;margin-top:10px;font-style:normal;font-size:.72em;color:#6b5330}
+  #test{position:absolute;right:8px;bottom:8px;font-size:.7em;color:#8f6b2e;opacity:.55;cursor:pointer;font-variant:small-caps;user-select:none}
+  #test:hover{opacity:1}
+  #testout{position:absolute;left:8px;bottom:8px;max-width:60%;font-size:.72em;color:#e8cc7a;background:rgba(29,17,9,.85);
+    border:1px solid #5c4218;padding:8px 12px;display:none;white-space:pre-wrap;font-style:italic;line-height:1.4}
+</style>
+</head>
+<body>
+<div id="stage">
+  <canvas id="c"></canvas>
+  <div id="title" class="card"></div>
+  <div id="snag" class="card snag"></div>
+  <div id="between" class="card"></div>
+  <div id="ending" class="card"></div>
+  <div id="testout"></div>
+  <div id="test" title="Runs every air through its intended solution, unseen.">the repairer's bench test</div>
+</div>
+<script>
+'use strict';
+// @@ENGINE-BEGIN  (pure logic: no DOM, no time, no randomness)
+const NOTES = 36, MAX_PINNED = 4;
+const DIRS = { U:[0,-1], D:[0,1], L:[-1,0], R:[1,0] };
+
+function parseAir(def){
+  const rows = def.map, h = rows.length, w = rows[0].length;
+  const air = { name:def.name, title:def.title, w, h, walls:[], start:null, key:null, goal:null,
+    treadles:[], curtains:[], flats:[], solution:def.solution, intro:def.intro, outro:def.outro, hint:def.hint };
+  for (let y=0;y<h;y++){ air.walls.push([]); for (let x=0;x<w;x++){
+    const ch = rows[y][x]; air.walls[y].push(ch==='#');
+    if (ch==='S') air.start={x,y};
+    else if (ch==='K') air.key={x,y};
+    else if (ch==='G') air.goal={x,y};
+    else if (ch>='a'&&ch<='d') air.treadles.push({x,y,link:ch.toUpperCase()});
+    else if (ch>='A'&&ch<='D') air.curtains.push({x,y,id:ch});
+    else if (ch==='F') air.flats.push({x,y});
+  }}
+  return air;
+}
+
+function freshTurn(air, recs, turn, tokenStart){
+  const fig = (rec)=>({ x:air.start.x, y:air.start.y, fx:air.start.x, fy:air.start.y, face:1, hasKey:false, rec });
+  return { air, turn, note:0, recs, tokenStart,
+    flats: air.flats.map(f=>({x:f.x,y:f.y,fx:f.x,fy:f.y})), keyAt: air.key ? {x:air.key.x,y:air.key.y} : null,
+    dancer: fig(null), pinned: recs.map(r=>fig(r)),
+    curInputs:[], curExpect:[], won:false, snag:null, full:false };
+}
+
+function figureAt(st, x, y, except){
+  if (st.dancer!==except && st.dancer.x===x && st.dancer.y===y) return st.dancer;
+  for (const p of st.pinned) if (p!==except && p.x===x && p.y===y) return p;
+  return null;
+}
+function flatAt(st, x, y){ return st.flats.find(f=>f.x===x&&f.y===y) || null; }
+function treadleWeighted(st, t){ return !!(figureAt(st,t.x,t.y,null) || flatAt(st,t.x,t.y)); }
+function curtainOpen(st, id){ return st.air.treadles.some(t=>t.link===id && treadleWeighted(st,t)); }
+function closedCurtainAt(st, x, y){ const c = st.air.curtains.find(c=>c.x===x&&c.y===y); return c ? !curtainOpen(st,c.id) : false; }
+function isWall(air, x, y){ return x<0||y<0||x>=air.w||y>=air.h||air.walls[y][x]; }
+
+// One figure attempts one token. Returns what actually happened.
+function moveFigure(st, fig, tok){
+  fig.fx = fig.x; fig.fy = fig.y;
+  const out = { x:fig.x, y:fig.y, push:false, lift:false, tok, reason:null, tile:null };
+  const d = DIRS[tok];
+  if (d){
+    if (d[0]) fig.face = d[0];
+    const nx = fig.x+d[0], ny = fig.y+d[1];
+    out.tile = {x:nx,y:ny};
+    if (isWall(st.air,nx,ny)) out.reason='wall';
+    else if (closedCurtainAt(st,nx,ny)) out.reason='curtain';
+    else if (figureAt(st,nx,ny,fig)) out.reason = figureAt(st,nx,ny,fig)===st.dancer ? 'dancer' : 'pinned';
+    else {
+      const fl = flatAt(st,nx,ny);
+      if (fl){
+        const bx = nx+d[0], by = ny+d[1];
+        if (isWall(st.air,bx,by) || closedCurtainAt(st,bx,by) || figureAt(st,bx,by,null) || flatAt(st,bx,by)) out.reason='flat';
+        else { fl.fx=fl.x; fl.fy=fl.y; fl.x=bx; fl.y=by; fig.x=nx; fig.y=ny; out.push=true; }
+      } else { fig.x=nx; fig.y=ny; }
+    }
+    out.x=fig.x; out.y=fig.y;
+  }
+  if (st.keyAt && st.keyAt.x===fig.x && st.keyAt.y===fig.y){ st.keyAt=null; fig.hasKey=true; out.lift=true; }
+  return out;
+}
+
+function sameOutcome(a, b){ return a.x===b.x && a.y===b.y && a.push===b.push && a.lift===b.lift; }
+
+// Advance the whole stage by one note. Returns false if the stage has halted.
+function playNote(st, tok){
+  if (st.won || st.snag || st.full) return false;
+  st.note++;
+  for (const f of st.flats){ f.fx=f.x; f.fy=f.y; }
+  for (let i=0;i<st.pinned.length;i++){
+    const p = st.pinned[i], exp = p.rec.expect[st.note-1];
+    const act = moveFigure(st, p, p.rec.inputs[st.note-1]);
+    if (!sameOutcome(act, exp)){
+      st.snag = { idx:i, turn:p.rec.turn, note:st.note, tok:act.tok, expected:exp, actual:act,
+        tile: act.tile || {x:p.x,y:p.y} };
+      return false;
+    }
+  }
+  const act = moveFigure(st, st.dancer, tok);
+  st.curInputs.push(tok); st.curExpect.push({x:act.x,y:act.y,push:act.push,lift:act.lift});
+  if (st.dancer.hasKey && st.air.goal && st.dancer.x===st.air.goal.x && st.dancer.y===st.air.goal.y){ st.won=true; return false; }
+  if (st.note===NOTES){
+    if (st.recs.length>=MAX_PINNED){ st.full=true; return false; }
+    st.recs.push({ turn:st.turn, inputs:st.curInputs, expect:st.curExpect });
+    return 'turn';
+  }
+  return true;
+}
+
+// The whole game is this: an air and a list of tokens (U D L R W, or X = let the air run out).
+function simulate(air, log){
+  let st = freshTurn(air, [], 1, 0);
+  for (let i=0;i<log.length;i++){
+    const tok = log[i];
+    if (tok==='X'){
+      let r=true; while (st.note<NOTES && r){ r=playNote(st,'W'); if (r==='turn') break; }
+      if (r==='turn') st = freshTurn(air, st.recs, st.turn+1, i+1);
+    } else {
+      const r = playNote(st, tok);
+      if (r==='turn') st = freshTurn(air, st.recs, st.turn+1, i+1);
+    }
+    if (st.won || st.snag || st.full){ st.logLen = i+1; return st; }
+  }
+  st.logLen = log.length;
+  return st;
+}
+
+function stateHash(st){
+  return JSON.stringify({ t:st.turn, n:st.note, d:[st.dancer.x,st.dancer.y,st.dancer.hasKey],
+    p:st.pinned.map(p=>[p.x,p.y,p.hasKey]), f:st.flats.map(f=>[f.x,f.y]), k:st.keyAt, w:st.won, s:!!st.snag, u:st.full,
+    r:st.recs.map(r=>r.inputs.join('')) });
+}
+// @@ENGINE-END
+// @@AIRS-BEGIN
+// Map legend: # wall  . floor  S dancer's mark  K winding key  G escapement
+//             a-d treadle (holds curtain A-D open while weighted)  A-D curtain  F flat
+const AIR_DEFS = [
+{ name:'Air the First', title:'The Lid Opens',
+  map:[ '##############',
+        '#............#',
+        '#.S..........#',
+        '#............#',
+        '#.....####A###',
+        '#.....#......#',
+        '#..a..#..K...#',
+        '#.....#......#',
+        '#.....########',
+        '#............#',
+        '#.....G......#',
+        '##############' ],
+  // Turn 1: walk to the treadle and let the air run out on it.
+  // Turn 2: through the curtain (held by the pinned), lift the key, out again, down to the escapement.
+  solution: 'DDDDRX' + 'RRRRRRRR' + 'DDDD' + 'L' + 'RUUU' + 'LLLLL' + 'DDDDDDD' + 'R',
+  intro: 'Someone has wound us and gone. Listen: the air is thirty-six notes long, and then the cylinder comes round and it all begins again. Watch what the brass does with your steps. The key lies behind the curtain, and the curtain holds only while its treadle is weighted. You cannot stand on a treadle and walk through a curtain in the same turn. Nobody can. But next turn you will not be alone.',
+  hint: 'Stand on the treadle and let the air run out. Next turn, a brass figure will do it for you.',
+  outro: 'There. The figure that held the treadle was you, one turn ago, stamped in brass. She will do it again as often as the cylinder asks. That is what the cylinder keeps.' },
+
+{ name:'Air the Second', title:'Four Hands',
+  map:[ '##############',
+        '#S.......#...#',
+        '#........#.K.#',
+        '#........A...#',
+        '#.a......#####',
+        '#............#',
+        '#..F.......b.#',
+        '#............#',
+        '#######B######',
+        '#............#',
+        '#.......G....#',
+        '##############' ],
+  // Turn 1: shove the flat east along the sixth row until it rests on the far treadle.
+  // Turn 2: step aside of the first figure, stand on the near treadle.
+  // Turn 3: let them pass, then key, curtain, curtain, escapement.
+  solution: 'DDDDDR' + 'RRRRRRRR' + 'X' + 'RDDD' + 'X' + 'WDDR' + 'RRRRRRR' + 'RRU' + 'DLLL' + 'DDDD' + 'LDDRD',
+  intro: 'Two curtains this time, and a painted flat on casters. A flat weights a treadle as well as a foot does, and it stays where it is shoved. Remember that the pinned move before you do, oldest first. If one of them wants the tile you are standing on, she cannot have it, and that is a snag. Give them room, and if you must, hold a note.',
+  hint: 'A flat on a treadle holds a curtain as well as a foot does. Let the pinned move first; hold a note when they need your tile.',
+  outro: 'Three of you, and not one of you could have done it alone. The flat sits on its treadle every turn now because you put it there once, and the brass remembers the shove.' },
+
+{ name:'Air the Third', title:'The Mercy of the Comb',
+  map:[ '##############',
+        '######a###...#',
+        '#S....F..A.K.#',
+        '#.####.###...#',
+        '#........#####',
+        '#.######.#####',
+        '#.######.#.G.#',
+        '#.######.#...#',
+        '#.######.#B###',
+        '#.......F...b#',
+        '#............#',
+        '##############' ],
+  // Turn 1: around by the low row, shove the corridor flat north onto its treadle, then back out of the way.
+  // Turn 2: hold one note for the first figure, down the west side, shove the long flat onto the far treadle.
+  // Turn 3: the quick way east would shove the flat before the first figure can. Wait for her. Then go.
+  solution: 'DD' + 'RRRRR' + 'UU' + 'DD' + 'LLLL' + 'X' + 'W' + 'DDDDDDD' + 'RRRRRR' + 'RRRR' + 'X'
+          + 'RRRR' + 'WWWWW' + 'R' + 'RRRRR' + 'LLLLL' + 'DD' + 'RR' + 'DDDDD' + 'RR' + 'UU' + 'R' + 'U',
+  intro: 'The last air, and the longest walk. You will see the quick way at once: straight along the top, through the flat, to the curtain. Do not take it. That flat is not scenery to you any more; it is a promise you made to a turn that has not happened yet. Protect what the pinned expect to find. Wait, if waiting is what it costs.',
+  hint: 'The quick way east breaks the promise. Hold your notes until the first figure has made her shove and stepped clear.',
+  outro: '' }
+];
+const AIRS = AIR_DEFS.map(parseAir);
+
+// The one mutable thing in the game: a log of tokens. Everything else is recomputed from it.
+function makeGame(air){
+  const g = { air, log:[], state:null,
+    recompute(){ g.state = simulate(g.air, g.log); return g.state; },
+    push(tok){ if (g.state.won||g.state.snag||g.state.full) return false; g.log.push(tok); return g.recompute(); },
+    undo(){ if (!g.log.length) return false; g.log.pop(); return g.recompute(); },
+    liftTurn(){ const s = g.state.tokenStart; if (g.log.length<=s && s>0){ g.log.length = Math.max(0, s-1); } else g.log.length = s; return g.recompute(); },
+    restart(){ g.log.length = 0; return g.recompute(); } };
+  g.recompute();
+  return g;
+}
+
+// The repairer's bench test: every air, headless, plus the promises the brief makes.
+function runSelfTest(){
+  const out = [];
+  const ok = (name, cond, detail)=> out.push({ name, pass:!!cond, detail: detail||'' });
+  AIRS.forEach((air, i)=>{
+    const sol = air.solution.split('');
+    const st = simulate(air, sol);
+    ok(air.name+': intended solution reaches the escapement', st.won && !st.snag && !st.full,
+      st.won ? `won on turn ${st.turn}, note ${st.note}` : (st.snag ? `snag turn ${st.snag.turn} note ${st.snag.note}` : `turn ${st.turn} note ${st.note}`));
+    ok(air.name+': recordings replayed to the end without a snag', !st.snag);
+    // Undo to the very first note through the same lever the player uses, then replay.
+    const g = makeGame(air); sol.forEach(t=>g.push(t)); const h1 = stateHash(g.state);
+    let n=0; while (g.log.length){ g.undo(); n++; }
+    const h0 = stateHash(g.state), hFresh = stateHash(simulate(air, []));
+    sol.forEach(t=>g.push(t)); const h2 = stateHash(g.state);
+    ok(air.name+': undo to the first note and replay gives the identical state', h1===h2 && h0===hFresh, `${n} steps taken back`);
+    // Every prefix of the solution must be a legal, un-snagged history (no hidden reliance on the halt).
+    let prefixOk = true; for (let k=1;k<sol.length;k++){ const s=simulate(air, sol.slice(0,k)); if (s.snag||s.full){ prefixOk=false; break; } }
+    ok(air.name+': no prefix of the solution snags', prefixOk);
+  });
+  // Deliberately contradict history in the first air: the first figure doubles back; stand where she must step.
+  const broken = simulate(AIRS[0], 'RRDDLLX'.split('').concat('DDWWWW'.split('')));
+  ok('A contradicted history snags at the right turn, note and cause',
+    broken.snag && broken.snag.turn===1 && broken.snag.note===6 && broken.snag.actual.reason==='dancer' && broken.snag.tile.x===2 && broken.snag.tile.y===4,
+    broken.snag ? `turn ${broken.snag.turn}, note ${broken.snag.note}, ${broken.snag.actual.reason}` : 'no snag raised');
+  // A flat shoved before its time: the third air's quick way.
+  const quick = simulate(AIRS[2], (AIRS[2].solution.slice(0, AIRS[2].solution.lastIndexOf('X')+1) + 'RRRRRRRRRR').split(''));
+  ok('The quick way in the third air snags on the missing flat', quick.snag && quick.snag.turn===1 && quick.snag.note===9 && quick.snag.expected.push && !quick.snag.actual.push,
+    quick.snag ? `turn ${quick.snag.turn}, note ${quick.snag.note}` : 'no snag raised');
+  // The comb has four spare voices.
+  const full = simulate(AIRS[0], ['X','X','X','X','X']);
+  ok('A fifth finished turn halts the box with a full comb', full.full && full.recs.length===4);
+  // Same tile, same note: the pinned resolve first, oldest first; the dancer is the one blocked.
+  const clash = simulate(AIRS[0], 'DDDDRX'.split('').concat(['D']));
+  ok('A same-tile clash is resolved by the documented order (pinned first)', clash.dancer.x===2 && clash.dancer.y===2 && clash.pinned[0].y===3 && !clash.snag);
+  return out;
+}
+// @@AIRS-END
+// @@RENDER-BEGIN
+const CW=1024, CH=800, TILE=48, BX=36, BY=118, RX=736;
+const P = { walnut:'#3b2314', case:'#24140b', floor:'#5a3a22', grain:'#6b4629', velvet:'#7a1f2b', velvet2:'#a33a46', velvet3:'#561019',
+  brass:'#c9a54e', brass2:'#e8cc7a', brass3:'#8f6b2e', brass4:'#5c4218', steel:'#b8bcc0', steel2:'#6f757b',
+  ivory:'#efe3c6', rose:'#b5485a', ink:'#1d1109', lamp:'#ffd9a0', copper:'#d8642a', hair:'#2e1a10' };
+const FONT = 'Georgia, "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Palatino, serif';
+const canvas = document.getElementById('c'), ctx = canvas.getContext('2d');
+let dpr = 1;
+function fitCanvas(){
+  dpr = Math.min(2, window.devicePixelRatio||1);
+  canvas.width = CW*dpr; canvas.height = CH*dpr;
+}
+fitCanvas(); window.addEventListener('resize', fitCanvas);
+
+const ROMAN = ['I','II','III','IV','V','VI'];
+const hash2 = (x,y)=>{ let h = (x*374761393 + y*668265263) ^ 0x5bd1e995; h = (h ^ (h>>>13)) * 1274126177; return ((h ^ (h>>>16))>>>0) / 4294967296; };
+function rr(x,y,w,h,r){ ctx.beginPath(); ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r); ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath(); }
+function brassGrad(x,y,w,h,dim){ const g = ctx.createLinearGradient(x,y,x+w*0.3,y+h); g.addColorStop(0, dim?P.brass:P.brass2); g.addColorStop(0.5, dim?P.brass3:P.brass); g.addColorStop(1, dim?P.brass4:P.brass3); return g; }
+function plate(x,y,w,h,r){ // a bevelled brass plate, screwed at the corners
+  ctx.save(); ctx.shadowColor='rgba(0,0,0,.55)'; ctx.shadowBlur=6; ctx.shadowOffsetX=2; ctx.shadowOffsetY=3;
+  rr(x,y,w,h,r||5); ctx.fillStyle=brassGrad(x,y,w,h,false); ctx.fill(); ctx.restore();
+  rr(x+1.5,y+1.5,w-3,h-3,(r||5)-1); ctx.strokeStyle='rgba(255,240,200,.45)'; ctx.lineWidth=1; ctx.stroke();
+  rr(x+0.5,y+0.5,w-1,h-1,r||5); ctx.strokeStyle=P.brass4; ctx.stroke();
+  for (const [sx,sy] of [[x+8,y+8],[x+w-8,y+8],[x+8,y+h-8],[x+w-8,y+h-8]]){
+    ctx.beginPath(); ctx.arc(sx,sy,2.6,0,7); ctx.fillStyle=P.brass4; ctx.fill();
+    ctx.beginPath(); ctx.moveTo(sx-1.8,sy-1.2); ctx.lineTo(sx+1.8,sy+1.2); ctx.strokeStyle=P.brass2; ctx.lineWidth=0.9; ctx.stroke();
+  }
+}
+function engrave(text, x, y, size, align, italic, color){ // engraved lettering: a light catch below a dark cut
+  ctx.font = `${italic?'italic ':''}${size}px ${FONT}`; ctx.textAlign = align||'center'; ctx.textBaseline='middle';
+  ctx.fillStyle='rgba(255,240,200,.35)'; ctx.fillText(text, x, y+1);
+  ctx.fillStyle=color||'#2a1a0a'; ctx.fillText(text, x, y);
+}
+function smallcaps(text, x, y, size, align, color){
+  ctx.font = `small-caps ${size}px ${FONT}`; ctx.textAlign=align||'center'; ctx.textBaseline='middle';
+  ctx.fillStyle='rgba(255,240,200,.35)'; ctx.fillText(text,x,y+1); ctx.fillStyle=color||'#2a1a0a'; ctx.fillText(text,x,y);
+}
+const tx = (x)=>BX + x*TILE, ty = (y)=>BY + y*TILE;
+
+function drawCase(now){
+  ctx.fillStyle = P.case; ctx.fillRect(0,0,CW,CH);
+  // veneer grain across the whole case
+  ctx.strokeStyle='rgba(120,80,40,.10)'; ctx.lineWidth=1;
+  for (let i=0;i<70;i++){ const y = i*11.7 + Math.sin(i*1.7)*4; ctx.beginPath(); ctx.moveTo(0,y); ctx.bezierCurveTo(300,y+6*Math.sin(i),700,y-6*Math.cos(i*0.7),CW,y+3); ctx.stroke(); }
+  // velvet lining around the stage
+  const pad = 14; rr(BX-pad, BY-pad, 14*TILE+pad*2, 12*TILE+pad*2, 8);
+  ctx.fillStyle = P.velvet3; ctx.fill();
+  for (let i=0;i<40;i++){ const x = BX-pad + i*(14*TILE+pad*2)/40; ctx.fillStyle = i%2? 'rgba(163,58,70,.25)':'rgba(70,12,20,.35)'; ctx.fillRect(x, BY-pad, (14*TILE+pad*2)/40, 12*TILE+pad*2); }
+  ctx.strokeStyle=P.brass3; ctx.lineWidth=2; rr(BX-pad+1, BY-pad+1, 14*TILE+pad*2-2, 12*TILE+pad*2-2, 7); ctx.stroke();
+}
+
+function drawFloorAndWalls(air){
+  for (let y=0;y<air.h;y++) for (let x=0;x<air.w;x++){
+    const X=tx(x), Y=ty(y), h=hash2(x,y);
+    if (air.walls[y][x]){
+      ctx.fillStyle = P.walnut; ctx.fillRect(X,Y,TILE,TILE);
+      ctx.fillStyle = `rgba(0,0,0,${0.10+h*0.12})`; ctx.fillRect(X,Y,TILE,TILE);
+      // raised case-block bevel: light on the upper-left, dark on the lower-right
+      ctx.fillStyle='rgba(255,220,160,.09)'; ctx.fillRect(X,Y,TILE,2); ctx.fillRect(X,Y,2,TILE);
+      ctx.fillStyle='rgba(0,0,0,.35)'; ctx.fillRect(X,Y+TILE-2,TILE,2); ctx.fillRect(X+TILE-2,Y,2,TILE);
+    } else {
+      ctx.fillStyle = P.floor; ctx.fillRect(X,Y,TILE,TILE);
+      ctx.fillStyle = `rgba(107,70,41,${0.25+h*0.35})`; ctx.fillRect(X,Y,TILE,TILE);
+      ctx.strokeStyle='rgba(30,15,5,.28)'; ctx.lineWidth=1;
+      for (let k=0;k<3;k++){ const yy = Y + 8 + k*15 + hash2(x*3+k,y)*6; ctx.beginPath(); ctx.moveTo(X+2,yy); ctx.bezierCurveTo(X+16,yy+2,X+32,yy-2,X+TILE-2,yy+1); ctx.stroke(); }
+      ctx.strokeStyle='rgba(0,0,0,.22)'; ctx.strokeRect(X+0.5,Y+0.5,TILE-1,TILE-1);
+    }
+  }
+  // brass trim where the case meets the floor
+  ctx.strokeStyle=P.brass4; ctx.lineWidth=1.5;
+  for (let y=0;y<air.h;y++) for (let x=0;x<air.w;x++) if (!air.walls[y][x]){
+    const X=tx(x), Y=ty(y);
+    if (isWall(air,x,y-1)){ ctx.beginPath(); ctx.moveTo(X,Y+1); ctx.lineTo(X+TILE,Y+1); ctx.stroke(); }
+    if (isWall(air,x-1,y)){ ctx.beginPath(); ctx.moveTo(X+1,Y); ctx.lineTo(X+1,Y+TILE); ctx.stroke(); }
+  }
+  // the dancer's mark: a mother-of-pearl inlay where every turn begins
+  const sx = tx(air.start.x)+TILE/2, sy = ty(air.start.y)+TILE/2;
+  const g = ctx.createRadialGradient(sx-3,sy-3,1,sx,sy,12); g.addColorStop(0,'#fff6e6'); g.addColorStop(0.5,'#e6d6c8'); g.addColorStop(1,'#b8a598');
+  ctx.beginPath(); ctx.arc(sx,sy,12,0,7); ctx.fillStyle=g; ctx.fill(); ctx.strokeStyle=P.brass4; ctx.lineWidth=1; ctx.stroke();
+  ctx.strokeStyle='rgba(120,90,60,.6)'; ctx.beginPath(); ctx.moveTo(sx-6,sy-6); ctx.lineTo(sx+6,sy+6); ctx.moveTo(sx+6,sy-6); ctx.lineTo(sx-6,sy+6); ctx.stroke();
+}
+
+function drawTreadle(st, t){
+  const X=tx(t.x), Y=ty(t.y), down = treadleWeighted(st,t), o = down?3:0;
+  ctx.fillStyle='rgba(0,0,0,.45)'; ctx.fillRect(X+8,Y+8,TILE-16,TILE-16);            // the well it sits in
+  rr(X+9,Y+9+o,TILE-18,TILE-18-o,3); ctx.fillStyle=brassGrad(X,Y,TILE,TILE,down); ctx.fill();
+  ctx.strokeStyle=down?P.brass4:P.brass2; ctx.lineWidth=1; ctx.stroke();
+  if (!down){ ctx.fillStyle='rgba(0,0,0,.35)'; ctx.fillRect(X+9,Y+TILE-12,TILE-18,3); }
+  engrave(ROMAN[t.link.charCodeAt(0)-65], X+TILE/2, Y+TILE/2+o, 15, 'center', false, down?'#3a2810':'#5c4218');
+}
+function drawCurtain(st, c){
+  const X=tx(c.x), Y=ty(c.y), open = curtainOpen(st,c.id);
+  const fold = (x0,w)=>{ for (let i=0;i<w;i+=4){ ctx.fillStyle = (i/4)%3===0? P.velvet2 : (i/4)%3===1? P.velvet : P.velvet3; ctx.fillRect(x0+i,Y+6,4,TILE-6); } };
+  if (open){ fold(X+2,10); fold(X+TILE-12,10);
+    ctx.fillStyle=P.brass; ctx.fillRect(X+1,Y+26,12,4); ctx.fillRect(X+TILE-13,Y+26,12,4);      // tiebacks
+  } else { fold(X+2,TILE-4);
+    ctx.fillStyle='rgba(0,0,0,.25)'; ctx.fillRect(X+2,Y+TILE-10,TILE-4,4);
+  }
+  ctx.fillStyle=P.brass3; ctx.fillRect(X,Y+2,TILE,5); ctx.fillStyle=P.brass2; ctx.fillRect(X,Y+2,TILE,1.5);  // the rod
+  ctx.beginPath(); ctx.arc(X+3,Y+4.5,4,0,7); ctx.arc(X+TILE-3,Y+4.5,4,0,7); ctx.fillStyle=P.brass; ctx.fill();
+  rr(X+TILE/2-9,Y+TILE-14,18,11,2); ctx.fillStyle=brassGrad(X,Y,TILE,TILE,false); ctx.fill(); ctx.strokeStyle=P.brass4; ctx.stroke();
+  engrave(ROMAN[c.id.charCodeAt(0)-65], X+TILE/2, Y+TILE-8.5, 10, 'center', false);
+}
+function drawKey(cx, cy, scale, angle){
+  ctx.save(); ctx.translate(cx,cy); ctx.rotate(angle||0); ctx.scale(scale||1,scale||1);
+  ctx.strokeStyle=P.brass4; ctx.lineWidth=5; ctx.lineCap='round'; ctx.beginPath(); ctx.moveTo(-10,0); ctx.lineTo(12,0); ctx.stroke();
+  ctx.strokeStyle=P.brass; ctx.lineWidth=3; ctx.beginPath(); ctx.moveTo(-10,0); ctx.lineTo(12,0); ctx.stroke();
+  ctx.fillStyle=P.brass; for (const [ox,oy] of [[-12,-5],[-12,5],[-18,0]]){ ctx.beginPath(); ctx.arc(ox,oy,5,0,7); ctx.fill(); ctx.strokeStyle=P.brass4; ctx.lineWidth=1; ctx.stroke(); }
+  ctx.fillStyle=P.brass2; ctx.beginPath(); ctx.arc(-13,-6,1.6,0,7); ctx.fill();
+  ctx.fillStyle=P.brass3; ctx.fillRect(6,0,3,5); ctx.fillRect(11,0,3,4);
+  ctx.restore();
+}
+function drawEscapement(st, now){
+  const g = st.air.goal; if (!g) return; const X=tx(g.x), Y=ty(g.y), won = st.won;
+  ctx.fillStyle='rgba(0,0,0,.5)'; ctx.fillRect(X+5,Y+5,TILE-10,TILE-10);
+  rr(X+6,Y+6,TILE-12,TILE-12,4); ctx.fillStyle=brassGrad(X,Y,TILE,TILE,false); ctx.fill(); ctx.strokeStyle=P.brass4; ctx.lineWidth=1; ctx.stroke();
+  const cx=X+TILE/2, cy=Y+TILE/2+4;
+  ctx.fillStyle=P.ink; ctx.beginPath(); ctx.arc(cx,cy-3,4.5,0,7); ctx.fill(); ctx.fillRect(cx-2.2,cy-2,4.4,10);   // keyhole
+  // the governor: a little three-bladed fan that only stops when the key is in
+  const a = won ? 0.4 : now*0.012;
+  ctx.save(); ctx.translate(cx, Y+13); ctx.rotate(a); ctx.fillStyle=P.steel; ctx.strokeStyle=P.steel2; ctx.lineWidth=1;
+  for (let i=0;i<3;i++){ ctx.rotate(Math.PI*2/3); ctx.beginPath(); ctx.ellipse(6,0,6,2.2,0,0,7); ctx.fill(); ctx.stroke(); }
+  ctx.beginPath(); ctx.arc(0,0,2.2,0,7); ctx.fillStyle=P.brass4; ctx.fill(); ctx.restore();
+  if (won) drawKey(cx, cy, 0.8, -Math.PI/2);
+}
+// @@RENDER-STAGE-END
+// A figure: the dancer in enamel, or one of the pinned in brass. Drawn from shapes, facing left or right,
+// with a walk swing while a step is in flight and a slow breathing bob while standing.
+function drawFigure(cx, cy, o){
+  const brass = o.kind==='pinned', t = o.now*0.001, bob = o.walk>0 ? -Math.abs(Math.sin(o.walk*Math.PI))*2.5 : Math.sin(t*2.2+o.phase)*0.9;
+  const swing = o.walk>0 ? Math.sin(o.walk*Math.PI*2)*5 : 0, sway = o.walk>0 ? Math.sin(o.walk*Math.PI)*2 : Math.sin(t*1.6+o.phase)*0.6;
+  ctx.save(); ctx.translate(cx, cy);
+  ctx.beginPath(); ctx.ellipse(3,19,11,4,0,0,7); ctx.fillStyle='rgba(0,0,0,.35)'; ctx.fill();          // lamp shadow, down-right
+  if (brass){ // the stem and numbered base disc the automaton stands on
+    ctx.beginPath(); ctx.ellipse(0,18,10,3.5,0,0,7); ctx.fillStyle=P.brass3; ctx.fill(); ctx.strokeStyle=P.brass4; ctx.lineWidth=1; ctx.stroke();
+    ctx.fillStyle=P.steel; ctx.fillRect(-1.2,6,2.4,12); ctx.fillStyle=P.steel2; ctx.fillRect(0.4,6,0.8,12);
+    ctx.font=`bold 7px ${FONT}`; ctx.fillStyle=P.ink; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText(ROMAN[o.index]||'', 0, 18.5);
+  }
+  if (o.snagged){ ctx.shadowColor=P.copper; ctx.shadowBlur=18; }
+  ctx.scale(o.facing, 1); ctx.translate(0, bob);
+  const skin = brass?P.brass2:P.ivory, dress = brass?P.brass:P.ivory, dark = brass?P.brass4:P.hair, sash = brass?P.brass3:P.rose;
+  ctx.lineCap='round';
+  // legs
+  ctx.strokeStyle = brass?P.brass3:'#c9b394'; ctx.lineWidth=3;
+  ctx.beginPath(); ctx.moveTo(-3,6); ctx.lineTo(-3+swing,17); ctx.moveTo(3,6); ctx.lineTo(3-swing,17); ctx.stroke();
+  ctx.fillStyle=dark; ctx.fillRect(-6+swing,15.5,6,2.6); ctx.fillRect(1-swing,15.5,6,2.6);                 // slippers
+  // skirt
+  ctx.beginPath(); ctx.moveTo(-4,-2); ctx.lineTo(4,-2); ctx.lineTo(12+sway,11); ctx.quadraticCurveTo(0,14,-12+sway,11); ctx.closePath();
+  const sg = ctx.createLinearGradient(-12,0,12,0); sg.addColorStop(0, brass?P.brass3:'#d8c9a8'); sg.addColorStop(0.45, dress); sg.addColorStop(1, brass?P.brass4:'#c4b18d');
+  ctx.fillStyle=sg; ctx.fill(); ctx.strokeStyle=brass?P.brass4:'rgba(60,40,20,.5)'; ctx.lineWidth=1; ctx.stroke();
+  if (brass){ ctx.strokeStyle='rgba(50,30,10,.55)'; for (let i=-1;i<=1;i++){ ctx.beginPath(); ctx.moveTo(i*3,-1); ctx.lineTo(i*8+sway*0.6,11); ctx.stroke(); } } // hinge seams
+  // bodice and sash
+  ctx.fillStyle=dress; ctx.fillRect(-4,-10,8,9); ctx.fillStyle=sash; ctx.fillRect(-4.5,-3,9,3);
+  if (!brass){ ctx.fillStyle=P.rose; ctx.beginPath(); ctx.moveTo(4,-1); ctx.lineTo(8,4); ctx.lineTo(5,1); ctx.closePath(); ctx.fill(); } // the sash's tail
+  // arms: one curved overhead, one held out (the held-out hand carries the key)
+  ctx.strokeStyle=skin; ctx.lineWidth=2.4;
+  ctx.beginPath(); ctx.moveTo(-3,-9); ctx.quadraticCurveTo(-11,-14,-4,-20+sway*0.4); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(3,-9); ctx.quadraticCurveTo(9,-8,13,-5+sway*0.5); ctx.stroke();
+  if (brass){ ctx.fillStyle=P.brass4; for (const [px,py] of [[-3,-9],[3,-9],[-8,-13],[8,-7]]){ ctx.beginPath(); ctx.arc(px,py,1.1,0,7); ctx.fill(); } }
+  if (o.hasKey){ drawKey(15, -4+sway*0.5, 0.55, 0.5); }
+  // head and hair
+  ctx.beginPath(); ctx.arc(0,-15,5.2,0,7); ctx.fillStyle=skin; ctx.fill();
+  if (brass){ ctx.strokeStyle='rgba(50,30,10,.5)'; ctx.lineWidth=0.8; ctx.beginPath(); ctx.moveTo(-5,-15); ctx.lineTo(5,-15); ctx.stroke(); }
+  ctx.fillStyle=dark; ctx.beginPath(); ctx.arc(0,-17,5.4,Math.PI,0); ctx.fill(); ctx.beginPath(); ctx.arc(-3,-20,3,0,7); ctx.fill();       // bun
+  if (!brass){ ctx.fillStyle=P.ink; ctx.fillRect(1.5,-15.5,1.2,1.2); ctx.fillStyle=P.rose; ctx.fillRect(2.5,-13.2,1.6,0.9); }
+  ctx.restore();
+}
+function drawFlat(X, Y, now){
+  ctx.fillStyle='rgba(0,0,0,.35)'; ctx.fillRect(X+9,Y+12,TILE-12,TILE-14);
+  rr(X+6,Y+6,TILE-12,TILE-14,3); ctx.fillStyle=P.grain; ctx.fill(); ctx.strokeStyle=P.walnut; ctx.lineWidth=2; ctx.stroke();
+  ctx.fillStyle='#d9c8a3'; ctx.fillRect(X+10,Y+10,TILE-20,TILE-22);                       // faded painted canvas
+  ctx.fillStyle='#6f7d4a'; ctx.beginPath(); ctx.moveTo(X+10,Y+TILE-12); ctx.quadraticCurveTo(X+20,Y+18,X+30,Y+26); ctx.quadraticCurveTo(X+34,Y+22,X+TILE-10,Y+28); ctx.lineTo(X+TILE-10,Y+TILE-12); ctx.closePath(); ctx.fill();
+  ctx.fillStyle=P.brass2; ctx.beginPath(); ctx.arc(X+30,Y+16,3.2,0,7); ctx.fill();          // a little painted sun
+  ctx.fillStyle=P.ink; for (const px of [X+11,X+TILE-13]){ ctx.beginPath(); ctx.arc(px,Y+TILE-6,2.4,0,7); ctx.fill(); }  // casters
+  ctx.strokeStyle='rgba(0,0,0,.25)'; ctx.lineWidth=1; ctx.strokeRect(X+10.5,Y+10.5,TILE-21,TILE-23);
+}
+
+// The cylinder: one track of pins per turn, thirty-six notes along its length, the comb's reading edge at the note now playing.
+const CYL = { x:60, y:18, w:920, h:76, n0:104, span:852 };
+const noteX = (i)=> CYL.n0 + (i+0.5)*(CYL.span/NOTES);
+function drawPin(x, y, tok, color){
+  ctx.fillStyle=color; ctx.strokeStyle=color; ctx.lineWidth=1.4;
+  if (tok==='W'){ ctx.fillRect(x-3,y-0.8,6,1.6); return; }
+  const d = DIRS[tok]; if (!d) return;
+  ctx.beginPath(); ctx.moveTo(x+d[0]*3.6, y+d[1]*3.6); ctx.lineTo(x-d[1]*2.6-d[0]*2, y+d[0]*2.6-d[1]*2); ctx.lineTo(x+d[1]*2.6-d[0]*2, y-d[0]*2.6-d[1]*2); ctx.closePath(); ctx.fill();
+}
+function drawCylinder(st, now){
+  const {x,y,w,h} = CYL;
+  ctx.save(); ctx.shadowColor='rgba(0,0,0,.6)'; ctx.shadowBlur=10; ctx.shadowOffsetY=5;
+  const g = ctx.createLinearGradient(0,y,0,y+h); g.addColorStop(0,P.brass3); g.addColorStop(0.18,P.brass2); g.addColorStop(0.45,P.brass); g.addColorStop(0.8,P.brass3); g.addColorStop(1,P.brass4);
+  ctx.fillStyle=g; ctx.fillRect(x,y,w,h); ctx.restore();
+  // the turned surface: fine circumferential lines that creep as the cylinder turns
+  const drift = (st.note*4.1 + now*0.004) % 6;
+  ctx.strokeStyle='rgba(60,40,10,.18)'; ctx.lineWidth=1;
+  for (let yy=y+3-drift; yy<y+h; yy+=6){ ctx.beginPath(); ctx.moveTo(x,yy); ctx.lineTo(x+w,yy); ctx.stroke(); }
+  for (const ex of [x, x+w-20]){ ctx.fillStyle=P.brass4; ctx.fillRect(ex,y,20,h); ctx.fillStyle=P.steel2; ctx.fillRect(ex+8,y+h/2-4,4,8); }      // arbor ends
+  // note ruling and numbers
+  for (let i=0;i<NOTES;i++){ const nx = noteX(i); ctx.strokeStyle = i%6===5 ? 'rgba(40,25,5,.45)' : 'rgba(40,25,5,.16)'; ctx.beginPath(); ctx.moveTo(nx+CYL.span/NOTES/2, y+8); ctx.lineTo(nx+CYL.span/NOTES/2, y+h-8); ctx.stroke();
+    if (i%6===5) engrave(String(i+1), nx, y+h-6, 8, 'center', false, '#3a2810'); }
+  // tracks: the recorded turns, then the turn being pinned now
+  const tracks = st.recs.map(r=>({ turn:r.turn, inputs:r.inputs, live:false })).concat([{ turn:st.turn, inputs:st.curInputs, live:true }]);
+  for (let r=0;r<MAX_PINNED+1;r++){
+    const trY = y+12+r*11, tr = tracks[r];
+    ctx.fillStyle = tr ? (tr.live?'rgba(255,240,200,.35)':'rgba(40,25,5,.35)') : 'rgba(40,25,5,.12)';
+    ctx.font=`bold 9px ${FONT}`; ctx.textAlign='right'; ctx.textBaseline='middle'; ctx.fillText(ROMAN[r], CYL.n0-6, trY);
+    ctx.fillStyle='rgba(40,25,5,.25)'; ctx.fillRect(CYL.n0, trY-0.4, CYL.span, 0.8);
+    if (!tr) continue;
+    const snagHere = st.snag && !tr.live && st.snag.turn===tr.turn;
+    for (let i=0;i<tr.inputs.length;i++){
+      const col = snagHere && i===st.snag.note-1 ? P.copper : tr.live ? P.steel : (i<st.note ? '#4a3418' : '#6b5330');
+      drawPin(noteX(i), trY, tr.inputs[i], col);
+    }
+    if (snagHere){ ctx.strokeStyle=P.copper; ctx.lineWidth=1.5; ctx.beginPath(); ctx.arc(noteX(st.snag.note-1), trY, 6, 0, 7); ctx.stroke(); }
+  }
+  // the comb's reading edge
+  const px = st.note>=NOTES ? noteX(NOTES-1)+CYL.span/NOTES/2 : noteX(st.note)-CYL.span/NOTES/2;
+  ctx.fillStyle=P.steel; ctx.fillRect(px-1.2,y-4,2.4,h+8); ctx.fillStyle='rgba(255,255,255,.5)'; ctx.fillRect(px-0.4,y-4,0.8,h+8);
+  ctx.fillStyle=P.steel2; ctx.beginPath(); ctx.moveTo(px-5,y-4); ctx.lineTo(px+5,y-4); ctx.lineTo(px,y+3); ctx.closePath(); ctx.fill();
+  // the comb itself, below: thirty-six teeth, the struck one lifted
+  ctx.fillStyle=P.steel2; ctx.fillRect(CYL.n0-6, y+h+4, CYL.span+12, 5);
+  for (let i=0;i<NOTES;i++){ const nx=noteX(i), struck = i===st.note-1; ctx.fillStyle = struck?'#e9ecef':P.steel; ctx.fillRect(nx-2.4, y+h+ (struck?2:4), 4.8, struck?16:14); }
+  engrave(st.air.title, x+w/2, y+h+24, 12, 'center', true, 'rgba(232,204,122,.75)');
+}
+// @@RENDER-ENTITIES-END
+function wrapText(text, x, y, maxW, lineH, size, italic, color, align){
+  ctx.font = `${italic?'italic ':''}${size}px ${FONT}`; ctx.textAlign=align||'left'; ctx.textBaseline='top'; ctx.fillStyle=color;
+  const words = text.split(' '); let line='', yy=y;
+  for (const w of words){ const test = line ? line+' '+w : w; if (ctx.measureText(test).width > maxW && line){ ctx.fillText(line, x, yy); line=w; yy+=lineH; } else line=test; }
+  if (line) ctx.fillText(line, x, yy);
+  return yy+lineH;
+}
+function drawPlates(st, now){
+  const x = RX, w = CW-RX-24;
+  // the turn
+  plate(x, BY, w, 66, 6);
+  smallcaps(`Turn ${ROMAN[st.turn-1]||st.turn}`, x+18, BY+24, 26, 'left');
+  engrave('of five voices', x+18, BY+50, 12, 'left', true, '#5c4218');
+  for (let i=0;i<MAX_PINNED+1;i++){ const tX = x+w-20-i*13, used = i<st.turn; ctx.fillStyle = used?P.steel:'rgba(40,25,5,.25)'; ctx.fillRect(tX-2, BY+36, 4, used?18:14); }
+  // the note, and the governor dial
+  plate(x, BY+78, w, 66, 6);
+  smallcaps(`Note ${st.note}`, x+18, BY+78+24, 26, 'left'); engrave(`of ${NOTES}`, x+18, BY+78+50, 12, 'left', true, '#5c4218');
+  const dx = x+w-38, dy = BY+78+33; ctx.beginPath(); ctx.arc(dx,dy,22,0,7); ctx.fillStyle=P.ivory; ctx.fill(); ctx.strokeStyle=P.brass4; ctx.lineWidth=2; ctx.stroke();
+  for (let i=0;i<NOTES;i++){ const a = i/NOTES*Math.PI*2-Math.PI/2, L = i%6===0?5:2.5; ctx.beginPath(); ctx.moveTo(dx+Math.cos(a)*(21-L),dy+Math.sin(a)*(21-L)); ctx.lineTo(dx+Math.cos(a)*20,dy+Math.sin(a)*20); ctx.strokeStyle=P.ink; ctx.lineWidth=1; ctx.stroke(); }
+  const ha = st.note/NOTES*Math.PI*2-Math.PI/2; ctx.beginPath(); ctx.moveTo(dx,dy); ctx.lineTo(dx+Math.cos(ha)*16,dy+Math.sin(ha)*16); ctx.strokeStyle=P.velvet; ctx.lineWidth=2; ctx.stroke();
+  ctx.beginPath(); ctx.arc(dx,dy,2.5,0,7); ctx.fillStyle=P.brass4; ctx.fill();
+  // the key's cushion
+  const cy0 = BY+156; ctx.save(); ctx.shadowColor='rgba(0,0,0,.5)'; ctx.shadowBlur=6; ctx.shadowOffsetY=3;
+  rr(x, cy0, w, 84, 10); ctx.fillStyle=P.velvet; ctx.fill(); ctx.restore();
+  ctx.strokeStyle='rgba(163,58,70,.55)'; ctx.lineWidth=1.5; for (let i=0;i<5;i++){ ctx.beginPath(); ctx.moveTo(x+12+i*(w-24)/4, cy0+6); ctx.quadraticCurveTo(x+w/2, cy0+42, x+12+i*(w-24)/4, cy0+78); ctx.stroke(); }
+  rr(x+0.5, cy0+0.5, w-1, 83, 10); ctx.strokeStyle=P.brass4; ctx.lineWidth=1; ctx.stroke();
+  const carrier = st.dancer.hasKey ? 'dancer' : st.pinned.find(p=>p.hasKey);
+  let keyLine;
+  if (carrier==='dancer'){ keyLine='the key is in her hand'; }
+  else if (carrier){ keyLine=`the key is in brass hands, turn ${ROMAN[carrier.rec.turn-1]}`; }
+  else if (st.keyAt){ keyLine='the winding key lies on the stage'; drawKey(x+w/2, cy0+34, 1.3, -0.35); }
+  else keyLine='the key is in the escapement';
+  if (carrier==='dancer'){ drawKey(x+w/2, cy0+34, 1.3, -0.35); ctx.fillStyle='rgba(255,230,180,.18)'; ctx.beginPath(); ctx.arc(x+w/2, cy0+34, 30, 0, 7); ctx.fill(); }
+  ctx.font=`italic 12px ${FONT}`; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillStyle='#f0dcc0'; ctx.fillText(keyLine, x+w/2, cy0+68);
+  // the repairer's card, tucked into the case
+  const ry = BY+254; ctx.save(); ctx.shadowColor='rgba(0,0,0,.5)'; ctx.shadowBlur=6; ctx.shadowOffsetY=3; ctx.translate(x+w/2, ry+70); ctx.rotate(-0.012); ctx.translate(-(x+w/2), -(ry+70));
+  ctx.fillStyle='#e6d7b6'; ctx.fillRect(x, ry, w, 140); ctx.restore();
+  ctx.strokeStyle='rgba(92,66,24,.5)'; ctx.lineWidth=1; ctx.strokeRect(x+6.5, ry+6.5, w-13, 127);
+  smallcaps(st.air.name, x+w/2, ry+22, 14, 'center', '#5c4218');
+  wrapText(st.air.hint, x+16, ry+40, w-32, 17, 13, true, '#3a2410');
+  // the maker's plate
+  plate(x, BY+412, w, 40, 5); smallcaps('What the Cylinder Keeps', x+w/2, BY+432, 14, 'center', '#3a2810');
+  // the pinned, in order of their turns
+  const py0 = BY+466;
+  ctx.font=`italic 12px ${FONT}`; ctx.textAlign='left'; ctx.textBaseline='top'; ctx.fillStyle='rgba(232,204,122,.7)';
+  ctx.fillText(st.pinned.length ? 'Beside you on the stage:' : 'You dance alone this turn.', x+4, py0);
+  st.pinned.forEach((p,i)=>{ const yy = py0+22+i*40; drawFigure(x+22, yy+16, {kind:'pinned', facing:1, walk:0, phase:i, now, index:i, hasKey:p.hasKey, snagged:!!(st.snag&&st.snag.idx===i)});
+    ctx.font=`italic 12px ${FONT}`; ctx.textAlign='left'; ctx.textBaseline='middle'; ctx.fillStyle = (st.snag&&st.snag.idx===i)?P.copper:'rgba(239,227,198,.8)';
+    ctx.fillText(`Turn ${ROMAN[p.rec.turn-1]}, pinned in brass`, x+48, yy+14); });
+}
+function drawLegend(){
+  const items = ['arrows or W A S D step', 'space holds a note', 'enter lets the air run out', 'Z takes back a step', 'backspace lifts the turn', 'R begins the air again', 'M quiets the comb'];
+  ctx.font=`italic 12px ${FONT}`; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillStyle='rgba(239,227,198,.42)';
+  ctx.fillText(items.slice(0,4).join('   ·   '), CW/2, BY+12*TILE+34);
+  ctx.fillText(items.slice(4).join('   ·   '), CW/2, BY+12*TILE+52);
+  ctx.fillStyle='rgba(232,204,122,.5)'; ctx.font=`13px ${FONT}`; ctx.fillText('The pinned move first, oldest first. What they expect to find, they must find.', CW/2, BY+12*TILE+76);
+}
+// Ambient: the lamp above the open lid, and the dust that drifts through its light.
+const MOTES = Array.from({length:70}, (_,i)=>({ x:hash2(i,1), y:hash2(i,2), s:0.4+hash2(i,3)*0.9, f:0.3+hash2(i,4)*0.8, ph:hash2(i,5)*7, a:0.15+hash2(i,6)*0.35 }));
+function drawLamp(now){
+  const t = now*0.001, flick = 1 + 0.035*Math.sin(t*7.3) + 0.02*Math.sin(t*13.1+1) + 0.015*Math.sin(t*2.7);
+  ctx.save(); ctx.beginPath(); ctx.rect(BX-14, BY-14, 14*TILE+28, 12*TILE+28); ctx.clip();
+  const g = ctx.createRadialGradient(BX+140, BY-60, 20, BX+140, BY-60, 980);
+  g.addColorStop(0, `rgba(255,217,160,${0.16*flick})`); g.addColorStop(0.35, `rgba(255,217,160,${0.05*flick})`); g.addColorStop(0.7, 'rgba(0,0,0,0.12)'); g.addColorStop(1, 'rgba(0,0,0,0.42)');
+  ctx.fillStyle=g; ctx.fillRect(0,0,CW,CH);
+  const W = 14*TILE+28, H = 12*TILE+28;
+  for (const m of MOTES){
+    const px = BX-14 + ((m.x + t*0.012*m.s + Math.sin(t*m.f+m.ph)*0.02) % 1 + 1) % 1 * W;
+    const py = BY-14 + ((m.y + t*0.02*m.s) % 1) * H;
+    const near = 1 - Math.min(1, Math.hypot(px-(BX+140), py-(BY-60))/900);
+    ctx.fillStyle = `rgba(255,236,200,${(m.a*(0.35+near*0.9)*flick).toFixed(3)})`; ctx.fillRect(px, py, 1.2+m.s, 1.2+m.s);
+  }
+  ctx.restore();
+}
+// Interpolation between notes lives entirely here; the engine only knows tiles.
+const STEP_MS = 130; const anim = { t0:0, live:false };
+function lerpEnt(e, now){
+  const p = anim.live ? Math.min(1, (now-anim.t0)/STEP_MS) : 1, moved = e.fx!==e.x || e.fy!==e.y;
+  const q = p<1 ? 1-Math.pow(1-p,2) : 1;
+  return { x: moved ? e.fx+(e.x-e.fx)*q : e.x, y: moved ? e.fy+(e.y-e.fy)*q : e.y, walk: moved && p<1 ? p : 0 };
+}
+function drawStage(st, now){
+  const air = st.air;
+  drawFloorAndWalls(air);
+  for (const t of air.treadles) drawTreadle(st, t);
+  for (const c of air.curtains) drawCurtain(st, c);
+  drawEscapement(st, now);
+  if (st.keyAt){ const kx = tx(st.keyAt.x)+TILE/2, ky = ty(st.keyAt.y)+TILE/2; ctx.beginPath(); ctx.ellipse(kx+3,ky+4,16,5,0,0,7); ctx.fillStyle='rgba(0,0,0,.3)'; ctx.fill(); drawKey(kx, ky, 1, -0.5+Math.sin(now*0.002)*0.03); }
+  for (const f of st.flats){ const q = lerpEnt(f, now); drawFlat(tx(q.x), ty(q.y), now); }
+  const figs = st.pinned.map((p,i)=>({e:p, kind:'pinned', index:i})).concat([{e:st.dancer, kind:'dancer', index:-1}]);
+  // figures sharing a tile (everyone begins on the mark) stand shoulder to shoulder rather than inside one another
+  const seen = {};
+  figs.map(f=>({...f, q:lerpEnt(f.e, now)})).sort((a,b)=>a.q.y-b.q.y || a.index-b.index).forEach(f=>{
+    const k = f.e.x+','+f.e.y, n = (seen[k] = (seen[k]||0)+1), shove = f.q.walk>0 ? 0 : (n-1)*7 - (figs.filter(o=>o.e.x===f.e.x&&o.e.y===f.e.y).length-1)*3.5;
+    drawFigure(tx(f.q.x)+TILE/2+shove, ty(f.q.y)+TILE/2, { kind:f.kind, facing:f.e.face||1, walk:f.q.walk, phase:f.index+1, now, index:f.index, hasKey:f.e.hasKey, snagged:!!(st.snag && st.snag.idx===f.index) });
+  });
+  if (st.snag){ const pulse = 0.55+0.45*Math.sin(now*0.006), T = st.snag.tile;
+    ctx.save(); ctx.shadowColor=P.copper; ctx.shadowBlur=14*pulse; ctx.strokeStyle=`rgba(216,100,42,${0.5+0.5*pulse})`; ctx.lineWidth=3; ctx.strokeRect(tx(T.x)+3, ty(T.y)+3, TILE-6, TILE-6); ctx.restore();
+    const p = st.pinned[st.snag.idx]; ctx.strokeStyle='rgba(216,100,42,.7)'; ctx.setLineDash([3,4]); ctx.lineWidth=1.5; ctx.beginPath(); ctx.moveTo(tx(p.x)+TILE/2, ty(p.y)+TILE/2); ctx.lineTo(tx(T.x)+TILE/2, ty(T.y)+TILE/2); ctx.stroke(); ctx.setLineDash([]); }
+}
+function render(st, now){
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  drawCase(now); drawStage(st, now); drawLamp(now); drawCylinder(st, now); drawPlates(st, now); drawLegend();
+}
+// @@RENDER-END
+// @@UI-BEGIN
+const $ = (id)=>document.getElementById(id);
+const ORD = ['first','second','third','fourth','fifth','sixth','seventh','eighth','ninth','tenth','eleventh','twelfth','thirteenth','fourteenth','fifteenth','sixteenth','seventeenth','eighteenth','nineteenth','twentieth',
+  'twenty-first','twenty-second','twenty-third','twenty-fourth','twenty-fifth','twenty-sixth','twenty-seventh','twenty-eighth','twenty-ninth','thirtieth','thirty-first','thirty-second','thirty-third','thirty-fourth','thirty-fifth','thirty-sixth'];
+const ordinal = (n)=> ORD[n-1] || String(n);
+const tileName = (t)=> `the ${ordinal(t.x+1)} tile of the ${ordinal(t.y+1)} row`;
+const DIRWORD = { U:'north', D:'south', L:'west', R:'east' };
+
+// The repairer explains a snag: which turn, which note, what the pins promised, what the stage gave instead.
+function snagText(st){
+  const s = st.snag, a = s.actual, e = s.expected;
+  let meant = s.tok==='W' ? 'she meant to hold her place' : `she meant to step ${DIRWORD[s.tok]} onto ${tileName(s.tile)}`;
+  if (e.push) meant += ', shoving the flat ahead of her'; if (e.lift) meant += ', and lift the key there';
+  let found;
+  if (a.reason==='dancer') found = 'you were standing in it';
+  else if (a.reason==='pinned') found = 'another of the pinned was standing in it';
+  else if (a.reason==='curtain') found = 'the curtain there was drawn, and in her own turn it stood open';
+  else if (a.reason==='flat') found = 'the flat there would not move, because something stood behind it';
+  else if (a.reason==='wall') found = 'the case itself was in her way';
+  else if (e.push && !a.push) found = 'there was nothing there to shove';
+  else if (!e.push && a.push) found = 'a flat stood there that had not before, and she shoved it';
+  else if (e.lift && !a.lift) found = 'the key had already been lifted';
+  else if (!e.lift && a.lift) found = 'the key was lying there, which it had not been, and she lifted it';
+  else found = 'the stage was not as she had left it';
+  const ledger = `The pins say ${e.x+1} across, ${e.y+1} down${e.push?', shoving':''}${e.lift?', lifting':''}; the stage gave ${a.x+1} across, ${a.y+1} down${a.push?', shoving':''}${a.lift?', lifting':''}.`;
+  return { head:`Turn ${ROMAN[s.turn-1]} has snagged on the ${ordinal(s.note)} note.`, body:`In her own turn ${meant}. This turn ${found}. The pin struck a tooth that was no longer there, and the comb has stopped.`, ledger };
+}
+
+// A small comb of tines, generated: one note of the air per tick, the same air every turn.
+const SCALE = [0,2,4,7,9,12,14,16,19,21];
+const MELODY = Array.from({length:NOTES}, (_,i)=> 523.25 * Math.pow(2, SCALE[(i*3 + (i>>2)) % SCALE.length]/12) * (i%9===8 ? 0.5 : 1));
+let actx = null, muted = false, gestured = false;
+window.addEventListener('keydown', ()=>{ gestured=true; }, {capture:true}); window.addEventListener('pointerdown', ()=>{ gestured=true; }, {capture:true});
+function tine(freq, gain, decay){
+  if (muted || !gestured) return;
+  try {
+    if (!actx) actx = new (window.AudioContext||window.webkitAudioContext)();
+    const t0 = actx.currentTime, o = actx.createOscillator(), o2 = actx.createOscillator(), g = actx.createGain(), g2 = actx.createGain();
+    o.type='sine'; o.frequency.value=freq; o2.type='triangle'; o2.frequency.value=freq*3.01;
+    g.gain.setValueAtTime(gain, t0); g.gain.exponentialRampToValueAtTime(0.0001, t0+decay);
+    g2.gain.setValueAtTime(gain*0.12, t0); g2.gain.exponentialRampToValueAtTime(0.0001, t0+decay*0.35);
+    o.connect(g).connect(actx.destination); o2.connect(g2).connect(actx.destination);
+    o.start(t0); o2.start(t0); o.stop(t0+decay); o2.stop(t0+decay*0.4);
+  } catch(e){ /* the box plays silently if the lid's hinge squeaks */ }
+}
+function thunk(){ if (muted||!actx) return; try{ const t0=actx.currentTime, o=actx.createOscillator(), g=actx.createGain(); o.type='square'; o.frequency.setValueAtTime(110,t0); o.frequency.exponentialRampToValueAtTime(38,t0+0.25); g.gain.setValueAtTime(0.25,t0); g.gain.exponentialRampToValueAtTime(0.0001,t0+0.4); o.connect(g).connect(actx.destination); o.start(t0); o.stop(t0+0.4);}catch(e){} }
+
+let mode = 'title', ai = 0, G = makeGame(AIRS[0]), lastTurn = 1, winTimer = null;
+function card(id, html){ for (const c of ['title','snag','between','ending']) $(c).classList.toggle('show', c===id && html!==null); if (html!==null) $(id).innerHTML = html; }
+const controlsNote = `<div class="keys"><b>arrows</b> or <b>W A S D</b> step &nbsp; <b>space</b> holds a note &nbsp; <b>enter</b> lets the air run out<br><b>Z</b> takes back a step &nbsp; <b>backspace</b> lifts the turn &nbsp; <b>R</b> begins the air again &nbsp; <b>M</b> quiets the comb</div>`;
+
+function showTitle(){
+  mode='title'; ai=0; G = makeGame(AIRS[0]); lastTurn=1;
+  card('title', `<h1>What the Cylinder Keeps</h1><h2>a music box, in three airs</h2>
+    <p>A cylinder box of walnut and red velvet, wound by someone who has since walked away. Thirty-six notes, and the air begins again. You are the dancer on its stage, and I am the old fool who made you.</p>
+    <p>Every step you take while the air plays, the mechanism pins into the brass. When the cylinder comes round, a figure stamped from your pattern takes the same steps on the same notes, whether or not the stage still allows it. Four such voices I left room for. I did not leave room for you to change your mind.</p>
+    <p>Carry the winding key to the escapement, and the air will stop. Mind what the pinned expect to find.</p>
+    <div class="plate" id="go">Open the lid</div>${controlsNote}`);
+  $('go').onclick = ()=>beginAir(0, true);
+}
+function beginAir(i, withIntro){
+  ai = i; G = makeGame(AIRS[i]); lastTurn = 1; anim.live=false;
+  if (withIntro){ mode='between'; const a = AIRS[i];
+    card('between', `<h2>${a.name} &middot; ${a.title}</h2><p>${a.intro}</p><div class="plate" id="go">Wind it</div><small>the repairer's card is tucked beside the stage if you forget</small>`);
+    $('go').onclick = ()=>{ mode='play'; card(null, null); };
+  } else { mode='play'; card(null,null); }
+}
+function afterWin(){
+  const a = AIRS[ai];
+  if (ai < AIRS.length-1){ const nx = AIRS[ai+1]; mode='between';
+    card('between', `<h2>${a.name} is finished</h2><p>${a.outro}</p><h2 style="margin-top:14px">${nx.name} &middot; ${nx.title}</h2><p>${nx.intro}</p><div class="plate" id="go">Wind the next air</div>`);
+    $('go').onclick = ()=>beginAir(ai+1, false);
+  } else { mode='ending';
+    card('ending', `<h1>The Air Ends</h1>
+      <p>The escapement takes the key from your hand, a quarter turn, and the governor stops. The pinned stop with it, mid-step, brass hands lifted toward treadles that no longer need holding. The cylinder does not come round. For the first time since the lid was opened, the thirty-seventh note does not arrive.</p>
+      <p>I built this box to prove that a mechanism could learn its own dance. I did not think about what it would be like to be the dance, and to have every kindness you ever did become an obligation you could not put down. Forgive an old repairer his cleverness. You protected what they expected to find, all three turns of them, and then you walked the long way round so as not to undo it. That is more than the brass knows how to do. That is the part I could not pin.</p>
+      <p>The lid is open. The lamp is warm. Nothing in these works will pin you again: the cylinder keeps what it keeps, and the rest is yours.</p>
+      <div class="plate" id="go">Close the lid</div><small>the airs may be wound again from the title, if you miss them</small>`);
+    $('go').onclick = showTitle;
+  }
+}
+function showSnag(){
+  const t = snagText(G.state); mode='snag';
+  card('snag', `<h2>The comb has snagged</h2><p><b style="font-weight:normal;color:#e8cc7a">${t.head}</b></p><p>${t.body}</p><p style="font-style:normal;font-size:.9em;color:#c9b58f">${t.ledger}</p>
+    <div class="keys"><b>Z</b> take back the last step &nbsp; <b>backspace</b> lift this whole turn &nbsp; <b>R</b> begin the air from its first note</div>`);
+}
+function showFull(){
+  mode='snag';
+  card('snag', `<h2>The comb is full</h2><p>Five turns have played and the escapement is still waiting. I left four spare voices in this comb, and every one of them is spoken for. The cylinder cannot pin a sixth.</p>
+    <div class="keys"><b>backspace</b> lift this whole turn &nbsp; <b>R</b> begin the air from its first note</div>`);
+}
+function afterChange(kind){
+  const st = G.state;
+  if (kind==='step'){ anim.t0 = performance.now(); anim.live = true; tine(MELODY[(st.note+NOTES-1)%NOTES], 0.16, 0.9); }
+  else { anim.live=false; if (kind==='undo') tine(196, 0.08, 0.25); }
+  if (st.turn!==lastTurn){ lastTurn = st.turn; if (kind==='step'){ setTimeout(()=>tine(130.8,0.12,0.5),60); setTimeout(()=>tine(146.8,0.12,0.5),180); } }
+  if (st.snag){ thunk(); showSnag(); return; }
+  if (st.full){ thunk(); showFull(); return; }
+  if (mode==='snag'){ mode='play'; card(null,null); }
+  if (st.won){ mode='won'; clearTimeout(winTimer); tine(1046.5,0.2,1.6); winTimer = setTimeout(afterWin, 900); }
+}
+const KEYS = { ArrowUp:'U', ArrowDown:'D', ArrowLeft:'L', ArrowRight:'R', w:'U', s:'D', a:'L', d:'R', W:'U', S:'D', A:'L', D:'R', ' ':'W', Enter:'X' };
+window.addEventListener('keydown', (e)=>{
+  if (e.metaKey || e.ctrlKey || e.altKey) return;
+  const k = e.key;
+  if (k==='m' || k==='M'){ muted=!muted; return; }
+  if (mode==='title' || mode==='between' || mode==='ending'){ if (k==='Enter' || k===' ' || e.code==='Space' || e.code==='Enter'){ e.preventDefault(); const b=$('go'); if (b) b.click(); } return; }
+  if (mode==='won') return;
+  if (e.repeat && k!=='z' && k!=='Z') return;
+  if (k==='z' || k==='Z'){ e.preventDefault(); if (G.undo()) afterChange('undo'); return; }
+  if (k==='Backspace'){ e.preventDefault(); G.liftTurn(); afterChange('lift'); return; }
+  if (k==='r' || k==='R'){ e.preventDefault(); G.restart(); afterChange('restart'); return; }
+  if (mode!=='play') return;
+  const tok = KEYS[k] || (e.code==='Space' ? 'W' : (e.code==='Enter'||e.code==='NumpadEnter') ? 'X' : null); if (!tok) return; e.preventDefault();
+  if (G.push(tok)) afterChange('step');
+});
+$('test').onclick = ()=>{
+  const out = $('testout'); if (out.style.display==='block'){ out.style.display='none'; return; }
+  const res = runSelfTest(), passed = res.filter(r=>r.pass).length;
+  const lines = res.map(r=>`${r.pass?'holds':'FAILS'} · ${r.name}${r.detail?` (${r.detail})`:''}`);
+  out.textContent = `The bench test: ${passed} of ${res.length} hold.\n` + lines.join('\n'); out.style.display='block';
+  console.log('[bench test]', `${passed}/${res.length}`, res);
+};
+// Debug hash flags (unseen in play): #air=2  #solve  #break  #test
+(function boot(){
+  const h = new URLSearchParams(location.hash.replace(/^#/,'').replace(/&/g,'&'));
+  showTitle();
+  if (h.has('air')){ beginAir(Math.max(0, Math.min(AIRS.length-1, (+h.get('air')||1)-1)), false); }
+  if (h.has('solve')){ for (const t of AIRS[ai].solution) G.push(t); afterChange('step'); }
+  if (h.has('break')){ G.restart(); for (const t of 'RRDDLLXDDWWWW') G.push(t); afterChange('step'); }
+  if (h.has('test')) $('test').click();
+  requestAnimationFrame(function frame(now){ render(G.state, now); requestAnimationFrame(frame); });
+})();
+// @@UI-END
+</script>
+</body>
+</html>
