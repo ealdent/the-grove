@@ -433,7 +433,7 @@ Review:
 
 Goal: Deliver the complete original deterministic puzzle benchmark as one offline HTML file, integrate its alphabetically sorted gallery tile, and commit/push main.
 Project: Personal / The Grove. Baseline: clean main; origin git@github.com:ealdent/the-grove.git.
-Scope: time-loop/gpt-6-astra-ultra-time-loop-puzzle.html, time-loop/index.html, this task record. Existing games remain unopened until the new game is finished.
+Scope: time-loop/gpt-6-astra-max-time-loop-puzzle.html, time-loop/index.html, this task record. Existing games remain unopened until the new game is finished.
 Design: A sunlit earthen kiln preserves a potter's 36 footfalls as tangible soot impressions. Three chambers restore clay birds to a flooded town; the final firing asks the potter to protect an earlier sagger push. Paper, terracotta, olive, charcoal and ivory; drawn apron silhouettes, ash motes, a perforated firing ledger.
 Rules: Pure discrete simulation; same-snapshot simultaneous proposals; starting hearth permits shared occupancy; contested actor/object destinations and swaps deterministically block every participant; recording observations include outcomes and object interactions. Early sealing simulates waits through beat 36. Unlimited per-tick snapshots include boundaries and catastrophes. Four stored impressions maximum, without eviction.
 Proof: Authored solutions and hidden headless regression suite; causal faults, collision fixtures, full reverse/replay equality, cap, blocked moves, no network dependency; real Chrome keyboard/touch/title/ending/error/undo/self-test flows; responsive and retina screenshots; independent skeptical review; exact-file Git publication and live verification.
@@ -457,3 +457,11 @@ Review:
 
 - Live proof: https://ealdent.github.io/the-grove/time-loop/gpt-6-astra-ultra-time-loop-puzzle.html returned HTTP 200. All three chambers were solved again with actual keyboard events on the public site; the ending appeared and the embedded self-test passed 28/28. The live gallery contains the sorted new tile and its model filter works. Report: /private/tmp/kiln-live-report.json; live screenshot: /private/tmp/kiln-live-ending.png.
 - Source integrity: the committed standalone HTML is 70,710 bytes, SHA-256 2b415753ead2b2af2b6a8e66eeac86ee3a4f504a7ffb054770e52887578e0bf0. The observed public response prepends one 615-byte external script tag; removing exactly that extra tag for comparison leaves the complete authored file byte-identical. The source of that response injection was not established. An isolated live probe saw no page/console errors or HTTP errors, but the added script generated extra requests including one aborted fetch. The authored file has no remote URLs, external scripts, external assets or network calls, and the file:// offline proof remains clean.
+
+## Kiln effort correction
+
+The user confirmed this run used Max effort.
+
+- [x] Correct the filename, gallery badge and metadata, and canonical task path; verify identical game bytes and preserved gallery ordering.
+
+Proof: the game is byte-identical to its previously tested version (SHA-256 2b415753ead2b2af2b6a8e66eeac86ee3a4f504a7ffb054770e52887578e0bf0). Only its filename and gallery effort metadata changed. The existing card remains in its original alphabetic position. Historical proof URLs above refer to the original filename; the corrected canonical path is `time-loop/gpt-6-astra-max-time-loop-puzzle.html`.
