@@ -113,6 +113,7 @@ A collection of games, tools, and experiments built with AI — hosted on GitHub
 
 *Type, infographics, visualizers & data tools*
 
+- **[Pixiecast](utils/pixiecast.html)** — A modern WeatherPixie: a cartoon pixie whose outfit encodes your live local weather, from browser location or any town you type. Single file, Open-Meteo data, no install. (*weather · toy*)
 - **[Phosphor Wake](utils/phosphor-wake.html)** — Original pixel monospace with clean Regular and fuller Burn cuts, broad coding and terminal character coverage, a CRT specimen with raw-pixel inspection up to 240px, and downloadable TTF/WOFF2 fonts with editable source. (*typeface*)
 
 - **[App Adoption & Usage Model](utils/app-adoption-model.html)** — Cohort calculator for subscription-app growth — trial funnel, month-over-month retention, and how a heavy-using few drive most usage. Tuned with real fitness-app benchmarks. (*calculator*)
