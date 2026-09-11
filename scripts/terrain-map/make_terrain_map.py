@@ -7,7 +7,7 @@ Usage (typical):
       --parcels 451000052387000,451000051649000 --county Cherokee \
       --acres 7.51 --out /path/to/utils/gentle-ponds-view.html
 
-Data: USGS 3DEP (elevation), NC OneMap (parcels, NC only), USDA Forest Service (ownership),
+Data: USGS 3DEP (elevation), statewide parcel layers (NC OneMap; Tennessee Property Boundaries), USDA Forest Service (ownership),
 OpenStreetMap Overpass (peaks, roads, rivers, places, lake names). No API keys.
 Everything downloaded is cached in --workdir so re-runs are fast.
 """
@@ -20,8 +20,13 @@ from numpy.lib.stride_tricks import sliding_window_view
 HERE = os.path.dirname(os.path.abspath(__file__))
 UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/128.0 Safari/537.36"
 OVERPASS = ["https://overpass-api.de/api/interpreter", "https://overpass.kumi.systems/api/interpreter"]
+# Statewide parcel layers. Each entry maps the layer's field names onto the common names the
+# script uses (id, owner, addr, acres, county). Add a state by adding an entry.
 PARCEL_SERVICES = {
-    "nc": "https://services.nconemap.gov/secure/rest/services/NC1Map_Parcels/FeatureServer/1/query",
+    "nc": dict(url="https://services.nconemap.gov/secure/rest/services/NC1Map_Parcels/FeatureServer/1/query",
+               id="parno", owner="ownname", addr="siteadd", acres="gisacres", county="cntyname", county_fmt=str.title),
+    "tn": dict(url="https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0/query",
+               id="PARCELID", owner="OWNER", addr="ADDRESS", acres="DEEDAC", county="COUNTY_NAME", county_fmt=str.title),
 }
 
 def log(*a): print(*a, file=sys.stderr, flush=True)
@@ -100,14 +105,22 @@ n = args.n
 def rnd(v, k=1): return round(float(v), k)
 
 # ---------------------------------------------------------------- parcels
-svc = PARCEL_SERVICES[args.state]
+cfg = PARCEL_SERVICES[args.state]; svc = cfg["url"]
+county_val = cfg["county_fmt"](args.county).replace("'", "''")
+FIELDS = ",".join([cfg["id"], cfg["owner"], cfg["addr"], cfg["acres"]])
+def normalize(feats):
+    """Rename the layer's fields to parno/ownname/siteadd/gisacres so the rest of the script is state-agnostic."""
+    for f in feats:
+        a = f["attributes"]
+        f["attributes"] = dict(parno=str(a.get(cfg["id"]) or "").strip(), ownname=str(a.get(cfg["owner"]) or "").strip(),
+                               siteadd=str(a.get(cfg["addr"]) or "").strip(), gisacres=float(a.get(cfg["acres"]) or 0))
+    return feats
 listed_ids = [p.strip() for p in args.parcels.split(",") if p.strip()]
 parcel_feats = []
 if listed_ids:
-    where = f"cntyname='{args.county}' AND parno IN ({','.join(repr(p) for p in listed_ids)})"
-    d = fetch_json(svc, P("parcels_listed.json"), {"where": where, "outFields": "parno,ownname,siteadd,gisacres,parusedesc,legdecfull",
-                                                   "returnGeometry": "true", "outSR": "4326", "f": "json"})
-    parcel_feats = (d or {}).get("features", [])
+    where = f"{cfg['county']}='{county_val}' AND {cfg['id']} IN ({','.join(repr(p) for p in listed_ids)})"
+    d = fetch_json(svc, P("parcels_listed.json"), {"where": where, "outFields": FIELDS, "returnGeometry": "true", "outSR": "4326", "f": "json"})
+    parcel_feats = normalize((d or {}).get("features", []))
     found = {f["attributes"]["parno"] for f in parcel_feats}
     missing = [p for p in listed_ids if p not in found]
     if missing: log("  ! parcels not found:", missing)
@@ -139,12 +152,12 @@ def in_detail(lon, lat): return W <= lon <= E and S <= lat <= N
 other_feats = []
 if args.owner_tracts == "auto" and parcel_feats:
     owner = parcel_feats[0]["attributes"]["ownname"].strip().replace("'", "''")
-    d = fetch_json(svc, P("parcels_owner.json"), {"where": f"cntyname='{args.county}' AND ownname LIKE '{owner[:30]}%'",
+    d = fetch_json(svc, P("parcels_owner.json"), {"where": f"{cfg['county']}='{county_val}' AND {cfg['owner']} LIKE '{owner[:30]}%'",
                                                   "geometry": f"{W},{S},{E},{N}", "geometryType": "esriGeometryEnvelope", "inSR": "4326",
                                                   "spatialRel": "esriSpatialRelIntersects",
-                                                  "outFields": "parno,ownname,siteadd,gisacres,parusedesc", "returnGeometry": "true", "outSR": "4326", "f": "json"})
+                                                  "outFields": FIELDS, "returnGeometry": "true", "outSR": "4326", "f": "json"})
     listed_set = {f["attributes"]["parno"] for f in parcel_feats}
-    other_feats = [f for f in (d or {}).get("features", []) if f["attributes"]["parno"] not in listed_set]
+    other_feats = [f for f in normalize((d or {}).get("features", [])) if f["attributes"]["parno"] not in listed_set]
     log(f"other same-owner tracts in tile: {len(other_feats)}")
 
 # ---------------------------------------------------------------- elevation

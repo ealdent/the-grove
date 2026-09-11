@@ -35,6 +35,19 @@ curl -s -G "https://services.nconemap.gov/secure/rest/services/NC1Map_Parcels/Fe
 
 Listing pages usually carry the primary parcel number in their HTML (`parcelNumber`,
 `pid`); a query on the owner name then turns up the other lots in a multi-lot sale.
+Zillow blocks scripted fetches outright; geocode the street address with the Census
+geocoder instead and query the parcel layer with a small envelope around that point.
+
+Tennessee uses `--state tn` and the statewide "Tennessee Property Boundaries Public Use"
+feature service. Its `ADDRESS` field is written street-first (`CULBERSON LN 674`), parcel
+ids contain runs of spaces (`046 064    02400 000 2026`, quote them), and county names are
+title case (`Johnson`):
+
+```bash
+python3 scripts/terrain-map/make_terrain_map.py --slug culberson-lane --state tn --county Johnson \
+  --parcels "046 064    02400 000 2026,046 064    02500 000 2026" --acres 9.04 \
+  --title "674 Culberson Lane" --subtitle "..." --out utils/culberson-lane.html
+```
 
 ## Data sources
 
