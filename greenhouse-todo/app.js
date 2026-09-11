@@ -1,20 +1,38 @@
 import * as THREE from 'three';
 import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
 import { Sky } from 'three/addons/objects/Sky.js';
+import { RGBELoader } from 'three/addons/loaders/RGBELoader.js';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
-import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { SMAAPass } from 'three/addons/postprocessing/SMAAPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import Stats from 'three/addons/libs/stats.module.js';
 // N8AO — screen-space ambient occlusion. It renders the beauty pass itself, so it
 // stands in for RenderPass rather than following one.
 import { N8AOPass } from 'n8ao';
-// The vine border on the to-do dialogs. Its own WebGL context on its own canvas,
-// created lazily the first time a dialog opens.
-import { VineFrame } from './ui-vines.js';
 // Ambient beds, creature one-shots and the solo-violin soundtrack. Created on
 // the first "enter" gesture; fed dayness every frame from animate().
 import { greenhouseAudio } from './audio.js';
+import { createScannedWoodMaterial, createScannedGroundMaterial, createScannedPotMaterial, createScannedSoilMaterial, texturesReady } from './realism-materials.js';
+import { buildPottingBenches, createThinGlazing, mergeStaticArchitecture, timberUV } from './realism-architecture.js';
+import { createBotanicalEnvironment, createBotanicalLeafGeometry, createBotanicalLeafMaterial, texturesReady as botanicalTexturesReady } from './realism-botany.js';
+import { PlantBatches } from './plant-batches.js';
+import { FrameProfiler } from './frame-profiler.js';
+import { warmRenderer } from './warm-renderer.js';
+import { createWoodlandGroundGeometry } from './realism-terrain.js';
+
+// This separate QA route never reads or writes the user's tasks.
+const benchmarkMode = new URLSearchParams(location.search).get('benchmark') === '1';
+let renderingReady = false;
+let plantBatches = null, plantBatchesDirty = false, botanicalEnvironment = null;
+let lastDecayUpdate = -Infinity, lastHoverUpdate = -Infinity;
+let frameProfiler = null;
+let woodlandMap = null, woodlandEnvRT = null;
+let woodlandReady = Promise.resolve({ loaded: [], failed: [] });
+const frameMetrics = { cpuMs: 0, calls: 0, triangles: 0, pixelRatio: 1, frameMs: 0 };
+const slowFrames = [];
+const quality = { pixelRatio: Math.min(window.devicePixelRatio || 1, 1) };
+
 
 THREE.Cache.enabled = true;
 
@@ -138,6 +156,7 @@ const prefersReducedMotion = !!(window.matchMedia
 let mobileActive = false; // True when exploring on a touch device
 
 function saveTodosToLocal() {
+    if (benchmarkMode) return;
     // Only save the data, not the THREE.js meshes
     const dataToSave = todos.map(t => {
         const { mesh, ...rest } = t;
@@ -154,6 +173,7 @@ function saveTodosToLocal() {
 }
 
 function loadTodosFromLocal() {
+    if (benchmarkMode) return;
     const saved = localStorage.getItem(STORAGE_KEY);
     if (saved) {
         try {
@@ -317,15 +337,11 @@ function releaseFocus() {
     if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
 }
 
-// Vine borders, built on first open so a session that never touches a to-do never
-// pays for a second GL context.
+// Plain glass panels keep task forms readable without illustrated vine overlays
+// or additional WebGL contexts. Preserve the optional decoration interface.
 const vineFrames = new WeakMap();
-function vinesFor(scrim) {
-    if (!scrim) return null;
-    const panel = scrim.querySelector('.gh-panel');
-    if (!panel) return null;
-    if (!vineFrames.has(panel)) vineFrames.set(panel, new VineFrame(panel));
-    return vineFrames.get(panel);
+function vinesFor() {
+    return null;
 }
 
 function setupScene() {
@@ -334,13 +350,15 @@ function setupScene() {
 }
 
 function setupCamera() {
-    camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.05, 2000);
+    camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.05, 2000);
     camera.position.y = 1.6;
 }
 
 function setupRenderer() {
     renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+    renderer.setPixelRatio(quality.pixelRatio);
+    renderer.info.autoReset = false;
+    frameProfiler = new FrameProfiler(renderer);
     renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -402,8 +420,8 @@ function setupLighting() {
     sunLight.shadow.camera.bottom = -55;
     sunLight.shadow.camera.near = 1;
     sunLight.shadow.camera.far = 120;
-    sunLight.shadow.bias = -0.0005;
-    sunLight.shadow.normalBias = 0.04;
+    sunLight.shadow.bias = -0.00004;
+    sunLight.shadow.normalBias = 0.006;
     // Hard-edged. The sun subtends half a degree; a bar of window frame two
     // metres up casts an edge only ~2 cm soft, which at this scale is a crisp
     // line. The old radius of 4 was blurring the frame pattern into a smear.
@@ -435,8 +453,8 @@ function setupLighting() {
     moonLight.shadow.camera.bottom = -55;
     moonLight.shadow.camera.near = 1;
     moonLight.shadow.camera.far = 120;
-    moonLight.shadow.bias = -0.0008;
-    moonLight.shadow.normalBias = 0.06;
+    moonLight.shadow.bias = -0.00008;
+    moonLight.shadow.normalBias = 0.01;
     moonLight.shadow.radius = 7;
     moonLight.shadow.autoUpdate = false;
     moonLight.visible = false;
@@ -668,12 +686,55 @@ function syncAudioControls() {
 // day/twilight/night screenshots in the commit history were taken.
 function setupDebugHooks() {
     window.greenhouseDebug = {
+        frameMetrics: () => ({ ...frameMetrics }),
+        slowFrames: () => slowFrames.slice(),
+        texturesReady: async () => {
+            const [surfaces, woodland, leaves] = await Promise.all([texturesReady(), woodlandReady, botanicalTexturesReady()]);
+            return { loaded: [...surfaces.loaded, ...woodland.loaded, ...leaves.loaded],
+                failed: [...surfaces.failed, ...woodland.failed, ...leaves.failed] };
+        },
+        async prepare() {
+            const assets = await this.texturesReady();
+            if (plantBatchesDirty) { plantBatches.rebuild(objects); plantBatchesDirty = false; }
+            if (renderer.compileAsync) await renderer.compileAsync(scene, camera);
+            const warmup = await warmRenderer(renderer, scene, () => {
+                invalidateShadows();
+                composer.render();
+            });
+            if (warmup.status !== 'complete') throw new Error(`GPU preparation ${warmup.status}`);
+            return { ...assets, warmup };
+        },
+        seedBenchmark(count = 120, mix = 'mixed') {
+            if (!benchmarkMode) throw new Error('Open benchmark.html to use synthetic tasks. Your saved tasks are protected.');
+            for (const root of objects) { scene.remove(root); disposeHierarchy(root); }
+            objects.length = 0;
+            todos = [];
+            for (let slot = 0; slot < tablePositions.length; slot++) setEmptyPotOccupied(slot, false);
+            const now = getCurrentSimulatedTime();
+            for (let slot = 0; slot < Math.max(0, Math.min(120, count | 0)); slot++) {
+                const completed = mix === 'flowers' || (mix === 'mixed' && slot % 3 === 0);
+                const health = mix === 'growing' ? 100 : 48 + ((slot * 17) % 53);
+                const todo = { id: slot + 1, positionIndex: slot, title: `Benchmark plant ${slot + 1}`,
+                    desc: 'Synthetic task held in memory only.', createdAt: now - 3 * 86400000,
+                    lastUpdated: now, health, healthAtLastUpdate: health, urgency: 1 + slot % 3,
+                    status: 'In Progress', completed, flowerVariant: Math.floor(slot / 3) % 5 };
+                todos.push(todo);
+                createPlant(todo, true);
+            }
+            attentionRanked = [];
+            attentionSweep = 0;
+            plantBatches.rebuild(objects);
+            plantBatchesDirty = false;
+            invalidateShadows();
+            return { count: todos.length, mix, persistence: 'memory only', batches: plantBatches.stats() };
+        },
         // Pass an ISO string / Date / ms to freeze the astro clock there, or null
         // to hand it back to the wall clock. Snaps the lamps to their steady
         // state so a screenshot isn't caught mid warm-up.
         setSunTime(when) {
             sunClockOverride = when === null || when === undefined ? null : new Date(when).getTime();
             updateSunAndLighting();
+            lastSunUpdate = performance.now();
             lampState.level = lampState.on ? 1 : 0;
             updateLamps(performance.now(), 0);
             return this.state();
@@ -754,6 +815,7 @@ function setupDebugHooks() {
                 clock += dt * 1000;
                 updatePlantHint(clock, dt);
                 updateAttention(clock, dt);
+                for (const entry of attentionRanked) plantBatches?.sync(entry.todo.mesh);
                 const shaking = attentionRanked.find(e => e.todo.id === rattleState.id);
                 rows.push({
                     t: +(i * dt).toFixed(2),
@@ -883,11 +945,10 @@ function setupDebugHooks() {
 }
 
 function setupPostProcessing() {
-    // 10. Post-processing — ambient occlusion, then bloom for soft highlights
-    // through the glass. EffectComposer.addPass() calls setSize() itself, so the
+    // Contact occlusion, one display conversion, and stable edge antialiasing. EffectComposer.addPass() calls setSize() itself, so the
     // passes pick up the pixel ratio set here.
     composer = new EffectComposer(renderer);
-    composer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+    composer.setPixelRatio(quality.pixelRatio);
     composer.setSize(window.innerWidth, window.innerHeight);
 
     // N8AO renders the scene into its own beauty buffer and multiplies the
@@ -897,12 +958,13 @@ function setupPostProcessing() {
     // Radius is in world units, and this is an interior: what we want is contact
     // shadow where a pot meets a bench, under table tops, in the corners of the
     // wooden bases — not a metre-scale wash.
-    aoPass.configuration.aoRadius = 0.9;
+    aoPass.configuration.aoRadius = 0.28;
+    aoPass.configuration.halfRes = true;
     aoPass.configuration.distanceFalloff = 0.8;
-    aoPass.configuration.intensity = 3.0;
-    aoPass.configuration.aoSamples = 16;
-    aoPass.configuration.denoiseSamples = 8;
-    aoPass.configuration.denoiseRadius = 12;
+    aoPass.configuration.intensity = 1.35;
+    aoPass.configuration.aoSamples = 8;
+    aoPass.configuration.denoiseSamples = 4;
+    aoPass.configuration.denoiseRadius = 6;
     // Occlusion tinted toward damp green-black rather than neutral grey — it
     // reads as shade under leaves instead of dirt on the lens.
     aoPass.configuration.color = new THREE.Color(0x0b1712);
@@ -910,31 +972,16 @@ function setupPostProcessing() {
     // conversion; N8AO must hand its result on in linear space or the bloom
     // threshold and the tone curve both get applied to already-encoded colour.
     aoPass.configuration.gammaCorrection = false;
-    // Transparency-aware mode costs two extra renders per frame, but they draw
-    // only the transparent objects, and it earns its keep here: without it the
-    // AO is multiplied over the whole composited frame, so the forest's own
-    // occlusion — every crevice in the canopy, every trunk against the sky —
-    // stamps itself across the lamps' haze cones as a ghostly negative of the
-    // trees. (This used to be off on the grounds that the transparent things
-    // were all small and dim; the haze cones are neither.) With it on, n8ao
-    // renders the transparent surfaces' accumulated alpha to a side buffer and
-    // masks the AO by it, so a beam at 60% density suppresses 60% of the tree
-    // AO behind it — and the glass panes (alpha 1) mask the outdoors entirely,
-    // which is fine: outdoors, the sun and moon shadow maps do the real work.
-    // Setting transparencyAware explicitly also clears autoDetectTransparency,
-    // but keep the intent legible and pinned:
+    // Solid foliage and restrained humidity avoid the old dense transparent
+    // layers. No extra scene renders are needed to mask their AO contribution.
     aoPass.autoDetectTransparency = false;
-    aoPass.configuration.transparencyAware = true;
+    aoPass.configuration.transparencyAware = false;
     composer.addPass(aoPass);
 
-    const bloom = new UnrealBloomPass(
-        new THREE.Vector2(window.innerWidth, window.innerHeight),
-        0.10, // strength — gentle bloom so it doesn't fake ambient brightness
-        0.55, // radius
-        0.97  // threshold (only true highlights bloom)
-    );
-    composer.addPass(bloom);
     composer.addPass(new OutputPass());
+    // The AO beauty target is not the canvas MSAA target. Reconstruct edge
+    // coverage after tone mapping so thin glazing bars stay stable in motion.
+    composer.addPass(new SMAAPass(window.innerWidth * quality.pixelRatio, window.innerHeight * quality.pixelRatio));
 }
 
 function init() {
@@ -962,31 +1009,17 @@ function init() {
     // 8. Build Greenhouse Environment
     buildGreenhouse();
 
-    // 8b. Haunted forest, atmosphere + glowing eyes
-    buildHauntedForest();
-    buildForestAtmosphere();
-    buildHauntedEyes();
-    buildFarForestLight();
-
-    // 8c. Wet, messy, overgrown interior
-    buildPuddles();
-    buildVinesAndIvy();
-    buildSwayingVine();
+    // Every visible plant has a modeled silhouette, including the exterior trees.
+    botanicalEnvironment = createBotanicalEnvironment(scene);
+    woodlandReady = loadWoodlandEnvironment();
     buildClutter();
-    buildGreenhouseParticles();
-    buildGroundFog();
-    buildPaneCondensation();
-
-    // 8d. Sun shafts through the roof glass (needs roofShape from buildGreenhouse)
-    buildSunShafts();
+    // Water is represented by the glass surface; additive point sprites read
+    // as glowing dust at ordinary viewing distance.
 
     // 8e. Stars + moon, so the roof isn't a black void after dark
     buildNightSky();
 
-    // 8f. Attention cues — the idle nudge toward an empty pot, and the haloes
-    // that wilting plants wear.
-    buildPlantHint();
-    buildAttentionHalos();
+    // Attention uses the real plant's subtle motion and wilt, without glow cards.
     lastTaskActivity = performance.now();
 
     // 8f. Debug hooks — a settable astro clock, so any hour of the day can be
@@ -995,6 +1028,7 @@ function init() {
 
     // 9. Initial sun + lighting (uses real Eastern Time)
     updateSunAndLighting();
+    lastSunUpdate = performance.now();
     // Lamps start already at their steady state rather than warming up on load —
     // walking into a dark greenhouse and waiting four seconds is not the effect.
     lampState.level = lampState.on ? 1 : 0;
@@ -1002,6 +1036,12 @@ function init() {
 
     // 10. Load Saved Data
     loadTodosFromLocal();
+    plantBatches = new PlantBatches(scene);
+    // Async surface factories acquire map identities after loading. Rebuild the
+    // bounded source batches once so the active save receives those materials too.
+    void texturesReady().then(() => { plantBatchesDirty = true; invalidateShadows(); });
+    plantBatches.rebuild(objects);
+    plantBatchesDirty = false;
 
     // 11. Post-processing
     setupPostProcessing();
@@ -1015,6 +1055,50 @@ function init() {
         document.body.classList.add('touch');
         setupTouchControls();
     }
+
+    if (!benchmarkMode) {
+        const loading = document.createElement('p');
+        loading.id = 'render-status';
+        loading.setAttribute('role', 'status');
+        loading.textContent = 'Preparing the greenhouse…';
+        instructions.append(loading);
+        instructions.setAttribute('aria-busy', 'true');
+        void window.greenhouseDebug.prepare().then(result => {
+            renderingReady = true;
+            instructions.removeAttribute('aria-busy');
+            if (result.failed.length) loading.textContent = 'Some surface maps could not load. You can enter with fallback materials.';
+            else loading.remove();
+        }).catch(error => {
+            renderingReady = true;
+            instructions.removeAttribute('aria-busy');
+            loading.textContent = 'Graphics preparation was interrupted. You can enter and try the scene.';
+            console.warn('Greenhouse preparation:', error.message);
+        });
+    }
+}
+
+function loadWoodlandEnvironment() {
+    const url = new URL('./assets/environment/forest_slope_2k.hdr', import.meta.url).href;
+    return new Promise(resolve => {
+        let settled = false;
+        const failed = reason => {
+            if (settled) return;
+            settled = true;
+            clearTimeout(timer);
+            resolve({ loaded: [], failed: [{ url, reason }] });
+        };
+        const timer = setTimeout(() => failed('Woodland HDR exceeded 30 seconds; using analytic sky.'), 30000);
+        new RGBELoader().load(url, texture => {
+            if (settled) { texture.dispose(); return; }
+            settled = true;
+            clearTimeout(timer);
+            texture.mapping = THREE.EquirectangularReflectionMapping;
+            woodlandMap = texture;
+            woodlandEnvRT = pmremGen.fromEquirectangular(texture);
+            updateSunAndLighting();
+            resolve({ loaded: [url], failed: [] });
+        }, undefined, () => failed('Woodland HDR could not load; using analytic sky.'));
+    });
 }
 
 // --- PBR Texture / Material Helpers ---
@@ -1251,35 +1335,8 @@ function getWoodTextureSet() {
     return sharedAssets.woodSet;
 }
 
-function makeWoodMaterial({ repeat = [1, 1], roughness = 0.85, color = 0xffffff } = {}) {
-    const set = getWoodTextureSet();
-    const colorMap = set.color.clone();
-    const bumpMap = set.bump.clone();
-    const roughMap = set.rough.clone();
-    configureRepeat(colorMap, repeat, true);
-    configureRepeat(bumpMap, repeat, false);
-    configureRepeat(roughMap, repeat, false);
-    colorMap.needsUpdate = bumpMap.needsUpdate = roughMap.needsUpdate = true;
-    return new THREE.MeshPhysicalMaterial({
-        color,
-        map: colorMap,
-        bumpMap: bumpMap,
-        bumpScale: 0.002,
-        roughnessMap: roughMap,
-        roughness,
-        metalness: 0,
-        // The only IBL here is the sky, so a bench with a strong environment term
-        // is a bench that reflects a blue ceiling. Turned down to what the missing
-        // interior half of the environment would have justified.
-        envMapIntensity: 0.28,
-        // Dielectric specular tinted warm. Physically the specular lobe of bare
-        // wood is neutral, but these boards are decades of soaked-in linseed and
-        // handling — the reflection off them under a tungsten lamp is amber, not
-        // white, and it is what makes the worn patches read as polished rather
-        // than bleached. Intensity stays at the default; the tint is the point.
-        specularColor: new THREE.Color(0xffddb0),
-        specularIntensity: 1
-    });
+function makeWoodMaterial({ repeat = [1, 1] } = {}) {
+    return createScannedWoodMaterial(renderer, repeat);
 }
 
 // Real refracting glass: MeshPhysicalMaterial with transmission, so what you see
@@ -1446,13 +1503,7 @@ function makeGlassMaterial({ base, streaks, algae, spots, tint, roughness, trans
 // Vertical wall glazing — the clearer glass. Low-angle light comes in through
 // the sides of a greenhouse, and at night you can see out into the woods.
 function getWallGlassMaterial() {
-    if (sharedAssets.wallGlass) return sharedAssets.wallGlass;
-    sharedAssets.wallGlass = makeGlassMaterial({
-        base: '#d4e3d8', streaks: 40, algae: 0.3, spots: 110,
-        tint: 0xd8e8dc, roughness: 0.05, transmission: 0.97, thickness: 0.16,
-        envMapIntensity: 0.18
-    });
-    return sharedAssets.wallGlass;
+    return sharedAssets.wallGlass ||= createThinGlazing(false);
 }
 
 // Roof glazing — more translucent and greener, like old diffusing
@@ -1461,13 +1512,7 @@ function getWallGlassMaterial() {
 // higher roughness is what does the scattering: transmission samples the
 // backdrop from a blurrier mip the rougher the surface gets.
 function getRoofGlassMaterial() {
-    if (sharedAssets.roofGlass) return sharedAssets.roofGlass;
-    sharedAssets.roofGlass = makeGlassMaterial({
-        base: '#aed2b6', streaks: 90, algae: 0.55, spots: 280,
-        tint: 0xb6d6bd, roughness: 0.28, transmission: 0.9, thickness: 0.3,
-        envMapIntensity: 0.3
-    });
-    return sharedAssets.roofGlass;
+    return sharedAssets.roofGlass ||= createThinGlazing(true);
 }
 
 // Verdigris (oxidized) copper — patinated greenish-blue with mottled texture
@@ -1679,214 +1724,12 @@ function getDirtFloorMaterial() {
 }
 
 function getPotMaterial() {
-    if (sharedAssets.pot) return sharedAssets.pot;
-    const SIZE = 512;
-    // Large damp/mineral patches + fine clay grain
-    const blotch = makeFbmField(SIZE, 4, 4);
-    const grain = makeFbmField(SIZE, 5, 18);
-
-    const colorCanvas = document.createElement('canvas');
-    colorCanvas.width = colorCanvas.height = SIZE;
-    const ctx = colorCanvas.getContext('2d');
-    const img = ctx.createImageData(SIZE, SIZE);
-    for (let y = 0; y < SIZE; y++) {
-        for (let x = 0; x < SIZE; x++) {
-            const i = y * SIZE + x;
-            const b = blotch[i];
-            const g = grain[i];
-            // Fired-clay base, slightly lighter toward the rim (top of UV)
-            const rimLight = 1 - (y / SIZE) * 0.16;
-            let r0 = (158 + g * 36) * rimLight;
-            let g0 = (84 + g * 24) * rimLight;
-            let b0 = (56 + g * 16) * rimLight;
-            // Damp patches: water soaked into the clay reads darker and colder
-            if (b < 0.4) {
-                const k = (0.4 - b) * 1.6;
-                r0 *= 1 - 0.35 * k;
-                g0 *= 1 - 0.3 * k;
-                b0 *= 1 - 0.2 * k;
-            }
-            // Mineral efflorescence: chalky white salt bloom on dry areas
-            if (b > 0.68) {
-                const k = Math.min(1, (b - 0.68) * 4) * 0.55;
-                r0 = r0 * (1 - k) + 226 * k;
-                g0 = g0 * (1 - k) + 218 * k;
-                b0 = b0 * (1 - k) + 202 * k;
-            }
-            const px = i * 4;
-            img.data[px + 0] = r0;
-            img.data[px + 1] = g0;
-            img.data[px + 2] = b0;
-            img.data[px + 3] = 255;
-        }
-    }
-    ctx.putImageData(img, 0, 0);
-    // Throwing rings — slightly wobbly, like a hand-thrown pot
-    for (let y = 4; y < SIZE; y += 10 + Math.random() * 9) {
-        ctx.strokeStyle = `rgba(50, 24, 12, ${0.07 + Math.random() * 0.09})`;
-        ctx.lineWidth = 1 + Math.random() * 1.5;
-        ctx.beginPath();
-        ctx.moveTo(0, y);
-        for (let x = 0; x <= SIZE; x += 32) {
-            ctx.lineTo(x, y + Math.sin(x * 0.05 + y) * 1.2);
-        }
-        ctx.stroke();
-    }
-    // Moss freckles collecting in damp spots near the base
-    for (let i = 0; i < 90; i++) {
-        const my = SIZE * (0.55 + Math.random() * 0.45);
-        const gr = 70 + Math.random() * 50;
-        ctx.fillStyle = `rgba(${gr * 0.5|0},${gr|0},${gr * 0.4|0},${0.15 + Math.random() * 0.3})`;
-        ctx.beginPath();
-        ctx.arc(Math.random() * SIZE, my, 0.8 + Math.random() * 2.6, 0, Math.PI * 2);
-        ctx.fill();
-    }
-    // Chips and scratches in the glaze-less clay
-    for (let i = 0; i < 26; i++) {
-        ctx.strokeStyle = `rgba(96, 50, 28, ${0.3 + Math.random() * 0.3})`;
-        ctx.lineWidth = 0.7 + Math.random();
-        const sx = Math.random() * SIZE, sy = Math.random() * SIZE;
-        ctx.beginPath();
-        ctx.moveTo(sx, sy);
-        ctx.lineTo(sx + (Math.random() - 0.5) * 22, sy + (Math.random() - 0.5) * 10);
-        ctx.stroke();
-    }
-    const colorTex = new THREE.CanvasTexture(colorCanvas);
-    colorTex.colorSpace = THREE.SRGBColorSpace;
-    colorTex.wrapS = colorTex.wrapT = THREE.RepeatWrapping;
-    colorTex.anisotropy = 8;
-
-    // Roughness. Unglazed terracotta is *slightly* rough — enough of a sheen to
-    // pick out the throwing rings and the rim under a lamp, nowhere near enough
-    // to mirror anything. The band here is deliberately narrow (0.63–0.92): the
-    // old one reached 0.45 where the clay was damp, and a fired-clay pot with a
-    // 0.45 patch on it looks glazed, not wet.
-    const roughCanvas = document.createElement('canvas');
-    roughCanvas.width = roughCanvas.height = SIZE;
-    const rctx = roughCanvas.getContext('2d');
-    const rimg = rctx.createImageData(SIZE, SIZE);
-    for (let i = 0; i < SIZE * SIZE; i++) {
-        const wet = Math.max(0, 0.4 - blotch[i]) * 2.2;
-        const rough = 226 - wet * 40 - grain[i] * 20;
-        const px = i * 4;
-        rimg.data[px + 0] = rimg.data[px + 1] = rimg.data[px + 2] = rough;
-        rimg.data[px + 3] = 255;
-    }
-    rctx.putImageData(rimg, 0, 0);
-    const roughTex = new THREE.CanvasTexture(roughCanvas);
-
-    const heightCanvas = document.createElement('canvas');
-    heightCanvas.width = heightCanvas.height = SIZE;
-    const hctx = heightCanvas.getContext('2d');
-    const himg = hctx.createImageData(SIZE, SIZE);
-    for (let i = 0; i < SIZE * SIZE; i++) {
-        const v = 95 + grain[i] * 80;
-        const px = i * 4;
-        himg.data[px + 0] = himg.data[px + 1] = himg.data[px + 2] = v;
-        himg.data[px + 3] = 255;
-    }
-    hctx.putImageData(himg, 0, 0);
-    for (let y = 4; y < SIZE; y += 10 + Math.random() * 9) {
-        hctx.fillStyle = 'rgba(46,46,46,0.65)';
-        hctx.fillRect(0, y, SIZE, 2);
-    }
-    const normalTex = makeNormalMapFromCanvas(heightCanvas, 4);
-
-    sharedAssets.pot = new THREE.MeshPhysicalMaterial({
-        map: colorTex,
-        normalMap: normalTex,
-        normalScale: new THREE.Vector2(0.8, 0.8),
-        roughnessMap: roughTex,
-        roughness: 1.0,
-        metalness: 0,
-        envMapIntensity: 0.3
-    });
+    if (!sharedAssets.pot) sharedAssets.pot = createScannedPotMaterial(renderer);
     return sharedAssets.pot;
 }
 
 function getSoilMaterial() {
-    if (sharedAssets.soil) return sharedAssets.soil;
-    const SIZE = 256;
-    const moist = makeFbmField(SIZE, 4, 4);
-
-    const colorCanvas = document.createElement('canvas');
-    colorCanvas.width = colorCanvas.height = SIZE;
-    const ctx = colorCanvas.getContext('2d');
-    const img = ctx.createImageData(SIZE, SIZE);
-    for (let i = 0; i < SIZE * SIZE; i++) {
-        // Potting mix: dark brown, browner where it is drying out. It used to
-        // bottom out near black, which combined with the gloss below to read as
-        // wet tarmac; a matte medium-dark brown is what peat actually looks like
-        // and it gives the bump detail something to sit on.
-        const m = moist[i];
-        const px = i * 4;
-        img.data[px + 0] = 40 + (1 - m) * 34;
-        img.data[px + 1] = 27 + (1 - m) * 22;
-        img.data[px + 2] = 17 + (1 - m) * 13;
-        img.data[px + 3] = 255;
-    }
-    ctx.putImageData(img, 0, 0);
-    // Bark chips — elongated woody flecks at random angles
-    for (let i = 0; i < 260; i++) {
-        const r = 58 + Math.random() * 55;
-        const g = 36 + Math.random() * 30;
-        ctx.fillStyle = `rgba(${r|0},${g|0},${12 + Math.random() * 12|0},${0.5 + Math.random() * 0.45})`;
-        ctx.save();
-        ctx.translate(Math.random() * SIZE, Math.random() * SIZE);
-        ctx.rotate(Math.random() * Math.PI);
-        ctx.beginPath();
-        ctx.ellipse(0, 0, 1.6 + Math.random() * 4.2, 0.7 + Math.random() * 1.6, 0, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.restore();
-    }
-    // Perlite — the little white volcanic-glass specks in every potting mix
-    for (let i = 0; i < 80; i++) {
-        const w = 195 + Math.random() * 45;
-        ctx.fillStyle = `rgba(${w|0},${w|0},${(w - 14)|0},${0.6 + Math.random() * 0.4})`;
-        ctx.beginPath();
-        ctx.arc(Math.random() * SIZE, Math.random() * SIZE, 0.6 + Math.random() * 1.4, 0, Math.PI * 2);
-        ctx.fill();
-    }
-    const colorTex = new THREE.CanvasTexture(colorCanvas);
-    colorTex.colorSpace = THREE.SRGBColorSpace;
-
-    // No roughness map at all. There used to be one driven by the same moisture
-    // field as the colour, dipping to 0.33 where the mix was damp — and because
-    // the field is fBm, what that produced was a set of smooth glossy swirls
-    // sitting on the surface of every pot, catching the sky and reading as
-    // spilled oil. Soil is the one material in this scene that is uniformly,
-    // completely matte: it is loose organic crumb, there is no flat facet
-    // anywhere on it to form a highlight. All the variation it needs is in the
-    // colour and the normal map.
-    const heightCanvas = document.createElement('canvas');
-    heightCanvas.width = heightCanvas.height = SIZE;
-    const hctx = heightCanvas.getContext('2d');
-    hctx.fillStyle = '#585858';
-    hctx.fillRect(0, 0, SIZE, SIZE);
-    for (let i = 0; i < 900; i++) {
-        const grey = 70 + Math.random() * 130;
-        hctx.fillStyle = `rgb(${grey|0},${grey|0},${grey|0})`;
-        hctx.save();
-        hctx.translate(Math.random() * SIZE, Math.random() * SIZE);
-        hctx.rotate(Math.random() * Math.PI);
-        hctx.beginPath();
-        hctx.ellipse(0, 0, 1 + Math.random() * 3.2, 0.6 + Math.random() * 1.6, 0, 0, Math.PI * 2);
-        hctx.fill();
-        hctx.restore();
-    }
-    const normalTex = makeNormalMapFromCanvas(heightCanvas, 7);
-
-    sharedAssets.soil = new THREE.MeshPhysicalMaterial({
-        map: colorTex,
-        normalMap: normalTex,
-        normalScale: new THREE.Vector2(1.45, 1.45),
-        roughness: 1,
-        metalness: 0,
-        // Barely any environment reflection either. A fully rough surface still
-        // picks up the IBL as a broad sheen, and on the pots that sheen was
-        // most of what made the soil look wet.
-        envMapIntensity: 0.18
-    });
+    if (!sharedAssets.soil) sharedAssets.soil = createScannedSoilMaterial(renderer);
     return sharedAssets.soil;
 }
 
@@ -3901,85 +3744,6 @@ function buildClutter() {
     const _q = new THREE.Quaternion();
     const _e = new THREE.Euler();
 
-    // --- Fallen leaves scattered on floor and tabletops ---
-    const ivyTex = makeIvyLeafTexture();
-    const leafMat = new THREE.MeshStandardMaterial({
-        map: ivyTex, alphaTest: 0.4, transparent: false, side: THREE.DoubleSide,
-        roughness: 0.95, metalness: 0
-    });
-    const FALLEN = 240;
-    const fallen = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1), leafMat, FALLEN);
-    const tint = new THREE.Color();
-    for (let i = 0; i < FALLEN; i++) {
-        const onTable = i % 5 === 0; // every 5th leaf litters a tabletop
-        let x, y, z;
-        if (onTable) {
-            x = (Math.random() < 0.5 ? -3 : 3) + (Math.random() - 0.5) * 1.8;
-            y = 1.057;
-            z = -Math.floor(Math.random() * 10) * 4 + (Math.random() - 0.5) * 2.8;
-        } else {
-            x = -7.4 + Math.random() * 14.8;
-            y = 0.018;
-            z = -44 + Math.random() * 48;
-        }
-        _e.set(-Math.PI / 2 + (Math.random() - 0.5) * 0.35, 0, Math.random() * Math.PI * 2, 'YXZ');
-        _q.setFromEuler(_e);
-        const s = 0.06 + Math.random() * 0.07;
-        _m.compose(new THREE.Vector3(x, y, z), _q, new THREE.Vector3(s, s, s));
-        fallen.setMatrixAt(i, _m);
-        // Browns through sickly greens — dead and dying litter
-        tint.setHSL(0.06 + Math.random() * 0.16, 0.5 + Math.random() * 0.3, 0.25 + Math.random() * 0.2);
-        fallen.setColorAt(i, tint);
-    }
-    fallen.instanceMatrix.needsUpdate = true;
-    if (fallen.instanceColor) fallen.instanceColor.needsUpdate = true;
-    fallen.frustumCulled = false;
-    scene.add(fallen);
-
-    // --- Moss patches on the wood bases and table corners ---
-    const mossMat = new THREE.MeshStandardMaterial({
-        map: makeMossTexture(), alphaTest: 0.3, transparent: false, side: THREE.DoubleSide,
-        roughness: 1, metalness: 0
-    });
-    const MOSS = 70;
-    const mossGeom = new THREE.CircleGeometry(0.5, 10);
-    mossGeom.rotateX(-Math.PI / 2);
-    const moss = new THREE.InstancedMesh(mossGeom, mossMat, MOSS);
-    for (let i = 0; i < MOSS; i++) {
-        let x, y, z;
-        const where = i % 3;
-        if (where === 0) {        // top of side wood bases
-            x = (Math.random() < 0.5 ? -8 : 8) + (Math.random() - 0.5) * 0.12;
-            y = 1.205;
-            z = -44 + Math.random() * 48;
-        } else if (where === 1) { // table corners / edges
-            x = (Math.random() < 0.5 ? -3 : 3) + (Math.random() < 0.5 ? -0.85 : 0.85);
-            y = 1.052;
-            z = -Math.floor(Math.random() * 10) * 4 + (Math.random() < 0.5 ? -1.3 : 1.3);
-        } else {                  // damp floor against the walls
-            x = (Math.random() < 0.5 ? -1 : 1) * (6.6 + Math.random() * 0.8);
-            y = 0.016;
-            z = -44 + Math.random() * 48;
-        }
-        _e.set(0, Math.random() * Math.PI * 2, 0);
-        _q.setFromEuler(_e);
-        // Ledge moss stays small — the wood base top is only 0.2 m wide and a
-        // wide disc would float in mid-air past its edge.
-        const s = where === 0 ? 0.12 + Math.random() * 0.1 : 0.25 + Math.random() * 0.55;
-        _m.compose(new THREE.Vector3(x, y, z), _q, new THREE.Vector3(s, 1, s));
-        moss.setMatrixAt(i, _m);
-        // Desaturated and dark. The tint multiplies an already-green texture, so a
-        // saturated green here squares up into flat kelly-green plates on the
-        // benches — moss growing in the dark under a bench is nearly black-green,
-        // and only the odd patch by a window is bright.
-        tint.setHSL(0.27 + Math.random() * 0.07, 0.16 + Math.random() * 0.16, 0.16 + Math.random() * 0.12);
-        moss.setColorAt(i, tint);
-    }
-    moss.instanceMatrix.needsUpdate = true;
-    if (moss.instanceColor) moss.instanceColor.needsUpdate = true;
-    moss.frustumCulled = false;
-    scene.add(moss);
-
     // --- Stacked wooden crates in the front corner ---
     const crateMat = makeWoodMaterial({ repeat: [1, 1], roughness: 0.9, color: 0x9a7c58 });
     const crates = [
@@ -4535,29 +4299,28 @@ function buildFlower_Hydrangea() {
 
 function buildFlowerByVariant(variantIdx) {
     const v = ((variantIdx | 0) % NUM_FLOWER_VARIANTS + NUM_FLOWER_VARIANTS) % NUM_FLOWER_VARIANTS;
-    switch (v) {
-        case 0: return buildFlower_Daisy();
-        case 1: return buildFlower_Sunflower();
-        case 2: return buildFlower_Rose();
-        case 3: return buildFlower_Tulip();
-        case 4: return buildFlower_Hydrangea();
+    sharedAssets.flowerPrototypes ||= new Map();
+    if (!sharedAssets.flowerPrototypes.has(v)) {
+        const builders = [buildFlower_Daisy, buildFlower_Sunflower, buildFlower_Rose, buildFlower_Tulip, buildFlower_Hydrangea];
+        const prototype = builders[v]();
+        prototype.traverse(mesh => {
+            if (mesh.geometry) mesh.geometry.userData.shared = true;
+            if (mesh.material) mesh.material.userData.shared = true;
+        });
+        sharedAssets.flowerPrototypes.set(v, prototype);
     }
-    return buildFlower_Daisy();
+    return sharedAssets.flowerPrototypes.get(v).clone(true);
 }
 
-function createLeafGeometry() {
-    if (sharedAssets.leafGeom) return sharedAssets.leafGeom;
-    const geom = new THREE.PlaneGeometry(0.18, 0.22, 6, 8);
-    const pos = geom.attributes.position;
-    for (let i = 0; i < pos.count; i++) {
-        const x = pos.getX(i);
-        const y = pos.getY(i);
-        const z = -Math.pow(x / 0.09, 2) * 0.03 + Math.pow((y + 0.11) / 0.22, 1.5) * 0.022;
-        pos.setZ(i, z);
+function createLeafGeometry(variant = 0) {
+    sharedAssets.leafGeometries ||= new Map();
+    const index = Math.abs(variant | 0) % 3;
+    if (!sharedAssets.leafGeometries.has(index)) {
+        const geometry = createBotanicalLeafGeometry([.152, .16, .168][index], .24, [3, 19, 41][index]);
+        geometry.userData.shared = true;
+        sharedAssets.leafGeometries.set(index, geometry);
     }
-    geom.computeVertexNormals();
-    sharedAssets.leafGeom = geom;
-    return geom;
+    return sharedAssets.leafGeometries.get(index);
 }
 
 // Stem surface: faint vertical fiber streaks so stems read as plant tissue
@@ -4630,51 +4393,17 @@ function buildGreenhouse() {
     createEmptyPotsInstanced();
 
     // Floor
-    const floorGeometry = new THREE.PlaneGeometry(200, 200);
-    const floor = new THREE.Mesh(floorGeometry, getDirtFloorMaterial());
-    floor.rotation.x = -Math.PI / 2;
+    const floorGeometry = createWoodlandGroundGeometry();
+    const floorMaterial = createScannedGroundMaterial(renderer);
+    floorMaterial.vertexColors = true;
+    const floor = new THREE.Mesh(floorGeometry, floorMaterial);
+    floor.name = "Scanned woodland earth";
     floor.receiveShadow = true;
     scene.add(floor);
 
-    // Tables — InstancedMesh for tops + legs across all 20 tables
-    // Grey-brown tint + high roughness ages the hardwood into decades-old,
-    // water-stained potting benches instead of fresh showroom planks.
-    const tableMaterial = makeWoodMaterial({ repeat: [2, 3], roughness: 0.92, color: 0xbdb2a0 });
+    buildPottingBenches(scene, renderer);
     const numTables = 10;
     const tableSpacing = 4;
-    const totalTables = numTables * 2;
-
-    const topGeom = new THREE.BoxGeometry(2, 0.1, 3);
-    const legGeom = new THREE.BoxGeometry(0.1, 1.0, 0.1);
-    const topsMesh = new THREE.InstancedMesh(topGeom, tableMaterial, totalTables);
-    const legsMesh = new THREE.InstancedMesh(legGeom, tableMaterial, totalTables * 4);
-    topsMesh.castShadow = topsMesh.receiveShadow = true;
-    legsMesh.castShadow = legsMesh.receiveShadow = true;
-
-    const _m = new THREE.Matrix4();
-    const _q = new THREE.Quaternion();
-    const _s = new THREE.Vector3(1, 1, 1);
-    const legOffsets = [
-        [-0.9, -1.4], [0.9, -1.4],
-        [-0.9, 1.4], [0.9, 1.4]
-    ];
-    let topIdx = 0;
-    let legIdx = 0;
-    for (let i = 0; i < numTables; i++) {
-        const zPos = -i * tableSpacing;
-        for (const x of [-3, 3]) {
-            _m.compose(new THREE.Vector3(x, 1.0, zPos), _q, _s);
-            topsMesh.setMatrixAt(topIdx++, _m);
-            for (const [lx, lz] of legOffsets) {
-                _m.compose(new THREE.Vector3(x + lx, 0.5, zPos + lz), _q, _s);
-                legsMesh.setMatrixAt(legIdx++, _m);
-            }
-        }
-    }
-    topsMesh.instanceMatrix.needsUpdate = true;
-    legsMesh.instanceMatrix.needsUpdate = true;
-    scene.add(topsMesh);
-    scene.add(legsMesh);
 
     // Greenhouse Structure
     const glassMat = getWallGlassMaterial();
@@ -4683,9 +4412,9 @@ function buildGreenhouse() {
 
     const ghGroup = new THREE.Group();
 
-    const woodMat = makeWoodMaterial({ repeat: [1, 8], roughness: 0.9, color: 0xa98e6d });
+    const woodMat = makeWoodMaterial();
     // Weathered wood for the rafters/trusses — darker, more saturated
-    const rafterMat = makeWoodMaterial({ repeat: [4, 1], roughness: 0.92, color: 0x8a6a48 });
+    const rafterMat = makeWoodMaterial();
 
     // Waist-level Wood Bases
     const baseHeight = 1.2;
@@ -4708,30 +4437,34 @@ function buildGreenhouse() {
     roofShape.zMin = -45;
     roofShape.zMax = -45 + totalLength;
 
-    // Wood Bases
-    const leftBase = new THREE.Mesh(new THREE.BoxGeometry(0.2, baseHeight, totalLength), woodMat);
-    leftBase.position.set(-8, baseHeight / 2, zCenter);
-    ghGroup.add(leftBase);
-
-    const rightBase = new THREE.Mesh(new THREE.BoxGeometry(0.2, baseHeight, totalLength), woodMat);
-    rightBase.position.set(8, baseHeight / 2, zCenter);
-    ghGroup.add(rightBase);
-
-    const frontBase = new THREE.Mesh(new THREE.BoxGeometry(totalWidth, baseHeight, 0.2), woodMat);
-    frontBase.position.set(0, baseHeight / 2, -45);
-    ghGroup.add(frontBase);
-
-    // Back base with a gap for the door
+    // Individual weatherboards carry real joints and physical grain scale.
+    // The old 50 m box stretched one wood image across the entire wall.
     const doorWidth = 2.0;
     const backBaseLeftWidth = (totalWidth - doorWidth) / 2;
-
-    const backBaseLeft = new THREE.Mesh(new THREE.BoxGeometry(backBaseLeftWidth, baseHeight, 0.2), woodMat);
-    backBaseLeft.position.set(-doorWidth / 2 - backBaseLeftWidth / 2, baseHeight / 2, 5);
-    ghGroup.add(backBaseLeft);
-
-    const backBaseRight = new THREE.Mesh(new THREE.BoxGeometry(backBaseLeftWidth, baseHeight, 0.2), woodMat);
-    backBaseRight.position.set(doorWidth / 2 + backBaseLeftWidth / 2, baseHeight / 2, 5);
-    ghGroup.add(backBaseRight);
+    const dadoMat = createScannedWoodMaterial(renderer);
+    function dadoRun(length, x, z, angle = 0) {
+        const run = new THREE.Group();
+        run.position.set(x, 0, z);
+        run.rotation.y = angle;
+        const sections = Math.ceil(length / 2.5), span = length / sections;
+        for (let row = 0; row < 6; row++) for (let col = 0; col < sections; col++) {
+            const g = timberUV(new THREE.BoxGeometry(span - .003, .197, .11), row + col);
+            const plank = new THREE.Mesh(g, dadoMat);
+            plank.position.set(-length / 2 + span * (col + .5), .1 + row * .2, (row % 2) * .002);
+            plank.castShadow = plank.receiveShadow = true;
+            run.add(plank);
+        }
+        const cap = new THREE.Mesh(timberUV(new THREE.BoxGeometry(length, .045, .21)), dadoMat);
+        cap.position.y = 1.19;
+        cap.castShadow = cap.receiveShadow = true;
+        run.add(cap);
+        ghGroup.add(run);
+    }
+    dadoRun(totalLength, -8, zCenter, Math.PI / 2);
+    dadoRun(totalLength, 8, zCenter, Math.PI / 2);
+    dadoRun(totalWidth, 0, -45);
+    dadoRun(backBaseLeftWidth, -doorWidth / 2 - backBaseLeftWidth / 2, 5);
+    dadoRun(backBaseLeftWidth, doorWidth / 2 + backBaseLeftWidth / 2, 5);
 
     // Glass Walls (above the wood base). The panes are slightly thinner than
     // the bases and sunk 3 cm into them: if the glass bottom face sits exactly
@@ -4740,24 +4473,24 @@ function buildGreenhouse() {
     const glassSink = 0.03;
     const glassWallH = wallHeight + glassSink;
     const glassWallY = baseHeight - glassSink + glassWallH / 2;
-    const leftWall = new THREE.Mesh(new THREE.BoxGeometry(0.16, glassWallH, totalLength), glassMat);
+    const leftWall = new THREE.Mesh(new THREE.BoxGeometry(0.008, glassWallH, totalLength), glassMat);
     leftWall.position.set(-8, glassWallY, zCenter);
     ghGroup.add(leftWall);
 
-    const rightWall = new THREE.Mesh(new THREE.BoxGeometry(0.16, glassWallH, totalLength), glassMat);
+    const rightWall = new THREE.Mesh(new THREE.BoxGeometry(0.008, glassWallH, totalLength), glassMat);
     rightWall.position.set(8, glassWallY, zCenter);
     ghGroup.add(rightWall);
 
-    const frontWall = new THREE.Mesh(new THREE.BoxGeometry(totalWidth, glassWallH, 0.16), glassMat);
+    const frontWall = new THREE.Mesh(new THREE.BoxGeometry(totalWidth, glassWallH, 0.008), glassMat);
     frontWall.position.set(0, glassWallY, -45);
     ghGroup.add(frontWall);
 
     // Back Wall Glass (also with a gap for the door)
-    const backWallLeft = new THREE.Mesh(new THREE.BoxGeometry(backBaseLeftWidth, glassWallH, 0.16), glassMat);
+    const backWallLeft = new THREE.Mesh(new THREE.BoxGeometry(backBaseLeftWidth, glassWallH, 0.008), glassMat);
     backWallLeft.position.set(-doorWidth / 2 - backBaseLeftWidth / 2, glassWallY, 5);
     ghGroup.add(backWallLeft);
 
-    const backWallRight = new THREE.Mesh(new THREE.BoxGeometry(backBaseLeftWidth, glassWallH, 0.16), glassMat);
+    const backWallRight = new THREE.Mesh(new THREE.BoxGeometry(backBaseLeftWidth, glassWallH, 0.008), glassMat);
     backWallRight.position.set(doorWidth / 2 + backBaseLeftWidth / 2, glassWallY, 5);
     ghGroup.add(backWallRight);
 
@@ -4776,7 +4509,7 @@ function buildGreenhouse() {
     }
 
     // ---- Steeple (gable) roof: two flat panels meeting at the ridge ----
-    const roofGeomBox = new THREE.BoxGeometry(slopeLength, 0.08, totalLength);
+    const roofGeomBox = new THREE.BoxGeometry(slopeLength, 0.008, totalLength);
 
     const leftRoof = new THREE.Mesh(roofGeomBox, roofGlassMat);
     leftRoof.position.set(-halfWidth / 2, (wallTopY + ridgeY) / 2, zCenter);
@@ -5223,39 +4956,29 @@ function buildGreenhouse() {
     soloFilament.userData.detail = true;
     ghGroup.add(soloBulb, soloFilament);
 
-    // --- Bulb lights ---
-    // A pool of point lights, not one light per fixture. Only the first few cast
-    // shadows, and rather than switching castShadow on and off as you walk — which
-    // changes numPointLightShadows and recompiles every material in the scene —
-    // the pool is *reassigned* to fixtures by distance to the camera. The lamps
-    // are identical, so swapping which position a light occupies is invisible,
-    // and the light and shadow counts never change after startup.
-    //
-    // Point, not spot: the hood is real opaque geometry, so on the lights that
-    // cast shadows it does the aiming physically, the way a reflector actually
-    // does — and the leakage the far un-shadowed ones allow is what puts warm
-    // glints on the rafters and reflections in the panes after dark.
-    lampShadowCount = isTouchDevice ? 3 : 4;
-    for (let i = 0; i < numLamps; i++) {
+    // Hooded lamps are spotlights: one cached shadow view instead of six cube
+    // faces. A fixed eight-light pool follows the camera without shader-count
+    // changes; only two cast shadows. Distant emissive bulbs remain visible.
+    lampShadowCount = 2;
+    for (let i = 0; i < 8; i++) {
         // 2700 K tungsten. Decay 2 is the physical inverse square; with it the
         // pool of light on the bench falls off fast enough that the aisle between
         // two lamps stays genuinely dim.
-        const light = new THREE.PointLight(0xffa957, 0, 9, 2);
+        const light = new THREE.SpotLight(0xffa957, 0, 11, 1.12, 0.72, 2);
+        light.target.position.copy(lampSlots[i].pos).add(new THREE.Vector3(0, -3, 0));
+        ghGroup.add(light.target);
+        light.userData.slot = i;
         light.position.copy(lampSlots[i].pos);
         if (i < lampShadowCount) {
             light.castShadow = true;
             light.shadow.mapSize.set(512, 512);
             light.shadow.camera.near = 0.04;
-            // Short of the light's own 9 m range: at decay 2 anything past 6 m
-            // receives under 3 % of the bulb's output, and this is a *cube* map,
-            // so every metre of far plane is paid for six times over.
-            light.shadow.camera.far = 6;
-            light.shadow.bias = -0.004;
-            light.shadow.normalBias = 0.03;
+            // Match the spotlight's finite range; each shadow is one depth map.
+            light.shadow.camera.far = 11;
+            light.shadow.bias = -0.00006;
+            light.shadow.normalBias = 0.004;
             light.shadow.radius = 3;
-            // Rebuilt only when this light is moved to another fixture — see
-            // assignLampLights. Six faces × four lights every frame is 24 full
-            // scene passes for a picture that never changes.
+            // Rebuild only after fixture reassignment or plant changes.
             light.shadow.autoUpdate = false;
             light.shadow.needsUpdate = true;
         }
@@ -5269,13 +4992,12 @@ function buildGreenhouse() {
     sharedAssets._shaftMat = shaftMat;
     sharedAssets._lampFlickerIndex = FLICKER_LAMP;
 
-    [cordsMesh, socketsMesh, hoodsMesh, bulbsMesh, filamentsMesh, shaftsMesh].forEach(m => {
+    [cordsMesh, socketsMesh, hoodsMesh, bulbsMesh, filamentsMesh].forEach(m => {
         m.instanceMatrix.needsUpdate = true;
         ghGroup.add(m);
     });
 
-    buildLampMotes(lampSlots, bulbY, shaftTopY - shaftHeight, hoodRimR * 0.95, 0.85);
-    buildLampMoths(lampSlots);
+    // Clear air: avoid visible cone shells and glowing particle decorations.
 
     // Selectively set shadow casting/receiving:
     // - Skip detail meshes (mullions, slats, bulbs) and transparent glass — they don't
@@ -5285,10 +5007,12 @@ function buildGreenhouse() {
         if (!obj.isMesh) return;
         const isDetail = obj.userData.detail === true;
         const isGlass = obj.material === glassMat || obj.material === roofGlassMat;
+        if (obj.material === woodMat || obj.material === rafterMat) timberUV(obj.geometry);
         obj.castShadow = !isDetail && !isGlass;
         obj.receiveShadow = !isDetail;
     });
 
+    mergeStaticArchitecture(ghGroup);
     scene.add(ghGroup);
 }
 
@@ -5481,10 +5205,25 @@ function assignLampLights(now) {
     const cam = camera.position;
     _lampOrder.sort((a, b) =>
         lampSlots[a].pos.distanceToSquared(cam) - lampSlots[b].pos.distanceToSquared(cam));
+    // Reserve the nearest fixtures for shadow casters. Retain assignments within
+    // each pool so swapping the nearest two's order does not redraw their maps.
+    const shadowCount = bulbLights.filter(light => light.castShadow).length;
+    const desired = [
+        new Set(_lampOrder.slice(0, shadowCount)),
+        new Set(_lampOrder.slice(shadowCount, bulbLights.length))
+    ];
+    const available = desired.map((slots, pool) => {
+        const retained = new Set(bulbLights
+            .filter(light => (light.castShadow ? 0 : 1) === pool && slots.has(light.userData.slot))
+            .map(light => light.userData.slot));
+        return [...slots].filter(slot => !retained.has(slot));
+    });
     lampState.flickerLight = -1;
     for (let i = 0; i < bulbLights.length; i++) {
         const light = bulbLights[i];
-        const slot = lampSlots[_lampOrder[i]];
+        const pool = light.castShadow ? 0 : 1;
+        if (!desired[pool].has(light.userData.slot)) light.userData.slot = available[pool].shift();
+        const slot = lampSlots[light.userData.slot];
         // Only the lights that cast shadows care about having moved, and only if
         // they actually did — walking a few metres usually leaves the nearest four
         // fixtures the same four, and re-rendering six cube faces for a light that
@@ -5493,6 +5232,8 @@ function assignLampLights(now) {
             light.shadow.needsUpdate = true;
         }
         light.position.copy(slot.pos);
+        light.target.position.copy(slot.pos);
+        light.target.position.y -= 3;
         if (slot.flicker) lampState.flickerLight = i;
     }
 }
@@ -5511,7 +5252,7 @@ function invalidateShadows() {
 // at one metre — the bench sits 1.5 m under the bulb and gets about half of it.
 const LAMP_PEAK = 7.5;
 const _lampColor = new THREE.Color();
-const _lampWarm = new THREE.Color(0xffa957); // 2700 K
+const _lampWarm = new THREE.Color(0xffd5ad); // warm-white horticultural fixtures
 
 // Filament ramp. A cold tungsten bulb does not snap on: it glows dull red, then
 // climbs to colour over a couple of seconds. `level` chases the switch state and
@@ -5541,8 +5282,8 @@ function updateLamps(now, delta) {
 
     for (let i = 0; i < bulbLights.length; i++) {
         const light = bulbLights[i];
-        light.visible = lit;
-        if (!lit) continue;
+        light.visible = true;
+        if (!lit) { light.intensity = 0; continue; }
         const f = i === lampState.flickerLight ? lampState.flicker : 1;
         light.intensity = LAMP_PEAK * glow * f;
         light.color.copy(_lampColor);
@@ -5564,7 +5305,7 @@ function updateLamps(now, delta) {
     // enough to soften what is behind the beam, translucent enough to still be
     // lit air rather than a cone-shaped object.
     if (sharedAssets._shaftMat) {
-        sharedAssets._shaftMat.uniforms.uIntensity.value = glow * 0.28;
+        sharedAssets._shaftMat.uniforms.uIntensity.value = glow * 0.035;
         sharedAssets._shaftMat.uniforms.uFlicker.value = lampState.flicker;
     }
     for (const mesh of shaftMeshes) mesh.visible = lit;
@@ -5673,35 +5414,54 @@ function buildPotJitter(count) {
 // instanceColor, which keeps a planted pot the same colour as the empty one it
 // replaced.
 function getPotVariantColors() {
-    if (sharedAssets.potTints) return sharedAssets.potTints;
-    const tints = [];
-    for (let i = 0; i < POT_HUE_VARIANTS; i++) {
-        const c = new THREE.Color();
-        // Warm orange through dusty pink to pale buff, at varied value. These
-        // multiply an already strongly orange clay texture, so the spread has to
-        // be wider than it looks here to be legible on the bench at all.
-        c.setHSL(0.05 + (i / POT_HUE_VARIANTS) * 0.045, 0.34 - i * 0.055, 0.44 + i * 0.07);
-        tints.push(c);
-    }
-    sharedAssets.potTints = tints;
-    return tints;
+    // The captured clay is already calibrated; avoid multiplying it into brown.
+    if (!sharedAssets.potTints) sharedAssets.potTints =
+        Array.from({ length: POT_HUE_VARIANTS }, () => new THREE.Color(0xffffff));
+    return sharedAssets.potTints;
 }
 
-function getPotVariantMaterial(hue) {
-    if (!sharedAssets.potVariants) {
-        const base = getPotMaterial();
-        sharedAssets.potVariants = getPotVariantColors().map(c => {
-            const m = base.clone();   // shares the textures, not the uniforms
-            m.color.copy(c);
-            return m;
-        });
+function getPotVariantMaterial() {
+    // Share the asynchronously populated material; cloning before it loads loses maps.
+    return getPotMaterial();
+}
+
+// Planar soil UVs prevent the texture from winding into rings at a sphere's pole.
+function makeSoilGeometry() {
+    const pos = [0, 0.065, 0], uv = [0.5, 0.5], indices = [];
+    const steps = 32, rings = 4;
+    for (let ring = 1; ring <= rings; ring++) for (let j = 0; j < steps; j++) {
+        const t = ring / rings, a = j / steps * Math.PI * 2;
+        const x = Math.cos(a) * t, z = Math.sin(a) * t;
+        pos.push(x * .142, .065 - t * t * .033 + Math.sin(a * 7) * .002 * t, z * .142);
+        uv.push(x * .5 + .5, z * .5 + .5);
+        const current = 1 + (ring - 1) * steps + j, next = 1 + (ring - 1) * steps + (j + 1) % steps;
+        if (ring === 1) indices.push(0, next, current);
+        else {
+            indices.push(current - steps, next - steps, next, current - steps, next, current);
+        }
     }
-    return sharedAssets.potVariants[hue % POT_HUE_VARIANTS];
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+    geometry.setIndex(indices);
+    geometry.computeVertexNormals();
+    return geometry;
+}
+
+function sharedGeometry(key, create) {
+    sharedAssets.geometryCache ||= new Map();
+    if (!sharedAssets.geometryCache.has(key)) {
+        const geometry = create();
+        geometry.userData.shared = true;
+        sharedAssets.geometryCache.set(key, geometry);
+    }
+    return sharedAssets.geometryCache.get(key);
 }
 
 function buildPotMeshes(group, jitter) {
     const potMat = jitter ? getPotVariantMaterial(jitter.hue) : getPotMaterial();
     const soilMat = getSoilMaterial();
+    potMat.userData.shared = soilMat.userData.shared = true;
 
     // Sub-group so the pot can be scaled and turned without touching the plant
     // growing out of it. gatherIntersectables looks inside groups flagged this way
@@ -5715,7 +5475,7 @@ function buildPotMeshes(group, jitter) {
     group.add(pot);
 
     const body = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.155, 0.105, 0.2, 28, 1),
+        sharedGeometry('pot-body', () => new THREE.CylinderGeometry(0.155, 0.105, 0.2, 32, 1, true)),
         potMat
     );
     body.position.y = 0.1;
@@ -5724,7 +5484,7 @@ function buildPotMeshes(group, jitter) {
     pot.add(body);
 
     const rim = new THREE.Mesh(
-        new THREE.TorusGeometry(0.155, 0.012, 8, 28),
+        sharedGeometry('pot-rim', () => new THREE.TorusGeometry(0.155, 0.012, 8, 32)),
         potMat
     );
     rim.rotation.x = Math.PI / 2;
@@ -5735,7 +5495,7 @@ function buildPotMeshes(group, jitter) {
 
     // Soil mound (slightly domed)
     const soil = new THREE.Mesh(
-        new THREE.SphereGeometry(0.142, 18, 12, 0, Math.PI * 2, 0, Math.PI / 2.5),
+        sharedGeometry('pot-soil', makeSoilGeometry),
         soilMat
     );
     soil.position.y = 0.18;
@@ -5753,9 +5513,9 @@ function createEmptyPotsInstanced() {
     const tints = getPotVariantColors();
 
     // Lower-poly geometries for the instanced empty pots — they're seen at distance
-    const bodyGeom = new THREE.CylinderGeometry(0.155, 0.105, 0.2, 18, 1);
-    const rimGeom = new THREE.TorusGeometry(0.155, 0.012, 6, 18);
-    const soilGeom = new THREE.SphereGeometry(0.142, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2.5);
+    const bodyGeom = sharedGeometry('pot-body', () => new THREE.CylinderGeometry(0.155, 0.105, 0.2, 32, 1, true));
+    const rimGeom = sharedGeometry('pot-rim', () => new THREE.TorusGeometry(0.155, 0.012, 8, 32));
+    const soilGeom = sharedGeometry('pot-soil', makeSoilGeometry);
 
     const bodies = new THREE.InstancedMesh(bodyGeom, potMat, count);
     const rims = new THREE.InstancedMesh(rimGeom, potMat, count);
@@ -5940,8 +5700,7 @@ function createPlant(todoData, isLoad = false) {
     if (todoData.completed) {
         // Short thin stem — flower is the star, not the stalk.
         const stemHeight = 0.18;
-        const stemGeom = new THREE.CylinderGeometry(0.011, 0.017, stemHeight, 10);
-        stemGeom.translate(0, stemHeight / 2, 0);
+        const stemGeom = sharedGeometry('flower-stem', () => new THREE.CylinderGeometry(0.006, 0.009, stemHeight, 10).translate(0, stemHeight / 2, 0));
         const plantMat = makeStemMaterial();
         const stem = new THREE.Mesh(stemGeom, plantMat);
         stem.position.y = soilY;
@@ -5967,51 +5726,47 @@ function createPlant(todoData, isLoad = false) {
         stem.rotation.z = (Math.random() - 0.5) * 0.12;
     } else {
         // Shorter thinner stem for growing plants too.
-        const stemHeight = 0.22;
-        const stemGeom = new THREE.CylinderGeometry(0.011, 0.018, stemHeight, 10);
-        stemGeom.translate(0, stemHeight / 2, 0);
+        const stemHeight = 0.35;
+        const stemGeom = sharedGeometry('growing-stem', () => new THREE.CylinderGeometry(0.0045, 0.0085, stemHeight, 10).translate(0, stemHeight / 2, 0));
         const plantMat = makeStemMaterial();
         const stem = new THREE.Mesh(stemGeom, plantMat);
         stem.position.y = soilY; // Start at dirt level
         stem.castShadow = true;
         stem.name = "stem";
+        stem.userData.healthyLean = (slotRandom(positionIndex, 71) - .5) * .11;
+        stem.rotation.z = (slotRandom(positionIndex, 72) - .5) * .10;
         plantGroup.add(stem);
 
-        // 4. Leaves — multiple curved planes at varied angles for fullness
-        if (!sharedLeafMat) sharedLeafMat = createLeafMaterial();
-        const perPlantLeafMat = sharedLeafMat.clone(); // clone so we can color independently
-        const leafGeom = createLeafGeometry();
-
-        // Leaf positions rescaled to fit the shorter stem; sizes nudged down slightly.
-        // Seven leaves in a loose spiral with varied droop and size — a fuller,
-        // less geometric rosette than the old five-leaf cup.
-        const leafConfigs = [
-            { y: 0.055, ry: 0.3,            rz: -Math.PI / 2.7, scale: 0.98 },
-            { y: 0.08,  ry: Math.PI / 2.2,  rz: -Math.PI / 3.0, scale: 0.9 },
-            { y: 0.105, ry: Math.PI * 1.05, rz:  Math.PI / 3.4, scale: 0.94 },
-            { y: 0.135, ry: Math.PI / 3.6,  rz:  Math.PI / 2.9, scale: 0.86 },
-            { y: 0.16,  ry: Math.PI * 0.78, rz: -Math.PI / 3.6, scale: 0.8 },
-            { y: 0.185, ry: Math.PI * 1.55, rz: -Math.PI / 4.2, scale: 0.72 },
-            { y: 0.205, ry: Math.PI * 0.42, rz:  Math.PI / 4.0, scale: 0.62 }
-        ];
-
-        leafConfigs.forEach((cfg, i) => {
+        // Opposite leaf pairs on a living stem, attached through fine petioles.
+        if (!sharedLeafMat) sharedLeafMat = createBotanicalLeafMaterial();
+        const perPlantLeafMat = sharedLeafMat.clone();
+        const leafGeom = createLeafGeometry(positionIndex);
+        const petioleGeom = sharedGeometry('leaf-petiole', () =>
+            new THREE.CylinderGeometry(.0013, .0021, .035, 6).translate(0, .0175, 0));
+        const plantTurn = slotRandom(positionIndex, 82) * Math.PI * 2;
+        for (let node = 0; node < 7; node++) for (let side = 0; side < 2; side++) {
+            const i = node * 2 + side;
+            const ry = plantTurn + node * 1.48 + side * Math.PI
+                + (slotRandom(positionIndex, 90 + i) - .5) * .34;
+            const rz = -1.03 + node * .075 + (slotRandom(positionIndex, 110 + i) - .5) * .18;
+            const scale = (.73 - node * .055) * (.88 + slotRandom(positionIndex, 140 + i) * .23);
+            const branch = new THREE.Group();
+            branch.position.y = .055 + node * .044 + (slotRandom(positionIndex, 170 + i) - .5) * .014;
+            branch.rotation.set(.18, ry, rz);
+            branch.scale.setScalar(scale);
+            branch.userData.wilt = { baseRz: rz, baseScale: scale, idx: node,
+                attachmentY: branch.position.y, petiole: true };
+            const petiole = new THREE.Mesh(petioleGeom, plantMat);
+            petiole.castShadow = petiole.receiveShadow = true;
+            branch.add(petiole);
             const leaf = new THREE.Mesh(leafGeom, perPlantLeafMat);
-            // Per-plant jitter so the rosette isn't a clone of its neighbors
-            const ry = cfg.ry + (Math.random() - 0.5) * 0.7;
-            const rz = cfg.rz + (Math.random() - 0.5) * 0.18;
-            const scale = cfg.scale * 0.9 * (0.88 + Math.random() * 0.24);
-            leaf.position.set(0, cfg.y, 0);
-            leaf.rotation.set(0, ry, rz);
-            leaf.scale.setScalar(scale);
-            // Shadow casting disabled — alpha-tested shadows are expensive and
-            // leaves are too small to read clearly in shadow anyway.
-            leaf.name = i === 0 ? "leaf1" : (i === 1 ? "leaf2" : `leaf${i + 1}`);
-            // Base transform + index, so updatePlantVisual can droop/curl/drop
-            // each leaf individually as the plant withers.
-            leaf.userData.wilt = { baseRz: rz, baseScale: scale, idx: i };
-            stem.add(leaf);
-        });
+            leaf.position.y = .035 + .12;
+            leaf.rotation.y = (slotRandom(positionIndex, 200 + i) - .5) * .38;
+            leaf.name = i === 0 ? "leaf1" : `leaf${i + 1}`;
+            leaf.castShadow = leaf.receiveShadow = true;
+            branch.add(leaf);
+            stem.add(branch);
+        }
 
         // Two dead leaves lying on the soil — hidden while healthy, revealed as
         // the plant sheds foliage at low health.
@@ -6037,6 +5792,8 @@ function createPlant(todoData, isLoad = false) {
     if (!todoData.completed) {
         updatePlantVisual(todoData);
     }
+
+    plantBatchesDirty = true;
 
     // A new shadow caster on the bench — the on-demand shadow maps need to know.
     invalidateShadows();
@@ -6492,7 +6249,9 @@ const _moonDir = new THREE.Vector3();
 // that time — so this rides along with updateSunAndLighting.
 function placeNightSky(date, nightness) {
     if (!nightSky) return;
-    nightSky.visible = nightness > 0.01;
+    // The photographed canopy has no depth mask. Drawing procedural stars or
+    // an enlarged moon in front of it puts bright points on opaque tree trunks.
+    nightSky.visible = !woodlandMap && nightness > 0.01;
     if (!nightSky.visible) return;
 
     starField.material.uniforms.uNight.value = nightness;
@@ -6574,7 +6333,7 @@ function updateSunAndLighting() {
     // Prune the sun entirely after dark. Left visible it costs a full 2048²
     // shadow-map render per frame for a light contributing nothing, and it would
     // be a second directional shadow alongside the moon's.
-    sunLight.visible = dayness > 0.004;
+    sunLight.visible = true;
     // Sunlight reddens as it goes through more atmosphere. This is the
     // difference between "the sun got dimmer" and sunset.
     sunLight.color.setHex(0xfff0d6).lerp(new THREE.Color(0xff9d52), twilight * 0.85);
@@ -6595,10 +6354,10 @@ function updateSunAndLighting() {
         // tree line and the far end of the house stay readable after dark, and
         // that a full moon throws a faint pattern of frame shadows on the floor.
         moonLight.intensity = 1.15 * moonStrength;
-        moonLight.visible = moonStrength > 0.01;
+        moonLight.visible = true;
         // Shadows only from a moon bright enough to actually throw one. Below
         // that it is a 1024² map rendered for a shadow nobody can see.
-        moonLight.castShadow = moonStrength > 0.22;
+        moonLight.castShadow = true;
         if (moonLight.visible) {
             moonLight.position.set(
                 Math.sin(moon.azimuth) * Math.cos(moon.altitude),
@@ -6608,21 +6367,16 @@ function updateSunAndLighting() {
         }
     }
 
-    // Ambient. At night this goes almost to nothing — moonlight and the lamp row
-    // are the only real sources, which is what gives the room its shape after
-    // dark. A generous hemisphere here reads as a grey wash over everything.
-    skyFill.intensity = 0.3 * dayness + 0.035 * nightness;
-    skyFill.color.setHex(0xb6dbff).lerp(new THREE.Color(0x4c6088), nightness);
-    skyFill.groundColor.setHex(0x4a3a2a).lerp(new THREE.Color(0x0b0f14), nightness);
+    // A restrained approximation of light bouncing through the room keeps
+    // nighttime timber readable instead of crushing every unlit face to black.
+    skyFill.intensity = 0.3 * dayness + 0.32 * nightness;
+    skyFill.color.setHex(0xb6dbff).lerp(new THREE.Color(0xaeb9c9), nightness);
+    skyFill.groundColor.setHex(0x4a3a2a).lerp(new THREE.Color(0x554431), nightness);
     // Warm bounce — light kicked off the wood and floor. At night this is a
     // stand-in for the lamp row's own bounce, so it follows the filament level
     // rather than nightness, and stays low: the lamps light the room, not this.
-    warmFill.intensity = 0.6 * dayness + 0.22 * nightness * lampState.level;
+    warmFill.intensity = 0.6 * dayness + 2.4 * nightness * lampState.level;
 
-    // Global IBL multiplier. scene.environmentIntensity only landed in three
-    // r163, so on the r160 build this page pins it does nothing — the way to dim
-    // the IBL here is to dim what it is generated from, a few lines below.
-    scene.environmentIntensity = 0.03 + 0.97 * dayness;
 
     // Renderer exposure dips at night, but not as far as it used to. Raising the
     // hemisphere and IBL floors alone barely moved the room — 3x on skyFill was
@@ -6633,7 +6387,7 @@ function updateSunAndLighting() {
     // Ambient is near-black now, so exposure has to come up further than before
     // to keep the room navigable — ACES rolls the highlights off, so the lamp
     // pools do not blow out as it does.
-    renderer.toneMappingExposure = 1.02 * dayness + 0.95 * nightness;
+    renderer.toneMappingExposure = 1.02 * dayness + 1.35 * nightness;
 
     // Atmosphere. Rayleigh is what makes the sky blue, so it goes *up* through
     // twilight rather than straight down — that is the blue hour, a deep
@@ -6644,7 +6398,12 @@ function updateSunAndLighting() {
     // moon take over from it, so the roof is not a black void.
     sky.material.uniforms.rayleigh.value = 1.4 * dayness + 2.6 * twilight * (0.35 + 0.65 * dayness);
     sky.material.uniforms.turbidity.value = 6 * dayness + 5 * twilight + 0.6 * nightness;
-    sky.visible = dayness > 0.02;
+    sky.visible = !woodlandMap && dayness > 0.02;
+    if (woodlandMap) {
+        scene.background = woodlandMap;
+        scene.backgroundIntensity = 0.72 * dayness + 0.006 * nightness;
+        scene.backgroundBlurriness = 0;
+    }
     placeNightSky(now, nightness);
 
     // --- Lamp switch, with hysteresis ---
@@ -6660,7 +6419,11 @@ function updateSunAndLighting() {
     // turbidity above already darkens the sky dome; the ground plane is a flat
     // colour, so it has to be dimmed by hand or it keeps up-lighting every
     // surface with daytime mossy green long after dark.
-    if (pmremGen && envSky) {
+    if (woodlandEnvRT && dayness > 0.15) {
+        // The photographed environment is static. Rebuilding an unused analytic
+        // PMREM every solar tick introduces GPU work without changing a pixel.
+        scene.environment = woodlandEnvRT.texture;
+    } else if (pmremGen && envSky) {
         envSky.material.uniforms.sunPosition.value.copy(dir);
         envSky.material.uniforms.rayleigh.value = sky.material.uniforms.rayleigh.value;
         envSky.material.uniforms.turbidity.value = sky.material.uniforms.turbidity.value;
@@ -6672,7 +6435,7 @@ function updateSunAndLighting() {
         if (envGroundMat) envGroundMat.color.setHex(0x1a2018).multiplyScalar(0.28 + 0.72 * dayness);
         const old = envRT;
         envRT = pmremGen.fromScene(envScene, 0.04);
-        scene.environment = envRT.texture;
+        scene.environment = woodlandEnvRT && dayness > 0.15 ? woodlandEnvRT.texture : envRT.texture;
         if (old) old.dispose();
     }
 
@@ -6692,19 +6455,9 @@ function updateSunAndLighting() {
         // the one time the sky above the roof is worth looking at, and heavy green
         // horticultural glass turns a deep blue sky into flat teal.
         mat.color.copy(mat.userData.dayTint).lerp(_WHITE, nightness * 0.22 + twilight * 0.34);
-        mat.transmission = THREE.MathUtils.lerp(
-            mat.userData.dayTransmission, mat.userData.nightTransmission, nightness);
-        // Reflections of the lamp row in the panes. Two things make them appear:
-        // the panes get smoother (a rough pane scatters a bulb into nothing), and
-        // clearcoat adds a second, sharper specular lobe on top of the glass's
-        // own — which is what turns a soft sheen into a distinct bright bulb
-        // sitting in the glass. Both are dialled by nightness so daytime keeps
-        // the diffusing horticultural look.
+        // Thin glazing uses angle-dependent reflectance, no transmission target.
         mat.roughness = THREE.MathUtils.lerp(
             mat.userData.dayRoughness, mat.userData.nightRoughness, nightness);
-        mat.clearcoat = 0.08 + 0.42 * nightness;
-        mat.clearcoatRoughness = 0.22 - 0.14 * nightness;
-        mat.specularIntensity = 1 + 0.5 * nightness;
     }
 
     // Humid haze. Densest through twilight — cool air over a warm wet floor is
@@ -7013,7 +6766,6 @@ function buildAttentionHalos() {
 const _attnPos = new THREE.Vector3();
 
 function updateAttention(now, delta) {
-    if (!attentionPool.length) return;
 
     // Rank the active to-dos by how much they need attention. Cheap enough at
     // this scale to do every second; there are at most 120 of them.
@@ -7178,11 +6930,11 @@ function disposeHierarchy(node) {
         }
     }
 
-    if (node.geometry) {
+    if (node.geometry && !node.geometry.userData.shared) {
         node.geometry.dispose();
     }
 
-    if (node.material) {
+    if (node.material && !node.material.userData?.shared) {
         if (Array.isArray(node.material)) {
             node.material.forEach(mat => mat.dispose());
         } else {
@@ -7253,6 +7005,8 @@ function animate() {
     requestAnimationFrame(animate);
 
     const time = performance.now();
+    frameMetrics.frameMs = time - prevTime;
+    renderer.info.reset();
     // Clamp so a backgrounded tab doesn't produce a giant catch-up step
     const delta = Math.min(0.1, (time - prevTime) / 1000);
 
@@ -7292,7 +7046,9 @@ function animate() {
         if (pos.z < -44.5) pos.z = -44.5;
         if (pos.z > 4.5) pos.z = 4.5;
 
-        // Hover raycasting
+        // 20 Hz hover probing; clicks always raycast immediately.
+        if (time - lastHoverUpdate >= 50) {
+        lastHoverUpdate = time;
         raycaster.setFromCamera(mouse, camera);
         const intersects = raycaster.intersectObjects(gatherIntersectables(), false);
         const hit = classifyHit(intersects[0]);
@@ -7312,15 +7068,20 @@ function animate() {
         } else {
             hoverTooltip.style.display = 'none';
         }
+        }
     } else {
         hoverTooltip.style.display = 'none';
     }
 
+    const afterInput = performance.now();
     // Update plant decay
-    updateDecay();
+    if (time - lastDecayUpdate >= 1000) {
+        lastDecayUpdate = time;
+        updateDecay();
+    }
 
     // Refresh sun position every 30s — slow real-time motion
-    if (time - lastSunUpdate > 30000) {
+    if (!sunClockOverride && time - lastSunUpdate > 120000) {
         lastSunUpdate = time;
         updateSunAndLighting();
     }
@@ -7334,6 +7095,10 @@ function animate() {
     // idleness, the other reads screen-space position every frame.
     updatePlantHint(time, delta);
     updateAttention(time, delta);
+
+    if (plantBatchesDirty) { plantBatches.rebuild(objects); plantBatchesDirty = false; }
+    for (const entry of attentionRanked) plantBatches?.sync(entry.todo.mesh);
+    botanicalEnvironment?.update?.(time / 1000);
 
     // Atmosphere — wind sway (GPU-side, just a uniform write) + glowing eyes state
     updateTreeWind(time);
@@ -7352,12 +7117,28 @@ function animate() {
 
     prevTime = time;
 
+    const beforeRender = performance.now();
+    frameProfiler.begin();
+    const afterGpuQuery = performance.now();
     if (composer) {
         composer.render();
     } else {
         renderer.render(scene, camera);
     }
+    frameProfiler.end();
 
+    frameMetrics.cpuMs = performance.now() - time;
+    frameMetrics.calls = renderer.info.render.calls;
+    frameMetrics.triangles = renderer.info.render.triangles;
+    frameMetrics.pixelRatio = renderer.getPixelRatio();
+    frameMetrics.gpuMs = frameProfiler.gpuMs;
+    if (benchmarkMode && frameMetrics.cpuMs > 20) {
+        slowFrames.push({ at: time, cpuMs: frameMetrics.cpuMs, inputMs: afterInput - time,
+            updateMs: beforeRender - afterInput, queryMs: afterGpuQuery - beforeRender,
+            renderMs: performance.now() - afterGpuQuery, calls: frameMetrics.calls,
+            programs: renderer.info.programs.length, camera: camera.position.toArray() });
+        if (slowFrames.length > 30) slowFrames.shift();
+    }
     if (stats) stats.update();
     updateDiagPanel(time);
 }
@@ -7477,8 +7258,8 @@ function updatePlantVisual(todo) {
 
     // Two-stop color lerp: vibrant green -> mustard yellow -> dry brown.
     // More lifelike wilt than the previous green-to-brown linear lerp.
-    const greenC = new THREE.Color(0x2ecc71);
-    const yellowC = new THREE.Color(0xb89020);
+    const greenC = new THREE.Color(0x819456);
+    const yellowC = new THREE.Color(0x9a8443);
     const brownC = new THREE.Color(0x5a3a20);
     const color = r > 0.5
         ? greenC.clone().lerp(yellowC, (1 - r) * 2)
@@ -7493,9 +7274,10 @@ function updatePlantVisual(todo) {
     const growth = growthScaleFor(todo);
 
     // Droop stronger as health drops (max ~80° bend at zero health).
-    stem.rotation.x = (1 - r) * (Math.PI / 2.2);
-    // Stem shrinks vertically as it dies; leaves squash with it.
-    stem.scale.set(growth, growth * (0.55 + r * 0.45), growth);
+    stem.rotation.x = (stem.userData.healthyLean || 0) + (1 - r) * (Math.PI / 2.2);
+    // Uniform parent scale preserves correct instanced normals under leaf rotation.
+    // Wither bends the stem and curls individual blades instead of shearing them.
+    stem.scale.setScalar(growth * (0.78 + r * 0.22));
 
     // Per-leaf wither: each leaf droops, curls inward, and eventually detaches.
     // Higher leaves (later idx) drop first, like a real dying plant.
@@ -7511,8 +7293,12 @@ function updatePlantVisual(todo) {
         child.scale.set(
             w.baseScale * (1 - 0.4 * wiltAmount),
             w.baseScale * (1 - 0.2 * wiltAmount),
-            w.baseScale
+            w.baseScale * (1 - 0.4 * wiltAmount)
         );
+        if (w.petiole) child.scale.setScalar(w.baseScale * (1 - .3 * wiltAmount));
+        child.position.set(0, w.attachmentY, 0);
+        if (!w.petiole) child.position.add(
+            new THREE.Vector3(0, 0.12 * child.scale.y, 0).applyEuler(child.rotation));
         child.visible = r > dropThresholds[w.idx] || w.idx < 2;
     }
 
@@ -7521,6 +7307,12 @@ function updatePlantVisual(todo) {
     const fallen2 = todo.mesh.getObjectByName("fallenLeaf2");
     if (fallen1) fallen1.visible = r < 0.45;
     if (fallen2) fallen2.visible = r < 0.25;
+    plantBatches?.sync(todo.mesh);
+    const shadow = todo.mesh.userData.shadowState;
+    if (!shadow || Math.abs(shadow.health - todo.health) >= 2 || Math.abs(shadow.growth - growth) >= .015) {
+        todo.mesh.userData.shadowState = { health: todo.health, growth };
+        invalidateShadows();
+    }
 }
 
 // Console-accessible debug helpers (UI buttons were removed from the pause overlay):
@@ -7544,6 +7336,7 @@ window.greenhouseDev = {
         }));
     },
     clearSave() {
+        if (benchmarkMode) { location.reload(); return; }
         localStorage.removeItem(STORAGE_KEY);
         location.reload();
     }
@@ -7860,6 +7653,7 @@ function resetMovement() {
 }
 
 function startExploring() {
+    if (!renderingReady && !benchmarkMode) return;
     // Every route into the greenhouse is a user gesture, which is exactly when
     // the browser will allow an AudioContext to start.
     greenhouseAudio.init();
@@ -7889,7 +7683,10 @@ function attemptLock() {
         resumeUntil = 0;
         // Gave up. Show the pause overlay rather than leaving the player unlocked
         // with nothing to click.
-        if (!controls.isLocked) uiContainer.style.display = 'flex';
+        if (!controls.isLocked) {
+            blocker.style.display = 'none';
+            uiContainer.style.display = 'flex';
+        }
         return;
     }
     // Wait out Chrome's post-Escape cooldown instead of asking and being refused;

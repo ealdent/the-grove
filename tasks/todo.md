@@ -1,3 +1,33 @@
+# Greenhouse realism and frame budget — 2026-09-11
+
+Goal: physically plausible greenhouse materials and solid botanical geometry; target at least 60 fps with all 120 task slots filled during rapid traversal. Project: The Grove / Moon Dog Atlas personal work. Scope: `greenhouse-todo/` only. Preserve to-do persistence, growth, completion, audio, controls, and solar clock. Existing unrelated tower-defense artifact is untouched.
+
+- [x] Inspect current source, lessons, and actual daylight rendering on the Apple M5 Pro.
+- [x] Research primary PBR/color-management/instancing documentation and CC0 scanned surfaces.
+- [x] Replace painted vegetation cards with curved, modeled leaves, stems, and branches.
+- [x] Use scanned albedo/normal/roughness surfaces at physical scale; rebuild bench joinery and refine glass/pots.
+- [x] Reduce redundant transparency passes, shadow work, scene traversal, and per-plant draw calls.
+- [x] Add an isolated, reproducible 120-plant benchmark with fast movement, native frame timings, and GPU/viewport metadata.
+- [x] Verify daylight, dusk, night, closeups, saved-task flows, console/network, and heavy-load frame percentiles.
+- [x] Skeptical review, fix findings, and record measured results and remaining limits.
+
+Plan check-in: user explicitly requested both development and implementation; proceed autonomously. A 60 fps claim must identify the measured device, resolution, scenario, worst rolling second, and frame-time tail. No global hardware guarantee and no claiming video-level realism from code alone.
+
+Research/design details and proof will live in `greenhouse-todo/REALISM.md`.
+
+
+## Review and remaining acceptance
+
+- Implemented photographed wood/earth/clay/leaf surfaces, closed foliage geometry, three leaf forms, modeled bench joinery, restrained glazing, rolling exterior ground, and clear air. Removed illustrated dialog vines and decorative scene cards/effects from the active build.
+- Reduced task draws with spatial batches, merged architecture, half-resolution AO, DPR 1, eight nearby spots/two cached shadow maps, asynchronous GPU timings and explicit asset/shader/GPU preparation. Growth/wilt changes invalidate cached shadows.
+- Independent review corrected light assignment, disjoint-query cleanup, empty-scene shadows, debug-cue synchronization, and apron/end-face UVs. Final botanical refinement keeps stable task identity and health behavior.
+- Proof: 24 Node tests plus the existing Jest storage-quota regression pass. Real-browser task creation/status/completion and reload persistence pass on an isolated origin; touch joystick/look/pause and responsive forms pass. Screenshots and raw performance results are in `greenhouse-todo/proof/`; detailed interpretation is in `greenhouse-todo/REALISM.md`.
+- [ ] Establish the strict 60 fps minimum under an agreed, controlled host workload and physically test desktop rapid movement/aiming. Passing bounded runs coexist with retained earlier CPU stalls up to 717.5 ms; other Unity QA workloads were active and left untouched.
+- [ ] Obtain visual acceptance against the requested real-video standard. Surface quality improved substantially, but procedural forms, repeated detail and approximate lighting remain distinguishable from a real capture.
+- Not verified: physical desktop mouse/keyboard playtest, fresh listening, mobile hardware FPS, cross-GPU behavior, deployment. No unrelated artifact was edited, and no commit/push/deployment was performed.
+
+---
+
 # CHRONOSTRATA: THE PETRIFIED ORRERY — gemini-3.8-flash-high pure SVG 3D exploration game
 
 ## Concept & Creative Brief
