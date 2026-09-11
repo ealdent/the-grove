@@ -189,6 +189,28 @@ h1 {
 }
 .btn.ghost { background: transparent; color: var(--ink); }
 
+/* ---------- pixie picker ---------- */
+.pixies { display: flex; gap: 8px; margin-top: 14px; flex-wrap: wrap; }
+.pixies button {
+  width: 46px; height: 46px; padding: 0; border-radius: 50%; cursor: pointer; overflow: hidden;
+  border: 2px solid var(--line); background: color-mix(in srgb, var(--sky-b) 45%, var(--paper));
+  transition: transform .15s ease, border-color .15s ease, box-shadow .15s ease;
+}
+.pixies button svg { width: 100%; height: 100%; display: block; }
+.pixies button:hover { transform: translateY(-2px); border-color: var(--accent); }
+.pixies button[aria-checked="true"] { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 25%, transparent); }
+.pixie-blurb { margin: 10px 0 0; font-size: 13px; color: var(--muted); line-height: 1.45; text-wrap: pretty; }
+.pixie-blurb b { color: var(--ink); font-weight: 600; }
+.pixie-blurb span { display: block; margin-top: 3px; }
+
+/* ---------- gallery mode ---------- */
+.gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 14px; }
+.gallery figure { margin: 0; background: var(--paper); border: 1px solid var(--line); border-radius: 16px; padding: 8px; color: var(--ink); }
+.gallery .scene { border-radius: 10px; }
+.gallery figcaption { font-size: 12px; margin-top: 6px; line-height: 1.35; }
+.gallery figcaption span { display: block; color: var(--muted); font-size: 11px; margin-top: 2px; }
+.gallery-mode .masthead .finder, .gallery-mode .masthead .units, .gallery-mode .dressup { display: none; }
+
 /* ---------- footer ---------- */
 .foot {
   margin-top: 24px; font-size: 13px; color: var(--page-muted);
@@ -252,6 +274,8 @@ h1 {
   .scene-wrap { padding: 14px 14px 10px; }
   .scene { max-width: 420px; margin: 0 auto; }
   .caption { justify-content: center; text-align: center; }
+  .pixies { justify-content: center; }
+  .pixie-blurb { text-align: center; }
 }
 </style>
 </head>
@@ -261,7 +285,7 @@ h1 {
     <a class="back" href="./">&larr; utils</a>
     <div class="brand">
       <h1>Pixiecast</h1>
-      <p class="tag">A very small person, dressed by your weather. In the spirit of <a href="https://web.archive.org/web/2005/http://www.weatherpixie.com/" rel="noopener">weatherpixie.com</a>, 2002&ndash;2012.</p>
+      <p class="tag">Five very small people, dressed by your weather; pick one below the scene. In the spirit of <a href="https://web.archive.org/web/2005/http://www.weatherpixie.com/" rel="noopener">weatherpixie.com</a>, 2002&ndash;2012.</p>
     </div>
     <form class="finder" id="finder" role="search" autocomplete="off">
       <label class="sr-only" for="q">Find a place</label>
@@ -284,6 +308,8 @@ h1 {
     <section class="scene-wrap">
       <div class="scene" id="scene"></div>
       <div class="caption" id="caption"><span>PIXIECAST</span><span>GETTING DRESSED</span></div>
+      <div class="pixies" id="pixies" role="radiogroup" aria-label="Choose a pixie"></div>
+      <p class="pixie-blurb" id="pixieBlurb"></p>
     </section>
     <section class="report" id="report" aria-live="polite"></section>
   </main>
@@ -321,7 +347,7 @@ const mix = (a, b, t) => { const A = hex2rgb(a), B = hex2rgb(b); return rgb2hex(
 const luma = h => { const [r, g, b] = hex2rgb(h); return (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255; };
 
 // ---------- state & units
-const state = { unit: 'f', place: null, data: null, demo: null, timer: null };
+const state = { unit: 'f', pixie: 'wisp', place: null, realPlace: null, data: null, demo: null, timer: null, lastLoading: null };
 const cToF = c => c * 9 / 5 + 32;
 const fmtT = c => Math.round(state.unit === 'f' ? cToF(c) : c) + '°';
 const deg = f => (state.unit === 'f' ? Math.round(f) : Math.round((f - 32) * 5 / 9)) + '°';   // a threshold stated in °F, shown in the user's unit
@@ -394,120 +420,442 @@ function conditions(data, hi = null) {
   };
 }
 
-// ---------- wardrobe palette (shared by the drawing and the chips' swatches)
-const SKIN = '#f4cba7', SKIN_D = '#dda583', HAIR = '#2fa38f', HAIR_D = '#217f6e', BLUSH = '#f0908f';
-const COL = {
-  tank: '#f2745b', tee: '#fbf7ef', stripes: '#f5f1e8', stripesLine: '#2c3e73', sweater: '#d9a441', sweaterD: '#b9862d',
-  coat: '#6b3a5e', coatD: '#522b48', parka: '#2d5aa8', parkaD: '#234a8c', raincoat: '#f7c948', raincoatD: '#d9a520',
-  shorts: '#5b7fb5', skirt: '#c2673f', pants: '#7c7a4c', pantsD: '#62603a', snowpants: '#2a3f6e',
-  sandals: '#8a5a3b', sneakers: '#fbf7ef', sneakersToe: '#e4574f', boots: '#6c4a2e', rainboots: '#d8382f', snowboots: '#5a6572',
-  fur: '#f2ede4', beanie: '#3f8f5a', beanieD: '#2f6f45', pom: '#f2ede4', scarf: '#d8382f', scarf2: '#fbf7ef', mitten: '#d8382f',
-  umbrella: '#d8382f', umbrella2: '#fbf1dc', sunhat: '#e8c27a', sunhatD: '#c9a25a', cap: '#3f6bb5', shades: '#1f1d24',
-  lantern: '#4a4541', towel: '#f6e9d6', slipper: '#f2a5c0', mug: '#fbf7ef', earmuff: '#8a6c9e', fan: '#f2a5c0',
+
+// ============================================================
+//  THE PIXIES: who they are, what they own, how they talk.
+//  A garment is { id, label, shape, st }: shape picks the drawer, st styles it.
+// ============================================================
+const G = (id, label, shape, st = {}) => ({ id, label, shape, st, color: st.swatch || st.color || '#999' });
+
+const PIXIES = {
+  wisp: {
+    key: 'wisp', name: 'Wisp', kind: 'meadow pixie', pro: 'she/her',
+    blurb: 'Lives under a toadstool, dresses by the hedgerow calendar, and is emotionally attached to one red umbrella.',
+    skin: '#f4cba7', skinD: '#dda583', blush: '#f0908f', hair: '#2fa38f', hairD: '#217f6e', eye: '#2f7a6a', freckle: '#dda583',
+    ears: 'pointed', wings: 'gossamer', hairStyle: 'bob', home: 'toadstool', scale: [1, 1],
+    voice: {
+      scorch: '{t} feels-like. Wisp has abandoned dignity for a tank top and a popsicle.',
+      hot: '{t} and bright. Shorts, a tee, and a certain confidence.',
+      warm: 'A {t} kind of day. Wisp is in a tee and the rust skirt and considers this ideal.',
+      mild: '{t}: long-sleeves weather. Wisp says this is the correct amount of weather.',
+      cool: '{t} feels-like calls for the mustard sweater. The scarf is on standby.',
+      cold: '{t}. Coat, scarf, hat. Wisp is fine. Wisp would like cocoa.',
+      freezing: '{t} feels-like. Full parka, mittens, and a strong opinion about going back inside.',
+      arctic: '{t}. Every layer Wisp owns, plus the enormous scarf, plus resentment.',
+    },
+    lines: {
+      storm: 'Thunder. The umbrella is up, but nobody is enjoying it.', drizzle: 'Only drizzle, so: hood up, no umbrella, light grumbling.',
+      gale: 'Wind at {w} has turned the umbrella into a bowl.', freezing: 'Freezing rain. Hood up, boots on, every step negotiated.',
+      rain: 'Rain. Umbrella up; the red boots were not optional.', snow: 'Snow. Boots on, tongue out, flakes being caught professionally.',
+      fog: 'Fog thick enough to lose a pixie in. Wisp is walking carefully.', night: 'Night, so the lantern is lit.', late: 'It is very late. The lantern is lit; the pixie is not.',
+    },
+    kit: {
+      top: {
+        scorch: G('tank', 'coral tank top', 'sleeveless', { variant: 'tank', color: '#f2745b' }),
+        hot: G('tee', 'toadstool tee', 'tee', { color: '#fbf7ef', color2: '#d9483b', print: 'toadstool', swatch: '#e8dcc0' }),
+        mild: G('stripes', 'breton stripes', 'longsleeve', { color: '#f5f1e8', color2: '#2c3e73', pattern: 'stripes', swatch: '#2c3e73' }),
+        cool: G('sweater', 'mustard sweater', 'sweater', { color: '#d9a441', color2: '#b9862d', pattern: 'chevron' }),
+        cold: G('coat', 'plum wool coat', 'coat', { color: '#6b3a5e', color2: '#522b48', variant: 'double', button: '#e9d8a8' }),
+        freezing: G('parka', 'blue parka', 'parka', { color: '#2d5aa8', color2: '#234a8c', trim: '#f2ede4', variant: 'quilt' }),
+      },
+      bottom: {
+        shorts: G('shorts', 'denim shorts', 'shorts', { color: '#5b7fb5', color2: '#3f5f92', variant: 'denim' }),
+        skirt: G('skirt', 'rust skirt', 'skirt', { color: '#c2673f', color2: '#a3502e', variant: 'plain' }),
+        pants: G('pants', 'olive cords', 'pants', { color: '#7c7a4c', color2: '#62603a', variant: 'cord' }),
+        snow: G('snowpants', 'puffy snow pants', 'snowpants', { color: '#2a3f6e', color2: '#1d2f55' }),
+      },
+      feet: {
+        sandals: G('sandals', 'sandals', 'sandals', { color: '#8a5a3b', variant: 'strap' }),
+        sneakers: G('sneakers', 'canvas sneakers', 'sneakers', { color: '#fbf7ef', color2: '#e4574f', variant: 'canvas', swatch: '#e4574f' }),
+        boots: G('boots', 'brown boots', 'boots', { color: '#6c4a2e', color2: '#8b6540', variant: 'plain' }),
+        rain: G('rainboots', 'red rain boots', 'rainboots', { color: '#d8382f', color2: '#8f231d' }),
+        snow: G('snowboots', 'fur-top snow boots', 'snowboots', { color: '#5a6572', trim: '#f2ede4', variant: 'fur' }),
+      },
+      over: G('raincoat', 'yellow slicker', 'raincoat', { color: '#f7c948', color2: '#d9a520', hood: 'hood' }),
+      umbrella: G('umbrella', 'red umbrella', 'classic', { color: '#d8382f', color2: '#fbf1dc', rib: '#a92a24' }),
+      hat: {
+        sunhat: G('sunhat', 'straw sun hat', 'sunhat', { color: '#e8c27a', color2: '#c9a25a', band: '#d9483b' }),
+        cap: G('cap', 'ball cap', 'cap', { color: '#3f6bb5', color2: '#2c4f8c' }),
+        beanie: G('beanie', 'green beanie', 'beanie', { color: '#3f8f5a', color2: '#2f6f45' }),
+        pombeanie: G('pombeanie', 'pom beanie', 'beanie', { color: '#3f8f5a', color2: '#2f6f45', pom: '#f2ede4' }),
+      },
+      earmuffs: G('earmuffs', 'earmuffs', 'earmuffs', { color: '#8a6c9e', color2: '#a98cbb', band: '#5c4470' }),
+      scarf: G('scarf', 'striped scarf', 'scarf', { color: '#d8382f', color2: '#fbf7ef' }),
+      bigscarf: G('bigscarf', 'the enormous scarf', 'scarf', { color: '#d8382f', color2: '#fbf7ef' }),
+      mittens: G('mittens', 'red mittens', 'mittens', { color: '#d8382f', variant: 'mitten' }),
+      shades: G('shades', 'sunglasses', 'shades', { color: '#1f1d24', variant: 'square' }),
+      nose: G('nose', 'sunscreen nose', 'nose', { color: '#fff' }),
+      hold: {
+        lantern: G('lantern', 'a small lantern', 'lantern', { swatch: '#ffd27a' }),
+        popsicle: G('popsicle', 'a popsicle', 'popsicle', { color: '#f26b8a', color2: '#f7a13d' }),
+        cocoa: G('cocoa', 'cocoa', 'cocoa', { variant: 'mug', color: '#fbf7ef', swatch: '#8a5a3b' }),
+        fan: G('fan', 'paper fan', 'fan', { variant: 'paper', color: '#f2a5c0', color2: '#c9758f' }),
+      },
+    },
+  },
+
+  bramble: {
+    key: 'bramble', name: 'Bramble', kind: 'hedge pixie', pro: 'he/him',
+    blurb: 'Keeps a stump in the hedgerow, keeps bees, keeps his own counsel. Twig antlers, oak-leaf wings, boots with opinions.',
+    skin: '#5b3b2b', skinD: '#48301f', blush: '#8a4a3a', hair: '#3f7a3a', hairD: '#2c5a2a', eye: '#b26a1e', freckle: '#6e4a36',
+    ears: 'long', wings: 'leaf', hairStyle: 'locs', extras: 'antlers', home: 'stump', scale: [1, 1.08],
+    voice: {
+      scorch: '{t}. Bramble has taken off everything the hedge allows and is standing in the shade of his own hat.',
+      hot: '{t} and bright. Linen shirt, canvas shorts, bare feet in the grass. Bramble calls this "acceptable."',
+      warm: '{t}. Sleeves rolled, trousers rolled, hedge inspected. Bramble is content.',
+      mild: '{t}: waistcoat weather. Bramble has strong feelings about waistcoat weather, all of them positive.',
+      cool: '{t} feels-like, so the moss cable-knit is on. Bramble says the hedgerow agrees.',
+      cold: '{t}. Waxed jacket, acorn cap, scarf. Bramble has been colder and would like you to know it.',
+      freezing: '{t} feels-like. The sheepskin coat is out, the mitts are on, and Bramble is not discussing it.',
+      arctic: '{t}. Bramble is wearing the entire hedge. He is fine. He is definitely fine.',
+    },
+    lines: {
+      storm: 'Thunder. Bramble is holding a very large leaf over his head and pretending that is a plan.', drizzle: 'Only drizzle. Hood up on the oilskin cape; the leaf stays furled.',
+      gale: 'Wind at {w}. The leaf has folded back on itself, and so has Bramble.', freezing: 'Freezing rain. Cape hood up, hobnails on, language moderate.',
+      rain: 'Rain. Burdock leaf up, green wellies on; the hedge needed it anyway.', snow: 'Snow. Fur-lined boots on, and Bramble is catching flakes on his antlers.',
+      fog: 'Fog on the hedgerow. Bramble navigates by smell, allegedly.', night: 'Night. The firefly jar is lit and mildly annoyed about it.', late: 'Very late. The fireflies are asleep; Bramble is thinking about it.',
+    },
+    kit: {
+      top: {
+        scorch: G('vest', 'laced linen vest', 'sleeveless', { variant: 'vest', color: '#e8dcc4', color2: '#8a6a4a' }),
+        hot: G('shirt', 'linen shirt, sleeves rolled', 'tee', { variant: 'shirt', color: '#e8dcc4', color2: '#b09a78' }),
+        mild: G('waistcoat', 'green waistcoat over linen', 'longsleeve', { pattern: 'waistcoat', color: '#e8dcc4', color2: '#4f6b3a', swatch: '#4f6b3a' }),
+        cool: G('cable', 'moss cable-knit', 'sweater', { color: '#6e7f3a', color2: '#55642a', pattern: 'cable' }),
+        cold: G('waxed', 'waxed canvas jacket', 'coat', { color: '#6a5233', color2: '#4e3a22', variant: 'waxed', button: '#c9b06c' }),
+        freezing: G('sheepskin', 'sheepskin coat', 'parka', { color: '#8a6a4a', color2: '#6e5238', trim: '#f2ead8', variant: 'sheepskin' }),
+      },
+      bottom: {
+        shorts: G('cshorts', 'canvas shorts', 'shorts', { color: '#7a6f52', color2: '#5e553d', variant: 'plain' }),
+        skirt: G('rolled', 'rolled trousers', 'pants', { color: '#8a7a58', color2: '#6b5e42', variant: 'rolled' }),
+        pants: G('cords', 'brown corduroys', 'pants', { color: '#6b5238', color2: '#54402a', variant: 'cord' }),
+        snow: G('quilted', 'quilted overtrousers', 'snowpants', { color: '#4a3a2e', color2: '#362a20' }),
+      },
+      feet: {
+        sandals: G('bare', 'bare feet', 'bare', { swatch: '#5b3b2b' }),
+        sneakers: G('moccasins', 'leather moccasins', 'sneakers', { color: '#8a5a3b', color2: '#5e3b25', variant: 'moccasin' }),
+        boots: G('hobnails', 'hobnail boots', 'boots', { color: '#3f2a1c', color2: '#6b4a2e', variant: 'hobnail' }),
+        rain: G('wellies', 'green wellies', 'rainboots', { color: '#3f6b3a', color2: '#274a26' }),
+        snow: G('furboots', 'fur-lined boots', 'snowboots', { color: '#5a4030', trim: '#f2ead8', variant: 'fur' }),
+      },
+      over: G('cape', 'oilskin cape', 'poncho', { color: '#3f5a35', color2: '#2c4126', hood: 'hood' }),
+      umbrella: G('leaf', 'a very large burdock leaf', 'leaf', { color: '#5f8f3f', color2: '#3e6a2a' }),
+      hat: {
+        sunhat: G('rushhat', 'woven rush hat', 'rushhat', { color: '#c9b06c', color2: '#a68d4e' }),
+        cap: G('flatcap', 'tweed flat cap', 'flatcap', { color: '#6b5a48', color2: '#4e4034' }),
+        beanie: G('acorn', 'acorn cap', 'acorn', { color: '#6b4a2e', color2: '#4e3520' }),
+        pombeanie: G('acorn2', 'acorn cap, pulled low', 'acorn', { color: '#6b4a2e', color2: '#4e3520', low: true }),
+      },
+      earmuffs: G('mossmuffs', 'moss earmuffs', 'earmuffs', { color: '#6e7f3a', color2: '#8fa350', band: '#4e3520' }),
+      scarf: G('mscarf', 'knitted moss scarf', 'scarf', { color: '#6e7f3a', color2: '#c9b06c' }),
+      bigscarf: G('mbigscarf', 'the long moss scarf', 'scarf', { color: '#6e7f3a', color2: '#c9b06c' }),
+      mittens: G('mitts', 'leather mitts', 'mittens', { color: '#8a5a3b', variant: 'mitten' }),
+      shades: G('specs', 'smoked-glass spectacles', 'shades', { color: '#3a2a1a', lens: '#5a4a3a', variant: 'round' }),
+      nose: G('clay', 'clay on the nose', 'nose', { color: '#e0c8a8' }),
+      hold: {
+        lantern: G('jar', 'a jar of fireflies', 'jar', { swatch: '#d9f26b' }),
+        popsicle: G('honeycomb', 'dripping honeycomb', 'honeycomb', { color: '#e8a422', color2: '#c7831a' }),
+        cocoa: G('acorncup', 'nettle tea in an acorn cup', 'cocoa', { variant: 'acorn', color: '#8a6a4a', swatch: '#8a6a4a' }),
+        fan: G('dock', 'a dock leaf', 'fan', { variant: 'leaf', color: '#5f8f3f', color2: '#3e6a2a' }),
+      },
+    },
+  },
+
+  nix: {
+    key: 'nix', name: 'Nix', kind: 'moth pixie', pro: 'they/them',
+    blurb: 'Nocturnal, silver-haired, drawn to lamps. Dusty moth wings with eyespots, feathered antennae, and a wardrobe that is mostly midnight.',
+    skin: '#d8d0e6', skinD: '#b9aecf', blush: '#c98ab8', hair: '#eceaf2', hairD: '#bdb8cc', eye: '#2a2440', freckle: '#a99cc4',
+    ears: 'tufted', wings: 'moth', hairStyle: 'undercut', extras: 'antennae', eyeStyle: 'moth', home: 'moonlamp', scale: [0.95, 1.06],
+    voice: {
+      scorch: '{t}. Nix is in the mesh tank, the black sun hat, and a mood.',
+      hot: '{t} and far too bright. Star tee, cycling shorts, the round shades. Nix would like it to be dusk.',
+      warm: '{t}. Star tee and the pleated kilt. Nix concedes that daylight has its uses.',
+      mild: '{t}: bomber weather. Nix has zipped it to the chin for aesthetic reasons.',
+      cool: '{t} feels-like, so: the oversized mohair sweater. Nix is at least forty percent sweater right now.',
+      cold: '{t}. Long velvet coat, beret, silver scarf. Nix looks like a poem about November and knows it.',
+      freezing: '{t} feels-like. Midnight puffer, moon boots, fingerless gloves. No regrets. Some regrets.',
+      arctic: '{t}. Nix is wearing everything dark they own, plus the earmuffs, plus the expression.',
+    },
+    lines: {
+      storm: 'Thunder. The moth-wing umbrella is up. Nix is, against all odds, enjoying this.', drizzle: 'Drizzle. Clear raincoat, hood up, no umbrella; the mist is the point.',
+      gale: 'Wind at {w} has turned the moth-wing umbrella inside out, which Nix insists is a look.', freezing: 'Freezing rain. Vinyl hood up, wellies on, expression unchanged.',
+      rain: 'Rain. Moth-wing umbrella up and the glossy wellies on.', snow: 'Snow. Moon boots deployed. Nix is quietly delighted and will deny it.',
+      fog: 'Fog. Nix has never looked more at home.', night: 'Night, finally. The moon jar is lit, and so is Nix, in the emotional sense.', late: 'Very late, which for Nix is early. The moon jar glows; Nix is wide awake.',
+    },
+    kit: {
+      top: {
+        scorch: G('mesh', 'black mesh tank', 'sleeveless', { variant: 'mesh', color: '#2e2b3d', color2: '#8c86a3' }),
+        hot: G('startee', 'star-print tee', 'tee', { color: '#2f3660', color2: '#dcd8f0', print: 'stars', swatch: '#2f3660' }),
+        mild: G('bomber', 'cropped bomber', 'longsleeve', { pattern: 'bomber', color: '#3b3f6e', color2: '#1f2340' }),
+        cool: G('mohair', 'oversized mohair sweater', 'sweater', { color: '#7a5f86', color2: '#5e4569', pattern: 'mohair' }),
+        cold: G('velvet', 'long velvet coat', 'coat', { color: '#2a1f3a', color2: '#1a1226', variant: 'velvet', button: '#c9c6d6' }),
+        freezing: G('puffer', 'midnight puffer', 'parka', { color: '#1f2340', color2: '#c9c6d6', trim: '#c9c6d6', variant: 'puffer' }),
+      },
+      bottom: {
+        shorts: G('cycling', 'black cycling shorts', 'shorts', { color: '#1f1d2a', color2: '#3a3750', variant: 'cycling' }),
+        skirt: G('kilt', 'pleated wrap kilt', 'skirt', { color: '#33304a', color2: '#1f1d2a', variant: 'pleated', pin: '#c9c6d6' }),
+        pants: G('wideleg', 'wide-leg trousers', 'pants', { color: '#2a2838', color2: '#1a1926', variant: 'wide' }),
+        snow: G('snowtrousers', 'quilted snow trousers', 'snowpants', { color: '#1f2340', color2: '#3a4060' }),
+      },
+      feet: {
+        sandals: G('platforms', 'platform sandals', 'sandals', { color: '#1c1a24', variant: 'platform' }),
+        sneakers: G('hightops', 'black high-tops', 'sneakers', { color: '#1c1a24', color2: '#f2f0f7', variant: 'hightop' }),
+        boots: G('chunky', 'chunky lace-up boots', 'boots', { color: '#1c1a24', color2: '#c9c6d6', variant: 'chunky' }),
+        rain: G('glossy', 'glossy black wellies', 'rainboots', { color: '#1c1a24', color2: '#5a5670' }),
+        snow: G('moonboots', 'moon boots', 'snowboots', { color: '#c8c6d6', trim: '#f2f0f7', variant: 'moon' }),
+      },
+      over: G('vinyl', 'clear vinyl raincoat', 'vinyl', { color: 'rgba(235,240,255,.38)', color2: '#cfd6e6', hood: 'hood', swatch: '#cfd6e6' }),
+      umbrella: G('mothbrella', 'moth-wing umbrella', 'moth', { color: '#3b3446', color2: '#6d6478', spot: '#f0e6d0', rib: '#1f1a2a' }),
+      hat: {
+        sunhat: G('blackhat', 'wide black sun hat', 'sunhat', { color: '#1c1a24', color2: '#0f0e14', band: '#c9c6d6' }),
+        cap: G('bucket', 'charcoal bucket hat', 'bucket', { color: '#33304a', color2: '#1f1d2a' }),
+        beanie: G('beret', 'black beret', 'beret', { color: '#1c1a24', color2: '#3a3750' }),
+        pombeanie: G('beret2', 'beret, pulled down', 'beret', { color: '#1c1a24', color2: '#3a3750', low: true }),
+      },
+      earmuffs: G('fluffmuffs', 'fluffy silver earmuffs', 'earmuffs', { color: '#c9c6d6', color2: '#f2f0f7', band: '#3a3750' }),
+      scarf: G('silverscarf', 'silver-grey scarf', 'scarf', { color: '#b9b6c9', color2: '#2a2838' }),
+      bigscarf: G('silverbig', 'the very long grey scarf', 'scarf', { color: '#b9b6c9', color2: '#2a2838' }),
+      mittens: G('fingerless', 'fingerless gloves', 'mittens', { color: '#2a2838', variant: 'fingerless' }),
+      shades: G('roundshades', 'round mirrored shades', 'shades', { color: '#1c1a24', lens: '#b9c8e6', variant: 'round' }),
+      nose: G('nixnose', 'sunscreen nose', 'nose', { color: '#fff' }),
+      hold: {
+        lantern: G('moonjar', 'a jar with a moon in it', 'orb', { swatch: '#e6e2ff' }),
+        popsicle: G('shavedice', 'a shaved-ice cone', 'shavedice', { color: '#8fd0f0', color2: '#f2f0f7' }),
+        cocoa: G('thermos', 'a thermos of black coffee', 'cocoa', { variant: 'thermos', color: '#33304a', swatch: '#33304a' }),
+        fan: G('moonfan', 'a folding fan with a moon on it', 'fan', { variant: 'moon', color: '#33304a', color2: '#e6e2ff' }),
+      },
+    },
+  },
+
+  ember: {
+    key: 'ember', name: 'Ember', kind: 'hearth pixie', pro: 'she/her',
+    blurb: 'Warm-blooded, warm-voiced, hair like a lit match. Keeps a little clay kiln, hates rain on principle, and steams faintly when it falls on her.',
+    skin: '#a2643c', skinD: '#7d4a2a', blush: '#d9705a', hair: '#f08a2e', hairD: '#c8442a', eye: '#8a4a1a', freckle: '#ffcf5a',
+    ears: 'small', wings: 'ember', hairStyle: 'flame', home: 'kiln', scale: [1, 1],
+    voice: {
+      scorch: '{t} feels-like. Ember is in the sunflower halter with a lemonade and is, frankly, thriving.',
+      hot: '{t} and glorious. Saffron tee, terracotta shorts, cat-eye shades. Ember calls this "finally."',
+      warm: '{t}. Saffron tee and the tiered skirt. Ember is warm, and the hair is behaving.',
+      mild: '{t}: the embroidered blouse comes out. Ember says this is the last acceptable temperature.',
+      cool: '{t} feels-like. Brick-red cardigan, buttoned all the way up, plus commentary.',
+      cold: '{t}. Ochre wrap coat, headwrap, saffron scarf. Ember is dressed for a fire that is not here.',
+      freezing: "{t} feels-like. Rust parka, sheepskin boots, mittens. Ember's hair is the only warm thing for miles.",
+      arctic: '{t}. Ember is wearing all of it and has stopped speaking to the sky.',
+    },
+    lines: {
+      storm: 'Thunder. Parasol up, hair steaming, opinions forming.', drizzle: 'Drizzle. Poncho hood up, under protest; the hair is hissing faintly.',
+      gale: 'Wind at {w} has flipped the parasol. Ember is holding it aloft like a trophy.', freezing: 'Freezing rain. Poncho hood up, wellies on, running commentary.',
+      rain: 'Rain. The striped parasol is up and the clay wellies are on. The hair is steaming.', snow: 'Snow. Sheepskin boots on; the flakes are melting on contact with the hair.',
+      fog: 'Fog. Ember is the only visible thing in it and glows accordingly.', night: 'Night. Ember has struck a match, mostly for company.', late: 'Very late. The match is lit. Ember is running on embers.',
+    },
+    kit: {
+      top: {
+        scorch: G('halter', 'sunflower halter', 'sleeveless', { variant: 'halter', color: '#f2a93b', color2: '#c7831a' }),
+        hot: G('saffron', 'saffron tee', 'tee', { color: '#e98a2e', color2: '#c7631a', print: 'sun' }),
+        mild: G('blouse', 'embroidered blouse', 'longsleeve', { pattern: 'embroidery', color: '#f5e6c8', color2: '#b5452f', swatch: '#b5452f' }),
+        cool: G('cardigan', 'brick-red cardigan', 'sweater', { color: '#b5452f', color2: '#8a2f25', pattern: 'cardigan', button: '#f2c14e' }),
+        cold: G('wrapcoat', 'ochre wool wrap coat', 'coat', { color: '#c78a2e', color2: '#9a6a1e', variant: 'wrap', button: '#8a2f25' }),
+        freezing: G('rustparka', 'quilted rust parka', 'parka', { color: '#8a3b22', color2: '#6a2a18', trim: '#f2e6cf', variant: 'quilt' }),
+      },
+      bottom: {
+        shorts: G('tshorts', 'terracotta shorts', 'shorts', { color: '#c7623a', color2: '#9a4526', variant: 'plain' }),
+        skirt: G('tiered', 'tiered sun skirt', 'skirt', { color: '#d9a441', color2: '#b5452f', variant: 'tiered' }),
+        pants: G('linen', 'wide linen trousers', 'pants', { color: '#efe0c0', color2: '#cbb894', variant: 'wide' }),
+        snow: G('qtrousers', 'quilted trousers', 'snowpants', { color: '#5a2a1e', color2: '#3f1c14' }),
+      },
+      feet: {
+        sandals: G('beaded', 'beaded sandals', 'sandals', { color: '#8a5a3b', color2: '#f2c14e', variant: 'beaded' }),
+        sneakers: G('espadrilles', 'red espadrilles', 'sneakers', { color: '#b5452f', color2: '#d9b26a', variant: 'espadrille' }),
+        boots: G('redboots', 'red leather boots', 'boots', { color: '#a12f2a', color2: '#7a1f1c', variant: 'plain' }),
+        rain: G('claywellies', 'clay-orange wellies', 'rainboots', { color: '#d96b2c', color2: '#9a4526' }),
+        snow: G('sheepboots', 'sheepskin boots', 'snowboots', { color: '#b5855a', trim: '#f2e6cf', variant: 'fleece' }),
+      },
+      over: G('poncho', 'oilcloth poncho', 'poncho', { color: '#8a2f25', color2: '#5e1e17', hood: 'hood' }),
+      umbrella: G('parasol', 'the striped parasol', 'parasol', { color: '#e98a2e', color2: '#fbf1dc', rib: '#8a2f25', fringe: '#8a2f25' }),
+      hat: {
+        sunhat: G('wovenhat', 'wide woven sun hat', 'sunhat', { color: '#d9b26a', color2: '#b8924a', band: '#8a2f25' }),
+        cap: G('bandana', 'red bandana', 'bandana', { color: '#b5452f', color2: '#f2c14e' }),
+        beanie: G('headwrap', 'knit headwrap', 'headwrap', { color: '#c78a2e', color2: '#8a2f25' }),
+        pombeanie: G('chunkybeanie', 'chunky beanie', 'beanie', { color: '#8a2f25', color2: '#5e1e17', pom: '#f2c14e', rib: true }),
+      },
+      earmuffs: G('emuffs', 'wool earmuffs', 'earmuffs', { color: '#c78a2e', color2: '#f2c14e', band: '#5e1e17' }),
+      scarf: G('sscarf', 'saffron scarf', 'scarf', { color: '#e98a2e', color2: '#8a2f25' }),
+      bigscarf: G('sbigscarf', 'the enormous saffron scarf', 'scarf', { color: '#e98a2e', color2: '#8a2f25' }),
+      mittens: G('woolmitts', 'red wool mittens', 'mittens', { color: '#b5452f', variant: 'mitten' }),
+      shades: G('cateye', 'cat-eye sunglasses', 'shades', { color: '#5a3a22', lens: '#2a1a12', variant: 'cateye' }),
+      nose: G('enose', 'sunscreen nose', 'nose', { color: '#fff' }),
+      hold: {
+        lantern: G('match', 'a struck match', 'match', { swatch: '#ffb347' }),
+        popsicle: G('lemonade', 'an iced lemonade', 'lemonade', { color: '#f7e37a', color2: '#f2f0f7' }),
+        cocoa: G('chai', 'a mug of chai', 'cocoa', { variant: 'chai', color: '#c7623a', swatch: '#c7623a' }),
+        fan: G('palmfan', 'a woven palm fan', 'fan', { variant: 'palm', color: '#d9b26a', color2: '#b8924a' }),
+      },
+    },
+  },
+
+  fen: {
+    key: 'fen', name: 'Fen', kind: 'river pixie', pro: 'he/him',
+    blurb: 'Lives in the reeds, swims in all weathers, and considers rain a form of company. Fin ears, dragonfly wings, hair like a wet otter.',
+    skin: '#d9a97a', skinD: '#b8875a', blush: '#e8907a', hair: '#1f2a3a', hairD: '#0f1620', eye: '#3f8a5a', freckle: '#b8875a',
+    ears: 'fin', wings: 'dragonfly', hairStyle: 'crest', home: 'reeds', scale: [1.08, 0.95],
+    voice: {
+      scorch: '{t}. Fen is in the swim singlet and flip-flops and has been in the river twice already.',
+      hot: '{t} and sunny. Faded tee, board shorts, wraparounds. Fen approves of any weather with swimming in it.',
+      warm: '{t}. Faded tee and rolled chinos. Fen is standing near water on principle.',
+      mild: '{t}: rugby shirt weather. Fen has tucked it in, untucked it, and rolled the sleeves.',
+      cool: "{t} feels-like, so the fisherman's rib is on. Fen smells faintly of pondweed and is at peace.",
+      cold: '{t}. Duffel coat, watch cap, navy scarf. Fen has been colder in the river and says so.',
+      freezing: '{t} feels-like. Dry-suit parka and insulated boots. The river has ice at the edges; Fen has checked.',
+      arctic: '{t}. Fen is wearing every layer and standing on the ice, which he insists is still a kind of water.',
+    },
+    lines: {
+      storm: 'Thunder. The lily pad is up and Fen is grinning at the sky.', drizzle: "Drizzle. Sou'wester on, lily pad furled; this barely counts.",
+      gale: 'Wind at {w} has flipped the lily pad pale side up. Fen thinks that is hilarious.', freezing: "Freezing rain. Sou'wester on, waders on, feet fine.",
+      rain: 'Rain. Lily pad up, oilskin on. Fen is delighted; the oilskin is mostly ceremonial.', snow: 'Snow. Insulated boots on, and Fen has already checked whether the pond is frozen.',
+      fog: 'River fog. Fen says this is his favourite weather and means it.', night: 'Night. The glass float is glowing; the river is talking.', late: 'Very late. The float glows; Fen has lost track of time, happily.',
+    },
+    kit: {
+      top: {
+        scorch: G('singlet', 'swim singlet', 'sleeveless', { variant: 'singlet', color: '#1f6e73', color2: '#efe6d0' }),
+        hot: G('fadedtee', 'faded blue tee', 'tee', { color: '#7fa8c9', color2: '#5c86a8', print: 'wave' }),
+        mild: G('rugby', 'rugby shirt', 'longsleeve', { pattern: 'hoops', color: '#243a5e', color2: '#1f6e73', swatch: '#1f6e73' }),
+        cool: G('fisherrib', "fisherman's rib sweater", 'sweater', { color: '#efe6d0', color2: '#d3c7aa', pattern: 'rib' }),
+        cold: G('duffel', 'navy duffel coat', 'coat', { color: '#243a5e', color2: '#182842', variant: 'duffel', button: '#c9a25a' }),
+        freezing: G('drysuit', 'dry-suit parka', 'parka', { color: '#1f6e73', color2: '#155055', trim: '#e6f0a0', variant: 'drysuit' }),
+      },
+      bottom: {
+        shorts: G('boardshorts', 'board shorts', 'shorts', { color: '#1f6e73', color2: '#7fc9c0', variant: 'wave' }),
+        skirt: G('chinos', 'rolled chinos', 'pants', { color: '#b9a67c', color2: '#8f7e58', variant: 'rolled' }),
+        pants: G('waders', 'waders', 'pants', { color: '#5a6b3f', color2: '#3f4c2c', variant: 'waders' }),
+        snow: G('bibs', 'insulated bib trousers', 'snowpants', { color: '#243a5e', color2: '#182842' }),
+      },
+      feet: {
+        sandals: G('flipflops', 'flip-flops', 'sandals', { color: '#3f7fbf', variant: 'flipflop' }),
+        sneakers: G('deckshoes', 'deck shoes', 'sneakers', { color: '#7a5a3b', color2: '#efe6d0', variant: 'deck' }),
+        boots: G('wadingboots', 'wading boots', 'boots', { color: '#5a6b3f', color2: '#3f4c2c', variant: 'wading' }),
+        rain: G('navywellies', 'tall navy wellies', 'rainboots', { color: '#243a5e', color2: '#182842' }),
+        snow: G('insulated', 'insulated boots', 'snowboots', { color: '#3a4a5e', trim: '#c9d3d8', variant: 'fur' }),
+      },
+      over: G('oilskin', "oilskin and sou'wester", 'oilskin', { color: '#f2b134', color2: '#c98a1e', hood: 'souwester' }),
+      umbrella: G('lilypad', 'a lily pad on a stem', 'lilypad', { color: '#4f8a5a', color2: '#b9d9a8', rib: '#2f5a3a' }),
+      hat: {
+        sunhat: G('bucketsun', 'faded bucket hat', 'bucket', { color: '#c9d3d8', color2: '#9fb0b8' }),
+        cap: G('fishcap', 'fishing cap with a lure', 'cap', { color: '#b9a67c', color2: '#8f7e58', lure: '#e4574f' }),
+        beanie: G('watchcap', 'navy watch cap', 'beanie', { color: '#243a5e', color2: '#182842', rib: true }),
+        pombeanie: G('watchcap2', 'watch cap, doubled over', 'beanie', { color: '#243a5e', color2: '#182842', rib: true }),
+      },
+      earmuffs: G('fmuffs', 'neoprene earmuffs', 'earmuffs', { color: '#1f6e73', color2: '#3f9fa3', band: '#182842' }),
+      scarf: G('navyscarf', 'navy wool scarf', 'scarf', { color: '#243a5e', color2: '#efe6d0' }),
+      bigscarf: G('navybig', 'the long navy scarf', 'scarf', { color: '#243a5e', color2: '#efe6d0' }),
+      mittens: G('neoprene', 'neoprene mitts', 'mittens', { color: '#1f6e73', variant: 'mitten' }),
+      shades: G('wraps', 'polarized wraparounds', 'shades', { color: '#1c1a24', lens: '#e0a040', variant: 'wrap' }),
+      nose: G('zinc', 'zinc on the nose', 'nose', { color: '#fff' }),
+      hold: {
+        lantern: G('float', 'a glowing glass float', 'float', { swatch: '#9fe0d8' }),
+        popsicle: G('popbottle', 'a cold bottle of pop', 'bottle', { color: '#3f7fbf', color2: '#8fd0f0' }),
+        cocoa: G('tincup', 'tea in a tin cup', 'cocoa', { variant: 'tin', color: '#b9c4cc', swatch: '#b9c4cc' }),
+        fan: G('reedfan', 'a broad reed leaf', 'fan', { variant: 'leaf', color: '#7fa35a', color2: '#5a6b3f' }),
+      },
+    },
+  },
 };
+const PIXIE_ORDER = ['wisp', 'bramble', 'nix', 'ember', 'fen'];
+let PX = PIXIES.wisp, SKIN, SKIN_D, BLUSH, HAIR, HAIR_D, EYE, FRECKLE;
+function applyPixie(p) { PX = p; SKIN = p.skin; SKIN_D = p.skinD; BLUSH = p.blush; HAIR = p.hair; HAIR_D = p.hairD; EYE = p.eye; FRECKLE = p.freckle; }
+applyPixie(PX);
 
-// ---------- the wardrobe rules: conditions → outfit + a reason for each garment
+// ---------- the wardrobe rules: conditions + the active pixie's kit → outfit, with a reason for each garment
 function dress(c) {
-  const T = c.feelsF, W = c.windMph, t = fmtT(c.feelsC), uv = Math.round(c.uv);
-  const o = { top: null, over: null, bottom: null, feet: null, hat: null, hood: false, earmuffs: false, scarf: null, mittens: false,
+  const K = PX.kit, T = c.feelsF, W = c.windMph, t = fmtT(c.feelsC), uv = Math.round(c.uv);
+  const o = { g: {}, top: null, over: null, bottom: null, feet: null, hat: null, hood: false, earmuffs: false, scarf: null, mittens: false,
     shades: false, nose: false, hold: null, umbrella: null, hair: 'normal', face: 'content', fx: [], items: [], band: null };
-  const add = (slot, id, label, why, color) => { o[slot] = id; o.items.push({ slot, id, label, why, color }); };
-  const flag = (slot, label, why, color) => { o[slot] = true; o.items.push({ slot, id: slot, label, why, color }); };
-
+  const add = (slot, g, why, kind) => { o[slot] = kind === undefined ? g.id : kind; o.g[slot] = g; o.items.push({ slot, id: g.id, label: g.label, why, color: g.color }); };
   const band = o.band = T >= 90 ? 'scorch' : T >= 78 ? 'hot' : T >= 66 ? 'warm' : T >= 55 ? 'mild' : T >= 45 ? 'cool' : T >= 33 ? 'cold' : T >= 15 ? 'freezing' : 'arctic';
+  const windLimit = state.unit === 'f' ? '28 mph' : '45 km/h';
 
   // tops
-  if (band === 'scorch') add('top', 'tank', 'coral tank top', 'feels like ' + t + '; anything more is a hazard', COL.tank);
-  else if (band === 'hot' || band === 'warm') add('top', 'tee', 'toadstool tee', 'tee weather from ' + deg(66) + ' feels-like', COL.tee);
-  else if (band === 'mild') add('top', 'stripes', 'breton stripes', 'long sleeves once it feels under ' + deg(66), COL.stripesLine);
-  else if (band === 'cool') add('top', 'sweater', 'mustard sweater', 'the sweater line is ' + deg(55) + ' feels-like', COL.sweater);
-  else if (band === 'cold') add('top', 'coat', 'plum wool coat', 'coat comes out under ' + deg(45), COL.coat);
-  else add('top', 'parka', 'blue parka', 'parka below ' + deg(33) + ' feels-like', COL.parka);
+  const topWhy = { scorch: 'feels like ' + t + '; anything more is a hazard', hot: 'short sleeves from ' + deg(66) + ' feels-like', warm: 'short sleeves from ' + deg(66) + ' feels-like',
+    mild: 'long sleeves once it feels under ' + deg(66), cool: 'the sweater line is ' + deg(55) + ' feels-like', cold: 'the coat comes out under ' + deg(45),
+    freezing: 'the big coat, below ' + deg(33) + ' feels-like', arctic: t + '. every layer there is' };
+  add('top', K.top[band === 'warm' ? 'hot' : band === 'arctic' ? 'freezing' : band], topWhy[band]);
 
   // bottoms
-  if (band === 'scorch' || band === 'hot') add('bottom', 'shorts', 'denim shorts', 'legs out from ' + deg(78), COL.shorts);
-  else if (band === 'warm') add('bottom', 'skirt', 'rust skirt', deg(66) + ' to ' + deg(78) + ' is skirt weather', COL.skirt);
-  else if (band === 'freezing' || band === 'arctic') add('bottom', 'snowpants', 'puffy snow pants', 'below ' + deg(33) + ' the legs get insulation too', COL.snowpants);
-  else add('bottom', 'pants', 'olive cords', 'trousers under ' + deg(66), COL.pants);
+  if (band === 'scorch' || band === 'hot') add('bottom', K.bottom.shorts, 'legs out from ' + deg(78));
+  else if (band === 'warm') add('bottom', K.bottom.skirt, deg(66) + ' to ' + deg(78) + ' is ' + K.bottom.skirt.label + ' weather');
+  else if (band === 'freezing' || band === 'arctic') add('bottom', K.bottom.snow, 'below ' + deg(33) + ' the legs get insulation too');
+  else add('bottom', K.bottom.pants, 'long trousers under ' + deg(66));
 
   // feet
-  if (c.snowy || band === 'freezing' || band === 'arctic') add('feet', 'snowboots', 'fur-top snow boots', c.snowy ? 'snow in the air' : 'below ' + deg(33), COL.snowboots);
-  else if (c.wet) add('feet', 'rainboots', 'red rain boots', c.label.toLowerCase() + ' right now', COL.rainboots);
-  else if (band === 'scorch' || band === 'hot') add('feet', 'sandals', 'sandals', 'above ' + deg(78) + ' toes go free', COL.sandals);
-  else if (band === 'warm' || band === 'mild') add('feet', 'sneakers', 'canvas sneakers', 'dry and between ' + deg(55) + ' and ' + deg(78), COL.sneakersToe);
-  else add('feet', 'boots', 'brown boots', 'boots under ' + deg(55), COL.boots);
+  if (c.snowy || band === 'freezing' || band === 'arctic') add('feet', K.feet.snow, c.snowy ? 'snow in the air' : 'below ' + deg(33), 'snowboots');
+  else if (c.wet) add('feet', K.feet.rain, c.label.toLowerCase() + ' right now', 'rainboots');
+  else if (band === 'scorch' || band === 'hot') add('feet', K.feet.sandals, 'above ' + deg(78) + ' the toes go free', 'sandals');
+  else if (band === 'warm' || band === 'mild') add('feet', K.feet.sneakers, 'dry and between ' + deg(55) + ' and ' + deg(78), 'sneakers');
+  else add('feet', K.feet.boots, 'boots under ' + deg(55), 'boots');
 
   // rain gear
   if (c.wet) {
-    add('over', 'raincoat', 'yellow slicker', c.kind === 'drizzle' ? 'drizzle: slicker on, hood up' : c.label.toLowerCase() + ': slicker on', COL.raincoat);
-    if (c.kind === 'drizzle' || c.kind === 'freezing' || W >= 40) { o.hood = true; o.items.push({ slot: 'hood', id: 'hood', label: 'hood up', why: c.kind === 'drizzle' ? 'drizzle does not earn an umbrella' : W >= 40 ? 'wind at ' + fmtWind(c.windKmh) + '; an umbrella would be a kite' : 'freezing rain: hood, not umbrella', color: COL.raincoatD }); }
+    add('over', K.over, c.kind === 'drizzle' ? 'drizzle: ' + K.over.label + ' on, hood up' : c.label.toLowerCase() + ': ' + K.over.label + ' on', 'over');
+    if (c.kind === 'drizzle' || c.kind === 'freezing' || W >= 40) { o.hood = true; o.items.push({ slot: 'hood', id: 'hood', label: 'hood up', why: c.kind === 'drizzle' ? 'drizzle does not earn an umbrella' : W >= 40 ? 'wind at ' + fmtWind(c.windKmh) + '; anything held up would be a kite' : 'freezing rain: hood, not umbrella', color: K.over.st.color2 || K.over.color }); }
     if (c.kind !== 'drizzle') {
-      if (W >= 28) add('umbrella', 'inverted', 'the umbrella, inverted', 'wind at ' + fmtWind(c.windKmh) + ' has turned it into a bowl', COL.umbrella);
-      else add('umbrella', 'up', 'red umbrella', c.kind === 'storm' ? 'thunderstorm; held with reservations' : c.label.toLowerCase() + ' with wind under ' + (state.unit === 'f' ? '28 mph' : '45 km/h'), COL.umbrella);
+      if (W >= 28) add('umbrella', K.umbrella, 'wind at ' + fmtWind(c.windKmh) + ' has turned it inside out', 'inverted');
+      else add('umbrella', K.umbrella, c.kind === 'storm' ? 'thunderstorm; held with reservations' : c.label.toLowerCase() + ' with wind under ' + windLimit, 'up');
     }
-  } else if (band === 'arctic') { o.hood = true; o.items.push({ slot: 'hood', id: 'hood', label: 'parka hood up', why: 'below ' + deg(15) + ' the hood is not optional', color: COL.parkaD }); }
+  } else if (band === 'arctic') { o.hood = true; o.items.push({ slot: 'hood', id: 'hood', label: 'hood up', why: 'below ' + deg(15) + ' the hood is not optional', color: K.top.freezing.st.color2 }); }
 
   // hats (skipped when a hood is up)
   if (!o.hood) {
-    if (band === 'scorch' && c.isDay) add('hat', 'sunhat', 'straw sun hat', 'sun and ' + t, COL.sunhat);
-    else if (band === 'hot' && c.isDay && uv >= 5) add('hat', 'cap', 'ball cap', 'UV index ' + uv, COL.cap);
-    else if (band === 'cold') add('hat', 'beanie', 'green beanie', 'ears get cold under ' + deg(45), COL.beanie);
-    else if (band === 'freezing' || band === 'arctic') add('hat', 'pombeanie', 'pom beanie', 'below ' + deg(33) + ', with pom for morale', COL.beanie);
-    if (band === 'freezing' || band === 'arctic') flag('earmuffs', 'earmuffs', 'below ' + deg(33) + ' the ears file a complaint', COL.earmuff);
+    if (band === 'scorch' && c.isDay) add('hat', K.hat.sunhat, 'sun and ' + t, 'sunhat');
+    else if (band === 'hot' && c.isDay && uv >= 5) add('hat', K.hat.cap, 'UV index ' + uv, 'cap');
+    else if (band === 'cold') add('hat', K.hat.beanie, 'ears get cold under ' + deg(45), 'beanie');
+    else if (band === 'freezing' || band === 'arctic') add('hat', K.hat.pombeanie, 'below ' + deg(33) + ', for morale', 'pombeanie');
+    if (band === 'freezing' || band === 'arctic') add('earmuffs', K.earmuffs, 'below ' + deg(33) + ' the ears file a complaint', true);
   }
 
   // scarf, mittens, sun
-  if (T < 15) add('scarf', 'bigscarf', 'the enormous scarf', 'under ' + deg(15) + ' the scarf goes over the nose', COL.scarf);
-  else if (T < 45) add('scarf', 'scarf', 'striped scarf', 'scarf line: ' + deg(45) + ' feels-like', COL.scarf);
-  if (T < 33) flag('mittens', 'red mittens', 'fingers below ' + deg(33), COL.mitten);
-  if (c.isDay && !c.wet && uv >= 3 && (c.kind === 'clear' || c.kind === 'cloudy')) flag('shades', 'sunglasses', 'UV index ' + uv + '; squinting is not a strategy', COL.shades);
-  if (c.isDay && uv >= 8) flag('nose', 'sunscreen nose', 'UV ' + uv + ' burns pixies too', '#fff');
+  if (T < 15) add('scarf', K.bigscarf, 'under ' + deg(15) + ' the scarf goes over the nose', 'bigscarf');
+  else if (T < 45) add('scarf', K.scarf, 'scarf line: ' + deg(45) + ' feels-like', 'scarf');
+  if (T < 33) add('mittens', K.mittens, 'fingers below ' + deg(33), true);
+  if (c.isDay && !c.wet && uv >= 3 && (c.kind === 'clear' || c.kind === 'cloudy')) add('shades', K.shades, 'UV index ' + uv + '; squinting is not a strategy', true);
+  if (c.isDay && uv >= 8) add('nose', K.nose, 'UV ' + uv + ' burns pixies too', true);
 
   // one free hand
   if (o.umbrella) o.hold = null;
-  else if (!c.isDay) add('hold', 'lantern', 'a small lantern', 'it is dark out', '#ffd27a');
-  else if (band === 'scorch') add('hold', 'popsicle', 'a popsicle', 'emergency measures above ' + deg(90), '#f26b8a');
-  else if (T < 45 && !c.wet && !c.snowy && c.kind !== 'fog') add('hold', 'cocoa', 'cocoa', 'cold and dry, so: cocoa', '#8a5a3b');
-  else if (band === 'hot' && c.humidity >= 75) add('hold', 'fan', 'paper fan', c.humidity + '% humidity', COL.fan);
+  else if (!c.isDay) add('hold', K.hold.lantern, 'it is dark out', 'lantern');
+  else if (band === 'scorch') add('hold', K.hold.popsicle, 'emergency measures above ' + deg(90), 'popsicle');
+  else if (T < 45 && !c.wet && !c.snowy && c.kind !== 'fog') add('hold', K.hold.cocoa, 'cold and dry, so: something hot', 'cocoa');
+  else if (band === 'hot' && c.humidity >= 75) add('hold', K.hold.fan, c.humidity + '% humidity', 'fan');
 
   // hair, face, effects
   o.hair = W >= 18 ? 'windy' : (c.wet && !o.umbrella && !o.hood) ? 'wet' : (c.humidity >= 75 && T >= 72) ? 'frizz' : 'normal';
-  if (o.hair === 'windy') o.items.push({ slot: 'hair', id: 'hair', label: 'hair, horizontal', why: 'wind at ' + fmtWind(c.windKmh), color: HAIR });
-  else if (o.hair === 'frizz') o.items.push({ slot: 'hair', id: 'hair', label: 'hair, ambitious', why: c.humidity + '% humidity', color: HAIR });
+  if (o.hair === 'windy') o.items.push({ slot: 'hair', id: 'hair', label: 'hair, horizontal', why: 'wind at ' + fmtWind(c.windKmh), color: PX.hair });
+  else if (o.hair === 'frizz') o.items.push({ slot: 'hair', id: 'hair', label: PX.hairStyle === 'flame' ? 'hair, roaring' : 'hair, ambitious', why: c.humidity + '% humidity', color: PX.hair });
   o.face = c.kind === 'storm' ? 'worried' : T >= 95 ? 'wilted' : T < 15 ? 'shiver' : (c.snowy && W < 18) ? 'tongue'
     : (c.late && !c.isDay) ? 'sleepy' : o.shades ? 'shades' : (c.isDay && c.kind === 'clear' && (band === 'warm' || band === 'mild' || band === 'hot')) ? 'happy' : 'content';
+  if (PX.key === 'nix' && c.isDay && !o.shades && o.face === 'content' && c.kind === 'clear') o.face = 'squint';
+  if (PX.key === 'fen' && c.wet && o.face === 'content') o.face = 'happy';
   if (T >= 90) o.fx.push('sweat');
   if (T < 33 && o.scarf !== 'bigscarf') o.fx.push('breath');
   if (T < 15) o.fx.push('shiver');
   if (W >= 25) o.fx.push('lean');
   if (W >= 40) o.fx.push('gale');
+  if (PX.key === 'ember' && (c.wet || c.snowy)) o.fx.push('steam');
   return o;
 }
 const signature = o => o.items.map(i => i.id).join('|');
 
-// ---------- the dressing note
+// ---------- the dressing note, in the active pixie's voice
 function note(c, o) {
-  const t = fmtT(c.feelsC);
-  const base = {
-    scorch: t + ' feels-like. Wisp has abandoned dignity for a tank top and a popsicle.',
-    hot: t + ' and ' + (c.isDay ? 'bright' : 'still warm after dark') + '. Shorts, a tee, and ' + (o.shades ? 'the good sunglasses.' : 'a certain confidence.'),
-    warm: 'A ' + t + ' kind of day. Wisp is in a tee and the rust skirt and considers this ideal.',
-    mild: t + ': long-sleeves weather. Wisp says this is the correct amount of weather.',
-    cool: t + ' feels-like calls for the mustard sweater.' + (o.scarf ? '' : ' The scarf is on standby.'),
-    cold: t + '. Coat, scarf, hat. Wisp is fine. Wisp would like cocoa.',
-    freezing: t + ' feels-like. Full parka, mittens, and a strong opinion about going back inside.',
-    arctic: t + '. Every layer Wisp owns, plus the enormous scarf, plus resentment.',
-  }[o.band];
+  const V = PX.voice, L = PX.lines, wind = fmtWind(c.windKmh);
+  const base = V[o.band].replace(/\{t\}/g, fmtT(c.feelsC));
   const more = [];
-  if (c.kind === 'storm') more.push('Thunder. The umbrella is up, but nobody is enjoying it.');
-  else if (c.kind === 'drizzle') more.push('Only drizzle, so: hood up, no umbrella, light grumbling.');
-  else if (o.umbrella === 'inverted') more.push('Wind at ' + fmtWind(c.windKmh) + ' has turned the umbrella into a bowl.');
-  else if (c.kind === 'freezing') more.push('Freezing rain. Hood up, boots on, every step negotiated.');
-  else if (c.wet) more.push(c.intensity >= 3 ? 'Proper rain. Umbrella up, boots on, puddles under review.' : 'Rain. Umbrella up; the red boots were not optional.');
-  else if (c.snowy) more.push(c.intensity >= 2 ? 'Real snow. Boots, mittens, tongue out.' : 'A little snow. Wisp is catching it, professionally.');
-  else if (c.kind === 'fog') more.push('Fog thick enough to lose a pixie in. Wisp is walking carefully.');
-  if (o.hair === 'windy' && o.umbrella !== 'inverted' && !o.hood) more.push('The wind is ' + fmtWind(c.windKmh) + ', which explains the hair.');
-  if (o.hold === 'lantern') more.push(c.late ? 'It is very late. The lantern is lit; the pixie is not.' : 'Night, so the lantern is lit.');
+  if (c.kind === 'storm') more.push(L.storm);
+  else if (c.kind === 'drizzle') more.push(L.drizzle);
+  else if (o.umbrella === 'inverted') more.push(L.gale.replace('{w}', wind));
+  else if (c.kind === 'freezing') more.push(L.freezing);
+  else if (c.wet) more.push(L.rain);
+  else if (c.snowy) more.push(L.snow);
+  else if (c.kind === 'fog') more.push(L.fog);
+  if (o.hair === 'windy' && o.umbrella !== 'inverted' && !o.hood) more.push('The wind is ' + wind + ', which explains the hair.');
+  if (o.hold === 'lantern') more.push(c.late ? L.late : L.night);
   return base + ' ' + more.slice(0, 2).join(' ');
 }
 
@@ -639,14 +987,6 @@ function ground(c, P) {
   return s.join('');
 }
 
-function toadstool(c, P) {
-  const snow = c.snowy || (c.feelsF < 30 && c.cloud > 60);
-  return '<g class="toadstool"><rect x="56" y="346" width="16" height="30" rx="6" fill="#f1e6cf"/>' +
-    (P.night ? '<circle cx="64" cy="360" r="14" fill="url(#lamp)" opacity=".8"/><rect class="lamp" x="61" y="354" width="6" height="8" rx="2" fill="#ffd27a"/>' : '<rect x="61" y="354" width="6" height="8" rx="2" fill="#d9c9a8"/>') +
-    '<path d="M30 350 C30 318 98 318 98 350 Z" fill="#d9483b"/><circle cx="50" cy="336" r="4" fill="#fff"/><circle cx="70" cy="330" r="3" fill="#fff"/><circle cx="84" cy="342" r="2.6" fill="#fff"/>' +
-    (snow ? '<path d="M36 336 C44 322 84 320 92 336 C80 330 48 330 36 336Z" fill="#fff"/>' : '') + '</g>';
-}
-
 function precip(c) {
   if (!(c.wet || c.snowy)) return '';
   const R = rng(5), out = [];
@@ -666,14 +1006,16 @@ const fog = () => '<g class="fogband"><rect x="-60" y="250" width="480" height="
   '<g class="fogband" style="animation-direction:alternate-reverse"><rect x="-80" y="150" width="520" height="70" rx="35" fill="#fff" opacity=".18"/></g><rect width="360" height="440" fill="#dfe4e8" opacity=".18"/>';
 
 function scene(c, o, alt) {
+  applyPixie(PIXIES[state.pixie] || PIXIES.wisp);
   const P = palette(c);
   const s = ['<defs><linearGradient id="sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="' + P.skyA + '"/><stop offset="1" stop-color="' + P.skyB + '"/></linearGradient>',
     '<radialGradient id="glow"><stop offset="0" stop-color="#fff3b0" stop-opacity=".9"/><stop offset="1" stop-color="#fff3b0" stop-opacity="0"/></radialGradient>',
     '<radialGradient id="lamp"><stop offset="0" stop-color="#ffd27a" stop-opacity=".85"/><stop offset="1" stop-color="#ffd27a" stop-opacity="0"/></radialGradient>',
+    '<linearGradient id="flameG" gradientUnits="userSpaceOnUse" x1="0" y1="100" x2="0" y2="250"><stop offset="0" stop-color="#ffd76a"/><stop offset=".5" stop-color="#f08a2e"/><stop offset="1" stop-color="#c8442a"/></linearGradient>',
     '<clipPath id="clip"><rect width="360" height="440"/></clipPath></defs>',
     '<g clip-path="url(#clip)"><rect width="360" height="440" fill="url(#sky)"/>'];
   if (P.night || c.phase === 'dusk') s.push(stars(c));
-  s.push(celestial(c), clouds(c, P), ground(c, P), toadstool(c, P), pixie(c, o, P), precip(c));
+  s.push(celestial(c), clouds(c, P), ground(c, P), home(c, P), pixie(c, o), precip(c));
   if (c.kind === 'fog') s.push(fog());
   if (c.kind === 'storm') s.push('<rect class="flash" width="360" height="440" fill="#fff"/>');
   s.push('</g>');
@@ -681,90 +1023,312 @@ function scene(c, o, alt) {
 }
 
 // ============================================================
-//  THE PIXIE (Wisp). Scene coords: head (180,206) r40, ground y=372.
+//  DRAWING THE PIXIE. Shared body geometry: head (180,206) r40, ground y=372.
+//  Anatomy comes from PX (the active pixie); garments come from o.g (its kit).
 // ============================================================
 const ln = (x1, y1, x2, y2, color, w, cap = 'round') => '<line x1="' + x1 + '" y1="' + y1 + '" x2="' + x2 + '" y2="' + y2 + '" stroke="' + color + '" stroke-width="' + w + '" stroke-linecap="' + cap + '"/>';
 const along = (a, t) => [r1(a.sx + (a.hx - a.sx) * t), r1(a.sy + (a.hy - a.sy) * t)];
+const mir = d => d.replace(/(-?\d+(?:\.\d+)?) (-?\d+(?:\.\d+)?)/g, (m, x, y) => r1(360 - +x) + ' ' + y);   // mirror an absolute-coordinate path about x=180
 function torsoPath(y0, y1, w, cx = 180) {
   const l = cx - w / 2, r = cx + w / 2, k = Math.min(14, w / 3);
   return 'M' + l + ' ' + y1 + ' L' + l + ' ' + (y0 + k) + ' Q' + l + ' ' + y0 + ' ' + (l + k) + ' ' + y0 + ' L' + (r - k) + ' ' + y0 + ' Q' + r + ' ' + y0 + ' ' + r + ' ' + (y0 + k) + ' L' + r + ' ' + y1 + 'Z';
 }
 const part = (id, inner) => inner ? '<g data-part="' + id + '">' + inner + '</g>' : '';
+const P2 = (d, fill, extra = '') => '<path d="' + d + '" fill="' + fill + '"' + extra + '/>';
+const both = (d, fill, extra = '') => P2(d, fill, extra) + P2(mir(d), fill, extra);
 
+// ---------- wings
 function wings(o) {
-  const w = (cls, d, v) => '<g class="wing ' + cls + '"><path d="' + d + '" fill="rgba(220,246,255,.72)" stroke="rgba(120,180,210,.75)" stroke-width="1.5"/><path d="' + v + '" fill="none" stroke="rgba(120,180,210,.5)" stroke-width="1"/></g>';
-  const dust = '<g fill="#fff8d6">' + [[108, 262, 1.6, 0], [98, 300, 1.2, .6], [258, 258, 1.5, .3], [268, 298, 1.1, .9], [120, 320, 1, 1.2]].map(([x, y, r, d]) => '<circle class="dust" cx="' + x + '" cy="' + y + '" r="' + r + '" style="animation-delay:-' + d + 's"/>').join('') + '</g>';
-  return w('wl', 'M172 270 C130 222 92 244 114 292 C126 316 158 308 172 290 Z', 'M168 276 C148 262 130 264 120 288') +
-    w('wr', 'M188 270 C230 222 268 244 246 292 C234 316 202 308 188 290 Z', 'M192 276 C212 262 230 264 240 288') + dust;
+  const dustC = PX.wings === 'ember' ? '#ffb347' : '#fff8d6';
+  const dust = '<g fill="' + dustC + '">' + [[108, 262, 1.6, 0], [98, 300, 1.2, .6], [258, 258, 1.5, .3], [268, 298, 1.1, .9], [120, 320, 1, 1.2]].map(([x, y, r, d]) => '<circle class="dust" cx="' + x + '" cy="' + y + '" r="' + r + '" style="animation-delay:-' + d + 's"/>').join('') + '</g>';
+  const pair = (inner, innerR) => '<g class="wing wl">' + inner + '</g><g class="wing wr">' + innerR + '</g>' + dust;
+  switch (PX.wings) {
+    case 'leaf': {
+      const d = 'M172 272 C158 250 132 236 112 244 C104 250 108 258 100 262 C92 268 102 276 96 284 C94 294 106 296 108 304 C116 316 138 306 152 300 C164 296 170 290 172 286Z';
+      const v = 'M170 282 C150 274 130 268 104 264 M150 276 C146 266 140 258 136 254 M140 282 C134 278 124 274 118 272 M132 292 C124 292 116 294 112 298';
+      const w = (dd, vv) => P2(dd, '#9bb35a', ' stroke="#6b8a3a" stroke-width="1.5"') + '<path d="' + vv + '" fill="none" stroke="#6b8a3a" stroke-width="1"/>';
+      return pair(w(d, v), w(mir(d), mir(v)));
+    }
+    case 'moth': {
+      const up = 'M172 264 C150 236 110 210 94 216 C82 222 92 262 104 292 C112 306 150 300 172 284Z', lo = 'M172 288 C154 296 128 312 122 330 C122 340 146 336 160 322 C168 314 172 302 172 292Z';
+      const spot = (x, y, r) => '<circle cx="' + x + '" cy="' + y + '" r="' + r + '" fill="#f0e6d0"/><circle cx="' + x + '" cy="' + y + '" r="' + (r * .6) + '" fill="#3a3446"/><circle cx="' + (x - r * .3) + '" cy="' + (y - r * .3) + '" r="' + (r * .2) + '" fill="#fff"/>';
+      const w = (a, b, sx, sy, sx2, sy2) => P2(a, '#6d6478', ' stroke="#d9d0c2" stroke-width="1.5"') + P2(b, '#7e7590', ' stroke="#d9d0c2" stroke-width="1.2"') + spot(sx, sy, 10) + spot(sx2, sy2, 5.5);
+      return pair(w(up, lo, 118, 258, 138, 318), w(mir(up), mir(lo), 242, 258, 222, 318));
+    }
+    case 'ember': {
+      const d = 'M172 272 C152 258 128 258 118 278 C110 294 126 308 140 302 C150 310 166 302 172 288Z', i = 'M170 276 C156 268 140 270 134 284 C130 294 140 300 148 296 C158 300 168 294 170 286Z';
+      const w = (dd, ii) => P2(dd, 'rgba(255,150,60,.55)', ' stroke="rgba(255,200,110,.9)" stroke-width="1.5"') + P2(ii, 'rgba(255,225,130,.55)');
+      return pair(w(d, i), w(mir(d), mir(i)));
+    }
+    case 'dragonfly': {
+      const up = 'M172 268 C140 236 96 232 88 244 C84 254 128 280 172 282Z', lo = 'M172 286 C146 290 108 302 108 314 C112 324 148 308 172 296Z';
+      const w = (a, b, v) => P2(a, 'rgba(150,220,235,.42)', ' stroke="rgba(70,160,185,.85)" stroke-width="1.2"') + P2(b, 'rgba(150,220,235,.42)', ' stroke="rgba(70,160,185,.85)" stroke-width="1.2"') + '<path d="' + v + '" stroke="rgba(70,160,185,.6)" stroke-width="1" fill="none"/>';
+      const v = 'M168 278 L100 246 M168 290 L118 308';
+      return pair(w(up, lo, v), w(mir(up), mir(lo), mir(v)));
+    }
+    default: {
+      const w = (d, v) => P2(d, 'rgba(220,246,255,.72)', ' stroke="rgba(120,180,210,.75)" stroke-width="1.5"') + '<path d="' + v + '" fill="none" stroke="rgba(120,180,210,.5)" stroke-width="1"/>';
+      const d = 'M172 270 C130 222 92 244 114 292 C126 316 158 308 172 290Z', v = 'M168 276 C148 262 130 264 120 288';
+      return pair(w(d, v), w(mir(d), mir(v)));
+    }
+  }
 }
 
+// ---------- ears
+function ears() {
+  switch (PX.ears) {
+    case 'long': return both('M146 198 L100 176 L150 222Z', SKIN) + both('M144 200 L112 184 L148 214Z', BLUSH, ' opacity=".4"');
+    case 'tufted': return both('M148 194 C132 178 124 196 146 214Z', SKIN) + '<path d="M134 186 l-6 -6 M138 182 l-3 -8 M226 186 l6 -6 M222 182 l3 -8" stroke="' + HAIR + '" stroke-width="2" stroke-linecap="round"/>';
+    case 'small': return both('M148 200 L128 190 L150 214Z', SKIN) + both('M146 202 L136 196 L148 210Z', BLUSH, ' opacity=".4"');
+    case 'fin': return both('M146 194 C120 182 106 202 112 228 C122 230 138 220 150 216Z', 'rgba(127,201,192,.8)', ' stroke="#4fa39a" stroke-width="1.5"') + '<path d="M146 200 L118 194 M146 206 L116 210 M148 212 L120 224 M214 200 L242 194 M214 206 L244 210 M212 212 L240 224" stroke="#4fa39a" stroke-width="1" fill="none"/>';
+    default: return both('M146 200 L116 184 L150 218Z', SKIN) + both('M144 202 L126 192 L148 212Z', BLUSH, ' opacity=".45"');
+  }
+}
+
+// ---------- hair, by style and state (normal / windy / wet / frizz), squashed when covered by a hat or hood
 function hairBack(o) {
   if (o.top === 'towel') return '';
-  if (o.hair === 'windy') return '<g data-part="hair"><ellipse cx="180" cy="202" rx="44" ry="42" fill="' + HAIR + '"/>' +
-    '<path class="flap" d="M196 176 C240 160 262 176 292 168 C270 186 266 196 300 206 C270 210 250 222 262 240 C236 236 216 228 206 244 Z" fill="' + HAIR + '"/>' +
-    '<path d="M214 186 C244 178 262 186 284 182" stroke="' + HAIR_D + '" stroke-width="1.5" fill="none"/></g>';
-  if (o.hair === 'frizz') return '<g data-part="hair"><ellipse cx="180" cy="200" rx="56" ry="52" fill="' + HAIR + '"/>' +
-    [[128, 178], [136, 228], [230, 176], [226, 230], [150, 154], [212, 152], [180, 146]].map(([x, y]) => '<circle cx="' + x + '" cy="' + y + '" r="12" fill="' + HAIR + '"/>').join('') + '</g>';
-  if (o.hair === 'wet') return '<g data-part="hair"><ellipse cx="180" cy="204" rx="42" ry="42" fill="' + HAIR_D + '"/><rect x="138" y="204" width="14" height="52" rx="7" fill="' + HAIR_D + '"/><rect x="208" y="204" width="14" height="52" rx="7" fill="' + HAIR_D + '"/>' +
-    '<circle class="drip" cx="144" cy="258" r="2" fill="#bfe3f5" style="animation-delay:-.4s"/><circle class="drip" cx="216" cy="258" r="2" fill="#bfe3f5"/></g>';
-  return '<g data-part="hair"><ellipse cx="180" cy="200" rx="46" ry="44" fill="' + HAIR + '"/><rect x="136" y="200" width="16" height="48" rx="8" fill="' + HAIR + '"/><rect x="208" y="200" width="16" height="48" rx="8" fill="' + HAIR + '"/></g>';
+  const st = o.hair, cov = !!(o.hat || o.hood), drips = '<circle class="drip" cx="144" cy="258" r="2" fill="#bfe3f5" style="animation-delay:-.4s"/><circle class="drip" cx="216" cy="258" r="2" fill="#bfe3f5"/>';
+  let s = '';
+  switch (PX.hairStyle) {
+    case 'locs': {
+      const twist = (x1, y1, x2, y2, c = HAIR) => ln(x1, y1, x2, y2, c, 10) + '<circle cx="' + x2 + '" cy="' + y2 + '" r="4" fill="' + HAIR_D + '"/>';
+      const c = st === 'wet' ? HAIR_D : HAIR;
+      s = '<ellipse cx="180" cy="194" rx="45" ry="40" fill="' + c + '"/>';
+      if (st === 'windy') s += twist(144, 190, 134, 232, c) + '<g class="flap">' + twist(214, 180, 262, 188, c) + twist(220, 194, 266, 208, c) + twist(216, 168, 258, 160, c) + '</g>';
+      else s += twist(140, 196, 132, 244, c) + twist(148, 182, 138, 236, c) + twist(220, 196, 228, 244, c) + twist(212, 182, 222, 236, c);
+      if (st === 'wet') s += drips;
+      break;
+    }
+    case 'undercut':
+      if (st !== 'wet' && !cov) s = P2('M140 190 C142 168 160 156 184 158 C208 160 224 174 228 190 C214 176 196 172 180 176 C160 178 148 184 140 190Z', HAIR);
+      if (st === 'wet') s += drips;
+      break;
+    case 'flame': {
+      const F = 'url(#flameG)';
+      const bumps = a => a.map(([x, y, r]) => '<circle cx="' + x + '" cy="' + y + '" r="' + r + '" fill="' + F + '"/>').join('');
+      if (st === 'wet') s = '<circle cx="180" cy="192" r="48" fill="#a8452a"/>' + [[138, 208, 18], [222, 208, 18], [180, 148, 18]].map(([x, y, r]) => '<circle cx="' + x + '" cy="' + y + '" r="' + r + '" fill="#a8452a"/>').join('') + '<g class="puff" opacity=".7"><ellipse cx="172" cy="138" rx="10" ry="7" fill="#fff"/><ellipse cx="196" cy="132" rx="7" ry="5" fill="#fff"/></g>';
+      else if (cov) s = '<circle cx="180" cy="200" r="50" fill="' + F + '"/>' + bumps([[132, 208, 24], [228, 208, 24]]);
+      else if (st === 'windy') s = '<circle cx="194" cy="186" r="56" fill="' + F + '"/>' + bumps([[236, 200, 26], [156, 152, 22], [222, 142, 24], [190, 130, 24]]) + '<g class="flap">' + P2('M226 150 Q270 134 300 158 Q268 160 236 176Z', F) + P2('M232 188 Q276 184 296 204 Q266 200 236 208Z', F) + '</g>';
+      else { const r = st === 'frizz' ? 68 : 60, b = st === 'frizz' ? 30 : 26; s = '<circle cx="180" cy="184" r="' + r + '" fill="' + F + '"/>' + bumps([[126, 204, b], [234, 204, b], [146, 146, b - 2], [214, 146, b - 2], [180, 128, b]]) + P2('M150 134 Q160 104 168 130 Q176 98 186 126 Q196 96 206 128 Q214 108 220 138Z', F); }
+      break;
+    }
+    case 'crest':
+      s = '<ellipse cx="180" cy="198" rx="43" ry="40" fill="' + HAIR + '"/>';
+      if (!cov) s += st === 'windy' ? '<g class="flap">' + P2('M172 168 C192 144 218 142 238 158 C218 158 202 166 192 176Z', HAIR) + '</g>' : P2('M170 168 C176 138 198 130 216 146 C204 150 194 160 190 172Z', HAIR);
+      if (st === 'wet') s += drips;
+      break;
+    default:   // bob
+      if (st === 'windy') s = '<ellipse cx="180" cy="202" rx="44" ry="42" fill="' + HAIR + '"/><path class="flap" d="M196 176 C240 160 262 176 292 168 C270 186 266 196 300 206 C270 210 250 222 262 240 C236 236 216 228 206 244 Z" fill="' + HAIR + '"/><path d="M214 186 C244 178 262 186 284 182" stroke="' + HAIR_D + '" stroke-width="1.5" fill="none"/>';
+      else if (st === 'frizz') s = '<ellipse cx="180" cy="200" rx="56" ry="52" fill="' + HAIR + '"/>' + [[128, 178], [136, 228], [230, 176], [226, 230], [150, 154], [212, 152], [180, 146]].map(([x, y]) => '<circle cx="' + x + '" cy="' + y + '" r="12" fill="' + HAIR + '"/>').join('');
+      else if (st === 'wet') s = '<ellipse cx="180" cy="204" rx="42" ry="42" fill="' + HAIR_D + '"/><rect x="138" y="204" width="14" height="52" rx="7" fill="' + HAIR_D + '"/><rect x="208" y="204" width="14" height="52" rx="7" fill="' + HAIR_D + '"/>' + drips;
+      else s = '<ellipse cx="180" cy="200" rx="46" ry="44" fill="' + HAIR + '"/><rect x="136" y="200" width="16" height="48" rx="8" fill="' + HAIR + '"/><rect x="208" y="200" width="16" height="48" rx="8" fill="' + HAIR + '"/>';
+  }
+  return part('hair', s);
 }
 
 function hairFront(o) {
   if (o.top === 'towel') return '';
-  if (o.hair === 'windy') return '<path d="M142 198 Q150 168 182 166 Q214 166 220 196 Q224 182 236 178 Q214 180 204 186 Q190 174 176 188 Q162 178 142 198Z" fill="' + HAIR + '"/>';
-  if (o.hair === 'wet') return '<path d="M144 200 Q150 172 180 170 Q210 172 216 200 Q208 186 196 196 Q186 178 176 196 Q164 184 144 200Z" fill="' + HAIR_D + '"/>';
-  return '<path d="M142 198 Q150 166 180 164 Q210 166 218 198 Q206 184 196 190 Q186 176 176 190 Q160 178 142 198Z" fill="' + HAIR + '"/>' +
-    (o.hair === 'frizz' ? '<path d="M150 176 q-8 -14 4 -18 M212 176 q10 -14 -2 -18" stroke="' + HAIR + '" stroke-width="3" fill="none" stroke-linecap="round"/>' : '<path d="M204 170 q8 -12 18 -6" stroke="' + HAIR + '" stroke-width="3" fill="none" stroke-linecap="round"/>');
+  const st = o.hair, cov = !!(o.hat || o.hood);
+  switch (PX.hairStyle) {
+    case 'locs': {
+      const c = st === 'wet' ? HAIR_D : HAIR, k = st === 'windy' ? 1 : 0;
+      return [[150, 184, 146 + 6 * k, 200], [164, 172, 162 + 8 * k, 190], [180, 168, 180 + 8 * k, 188], [196, 172, 198 + 8 * k, 190], [210, 184, 214 + 8 * k, 200]].map(([a, b, x, y]) => ln(a, b, x, y, c, 9) + '<circle cx="' + x + '" cy="' + y + '" r="3.5" fill="' + HAIR_D + '"/>').join('');
+    }
+    case 'undercut': {
+      if (st === 'wet' || cov) return P2('M144 196 C148 178 164 172 184 174 C204 176 216 184 224 196 C208 190 196 192 190 196 C176 188 160 192 144 196Z', st === 'wet' ? HAIR_D : HAIR);
+      let s = P2('M142 194 C144 172 160 162 184 164 C206 166 222 178 228 192 C214 184 202 186 194 192 C182 180 162 184 142 194Z', HAIR) + P2('M198 178 C216 172 230 186 236 204 C228 194 216 190 206 194Z', HAIR);
+      if (st === 'windy') s += '<path class="flap" d="M200 172 C224 158 244 164 254 176 C240 172 224 178 208 184Z" fill="' + HAIR + '"/>';
+      if (st === 'frizz') s += '<path d="M150 176 q-6 -12 2 -16 M212 170 q8 -10 0 -16" stroke="' + HAIR + '" stroke-width="2.5" fill="none" stroke-linecap="round"/>';
+      return s;
+    }
+    case 'flame': {
+      const F = st === 'wet' ? '#a8452a' : 'url(#flameG)';
+      return [150, 162, 174, 186, 198, 210].map(x => '<circle cx="' + x + '" cy="' + (172 - Math.abs(x - 180) * .1) + '" r="7" fill="' + F + '"/>').join('');
+    }
+    case 'crest':
+      return P2('M142 198 C146 176 162 168 180 168 C198 168 214 176 218 198 C210 186 196 182 180 184 C164 182 150 186 142 198Z', HAIR) + '<path d="M160 176 Q180 170 200 176" stroke="#4a5e78" stroke-width="1.5" fill="none" opacity=".7"/>' + (st === 'wet' ? '<path d="M156 178 Q180 166 204 178" stroke="#fff" stroke-width="2.5" fill="none" opacity=".4"/>' : '');
+    default:   // bob
+      if (st === 'windy') return P2('M142 198 Q150 168 182 166 Q214 166 220 196 Q224 182 236 178 Q214 180 204 186 Q190 174 176 188 Q162 178 142 198Z', HAIR);
+      if (st === 'wet') return P2('M144 200 Q150 172 180 170 Q210 172 216 200 Q208 186 196 196 Q186 178 176 196 Q164 184 144 200Z', HAIR_D);
+      return P2('M142 198 Q150 166 180 164 Q210 166 218 198 Q206 184 196 190 Q186 176 176 190 Q160 178 142 198Z', HAIR) +
+        (st === 'frizz' ? '<path d="M150 176 q-8 -14 4 -18 M212 176 q10 -14 -2 -18" stroke="' + HAIR + '" stroke-width="3" fill="none" stroke-linecap="round"/>' : '<path d="M204 170 q8 -12 18 -6" stroke="' + HAIR + '" stroke-width="3" fill="none" stroke-linecap="round"/>');
+  }
 }
 
+function extras() {
+  switch (PX.extras) {
+    case 'antlers': { const d = 'M160 172 C154 158 154 146 146 134 M154 152 L142 148 M150 146 C158 140 156 132 160 128'; return part('antlers', '<g stroke="#6b4a2e" stroke-width="4" fill="none" stroke-linecap="round"><path d="' + d + '"/><path d="' + mir(d) + '"/></g>' + P2('M146 134 C138 128 136 120 142 116 C150 120 150 130 146 134Z', '#7fa35a')); }
+    case 'antennae': { const d = 'M166 168 C158 152 150 140 138 128', f = 'M158 154 L151 153 M153 146 L146 145 M147 138 L141 136 M142 132 L136 130'; return part('antennae', '<g stroke="#4a4658" fill="none" stroke-linecap="round"><path d="' + d + '" stroke-width="2.5"/><path d="' + mir(d) + '" stroke-width="2.5"/><path d="' + f + '" stroke-width="1.5"/><path d="' + mir(f) + '" stroke-width="1.5"/></g>'); }
+  }
+  return '';
+}
+
+// ---------- legs, bottoms, feet
 const legs = () => '<rect x="162" y="300" width="15" height="64" rx="6" fill="' + SKIN + '"/><rect x="183" y="300" width="15" height="64" rx="6" fill="' + SKIN + '"/>';
 
-function bottom(o, windy) {
-  switch (o.bottom) {
-    case 'shorts': return part('shorts', '<rect x="158" y="298" width="44" height="32" rx="6" fill="' + COL.shorts + '"/><line x1="180" y1="304" x2="180" y2="328" stroke="#3f5f92" stroke-width="1.5"/><line x1="160" y1="322" x2="200" y2="322" stroke="#3f5f92" stroke-width="1"/>');
-    case 'skirt': return part('skirt', windy ? '<path class="flap" d="M158 298 L202 298 L226 336 L156 340 Z" fill="' + COL.skirt + '"/>' : '<path d="M158 298 L202 298 L214 340 L146 340 Z" fill="' + COL.skirt + '"/><path d="M170 300 L164 338 M190 300 L196 338" stroke="#a3502e" stroke-width="1.5"/>');
-    case 'pants': return part('pants', '<rect x="158" y="298" width="44" height="20" rx="5" fill="' + COL.pants + '"/><rect x="160" y="300" width="18" height="62" rx="6" fill="' + COL.pants + '"/><rect x="182" y="300" width="18" height="62" rx="6" fill="' + COL.pants + '"/>' +
-      '<path d="M165 310 v46 M172 310 v46 M187 310 v46 M194 310 v46" stroke="' + COL.pantsD + '" stroke-width="1" opacity=".6"/>');
-    case 'snowpants': return part('snowpants', '<rect x="155" y="296" width="50" height="22" rx="6" fill="' + COL.snowpants + '"/><rect x="156" y="300" width="22" height="64" rx="8" fill="' + COL.snowpants + '"/><rect x="182" y="300" width="22" height="64" rx="8" fill="' + COL.snowpants + '"/>' +
-      '<path d="M157 318 h20 M157 332 h20 M157 346 h20 M183 318 h20 M183 332 h20 M183 346 h20" stroke="#1d2f55" stroke-width="1.2"/>');
+function drawBottom(o, windy) {
+  const g = o.g.bottom; if (!g) return '';
+  const st = g.st, c = st.color, d = st.color2 || c;
+  let s = '';
+  switch (g.shape) {
+    case 'shorts':
+      if (st.variant === 'cycling') s = '<rect x="160" y="298" width="40" height="40" rx="5" fill="' + c + '"/><path d="M180 302 v34" stroke="' + d + '" stroke-width="1.2"/>';
+      else { s = '<rect x="158" y="298" width="44" height="32" rx="6" fill="' + c + '"/><line x1="180" y1="304" x2="180" y2="328" stroke="' + d + '" stroke-width="1.5"/>';
+        if (st.variant === 'denim') s += '<line x1="160" y1="322" x2="200" y2="322" stroke="' + d + '" stroke-width="1"/>';
+        if (st.variant === 'wave') s += '<path d="M160 312 q5 -4 10 0 t10 0 t10 0 t10 0 M160 322 q5 -4 10 0 t10 0 t10 0 t10 0" stroke="' + d + '" stroke-width="1.5" fill="none"/>'; }
+      break;
+    case 'skirt': {
+      const hem = windy ? 'M158 298 L202 298 L226 336 L156 340Z' : 'M158 298 L202 298 L214 340 L146 340Z';
+      s = '<path' + (windy ? ' class="flap"' : '') + ' d="' + hem + '" fill="' + c + '"/>';
+      if (st.variant === 'pleated') s += '<path d="M164 300 L154 338 M172 300 L166 340 M180 300 L180 340 M188 300 L194 340 M196 300 L206 338" stroke="' + d + '" stroke-width="1.5"/>' + (st.pin ? '<circle cx="164" cy="306" r="2.5" fill="' + st.pin + '"/>' : '');
+      else if (st.variant === 'tiered') s += '<path d="M156 312 L204 312 M152 326 L208 326" stroke="' + d + '" stroke-width="2.5"/><path d="M158 298 L202 298 L204 312 L156 312Z" fill="' + d + '" opacity=".35"/>';
+      else s += '<path d="M170 300 L164 338 M190 300 L196 338" stroke="' + d + '" stroke-width="1.5"/>';
+      break;
+    }
+    case 'pants': {
+      const w = st.variant === 'wide' ? 22 : st.variant === 'waders' ? 21 : 18, L = st.variant === 'rolled' ? 50 : 62;
+      s = '<rect x="158" y="298" width="44" height="20" rx="5" fill="' + c + '"/><rect x="' + (170 - w) + '" y="300" width="' + w + '" height="' + L + '" rx="6" fill="' + c + '"/><rect x="180" y="300" width="' + w + '" height="' + L + '" rx="6" fill="' + c + '"/>';
+      if (st.variant === 'cord') s += '<path d="M165 310 v46 M172 310 v46 M187 310 v46 M194 310 v46" stroke="' + d + '" stroke-width="1" opacity=".6"/>';
+      if (st.variant === 'rolled') s += '<rect x="' + (170 - w) + '" y="' + (300 + L - 8) + '" width="' + w + '" height="8" rx="2" fill="' + d + '"/><rect x="180" y="' + (300 + L - 8) + '" width="' + w + '" height="8" rx="2" fill="' + d + '"/>';
+      if (st.variant === 'waders') s += '<path d="M166 298 L166 262 M194 298 L194 262" stroke="' + c + '" stroke-width="5"/><rect x="158" y="286" width="44" height="14" rx="3" fill="' + c + '"/><rect x="170" y="290" width="20" height="8" rx="2" fill="' + d + '"/>';
+      break;
+    }
+    case 'snowpants':
+      s = '<rect x="155" y="296" width="50" height="22" rx="6" fill="' + c + '"/><rect x="156" y="300" width="22" height="64" rx="8" fill="' + c + '"/><rect x="182" y="300" width="22" height="64" rx="8" fill="' + c + '"/><path d="M157 318 h20 M157 332 h20 M157 346 h20 M183 318 h20 M183 332 h20 M183 346 h20" stroke="' + d + '" stroke-width="1.2"/>';
+      break;
+  }
+  return part(g.id, s);
+}
+
+function drawFeet(o) {
+  const g = o.g.feet; if (!g) return '';
+  const st = g.st, c = st.color, d = st.color2 || c, two = f => f(168) + f(192);
+  let s = '';
+  switch (g.shape) {
+    case 'bare': s = two(x => '<ellipse cx="' + x + '" cy="365" rx="11" ry="6" fill="' + SKIN + '"/><circle cx="' + (x + 7) + '" cy="368" r="1.8" fill="' + SKIN_D + '"/><circle cx="' + (x + 3) + '" cy="369.5" r="1.6" fill="' + SKIN_D + '"/><circle cx="' + (x - 1) + '" cy="370" r="1.4" fill="' + SKIN_D + '"/>'); break;
+    case 'sandals':
+      if (st.variant === 'flipflop') s = two(x => '<ellipse cx="' + x + '" cy="365" rx="11" ry="6" fill="' + SKIN + '"/><path d="M' + (x + 2) + ' 362 L' + (x - 6) + ' 368 M' + (x + 2) + ' 362 L' + (x + 9) + ' 368" stroke="' + c + '" stroke-width="2.4" stroke-linecap="round"/><ellipse cx="' + x + '" cy="370" rx="12" ry="3" fill="' + c + '"/>');
+      else if (st.variant === 'platform') s = two(x => '<ellipse cx="' + x + '" cy="360" rx="11" ry="5" fill="' + SKIN + '"/><path d="M' + (x - 8) + ' 358 L' + (x + 8) + ' 358" stroke="' + c + '" stroke-width="3"/><rect x="' + (x - 12) + '" y="362" width="24" height="10" rx="3" fill="' + c + '"/>');
+      else if (st.variant === 'beaded') s = two(x => '<ellipse cx="' + x + '" cy="365" rx="11" ry="6" fill="' + SKIN + '"/><path d="M' + (x - 8) + ' 363 L' + (x + 8) + ' 363" stroke="' + c + '" stroke-width="2.4"/>' + [-5, 0, 5].map(k => '<circle cx="' + (x + k) + '" cy="363" r="1.6" fill="' + d + '"/>').join('') + '<ellipse cx="' + x + '" cy="370" rx="12" ry="3" fill="' + c + '"/>');
+      else s = two(x => '<ellipse cx="' + x + '" cy="365" rx="11" ry="6" fill="' + SKIN + '"/><path d="M' + (x - 8) + ' 363 L' + (x + 8) + ' 363 M' + x + ' 359 L' + x + ' 366" stroke="' + c + '" stroke-width="2.4" stroke-linecap="round"/><ellipse cx="' + x + '" cy="370" rx="12" ry="3" fill="' + c + '"/>');
+      break;
+    case 'sneakers':
+      if (st.variant === 'hightop') s = two(x => '<rect x="' + (x - 10) + '" y="346" width="20" height="26" rx="6" fill="' + c + '"/><path d="M' + (x - 4) + ' 350 l8 3 m-8 4 l8 3 m-8 4 l8 3" stroke="' + d + '" stroke-width="1.5"/><ellipse cx="' + (x + 2) + '" cy="369" rx="12" ry="4" fill="' + d + '"/>');
+      else if (st.variant === 'deck') s = two(x => '<rect x="' + (x - 11) + '" y="358" width="22" height="14" rx="6" fill="' + c + '"/><path d="M' + (x - 6) + ' 360 q6 -3 12 0" stroke="' + d + '" stroke-width="1.5" fill="none"/><line x1="' + (x - 11) + '" y1="369" x2="' + (x + 11) + '" y2="369" stroke="' + d + '" stroke-width="3"/>');
+      else if (st.variant === 'espadrille') s = two(x => '<rect x="' + (x - 11) + '" y="358" width="22" height="14" rx="6" fill="' + c + '"/><path d="M' + (x - 10) + ' 368 h20 M' + (x - 10) + ' 371 h20" stroke="' + d + '" stroke-width="1.6" stroke-dasharray="2 1.5"/>');
+      else if (st.variant === 'moccasin') s = two(x => '<rect x="' + (x - 11) + '" y="358" width="22" height="14" rx="7" fill="' + c + '"/><path d="M' + (x - 6) + ' 361 q6 -4 12 0" stroke="' + d + '" stroke-width="1.5" fill="none" stroke-dasharray="1.5 1.5"/>');
+      else s = two(x => '<rect x="' + (x - 11) + '" y="358" width="22" height="14" rx="6" fill="' + c + '"/><ellipse cx="' + (x + 4) + '" cy="366" rx="8" ry="5" fill="' + d + '"/><line x1="' + (x - 11) + '" y1="370" x2="' + (x + 11) + '" y2="370" stroke="#c9c3b6" stroke-width="2"/>');
+      break;
+    case 'boots':
+      if (st.variant === 'chunky') s = two(x => '<rect x="' + (x - 10) + '" y="332" width="20" height="40" rx="6" fill="' + c + '"/>' + [340, 348, 356].map(y => '<circle cx="' + (x - 3) + '" cy="' + y + '" r="1.3" fill="' + d + '"/><circle cx="' + (x + 3) + '" cy="' + y + '" r="1.3" fill="' + d + '"/>').join('') + '<rect x="' + (x - 12) + '" y="364" width="26" height="8" rx="3" fill="#0f0e14"/>');
+      else if (st.variant === 'hobnail') s = two(x => '<rect x="' + (x - 9) + '" y="336" width="18" height="36" rx="6" fill="' + c + '"/><rect x="' + (x - 10) + '" y="336" width="20" height="6" rx="3" fill="' + d + '"/><path d="M' + (x - 6) + ' 369 h12" stroke="#c9c3b6" stroke-width="1.6" stroke-dasharray="1.5 2"/><ellipse cx="' + (x + 2) + '" cy="369" rx="11" ry="4" fill="#2a1c12"/>');
+      else if (st.variant === 'wading') s = two(x => '<rect x="' + (x - 9) + '" y="326" width="18" height="46" rx="6" fill="' + c + '"/><rect x="' + (x - 10) + '" y="326" width="20" height="6" rx="3" fill="' + d + '"/><ellipse cx="' + (x + 2) + '" cy="369" rx="11" ry="4" fill="' + d + '"/>');
+      else s = two(x => '<rect x="' + (x - 9) + '" y="334" width="18" height="38" rx="6" fill="' + c + '"/><rect x="' + (x - 10) + '" y="334" width="20" height="7" rx="3" fill="' + d + '"/><ellipse cx="' + (x + 2) + '" cy="369" rx="11" ry="4" fill="#4a321e"/>');
+      break;
+    case 'rainboots': s = two(x => '<rect x="' + (x - 9) + '" y="332" width="18" height="40" rx="6" fill="' + c + '"/><path d="M' + (x - 5) + ' 338 v24" stroke="#fff" stroke-width="2" stroke-linecap="round" opacity=".45"/><ellipse cx="' + (x + 2) + '" cy="369" rx="11" ry="4" fill="' + d + '"/>'); break;
+    case 'snowboots':
+      if (st.variant === 'moon') s = two(x => '<rect x="' + (x - 12) + '" y="334" width="24" height="38" rx="9" fill="' + c + '"/><path d="M' + (x - 10) + ' 346 h20 M' + (x - 10) + ' 356 h20" stroke="' + st.trim + '" stroke-width="1.5"/><ellipse cx="' + (x + 1) + '" cy="369" rx="13" ry="4" fill="#8a879a"/>');
+      else s = two(x => '<rect x="' + (x - 10) + '" y="336" width="20" height="36" rx="7" fill="' + c + '"/><ellipse cx="' + x + '" cy="338" rx="12" ry="6" fill="' + st.trim + '"/><ellipse cx="' + (x + 2) + '" cy="369" rx="12" ry="4" fill="#3a434d"/>');
+      break;
+    case 'slippers': s = two(x => '<ellipse cx="' + x + '" cy="365" rx="12" ry="7" fill="#f2a5c0"/><circle cx="' + (x + 3) + '" cy="361" r="3.5" fill="#fff"/>'); break;
+  }
+  return part(g.id, s);
+}
+
+// ---------- tops, over-layers, sleeves
+function tprint(kind, c2) {
+  switch (kind) {
+    case 'toadstool': return '<path d="M174 288 C174 280 186 280 186 288 Z" fill="' + c2 + '"/><rect x="178" y="288" width="4" height="5" rx="1" fill="#e8dcc0"/><circle cx="178" cy="284" r="1" fill="#fff"/><circle cx="183" cy="286" r=".8" fill="#fff"/>';
+    case 'stars': return [[170, 280], [186, 276], [178, 296], [194, 292], [166, 298]].map(([x, y]) => '<path d="M' + x + ' ' + (y - 3) + ' l1 2 l2 .3 l-1.5 1.4 l.4 2.2 l-1.9 -1 l-1.9 1 l.4 -2.2 l-1.5 -1.4 l2 -.3z" fill="' + c2 + '"/>').join('');
+    case 'sun': return '<circle cx="180" cy="286" r="5" fill="' + c2 + '"/>' + [0, 45, 90, 135, 180, 225, 270, 315].map(a => { const r = a * Math.PI / 180; return ln(r1(180 + Math.cos(r) * 7), r1(286 + Math.sin(r) * 7), r1(180 + Math.cos(r) * 10), r1(286 + Math.sin(r) * 10), c2, 1.5); }).join('');
+    case 'wave': return '<path d="M166 286 q4 -4 8 0 t8 0 t8 0 t8 0 M166 294 q4 -4 8 0 t8 0 t8 0 t8 0" stroke="' + c2 + '" stroke-width="1.5" fill="none"/>';
   }
   return '';
 }
 
-function feet(o) {
-  const two = f => f(168) + f(192);
-  switch (o.feet) {
-    case 'sandals': return part('sandals', two(x => '<ellipse cx="' + x + '" cy="365" rx="11" ry="6" fill="' + SKIN + '"/><path d="M' + (x - 8) + ' 363 L' + (x + 8) + ' 363 M' + x + ' 359 L' + x + ' 366" stroke="' + COL.sandals + '" stroke-width="2.4" stroke-linecap="round"/><ellipse cx="' + x + '" cy="370" rx="12" ry="3" fill="' + COL.sandals + '"/>'));
-    case 'sneakers': return part('sneakers', two(x => '<rect x="' + (x - 11) + '" y="358" width="22" height="14" rx="6" fill="' + COL.sneakers + '"/><ellipse cx="' + (x + 4) + '" cy="366" rx="8" ry="5" fill="' + COL.sneakersToe + '"/><line x1="' + (x - 11) + '" y1="370" x2="' + (x + 11) + '" y2="370" stroke="#c9c3b6" stroke-width="2"/>'));
-    case 'boots': return part('boots', two(x => '<rect x="' + (x - 9) + '" y="334" width="18" height="38" rx="6" fill="' + COL.boots + '"/><rect x="' + (x - 10) + '" y="334" width="20" height="7" rx="3" fill="#8b6540"/><ellipse cx="' + (x + 2) + '" cy="369" rx="11" ry="4" fill="#4a321e"/>'));
-    case 'rainboots': return part('rainboots', two(x => '<rect x="' + (x - 9) + '" y="332" width="18" height="40" rx="6" fill="' + COL.rainboots + '"/><path d="M' + (x - 5) + ' 338 v24" stroke="#f08a80" stroke-width="2" stroke-linecap="round" opacity=".7"/><ellipse cx="' + (x + 2) + '" cy="369" rx="11" ry="4" fill="#8f231d"/>'));
-    case 'snowboots': return part('snowboots', two(x => '<rect x="' + (x - 10) + '" y="336" width="20" height="36" rx="7" fill="' + COL.snowboots + '"/><ellipse cx="' + x + '" cy="338" rx="12" ry="6" fill="' + COL.fur + '"/><ellipse cx="' + (x + 2) + '" cy="369" rx="12" ry="4" fill="#3a434d"/>'));
-    case 'slippers': return part('slippers', two(x => '<ellipse cx="' + x + '" cy="365" rx="12" ry="7" fill="' + COL.slipper + '"/><circle cx="' + (x + 3) + '" cy="361" r="3.5" fill="#fff"/>'));
-  }
-  return '';
-}
-
-function torso(o) {
+function drawTop(o) {
+  const g = o.g.top, st = g.st, c = st.color, d = st.color2 || c;
   const skin = '<rect x="157" y="258" width="46" height="50" rx="14" fill="' + SKIN + '"/>';
-  let g = '';
-  switch (o.top) {
-    case 'tank': g = '<path d="' + torsoPath(270, 308, 40) + '" fill="' + COL.tank + '"/>' + ln(167, 258, 167, 272, COL.tank, 4, 'butt') + ln(193, 258, 193, 272, COL.tank, 4, 'butt'); break;
-    case 'tee': g = '<path d="' + torsoPath(258, 308, 46) + '" fill="' + COL.tee + '"/><path d="M170 258 Q180 268 190 258Z" fill="' + SKIN + '"/><path d="M174 288 C174 280 186 280 186 288 Z" fill="#d9483b"/><rect x="178" y="288" width="4" height="5" rx="1" fill="#e8dcc0"/><circle cx="178" cy="284" r="1" fill="#fff"/><circle cx="183" cy="286" r=".8" fill="#fff"/>'; break;
-    case 'stripes': g = '<path d="' + torsoPath(258, 308, 46) + '" fill="' + COL.stripes + '"/>' + [274, 282, 290, 298, 306].map(y => ln(157, y, 203, y, COL.stripesLine, 3, 'butt')).join('') + '<path d="M170 258 Q180 266 190 258Z" fill="' + SKIN + '"/>'; break;
-    case 'sweater': g = '<path d="' + torsoPath(256, 312, 48) + '" fill="' + COL.sweater + '"/><rect x="156" y="304" width="48" height="8" fill="' + COL.sweaterD + '"/><path d="M160 278 l6 5 l6 -5 l6 5 l6 -5 l6 5 l6 -5 M160 292 l6 5 l6 -5 l6 5 l6 -5 l6 5 l6 -5" stroke="' + COL.sweaterD + '" stroke-width="1.6" fill="none"/><path d="M168 256 Q180 264 192 256" stroke="' + COL.sweaterD + '" stroke-width="3" fill="none"/>'; break;
-    case 'coat': g = '<path d="' + torsoPath(256, 330, 52) + '" fill="' + COL.coat + '"/><path d="M166 256 L180 274 L194 256Z" fill="' + COL.coatD + '"/><line x1="180" y1="274" x2="180" y2="330" stroke="' + COL.coatD + '" stroke-width="1.5"/>' + [[174, 284], [186, 284], [174, 300], [186, 300], [174, 316], [186, 316]].map(([x, y]) => '<circle cx="' + x + '" cy="' + y + '" r="2.4" fill="#e9d8a8"/>').join(''); break;
-    case 'parka': g = '<path d="' + torsoPath(254, 334, 58) + '" fill="' + COL.parka + '"/>' + [272, 286, 300, 314, 328].map(y => ln(151, y, 209, y, COL.parkaD, 1.6, 'butt')).join('') + '<line x1="180" y1="262" x2="180" y2="334" stroke="#183a72" stroke-width="2" stroke-dasharray="3 2"/><ellipse cx="180" cy="260" rx="27" ry="7" fill="' + COL.fur + '" stroke="#d8d0c0" stroke-width="1" stroke-dasharray="2 2"/>'; break;
-    case 'towel': g = '<path d="' + torsoPath(262, 344, 62) + '" fill="' + COL.towel + '"/><path d="M149 262 L172 344" stroke="#e5d4b8" stroke-width="1.5"/>' + [154, 162, 170, 178, 186, 194, 202, 210].map(x => ln(x, 344, x, 350, '#e5d4b8', 1.6, 'butt')).join(''); break;
+  let s = '', sleeve = 'long', sleeveColor = c;
+  switch (g.shape) {
+    case 'sleeveless':
+      sleeve = 'none';
+      if (st.variant === 'halter') s = P2(torsoPath(270, 308, 42), c) + ln(172, 270, 180, 250, c, 4, 'butt') + ln(188, 270, 180, 250, c, 4, 'butt') + '<path d="M160 296 q10 4 20 0 q10 4 20 0" stroke="' + d + '" stroke-width="1.5" fill="none"/>';
+      else if (st.variant === 'singlet') s = P2(torsoPath(268, 308, 40), c) + ln(168, 258, 168, 270, c, 5, 'butt') + ln(192, 258, 192, 270, c, 5, 'butt') + [278, 288, 298].map(y => ln(160, y, 200, y, d, 3, 'butt')).join('');
+      else if (st.variant === 'vest') s = P2(torsoPath(262, 310, 46), c) + '<path d="M180 270 L180 306" stroke="' + d + '" stroke-width="1.5"/><path d="M174 276 L186 282 M174 284 L186 290 M174 292 L186 298" stroke="' + d + '" stroke-width="1.5"/>' + ln(164, 258, 164, 266, c, 6, 'butt') + ln(196, 258, 196, 266, c, 6, 'butt');
+      else if (st.variant === 'mesh') s = P2(torsoPath(266, 308, 42), c, ' opacity=".85"') + '<path d="M160 270 L200 306 M170 268 L200 296 M180 268 L200 286 M200 270 L160 306 M190 268 L160 296 M180 268 L160 286" stroke="' + d + '" stroke-width="1" opacity=".7"/>' + ln(167, 258, 167, 270, c, 3, 'butt') + ln(193, 258, 193, 270, c, 3, 'butt');
+      else s = P2(torsoPath(270, 308, 40), c) + ln(167, 258, 167, 272, c, 4, 'butt') + ln(193, 258, 193, 272, c, 4, 'butt');
+      break;
+    case 'tee':
+      sleeve = 'short';
+      s = P2(torsoPath(258, 308, 46), c);
+      if (st.variant === 'shirt') s += P2('M168 258 L180 272 L192 258Z', SKIN) + '<path d="M166 256 L180 274 L194 256" stroke="' + d + '" stroke-width="2.5" fill="none"/><line x1="180" y1="274" x2="180" y2="308" stroke="' + d + '" stroke-width="1.5"/><circle cx="180" cy="284" r="1.6" fill="' + d + '"/><circle cx="180" cy="296" r="1.6" fill="' + d + '"/>';
+      else s += P2('M170 258 Q180 268 190 258Z', SKIN) + tprint(st.print, d);
+      break;
+    case 'longsleeve': {
+      s = P2(torsoPath(258, 308, 46), c);
+      const p = st.pattern;
+      if (p === 'stripes') s += [274, 282, 290, 298, 306].map(y => ln(157, y, 203, y, d, 3, 'butt')).join('') + P2('M170 258 Q180 266 190 258Z', SKIN);
+      else if (p === 'hoops') s += [274, 288, 302].map(y => ln(157, y, 203, y, d, 7, 'butt')).join('') + P2('M168 258 L180 270 L192 258Z', '#fbf7ef') + '<path d="M166 256 L180 272 L194 256" stroke="#fbf7ef" stroke-width="2.5" fill="none"/>';
+      else if (p === 'embroidery') s += '<path d="M180 262 L180 306" stroke="' + d + '" stroke-width="1.5"/>' + [270, 282, 294].map(y => '<path d="M166 ' + y + ' q5 -5 10 0 q-5 5 -10 0z M184 ' + y + ' q5 -5 10 0 q-5 5 -10 0z" fill="' + d + '"/>').join('') + P2('M170 258 Q180 266 190 258Z', SKIN);
+      else if (p === 'waistcoat') { s += P2(torsoPath(262, 310, 44), d) + '<path d="M180 262 L180 310" stroke="' + c + '" stroke-width="1.5"/>' + P2('M168 258 L180 276 L192 258Z', c) + P2('M170 258 L180 270 L190 258Z', SKIN) + [284, 296].map(y => '<circle cx="176" cy="' + y + '" r="1.8" fill="' + c + '"/><circle cx="184" cy="' + y + '" r="1.8" fill="' + c + '"/>').join(''); sleeveColor = c; }
+      else if (p === 'bomber') s += '<rect x="157" y="300" width="46" height="8" fill="' + d + '"/><path d="M180 262 L180 308" stroke="' + d + '" stroke-width="2" stroke-dasharray="2 2"/><ellipse cx="180" cy="259" rx="15" ry="5" fill="' + d + '"/>';
+      else s += P2('M170 258 Q180 266 190 258Z', SKIN);
+      break;
+    }
+    case 'sweater': {
+      const p = st.pattern;
+      s = P2(torsoPath(256, 312, 48), c) + '<rect x="156" y="304" width="48" height="8" fill="' + d + '"/>';
+      if (p === 'chevron') s += '<path d="M160 278 l6 5 l6 -5 l6 5 l6 -5 l6 5 l6 -5 M160 292 l6 5 l6 -5 l6 5 l6 -5 l6 5 l6 -5" stroke="' + d + '" stroke-width="1.6" fill="none"/>';
+      else if (p === 'cable') s += '<path d="M170 262 q5 6 0 12 q-5 6 0 12 q5 6 0 12 M180 262 q5 6 0 12 q-5 6 0 12 q5 6 0 12 M190 262 q5 6 0 12 q-5 6 0 12 q5 6 0 12" stroke="' + d + '" stroke-width="2" fill="none"/>';
+      else if (p === 'rib') s += [162, 168, 174, 180, 186, 192, 198].map(x => ln(x, 262, x, 304, d, 1.4, 'butt')).join('');
+      else if (p === 'mohair') s += P2(torsoPath(254, 314, 54), c, ' opacity=".6" stroke="' + c + '" stroke-width="3" stroke-dasharray="1 3"') + '<path d="M162 274 q4 -3 8 0 t8 0 t8 0 t8 0 M162 288 q4 -3 8 0 t8 0 t8 0 t8 0" stroke="' + d + '" stroke-width="1.2" fill="none"/>';
+      else if (p === 'cardigan') s += '<path d="M180 260 L180 312" stroke="' + d + '" stroke-width="1.5"/>' + [270, 282, 294].map(y => '<circle cx="180" cy="' + y + '" r="2.2" fill="' + (st.button || '#fff') + '"/>').join('') + P2('M166 256 L180 274 L194 256Z', SKIN) + '<path d="M164 256 L180 276 L196 256" stroke="' + d + '" stroke-width="2.5" fill="none"/>';
+      if (p !== 'cardigan') s += '<path d="M168 256 Q180 264 192 256" stroke="' + d + '" stroke-width="3" fill="none"/>';
+      break;
+    }
+    case 'coat': {
+      const v = st.variant, b = st.button || '#e9d8a8';
+      s = P2(torsoPath(256, 330, 52), c) + '<line x1="180" y1="274" x2="180" y2="330" stroke="' + d + '" stroke-width="1.5"/>';
+      if (v === 'double') s += P2('M166 256 L180 274 L194 256Z', d) + [[174, 284], [186, 284], [174, 300], [186, 300], [174, 316], [186, 316]].map(([x, y]) => '<circle cx="' + x + '" cy="' + y + '" r="2.4" fill="' + b + '"/>').join('');
+      else if (v === 'waxed') s += P2('M164 256 L180 276 L196 256Z', '#8a6a4a') + '<rect x="160" y="300" width="14" height="12" rx="2" fill="none" stroke="' + d + '" stroke-width="1.5"/><rect x="186" y="300" width="14" height="12" rx="2" fill="none" stroke="' + d + '" stroke-width="1.5"/>' + [282, 296, 310].map(y => '<circle cx="180" cy="' + y + '" r="2.2" fill="' + b + '"/>').join('');
+      else if (v === 'velvet') s = P2(torsoPath(256, 338, 54), c) + '<path d="M180 274 L180 338" stroke="' + d + '" stroke-width="1.5"/>' + P2('M164 256 L180 276 L196 256Z', d) + [284, 298, 312, 326].map(y => '<circle cx="180" cy="' + y + '" r="2.2" fill="' + b + '"/>').join('') + '<path d="M158 262 Q170 300 160 334 M202 262 Q190 300 200 334" stroke="' + d + '" stroke-width="1" opacity=".7" fill="none"/>';
+      else if (v === 'wrap') s = P2(torsoPath(256, 334, 54), c) + '<path d="M196 258 L168 300 L168 334" stroke="' + d + '" stroke-width="2" fill="none"/><rect x="153" y="296" width="54" height="8" fill="' + d + '"/><circle cx="182" cy="300" r="3" fill="' + b + '"/>';
+      else if (v === 'duffel') s += P2('M166 256 L180 274 L194 256Z', d) + [282, 298, 314].map(y => '<path d="M172 ' + y + ' h16" stroke="' + d + '" stroke-width="2"/><rect x="176" y="' + (y - 3) + '" width="9" height="6" rx="3" fill="' + b + '"/>').join('');
+      break;
+    }
+    case 'parka': {
+      const v = st.variant;
+      s = P2(torsoPath(254, 334, 58), c);
+      if (v === 'sheepskin') s += [274, 292, 310].map(y => ln(151, y, 209, y, d, 1.2, 'butt')).join('') + '<path d="M151 328 h58" stroke="' + st.trim + '" stroke-width="7" stroke-dasharray="2 2"/><line x1="180" y1="262" x2="180" y2="334" stroke="' + d + '" stroke-width="2"/><ellipse cx="180" cy="262" rx="29" ry="8" fill="' + st.trim + '" stroke="#d8d0c0" stroke-width="1" stroke-dasharray="2 2"/>';
+      else if (v === 'puffer') s += [268, 282, 296, 310, 324].map(y => '<path d="M151 ' + y + ' q7 -4 14 0 t14 0 t14 0 t16 0" stroke="' + d + '" stroke-width="1.2" fill="none"/>').join('') + '<line x1="180" y1="260" x2="180" y2="334" stroke="' + d + '" stroke-width="1.5"/>';
+      else if (v === 'drysuit') s += '<path d="M151 300 h58 M151 306 h58" stroke="' + st.trim + '" stroke-width="2"/><line x1="180" y1="262" x2="180" y2="334" stroke="' + d + '" stroke-width="2.5"/><ellipse cx="180" cy="260" rx="24" ry="6" fill="' + d + '"/>';
+      else s += [272, 286, 300, 314, 328].map(y => ln(151, y, 209, y, d, 1.6, 'butt')).join('') + '<line x1="180" y1="262" x2="180" y2="334" stroke="#183a72" stroke-width="2" stroke-dasharray="3 2"/><ellipse cx="180" cy="260" rx="27" ry="7" fill="' + st.trim + '" stroke="#d8d0c0" stroke-width="1" stroke-dasharray="2 2"/>';
+      break;
+    }
+    case 'towel':
+      sleeve = 'none';
+      s = P2(torsoPath(262, 344, 62), '#f6e9d6') + '<path d="M149 262 L172 344" stroke="#e5d4b8" stroke-width="1.5"/>' + [154, 162, 170, 178, 186, 194, 202, 210].map(x => ln(x, 344, x, 350, '#e5d4b8', 1.6, 'butt')).join('');
+      break;
   }
-  return skin + part(o.top, g);
+  o.sleeve = sleeve; o.sleeveColor = sleeveColor;
+  return skin + part(g.id, s);
 }
 
-const overBack = o => o.over === 'raincoat' && !o.hood ? '<ellipse cx="180" cy="258" rx="30" ry="10" fill="' + COL.raincoatD + '"/>' : '';
-const over = o => o.over === 'raincoat' ? part('raincoat', '<path d="' + torsoPath(254, 332, 58) + '" fill="' + COL.raincoat + '"/><line x1="180" y1="256" x2="180" y2="332" stroke="' + COL.raincoatD + '" stroke-width="2.5"/><circle cx="180" cy="272" r="2.4" fill="#8a6a10"/><circle cx="180" cy="292" r="2.4" fill="#8a6a10"/><rect x="188" y="300" width="14" height="12" rx="2" fill="none" stroke="' + COL.raincoatD + '" stroke-width="1.5"/>') : '';
-
-const TOPCOL = { tank: COL.tank, tee: COL.tee, stripes: COL.stripes, sweater: COL.sweater, coat: COL.coat, parka: COL.parka, towel: COL.towel };
-const SLEEVE = { tank: 'none', tee: 'short', stripes: 'long', sweater: 'long', coat: 'long', parka: 'long', towel: 'none' };
+function drawOver(o) {
+  const g = o.g.over; if (!g) return '';
+  const st = g.st, c = st.color, d = st.color2 || c;
+  let s = '';
+  switch (g.shape) {
+    case 'poncho': s = P2('M150 258 L210 258 L232 330 L128 330Z', c) + P2('M164 258 L180 272 L196 258Z', d) + '<path d="M180 272 L180 330" stroke="' + d + '" stroke-width="1.5"/><path d="M128 330 L232 330" stroke="' + d + '" stroke-width="4"/>'; o.sleeve = 'none'; break;
+    case 'vinyl': s = P2(torsoPath(254, 332, 58), c, ' stroke="' + d + '" stroke-width="1.5"') + '<line x1="180" y1="256" x2="180" y2="332" stroke="' + d + '" stroke-width="2"/><circle cx="180" cy="272" r="2.2" fill="' + d + '"/><circle cx="180" cy="292" r="2.2" fill="' + d + '"/><path d="M158 264 L162 320" stroke="#fff" stroke-width="2" opacity=".5"/>'; o.sleeve = 'long'; o.sleeveColor = c; break;
+    case 'oilskin': s = P2(torsoPath(254, 330, 56), c) + '<line x1="180" y1="258" x2="180" y2="330" stroke="' + d + '" stroke-width="2.5"/>' + [274, 292, 310].map(y => '<rect x="176" y="' + (y - 2) + '" width="8" height="4" rx="1" fill="' + d + '"/>').join('') + '<path d="M180 258 L166 258 L164 300" stroke="' + d + '" stroke-width="1.5" fill="none"/>'; o.sleeve = 'long'; o.sleeveColor = c; break;
+    default: s = P2(torsoPath(254, 332, 58), c) + '<line x1="180" y1="256" x2="180" y2="332" stroke="' + d + '" stroke-width="2.5"/><circle cx="180" cy="272" r="2.4" fill="#8a6a10"/><circle cx="180" cy="292" r="2.4" fill="#8a6a10"/><rect x="188" y="300" width="14" height="12" rx="2" fill="none" stroke="' + d + '" stroke-width="1.5"/>'; o.sleeve = 'long'; o.sleeveColor = c;
+  }
+  return part(g.id, s);
+}
+const overBack = o => o.g.over && !o.hood && o.g.over.shape !== 'vinyl' ? '<ellipse cx="180" cy="258" rx="30" ry="10" fill="' + (o.g.over.st.color2 || o.g.over.st.color) + '"/>' : '';
 
 function arms(o) {
   const L = { sx: 160, sy: 266, hx: 146, hy: 320 }, R = { sx: 200, sy: 266, hx: 214, hy: 320 };
@@ -774,99 +1338,182 @@ function arms(o) {
   else if (o.hold === 'fan') { R.hx = 220; R.hy = 290; }
   if (o.hold === 'lantern') { L.hx = 140; L.hy = 316; }
   o.hands = { L, R };
-  const sleeveColor = o.over ? COL.raincoat : TOPCOL[o.top];
-  const sleeve = o.over ? 'long' : SLEEVE[o.top];
+  const m = o.g.mittens && o.g.mittens.st;
   const one = a => {
     let s = ln(a.sx, a.sy, a.hx, a.hy, SKIN, 12);
-    if (sleeve === 'long') { const [x, y] = along(a, .82); s += ln(a.sx, a.sy, x, y, sleeveColor, 15); }
-    else if (sleeve === 'short') { const [x, y] = along(a, .3); s += ln(a.sx, a.sy, x, y, sleeveColor, 16); }
-    s += o.mittens ? '<circle cx="' + a.hx + '" cy="' + a.hy + '" r="8.5" fill="' + COL.mitten + '"/><circle cx="' + (a.hx + (a === L ? 7 : -7)) + '" cy="' + (a.hy - 4) + '" r="3.5" fill="' + COL.mitten + '"/>' : '<circle cx="' + a.hx + '" cy="' + a.hy + '" r="6.5" fill="' + SKIN + '"/>';
+    if (o.sleeve === 'long') { const [x, y] = along(a, .82); s += ln(a.sx, a.sy, x, y, o.sleeveColor, 15); }
+    else if (o.sleeve === 'short') { const [x, y] = along(a, .3); s += ln(a.sx, a.sy, x, y, o.sleeveColor, 16); }
+    if (m && m.variant === 'fingerless') s += '<circle cx="' + a.hx + '" cy="' + a.hy + '" r="7.5" fill="' + m.color + '"/>' + [-4, 0, 4].map(k => '<circle cx="' + (a.hx + k) + '" cy="' + (a.hy + 6) + '" r="1.8" fill="' + SKIN + '"/>').join('');
+    else if (m) s += '<circle cx="' + a.hx + '" cy="' + a.hy + '" r="8.5" fill="' + m.color + '"/><circle cx="' + (a.hx + (a === L ? 7 : -7)) + '" cy="' + (a.hy - 4) + '" r="3.5" fill="' + m.color + '"/>';
+    else s += '<circle cx="' + a.hx + '" cy="' + a.hy + '" r="6.5" fill="' + SKIN + '"/>';
     return s;
   };
-  return one(L) + (o.mittens ? '<g data-part="mittens">' : '<g>') + one(R) + '</g>';
+  return one(L) + (m ? '<g data-part="' + o.g.mittens.id + '">' : '<g>') + one(R) + '</g>';
 }
 
+// ---------- scarves
 function scarfBand(o, windy) {
   if (o.scarf !== 'scarf') return '';
-  const stripes = (x, y, w) => '<rect x="' + x + '" y="' + y + '" width="' + w + '" height="4" fill="' + COL.scarf2 + '"/>';
-  const tail = windy ? '<path class="flap" d="M198 246 Q240 234 272 250 Q242 250 200 258Z" fill="' + COL.scarf + '"/>' : '<path d="M190 250 L206 252 L210 300 L194 300Z" fill="' + COL.scarf + '"/><rect x="195" y="270" width="14" height="4" fill="' + COL.scarf2 + '"/><rect x="195" y="286" width="14" height="4" fill="' + COL.scarf2 + '"/>' + [196, 200, 204, 208].map(x => ln(x, 300, x, 308, COL.scarf, 2, 'round')).join('');
-  return part('scarf', tail + '<rect x="154" y="240" width="52" height="20" rx="10" fill="' + COL.scarf + '"/>' + stripes(160, 248, 8) + stripes(176, 248, 8) + stripes(192, 248, 8));
+  const st = o.g.scarf.st, c = st.color, d = st.color2;
+  const stripes = (x, y, w) => '<rect x="' + x + '" y="' + y + '" width="' + w + '" height="4" fill="' + d + '"/>';
+  const tail = windy ? '<path class="flap" d="M198 246 Q240 234 272 250 Q242 250 200 258Z" fill="' + c + '"/>' : P2('M190 250 L206 252 L210 300 L194 300Z', c) + '<rect x="195" y="270" width="14" height="4" fill="' + d + '"/><rect x="195" y="286" width="14" height="4" fill="' + d + '"/>' + [196, 200, 204, 208].map(x => ln(x, 300, x, 308, c, 2)).join('');
+  return part(o.g.scarf.id, tail + '<rect x="154" y="240" width="52" height="20" rx="10" fill="' + c + '"/>' + stripes(160, 248, 8) + stripes(176, 248, 8) + stripes(192, 248, 8));
 }
-const bigScarf = o => o.scarf === 'bigscarf' ? part('bigscarf', '<path d="M190 250 L208 252 L214 306 L196 306Z" fill="' + COL.scarf + '"/><rect x="146" y="224" width="68" height="36" rx="16" fill="' + COL.scarf + '"/><rect x="154" y="236" width="12" height="5" fill="' + COL.scarf2 + '"/><rect x="176" y="236" width="12" height="5" fill="' + COL.scarf2 + '"/><rect x="198" y="236" width="10" height="5" fill="' + COL.scarf2 + '"/>') : '';
+const bigScarf = o => o.scarf === 'bigscarf' ? part(o.g.scarf.id, P2('M190 250 L208 252 L214 306 L196 306Z', o.g.scarf.st.color) + '<rect x="146" y="224" width="68" height="36" rx="16" fill="' + o.g.scarf.st.color + '"/><rect x="154" y="236" width="12" height="5" fill="' + o.g.scarf.st.color2 + '"/><rect x="176" y="236" width="12" height="5" fill="' + o.g.scarf.st.color2 + '"/><rect x="198" y="236" width="10" height="5" fill="' + o.g.scarf.st.color2 + '"/>') : '';
 
+// ---------- face
 function face(o) {
-  const eyeL = [166, 208], eyeR = [194, 208];
-  const open = ([x, y], lid = 0) => '<ellipse cx="' + x + '" cy="' + y + '" rx="6.5" ry="8" fill="#fff"/><circle cx="' + (x + 1) + '" cy="' + (y + 1) + '" r="3.6" fill="#2a2430"/><circle cx="' + (x + 2.2) + '" cy="' + (y - 1) + '" r="1.3" fill="#fff"/>' + (lid ? '<path d="M' + (x - 7) + ' ' + (y - 8) + ' h14 v' + lid + ' a7 7 0 0 1 -14 0z" fill="' + SKIN + '"/><path d="M' + (x - 7) + ' ' + (y - 8 + lid) + ' a7 7 0 0 0 14 0" stroke="#2a2430" stroke-width="1.5" fill="none"/>' : '');
-  const happy = ([x, y]) => '<path d="M' + (x - 6) + ' ' + (y + 1) + ' Q' + x + ' ' + (y - 8) + ' ' + (x + 6) + ' ' + (y + 1) + '" stroke="#2a2430" stroke-width="2.6" fill="none" stroke-linecap="round"/>';
-  const squeeze = ([x, y], dir) => '<path d="M' + (x - 5 * dir) + ' ' + (y - 5) + ' L' + (x + 4 * dir) + ' ' + y + ' L' + (x - 5 * dir) + ' ' + (y + 5) + '" stroke="#2a2430" stroke-width="2.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/>';
+  const eyeL = [166, 208], eyeR = [194, 208], moth = PX.eyeStyle === 'moth';
+  const open = ([x, y], lid = 0) => (moth ? '<ellipse cx="' + x + '" cy="' + y + '" rx="7.5" ry="9" fill="' + EYE + '"/><circle cx="' + (x + 2.5) + '" cy="' + (y - 3) + '" r="2.2" fill="#fff"/>'
+    : '<ellipse cx="' + x + '" cy="' + y + '" rx="6.5" ry="8" fill="#fff"/><circle cx="' + (x + 1) + '" cy="' + (y + 1) + '" r="3.8" fill="' + EYE + '"/><circle cx="' + (x + 1) + '" cy="' + (y + 1) + '" r="2" fill="#1a1518"/><circle cx="' + (x + 2.4) + '" cy="' + (y - 1.2) + '" r="1.3" fill="#fff"/>')
+    + (lid ? '<path d="M' + (x - 8) + ' ' + (y - 9) + ' h16 v' + lid + ' a8 8 0 0 1 -16 0z" fill="' + SKIN + '"/><path d="M' + (x - 8) + ' ' + (y - 9 + lid) + ' a8 8 0 0 0 16 0" stroke="' + (moth ? EYE : '#2a2430') + '" stroke-width="1.5" fill="none"/>' : '');
+  const inkC = moth ? EYE : '#2a2430';
+  const happy = ([x, y]) => '<path d="M' + (x - 6) + ' ' + (y + 1) + ' Q' + x + ' ' + (y - 8) + ' ' + (x + 6) + ' ' + (y + 1) + '" stroke="' + inkC + '" stroke-width="2.6" fill="none" stroke-linecap="round"/>';
+  const squeeze = ([x, y], dir) => '<path d="M' + (x - 5 * dir) + ' ' + (y - 5) + ' L' + (x + 4 * dir) + ' ' + y + ' L' + (x - 5 * dir) + ' ' + (y + 5) + '" stroke="' + inkC + '" stroke-width="2.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/>';
+  const flat = ([x, y]) => '<path d="M' + (x - 6) + ' ' + y + ' L' + (x + 6) + ' ' + y + '" stroke="' + inkC + '" stroke-width="2.6" stroke-linecap="round"/>';
+  const smile = '<path d="M172 230 Q180 237 188 230" stroke="' + inkC + '" stroke-width="2.2" fill="none" stroke-linecap="round"/>';
   let eyes, mouth, brows = '';
   switch (o.face) {
     case 'happy': eyes = happy(eyeL) + happy(eyeR); mouth = '<path d="M170 226 Q180 244 190 226Z" fill="#7a2a33"/><ellipse cx="181" cy="236" rx="4" ry="3" fill="#f07a8a"/>'; break;
     case 'tongue': eyes = happy(eyeL) + happy(eyeR); mouth = '<ellipse cx="180" cy="230" rx="5" ry="5.5" fill="#7a2a33"/><path d="M176 232 Q180 246 184 232Z" fill="#f07a8a"/><path d="M178 240 h4 M180 238 v4 M178.5 238.5 l3 3 M181.5 238.5 l-3 3" stroke="#fff" stroke-width=".8"/>'; break;
-    case 'worried': eyes = open(eyeL) + open(eyeR); brows = '<path d="M158 196 L172 200 M202 196 L188 200" stroke="#2a2430" stroke-width="2" stroke-linecap="round"/>'; mouth = '<path d="M172 235 Q180 227 188 235" stroke="#2a2430" stroke-width="2.2" fill="none" stroke-linecap="round"/>'; break;
-    case 'shiver': eyes = squeeze(eyeL, 1) + squeeze(eyeR, -1); mouth = '<path d="M170 232 l4 -3 l4 3 l4 -3 l4 3 l4 -3" stroke="#2a2430" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>'; break;
-    case 'sleepy': eyes = open(eyeL, 7) + open(eyeR, 7); mouth = '<ellipse cx="180" cy="232" rx="4" ry="5.5" fill="#7a2a33"/>'; break;
-    case 'wilted': eyes = open(eyeL, 6) + open(eyeR, 6); brows = '<path d="M158 194 Q166 190 172 194 M202 194 Q194 190 188 194" stroke="#2a2430" stroke-width="2" stroke-linecap="round" fill="none"/>'; mouth = '<path d="M170 232 Q180 238 190 232" stroke="#2a2430" stroke-width="2.2" fill="none" stroke-linecap="round"/><path d="M184 234 Q192 246 186 248 Q180 244 184 234Z" fill="#f07a8a"/>'; break;
-    case 'shades': default: eyes = open(eyeL) + open(eyeR); mouth = '<path d="M172 230 Q180 237 188 230" stroke="#2a2430" stroke-width="2.2" fill="none" stroke-linecap="round"/>';
+    case 'worried': eyes = open(eyeL) + open(eyeR); brows = '<path d="M158 196 L172 200 M202 196 L188 200" stroke="' + inkC + '" stroke-width="2" stroke-linecap="round"/>'; mouth = '<path d="M172 235 Q180 227 188 235" stroke="' + inkC + '" stroke-width="2.2" fill="none" stroke-linecap="round"/>'; break;
+    case 'shiver': eyes = squeeze(eyeL, 1) + squeeze(eyeR, -1); mouth = '<path d="M170 232 l4 -3 l4 3 l4 -3 l4 3 l4 -3" stroke="' + inkC + '" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>'; break;
+    case 'sleepy': eyes = open(eyeL, 8) + open(eyeR, 8); mouth = '<ellipse cx="180" cy="232" rx="4" ry="5.5" fill="#7a2a33"/>'; break;
+    case 'squint': eyes = flat(eyeL) + flat(eyeR); mouth = '<path d="M174 232 L186 232" stroke="' + inkC + '" stroke-width="2.2" stroke-linecap="round"/>'; break;
+    case 'wilted': eyes = open(eyeL, 7) + open(eyeR, 7); brows = '<path d="M158 194 Q166 190 172 194 M202 194 Q194 190 188 194" stroke="' + inkC + '" stroke-width="2" stroke-linecap="round" fill="none"/>'; mouth = '<path d="M170 232 Q180 238 190 232" stroke="' + inkC + '" stroke-width="2.2" fill="none" stroke-linecap="round"/><path d="M184 234 Q192 246 186 248 Q180 244 184 234Z" fill="#f07a8a"/>'; break;
+    default: eyes = open(eyeL) + open(eyeR); mouth = smile;
   }
   const cold = o.band === 'cold' || o.band === 'freezing' || o.band === 'arctic';
   const cheeks = '<ellipse cx="156" cy="221" rx="7" ry="4.2" fill="' + BLUSH + '" opacity="' + (cold ? .85 : .5) + '"/><ellipse cx="204" cy="221" rx="7" ry="4.2" fill="' + BLUSH + '" opacity="' + (cold ? .85 : .5) + '"/>';
-  const freckles = '<g fill="' + SKIN_D + '"><circle cx="152" cy="216" r="1"/><circle cx="158" cy="214" r="1"/><circle cx="202" cy="214" r="1"/><circle cx="208" cy="216" r="1"/></g>';
-  const nose = o.nose ? part('nose', '<path d="M176 213 Q180 209 184 213 L182 220 L178 220Z" fill="#fff"/>') : '<ellipse cx="180" cy="217" rx="2.6" ry="2" fill="' + SKIN_D + '"/>';
-  const shades = o.shades ? part('shades', '<rect x="155" y="200" width="22" height="15" rx="6" fill="' + COL.shades + '"/><rect x="183" y="200" width="22" height="15" rx="6" fill="' + COL.shades + '"/><line x1="177" y1="205" x2="183" y2="205" stroke="' + COL.shades + '" stroke-width="2.5"/><path d="M158 205 q4 -3 8 0" stroke="#fff" stroke-width="1.5" fill="none" opacity=".6"/>') : '';
+  const freckles = '<g fill="' + FRECKLE + '"><circle cx="152" cy="216" r="1"/><circle cx="158" cy="214" r="1"/><circle cx="155" cy="219" r=".8"/><circle cx="202" cy="214" r="1"/><circle cx="208" cy="216" r="1"/><circle cx="205" cy="219" r=".8"/></g>';
+  const nose = o.nose ? part(o.g.nose.id, P2('M176 213 Q180 209 184 213 L182 220 L178 220Z', o.g.nose.st.color)) : '<ellipse cx="180" cy="217" rx="2.6" ry="2" fill="' + SKIN_D + '"/>';
+  let shades = '';
+  if (o.shades) {
+    const st = o.g.shades.st, c = st.color, lens = st.lens || c;
+    if (st.variant === 'round') shades = '<circle cx="166" cy="208" r="9" fill="' + lens + '" stroke="' + c + '" stroke-width="2"/><circle cx="194" cy="208" r="9" fill="' + lens + '" stroke="' + c + '" stroke-width="2"/><line x1="175" y1="206" x2="185" y2="206" stroke="' + c + '" stroke-width="2"/><path d="M160 204 q3 -3 7 -1" stroke="#fff" stroke-width="1.5" fill="none" opacity=".7"/><path d="M188 204 q3 -3 7 -1" stroke="#fff" stroke-width="1.5" fill="none" opacity=".7"/>';
+    else if (st.variant === 'cateye') shades = P2('M154 206 Q158 198 176 202 L177 212 Q166 216 154 206Z', c) + P2('M206 206 Q202 198 184 202 L183 212 Q194 216 206 206Z', c) + P2('M156 206 Q160 201 174 204 L175 210 Q166 213 156 206Z', lens) + P2('M204 206 Q200 201 186 204 L185 210 Q194 213 204 206Z', lens) + '<line x1="177" y1="205" x2="183" y2="205" stroke="' + c + '" stroke-width="2.5"/>';
+    else if (st.variant === 'wrap') shades = P2('M152 202 Q180 198 208 202 L206 214 Q180 220 154 214Z', lens) + '<path d="M152 202 Q180 198 208 202" stroke="' + c + '" stroke-width="3" fill="none"/><path d="M156 205 q10 -1 20 1" stroke="#fff" stroke-width="1.5" fill="none" opacity=".6"/>';
+    else shades = '<rect x="155" y="200" width="22" height="15" rx="6" fill="' + c + '"/><rect x="183" y="200" width="22" height="15" rx="6" fill="' + c + '"/><line x1="177" y1="205" x2="183" y2="205" stroke="' + c + '" stroke-width="2.5"/><path d="M158 205 q4 -3 8 0" stroke="#fff" stroke-width="1.5" fill="none" opacity=".6"/>';
+    shades = part(o.g.shades.id, shades);
+  }
   return eyes + brows + cheeks + freckles + nose + mouth + shades;
 }
 
 function head(o) {
-  const ears = '<path d="M146 200 L116 184 L150 218Z" fill="' + SKIN + '"/><path d="M214 200 L244 184 L210 218Z" fill="' + SKIN + '"/><path d="M144 202 L126 192 L148 212Z" fill="' + BLUSH + '" opacity=".45"/><path d="M216 202 L234 192 L212 212Z" fill="' + BLUSH + '" opacity=".45"/>';
-  return '<rect x="172" y="240" width="16" height="20" rx="5" fill="' + SKIN + '"/>' + ears + '<circle cx="180" cy="206" r="40" fill="' + SKIN + '"/>' + face(o) + hairFront(o);
+  return '<rect x="172" y="240" width="16" height="20" rx="5" fill="' + SKIN + '"/>' + ears() + '<circle cx="180" cy="206" r="40" fill="' + SKIN + '"/>' + face(o) + hairFront(o);
 }
 
-function hat(o) {
-  const parkaHood = o.top === 'parka' && !o.over;
-  const hoodColor = parkaHood ? COL.parka : COL.raincoat;
-  const hoodFront = o.hood ? part('hood', '<circle cx="180" cy="206" r="47" fill="none" stroke="' + hoodColor + '" stroke-width="13"/>' + (parkaHood ? '<circle cx="180" cy="206" r="41" fill="none" stroke="' + COL.fur + '" stroke-width="5" stroke-dasharray="2 2.5"/>' : '')) : '';
+// ---------- hats, hoods, earmuffs
+const dome = (y0, y1, w) => 'M' + (180 - w) + ' ' + y1 + ' Q' + (180 - w) + ' ' + y0 + ' 180 ' + (y0 - 2) + ' Q' + (180 + w) + ' ' + y0 + ' ' + (180 + w) + ' ' + y1 + 'Z';
+function drawHat(o) {
+  const g = o.g.hat, st = g ? g.st : {}, c = st.color, d = st.color2 || c;
   let h = '';
-  switch (o.hat) {
-    case 'sunhat': h = '<ellipse cx="180" cy="178" rx="66" ry="11" fill="' + COL.sunhat + '" stroke="' + COL.sunhatD + '" stroke-width="1.5"/><path d="M150 178 Q150 148 180 146 Q210 148 210 178Z" fill="' + COL.sunhat + '"/><rect x="150" y="168" width="60" height="7" fill="#d9483b"/>'; break;
-    case 'cap': h = '<path d="M144 190 Q144 156 180 154 Q216 156 216 190Z" fill="' + COL.cap + '"/><path d="M200 186 Q240 184 240 196 Q234 201 200 197Z" fill="#2c4f8c"/><circle cx="180" cy="154" r="3" fill="#2c4f8c"/><path d="M180 156 L180 188" stroke="#2c4f8c" stroke-width="1.5"/>'; break;
-    case 'beanie': case 'pombeanie': h = '<path d="M142 194 Q142 154 180 152 Q218 154 218 194Z" fill="' + COL.beanie + '"/><rect x="140" y="186" width="80" height="12" rx="5" fill="' + COL.beanieD + '"/><path d="M148 188 v8 M156 188 v8 M164 188 v8 M172 188 v8 M180 188 v8 M188 188 v8 M196 188 v8 M204 188 v8 M212 188 v8" stroke="' + COL.beanie + '" stroke-width="1.2" opacity=".7"/>' + (o.hat === 'pombeanie' ? '<circle cx="180" cy="150" r="9" fill="' + COL.pom + '"/>' : ''); break;
-    case 'turban': h = '<path d="M144 192 Q150 150 180 148 Q214 150 216 192Z" fill="' + COL.towel + '"/><path d="M168 152 Q180 128 198 150Z" fill="' + COL.towel + '"/><path d="M156 172 Q180 160 208 176" stroke="#e5d4b8" stroke-width="1.5" fill="none"/>'; break;
+  switch (g ? g.shape : (o.hat === 'turban' ? 'turban' : '')) {
+    case 'sunhat': h = '<ellipse cx="180" cy="178" rx="66" ry="11" fill="' + c + '" stroke="' + d + '" stroke-width="1.5"/>' + P2(dome(148, 178, 30), c) + '<rect x="150" y="168" width="60" height="7" fill="' + st.band + '"/>'; break;
+    case 'rushhat': h = '<ellipse cx="180" cy="180" rx="62" ry="10" fill="' + c + '" stroke="' + d + '" stroke-width="1.5"/>' + P2('M146 180 L180 128 L214 180Z', c) + '<path d="M154 168 Q180 160 206 168 M160 156 Q180 150 200 156" stroke="' + d + '" stroke-width="1.2" fill="none"/>'; break;
+    case 'cap': h = P2(dome(156, 190, 36), c) + P2('M200 188 Q236 186 236 196 Q230 201 200 197Z', d) + '<circle cx="180" cy="154" r="3" fill="' + d + '"/><path d="M180 156 L180 188" stroke="' + d + '" stroke-width="1.5"/>' + (st.lure ? '<path d="M150 178 q-4 6 0 10" stroke="#888" stroke-width="1" fill="none"/><ellipse cx="150" cy="176" rx="2.5" ry="4" fill="' + st.lure + '"/>' : ''); break;
+    case 'flatcap': h = P2('M142 190 Q150 160 184 160 Q216 160 220 188 L226 194 Q200 192 142 190Z', c) + '<path d="M150 176 Q184 166 216 176" stroke="' + d + '" stroke-width="1.2" fill="none"/><path d="M198 190 Q226 190 228 196 L196 196Z" fill="' + d + '"/>'; break;
+    case 'bucket': h = P2(dome(158, 186, 34), c) + P2('M136 190 L146 184 L214 184 L224 190 Q180 198 136 190Z', d) + '<path d="M150 178 h60" stroke="' + d + '" stroke-width="1.5"/>'; break;
+    case 'beanie': {
+      const low = st.low ? 6 : 0;
+      h = P2(dome(154 + low, 194 + low, 38), c) + '<rect x="140" y="' + (186 + low) + '" width="80" height="12" rx="5" fill="' + d + '"/>';
+      h += st.rib ? '<path d="' + [150, 158, 166, 174, 182, 190, 198, 206].map(x => 'M' + x + ' ' + (160 + low) + ' V' + (186 + low)).join(' ') + '" stroke="' + d + '" stroke-width="1.2" opacity=".6"/>' : '<path d="M148 ' + (188 + low) + ' v8 M156 ' + (188 + low) + ' v8 M164 ' + (188 + low) + ' v8 M172 ' + (188 + low) + ' v8 M180 ' + (188 + low) + ' v8 M188 ' + (188 + low) + ' v8 M196 ' + (188 + low) + ' v8 M204 ' + (188 + low) + ' v8 M212 ' + (188 + low) + ' v8" stroke="' + c + '" stroke-width="1.2" opacity=".7"/>';
+      if (st.pom) h += '<circle cx="180" cy="' + (150 + low) + '" r="9" fill="' + st.pom + '"/>';
+      break;
+    }
+    case 'acorn': { const low = st.low ? 6 : 0; h = P2(dome(150 + low, 194 + low, 40), c) + '<path d="' + [158, 166, 174, 182, 190, 198, 206].map(x => 'M' + x + ' ' + (162 + low) + ' q4 6 0 12 q-4 6 0 12').join(' ') + '" stroke="' + d + '" stroke-width="1.4" fill="none"/><rect x="138" y="' + (188 + low) + '" width="84" height="8" rx="4" fill="' + d + '"/><path d="M180 ' + (150 + low) + ' q2 -12 8 -14" stroke="' + d + '" stroke-width="4" fill="none" stroke-linecap="round"/>'; break; }
+    case 'beret': { const low = st.low ? 5 : 0; h = P2('M140 ' + (190 + low) + ' Q136 ' + (154 + low) + ' 186 ' + (152 + low) + ' Q232 ' + (154 + low) + ' 222 ' + (190 + low) + ' Q180 ' + (198 + low) + ' 140 ' + (190 + low) + 'Z', c) + '<rect x="146" y="' + (186 + low) + '" width="70" height="6" rx="3" fill="' + d + '"/><circle cx="186" cy="' + (152 + low) + '" r="2.5" fill="' + d + '"/>'; break; }
+    case 'headwrap': h = P2(dome(158, 194, 38), c) + '<rect x="140" y="184" width="80" height="12" rx="5" fill="' + d + '"/><path d="M212 190 q14 -6 20 6 q-10 -2 -14 6" fill="' + d + '"/><path d="M150 170 q30 -8 60 0" stroke="' + d + '" stroke-width="1.5" fill="none"/>'; break;
+    case 'bandana': h = P2(dome(160, 192, 38), c) + '<rect x="140" y="184" width="80" height="10" rx="5" fill="' + c + '"/><path d="M218 190 q12 -8 20 2 q-8 8 -14 4z" fill="' + c + '"/>' + [[160, 174], [176, 168], [192, 168], [208, 176]].map(([x, y]) => '<circle cx="' + x + '" cy="' + y + '" r="1.6" fill="' + d + '"/>').join(''); break;
+    case 'turban': h = P2('M144 192 Q150 150 180 148 Q214 150 216 192Z', '#f6e9d6') + P2('M168 152 Q180 128 198 150Z', '#f6e9d6') + '<path d="M156 172 Q180 160 208 176" stroke="#e5d4b8" stroke-width="1.5" fill="none"/>'; break;
   }
-  const muffs = o.earmuffs ? part('earmuffs', '<path d="M148 190 Q180 150 212 190" stroke="#5c4470" stroke-width="4" fill="none"/><circle cx="146" cy="200" r="11" fill="' + COL.earmuff + '"/><circle cx="214" cy="200" r="11" fill="' + COL.earmuff + '"/><circle cx="146" cy="200" r="6" fill="#a98cbb"/><circle cx="214" cy="200" r="6" fill="#a98cbb"/>') : '';
-  return part(o.hat, h) + muffs + hoodFront;
+  let muffs = '';
+  if (o.earmuffs && o.g.earmuffs) { const m = o.g.earmuffs.st; muffs = part(o.g.earmuffs.id, '<path d="M148 190 Q180 150 212 190" stroke="' + m.band + '" stroke-width="4" fill="none"/><circle cx="146" cy="200" r="11" fill="' + m.color + '"/><circle cx="214" cy="200" r="11" fill="' + m.color + '"/><circle cx="146" cy="200" r="6" fill="' + m.color2 + '"/><circle cx="214" cy="200" r="6" fill="' + m.color2 + '"/>'); }
+  return (g ? part(g.id, h) : h) + muffs;
 }
-const hoodBack = o => o.hood ? '<path d="M134 230 Q124 168 180 156 Q236 168 226 230 L234 264 L126 264Z" fill="' + (o.top === 'parka' && !o.over ? COL.parkaD : COL.raincoatD) + '"/>' : '';
 
-function held(o) {
-  const { L, R } = o.hands, s = [];
+function hoodColors(o) {
+  if (o.g.over) return { c: o.g.over.st.color, d: o.g.over.st.color2 || o.g.over.st.color, shape: o.g.over.st.hood, vinyl: o.g.over.shape === 'vinyl' };
+  return { c: o.g.top.st.color, d: o.g.top.st.color2 || o.g.top.st.color, shape: 'hood', fur: o.g.top.st.trim };
+}
+function hoodBack(o) {
+  if (!o.hood) return '';
+  const h = hoodColors(o);
+  if (h.shape === 'souwester') return '';
+  return P2('M134 230 Q124 168 180 156 Q236 168 226 230 L234 264 L126 264Z', h.vinyl ? h.d : h.d);
+}
+function hoodFront(o) {
+  if (!o.hood) return '';
+  const h = hoodColors(o);
+  if (h.shape === 'souwester') return part('hood', P2(dome(154, 190, 40), h.c) + P2('M130 194 L146 184 L214 184 L234 198 Q236 206 226 204 Q180 196 138 200 Q130 200 130 194Z', h.d) + '<path d="M150 176 h60" stroke="' + h.d + '" stroke-width="1.5"/>');
+  return part('hood', '<circle cx="180" cy="206" r="47" fill="none" stroke="' + h.c + '" stroke-width="13"' + (h.vinyl ? ' opacity=".9"' : '') + '/>' + (h.fur ? '<circle cx="180" cy="206" r="41" fill="none" stroke="' + h.fur + '" stroke-width="5" stroke-dasharray="2 2.5"/>' : ''));
+}
+
+// ---------- things held: umbrellas and the one free hand
+function drawUmbrella(o) {
+  const g = o.g.umbrella; if (!g) return '';
+  const { R } = o.hands, st = g.st, c = st.color, d = st.color2 || c, rib = st.rib || d;
+  const shaft = (tx, ty) => ln(R.hx, R.hy, tx, ty, '#4a4541', 3) + '<path d="M' + R.hx + ' ' + R.hy + ' L' + (R.hx + 3) + ' ' + (R.hy + 10) + ' Q' + (R.hx + 4) + ' ' + (R.hy + 18) + ' ' + (R.hx - 6) + ' ' + (R.hy + 16) + '" stroke="#4a4541" stroke-width="3" fill="none" stroke-linecap="round"/>';
+  let s = '';
   if (o.umbrella === 'up') {
     const cx = 204, cy = 150, r = 78;
-    let panels = '';
-    for (let i = 0; i < 6; i++) { const a1 = Math.PI + i * Math.PI / 6, a2 = a1 + Math.PI / 6; panels += '<path d="M' + cx + ' ' + cy + ' L' + r1(cx + Math.cos(a1) * r) + ' ' + r1(cy + Math.sin(a1) * r) + ' A' + r + ' ' + r + ' 0 0 1 ' + r1(cx + Math.cos(a2) * r) + ' ' + r1(cy + Math.sin(a2) * r) + 'Z" fill="' + (i % 2 ? COL.umbrella2 : COL.umbrella) + '"/>'; }
-    let scallops = 'M' + (cx + r) + ' ' + cy; for (let i = 0; i < 6; i++) scallops += ' A13 13 0 0 1 ' + (cx + r - (i + 1) * 26) + ' ' + cy;
-    s.push(part('umbrella', ln(R.hx, R.hy, cx, cy, COL.lantern, 3) + '<path d="M' + R.hx + ' ' + R.hy + ' L' + (R.hx + 3) + ' ' + (R.hy + 10) + ' Q' + (R.hx + 4) + ' ' + (R.hy + 18) + ' ' + (R.hx - 6) + ' ' + (R.hy + 16) + '" stroke="' + COL.lantern + '" stroke-width="3" fill="none" stroke-linecap="round"/>' +
-      panels + '<path d="' + scallops + '" fill="none" stroke="#a92a24" stroke-width="2"/><circle cx="' + cx + '" cy="' + (cy - 4) + '" r="3" fill="' + COL.lantern + '"/>'));
-  } else if (o.umbrella === 'inverted') {
+    switch (g.shape) {
+      case 'leaf': s = ln(R.hx, R.hy, cx, cy + 4, '#4e7a2e', 4) + P2('M126 156 C130 122 168 98 204 100 C246 102 280 128 284 160 C262 152 246 160 232 154 C216 162 196 150 180 158 C162 150 146 162 126 156Z', c) + '<path d="M204 100 L204 158 M204 130 L160 140 M204 130 L248 144 M204 116 L176 112 M204 116 L232 112" stroke="' + d + '" stroke-width="1.5" fill="none"/>'; break;
+      case 'lilypad': s = ln(R.hx, R.hy, cx, cy + 6, '#3f6b3a', 4) + '<ellipse cx="204" cy="150" rx="82" ry="30" fill="' + c + '"/><path d="M204 150 L280 128 L286 150Z" fill="' + d + '" opacity=".9"/>' + [0, 40, 80, 120, 160, 200, 240, 280, 320].map(a => { const t = a * Math.PI / 180; return ln(204, 150, r1(204 + Math.cos(t) * 78), r1(150 + Math.sin(t) * 28), rib, 1, 'butt'); }).join('') + '<circle cx="150" cy="140" r="6" fill="#f2c9d8"/><circle cx="150" cy="140" r="3" fill="#f7e37a"/>'; break;
+      case 'moth': { s = shaft(cx, cy) + P2('M126 152 A78 78 0 0 1 282 152 Z', c); let scal = 'M282 152'; for (let i = 0; i < 6; i++) scal += ' A13 13 0 0 1 ' + (282 - (i + 1) * 26) + ' 152'; s += '<path d="' + scal + '" fill="none" stroke="' + rib + '" stroke-width="2"/><path d="M138 140 A66 66 0 0 1 270 140" stroke="' + d + '" stroke-width="10" fill="none" opacity=".7"/>' + [[152, 130], [256, 130], [204, 84]].map(([x, y]) => '<circle cx="' + x + '" cy="' + y + '" r="9" fill="' + st.spot + '"/><circle cx="' + x + '" cy="' + y + '" r="5" fill="' + c + '"/><circle cx="' + (x - 2) + '" cy="' + (y - 2) + '" r="1.6" fill="#fff"/>').join('') + '<circle cx="204" cy="146" r="3" fill="#4a4541"/>'; break; }
+      case 'parasol': { s = shaft(cx, cy); let panels = ''; for (let i = 0; i < 8; i++) { const a1 = Math.PI + i * Math.PI / 8, a2 = a1 + Math.PI / 8; panels += '<path d="M' + cx + ' ' + cy + ' L' + r1(cx + Math.cos(a1) * r) + ' ' + r1(cy + Math.sin(a1) * r) + ' A' + r + ' ' + r + ' 0 0 1 ' + r1(cx + Math.cos(a2) * r) + ' ' + r1(cy + Math.sin(a2) * r) + 'Z" fill="' + (i % 2 ? d : c) + '"/>'; } s += panels + '<path d="M126 152 h156" stroke="' + rib + '" stroke-width="2"/>' + Array.from({ length: 13 }, (_, i) => ln(128 + i * 13, 152, 128 + i * 13, 162, st.fringe || rib, 2)).join('') + '<circle cx="' + cx + '" cy="' + (cy - 4) + '" r="3" fill="#4a4541"/>'; break; }
+      default: { s = shaft(cx, cy); let panels = ''; for (let i = 0; i < 6; i++) { const a1 = Math.PI + i * Math.PI / 6, a2 = a1 + Math.PI / 6; panels += '<path d="M' + cx + ' ' + cy + ' L' + r1(cx + Math.cos(a1) * r) + ' ' + r1(cy + Math.sin(a1) * r) + ' A' + r + ' ' + r + ' 0 0 1 ' + r1(cx + Math.cos(a2) * r) + ' ' + r1(cy + Math.sin(a2) * r) + 'Z" fill="' + (i % 2 ? d : c) + '"/>'; } let scal = 'M282 152'; for (let i = 0; i < 6; i++) scal += ' A13 13 0 0 1 ' + (282 - (i + 1) * 26) + ' 152'; s += panels + '<path d="' + scal + '" fill="none" stroke="' + rib + '" stroke-width="2"/><circle cx="' + cx + '" cy="' + (cy - 4) + '" r="3" fill="#4a4541"/>'; }
+    }
+  } else {   // inverted: whatever it is, the wind has had it
     const cx = 204, tip = 118, y = 60;
-    let ribs = ''; for (let i = 0; i <= 6; i++) ribs += ln(cx, tip, 126 + i * 26, y, '#a92a24', 1.5);
-    let scallops = 'M282 ' + y; for (let i = 0; i < 6; i++) scallops += ' A13 13 0 0 0 ' + (282 - (i + 1) * 26) + ' ' + y;
-    s.push(part('umbrella', ln(R.hx, R.hy, cx, tip, COL.lantern, 3) + '<path d="M126 ' + y + ' Q204 176 282 ' + y + 'Z" fill="' + COL.umbrella + '"/><path d="M140 ' + y + ' Q204 152 268 ' + y + 'Z" fill="' + COL.umbrella2 + '" opacity=".55"/>' + ribs + '<path d="' + scallops + '" fill="none" stroke="#a92a24" stroke-width="2"/><circle cx="' + cx + '" cy="' + (tip + 2) + '" r="3" fill="' + COL.lantern + '"/>'));
+    let ribs = ''; for (let i = 0; i <= 6; i++) ribs += ln(cx, tip, 126 + i * 26, y, rib, 1.5);
+    if (g.shape === 'leaf') s = ln(R.hx, R.hy, cx, tip, '#4e7a2e', 4) + P2('M126 ' + y + ' Q204 176 282 ' + y + ' Q250 92 204 84 Q160 92 126 ' + y + 'Z', d) + P2('M140 ' + y + ' Q204 152 268 ' + y + 'Z', c, ' opacity=".7"') + '<path d="M204 84 L204 150" stroke="' + d + '" stroke-width="1.5"/>';
+    else if (g.shape === 'lilypad') s = ln(R.hx, R.hy, cx, tip, '#3f6b3a', 4) + '<ellipse cx="204" cy="80" rx="82" ry="30" fill="' + d + '"/><ellipse cx="204" cy="80" rx="60" ry="18" fill="' + c + '" opacity=".35"/>' + [0, 45, 90, 135, 180, 225, 270, 315].map(a => { const t = a * Math.PI / 180; return ln(204, 80, r1(204 + Math.cos(t) * 78), r1(80 + Math.sin(t) * 28), rib, 1, 'butt'); }).join('');
+    else { let scal = 'M282 ' + y; for (let i = 0; i < 6; i++) scal += ' A13 13 0 0 0 ' + (282 - (i + 1) * 26) + ' ' + y;
+      s = shaft(cx, tip) + P2('M126 ' + y + ' Q204 176 282 ' + y + 'Z', c) + P2('M140 ' + y + ' Q204 152 268 ' + y + 'Z', d, ' opacity=".55"') + ribs + '<path d="' + scal + '" fill="none" stroke="' + rib + '" stroke-width="2"/><circle cx="' + cx + '" cy="' + (tip + 2) + '" r="3" fill="#4a4541"/>'; }
   }
-  switch (o.hold) {
-    case 'lantern': s.push(part('lantern', '<circle cx="' + L.hx + '" cy="' + (L.hy + 22) + '" r="40" fill="url(#lamp)" class="lamp"/>' + ln(L.hx, L.hy, L.hx, L.hy + 8, COL.lantern, 2) + '<rect x="' + (L.hx - 9) + '" y="' + (L.hy + 8) + '" width="18" height="24" rx="4" fill="' + COL.lantern + '"/><rect class="lamp" x="' + (L.hx - 6) + '" y="' + (L.hy + 12) + '" width="12" height="16" rx="2" fill="#ffd27a"/><rect x="' + (L.hx - 5) + '" y="' + (L.hy + 32) + '" width="10" height="3" fill="' + COL.lantern + '"/>')); break;
-    case 'popsicle': s.push(part('popsicle', ln(R.hx, R.hy, R.hx + 4, R.hy - 30, '#d9b98a', 4) + '<rect x="' + (R.hx - 3) + '" y="' + (R.hy - 66) + '" width="15" height="38" rx="7" fill="#f26b8a"/><rect x="' + (R.hx - 3) + '" y="' + (R.hy - 66) + '" width="15" height="16" rx="7" fill="#f7a13d"/><path d="M' + (R.hx + 9) + ' ' + (R.hy - 30) + ' q3 8 -1 10" stroke="#f26b8a" stroke-width="2.4" fill="none" stroke-linecap="round"/>')); break;
-    case 'cocoa': s.push(part('cocoa', '<rect x="' + (R.hx - 10) + '" y="' + (R.hy - 16) + '" width="22" height="20" rx="4" fill="' + COL.mug + '" stroke="#d6cbb8" stroke-width="1.5"/><path d="M' + (R.hx + 12) + ' ' + (R.hy - 10) + ' q9 0 9 6 q0 6 -9 6" stroke="#d6cbb8" stroke-width="3" fill="none"/><rect x="' + (R.hx - 8) + '" y="' + (R.hy - 14) + '" width="18" height="4" rx="2" fill="#8a5a3b"/>' +
-      '<path class="steam" d="M' + (R.hx - 4) + ' ' + (R.hy - 20) + ' q3 -6 0 -12" stroke="#fff" stroke-width="2" fill="none" stroke-linecap="round" opacity=".8"/><path class="steam" d="M' + (R.hx + 4) + ' ' + (R.hy - 20) + ' q-3 -6 0 -12" stroke="#fff" stroke-width="2" fill="none" stroke-linecap="round" style="animation-delay:-1s"/>')); break;
-    case 'fan': s.push(part('fan', '<path d="M' + R.hx + ' ' + R.hy + ' L' + (R.hx - 26) + ' ' + (R.hy - 34) + ' A36 36 0 0 1 ' + (R.hx + 28) + ' ' + (R.hy - 30) + 'Z" fill="' + COL.fan + '" stroke="#c9758f" stroke-width="1.5"/><path d="M' + R.hx + ' ' + R.hy + ' L' + (R.hx - 12) + ' ' + (R.hy - 38) + ' M' + R.hx + ' ' + R.hy + ' L' + (R.hx + 2) + ' ' + (R.hy - 40) + ' M' + R.hx + ' ' + R.hy + ' L' + (R.hx + 16) + ' ' + (R.hy - 37) + '" stroke="#c9758f" stroke-width="1" fill="none"/>')); break;
+  return part(g.id, s);
+}
+
+function drawHold(o) {
+  const g = o.g.hold; if (!g) return '';
+  const { L, R } = o.hands, st = g.st, c = st.color, d = st.color2 || c;
+  let s = '';
+  switch (g.shape) {
+    case 'lantern': s = '<circle cx="' + L.hx + '" cy="' + (L.hy + 22) + '" r="40" fill="url(#lamp)" class="lamp"/>' + ln(L.hx, L.hy, L.hx, L.hy + 8, '#4a4541', 2) + '<rect x="' + (L.hx - 9) + '" y="' + (L.hy + 8) + '" width="18" height="24" rx="4" fill="#4a4541"/><rect class="lamp" x="' + (L.hx - 6) + '" y="' + (L.hy + 12) + '" width="12" height="16" rx="2" fill="#ffd27a"/><rect x="' + (L.hx - 5) + '" y="' + (L.hy + 32) + '" width="10" height="3" fill="#4a4541"/>'; break;
+    case 'jar': s = '<circle cx="' + L.hx + '" cy="' + (L.hy + 22) + '" r="34" fill="url(#lamp)" class="lamp" opacity=".7"/>' + ln(L.hx, L.hy, L.hx, L.hy + 6, '#8a6a4a', 2) + '<rect x="' + (L.hx - 10) + '" y="' + (L.hy + 6) + '" width="20" height="5" rx="1" fill="#8a6a4a"/><rect x="' + (L.hx - 9) + '" y="' + (L.hy + 11) + '" width="18" height="24" rx="5" fill="rgba(220,240,255,.45)" stroke="#cfe3ea" stroke-width="1.5"/>' + [[-4, 18, 0], [3, 24, .5], [-1, 30, 1], [5, 16, 1.4]].map(([dx, dy, dl]) => '<circle class="dust" cx="' + (L.hx + dx) + '" cy="' + (L.hy + dy) + '" r="1.8" fill="#d9f26b" style="animation-delay:-' + dl + 's"/>').join(''); break;
+    case 'orb': s = '<circle cx="' + L.hx + '" cy="' + (L.hy + 22) + '" r="38" fill="url(#glow)" class="lamp" opacity=".8"/>' + ln(L.hx, L.hy, L.hx, L.hy + 6, '#3a3750', 2) + '<rect x="' + (L.hx - 9) + '" y="' + (L.hy + 6) + '" width="18" height="5" rx="1" fill="#3a3750"/><rect x="' + (L.hx - 9) + '" y="' + (L.hy + 11) + '" width="18" height="24" rx="5" fill="rgba(230,226,255,.35)" stroke="#cfd6e6" stroke-width="1.5"/>' + moon(L.hx, L.hy + 23, 7, .28).replace('class="moon"', 'class="lamp"'); break;
+    case 'match': s = '<circle cx="' + L.hx + '" cy="' + (L.hy - 22) + '" r="34" fill="url(#lamp)" class="lamp" opacity=".8"/>' + ln(L.hx, L.hy, L.hx + 2, L.hy - 26, '#d9b98a', 3) + '<ellipse cx="' + (L.hx + 2) + '" cy="' + (L.hy - 26) + '" rx="3" ry="4" fill="#8a2f25"/><path class="lamp" d="M' + (L.hx + 2) + ' ' + (L.hy - 26) + ' q-8 -12 0 -24 q8 12 0 24z" fill="#ffb347"/><path class="lamp" d="M' + (L.hx + 2) + ' ' + (L.hy - 28) + ' q-4 -7 0 -14 q4 7 0 14z" fill="#fff3b0"/>'; break;
+    case 'float': s = '<circle cx="' + L.hx + '" cy="' + (L.hy + 24) + '" r="36" fill="url(#glow)" class="lamp" opacity=".75"/>' + ln(L.hx, L.hy, L.hx, L.hy + 10, '#8a6a4a', 2) + '<circle cx="' + L.hx + '" cy="' + (L.hy + 24) + '" r="13" fill="rgba(159,224,216,.7)" stroke="#4fa39a" stroke-width="1.5"/><path d="M' + (L.hx - 13) + ' ' + (L.hy + 24) + ' h26 M' + L.hx + ' ' + (L.hy + 11) + ' v26" stroke="#8a6a4a" stroke-width="1.5"/><circle class="lamp" cx="' + L.hx + '" cy="' + (L.hy + 24) + '" r="6" fill="#e6fff8"/>'; break;
+    case 'popsicle': s = ln(R.hx, R.hy, R.hx + 4, R.hy - 30, '#d9b98a', 4) + '<rect x="' + (R.hx - 3) + '" y="' + (R.hy - 66) + '" width="15" height="38" rx="7" fill="' + c + '"/><rect x="' + (R.hx - 3) + '" y="' + (R.hy - 66) + '" width="15" height="16" rx="7" fill="' + d + '"/><path d="M' + (R.hx + 9) + ' ' + (R.hy - 30) + ' q3 8 -1 10" stroke="' + c + '" stroke-width="2.4" fill="none" stroke-linecap="round"/>'; break;
+    case 'honeycomb': s = ln(R.hx, R.hy, R.hx + 4, R.hy - 28, '#8a6a4a', 3) + P2('M' + (R.hx - 6) + ' ' + (R.hy - 40) + ' l10 -14 l14 4 l2 16 l-10 14 l-14 -4z', c) + '<path d="M' + (R.hx - 1) + ' ' + (R.hy - 36) + ' l6 -8 l8 2 l1 9 l-6 8 l-8 -2z" fill="none" stroke="' + d + '" stroke-width="1.2"/><path class="drip" d="M' + (R.hx + 2) + ' ' + (R.hy - 20) + ' q-3 6 0 8 q3 -2 0 -8z" fill="' + c + '"/>'; break;
+    case 'shavedice': s = P2('M' + (R.hx - 8) + ' ' + (R.hy - 30) + ' L' + (R.hx + 10) + ' ' + (R.hy - 30) + ' L' + (R.hx + 3) + ' ' + (R.hy + 2) + 'Z', '#e9d8b8') + '<path d="M' + (R.hx - 6) + ' ' + (R.hy - 24) + ' l14 0 M' + (R.hx - 3) + ' ' + (R.hy - 14) + ' l9 0" stroke="#c9b08a" stroke-width="1"/><circle cx="' + (R.hx + 1) + '" cy="' + (R.hy - 38) + '" r="12" fill="' + d + '"/><path d="M' + (R.hx - 8) + ' ' + (R.hy - 40) + ' q9 -14 18 0 q-9 6 -18 0z" fill="' + c + '" opacity=".85"/>'; break;
+    case 'lemonade': s = '<rect x="' + (R.hx - 8) + '" y="' + (R.hy - 32) + '" width="18" height="30" rx="3" fill="rgba(255,255,255,.55)" stroke="#d6cbb8" stroke-width="1.5"/><rect x="' + (R.hx - 6) + '" y="' + (R.hy - 24) + '" width="14" height="20" rx="2" fill="' + c + '"/><circle cx="' + (R.hx - 2) + '" cy="' + (R.hy - 18) + '" r="2" fill="#fff" opacity=".8"/><circle cx="' + (R.hx + 4) + '" cy="' + (R.hy - 12) + '" r="2.5" fill="#fff" opacity=".8"/>' + ln(R.hx + 4, R.hy - 30, R.hx + 10, R.hy - 46, '#e4574f', 2.5) + '<circle cx="' + (R.hx + 10) + '" cy="' + (R.hy - 34) + '" r="4" fill="#f7e37a" stroke="#d9b32e" stroke-width="1"/>'; break;
+    case 'bottle': s = '<rect x="' + (R.hx - 6) + '" y="' + (R.hy - 26) + '" width="14" height="30" rx="4" fill="' + c + '"/><rect x="' + (R.hx - 3) + '" y="' + (R.hy - 38) + '" width="8" height="14" rx="2" fill="' + c + '"/><rect x="' + (R.hx - 4) + '" y="' + (R.hy - 40) + '" width="10" height="4" rx="1" fill="#c9c6d6"/><rect x="' + (R.hx - 4) + '" y="' + (R.hy - 16) + '" width="10" height="10" rx="1" fill="' + d + '"/><path d="M' + (R.hx - 3) + ' ' + (R.hy - 24) + ' v20" stroke="#fff" stroke-width="1.5" opacity=".5"/>'; break;
+    case 'cocoa': {
+      const v = st.variant, steam = '<path class="steam" d="M' + (R.hx - 4) + ' ' + (R.hy - 20) + ' q3 -6 0 -12" stroke="#fff" stroke-width="2" fill="none" stroke-linecap="round" opacity=".8"/><path class="steam" d="M' + (R.hx + 4) + ' ' + (R.hy - 20) + ' q-3 -6 0 -12" stroke="#fff" stroke-width="2" fill="none" stroke-linecap="round" style="animation-delay:-1s"/>';
+      if (v === 'acorn') s = P2('M' + (R.hx - 10) + ' ' + (R.hy - 14) + ' h22 q-2 18 -11 18 q-9 0 -11 -18z', '#6b4a2e') + '<ellipse cx="' + (R.hx + 1) + '" cy="' + (R.hy - 14) + '" rx="11" ry="3.5" fill="' + c + '"/><ellipse cx="' + (R.hx + 1) + '" cy="' + (R.hy - 14) + '" rx="7" ry="2" fill="#7fa35a"/>' + steam;
+      else if (v === 'thermos') s = '<rect x="' + (R.hx - 8) + '" y="' + (R.hy - 26) + '" width="18" height="30" rx="4" fill="' + c + '"/><rect x="' + (R.hx - 6) + '" y="' + (R.hy - 30) + '" width="14" height="6" rx="2" fill="#c9c6d6"/><path d="M' + (R.hx - 4) + ' ' + (R.hy - 20) + ' v18" stroke="#fff" stroke-width="1.5" opacity=".4"/>' + steam.replace(/R\.hy - 20/g, '');
+      else if (v === 'tin') s = '<rect x="' + (R.hx - 10) + '" y="' + (R.hy - 16) + '" width="22" height="20" rx="2" fill="' + c + '" stroke="#8a97a0" stroke-width="1.5"/><path d="M' + (R.hx + 12) + ' ' + (R.hy - 10) + ' q9 0 9 6 q0 6 -9 6" stroke="#8a97a0" stroke-width="3" fill="none"/><rect x="' + (R.hx - 8) + '" y="' + (R.hy - 14) + '" width="18" height="3" fill="#8a5a3b"/>' + steam;
+      else s = '<rect x="' + (R.hx - 10) + '" y="' + (R.hy - 16) + '" width="22" height="20" rx="4" fill="' + c + '" stroke="' + (v === 'chai' ? '#9a4526' : '#d6cbb8') + '" stroke-width="1.5"/><path d="M' + (R.hx + 12) + ' ' + (R.hy - 10) + ' q9 0 9 6 q0 6 -9 6" stroke="' + (v === 'chai' ? '#9a4526' : '#d6cbb8') + '" stroke-width="3" fill="none"/><rect x="' + (R.hx - 8) + '" y="' + (R.hy - 14) + '" width="18" height="4" rx="2" fill="#8a5a3b"/>' + steam;
+      break;
+    }
+    case 'fan': {
+      const v = st.variant;
+      if (v === 'leaf') s = ln(R.hx, R.hy, R.hx + 2, R.hy - 22, d, 3) + P2('M' + (R.hx + 2) + ' ' + (R.hy - 22) + ' C' + (R.hx - 26) + ' ' + (R.hy - 30) + ' ' + (R.hx - 20) + ' ' + (R.hy - 70) + ' ' + (R.hx + 4) + ' ' + (R.hy - 72) + ' C' + (R.hx + 28) + ' ' + (R.hy - 70) + ' ' + (R.hx + 30) + ' ' + (R.hy - 30) + ' ' + (R.hx + 2) + ' ' + (R.hy - 22) + 'Z', c) + '<path d="M' + (R.hx + 2) + ' ' + (R.hy - 22) + ' L' + (R.hx + 4) + ' ' + (R.hy - 70) + '" stroke="' + d + '" stroke-width="1.5"/>';
+      else if (v === 'palm') s = ln(R.hx, R.hy, R.hx + 2, R.hy - 24, d, 3) + P2('M' + R.hx + ' ' + (R.hy - 22) + ' L' + (R.hx - 26) + ' ' + (R.hy - 40) + ' A34 34 0 0 1 ' + (R.hx + 28) + ' ' + (R.hy - 38) + 'Z', c, ' stroke="' + d + '" stroke-width="1.5"') + '<path d="' + [-20, -10, 0, 10, 20].map(k => 'M' + R.hx + ' ' + (R.hy - 22) + ' L' + (R.hx + k) + ' ' + (R.hy - 56)).join(' ') + '" stroke="' + d + '" stroke-width="1" fill="none"/>';
+      else { s = P2('M' + R.hx + ' ' + R.hy + ' L' + (R.hx - 26) + ' ' + (R.hy - 34) + ' A36 36 0 0 1 ' + (R.hx + 28) + ' ' + (R.hy - 30) + 'Z', c, ' stroke="' + d + '" stroke-width="1.5"') + '<path d="M' + R.hx + ' ' + R.hy + ' L' + (R.hx - 12) + ' ' + (R.hy - 38) + ' M' + R.hx + ' ' + R.hy + ' L' + (R.hx + 2) + ' ' + (R.hy - 40) + ' M' + R.hx + ' ' + R.hy + ' L' + (R.hx + 16) + ' ' + (R.hy - 37) + '" stroke="' + d + '" stroke-width="1" fill="none"/>'; if (v === 'moon') s += moon(R.hx + 2, R.hy - 26, 6, .3).replace('class="moon"', ''); }
+      break;
+    }
   }
-  return s.join('');
+  return part(g.id, s);
 }
 
 function effects(o) {
   const s = [];
   if (o.fx.includes('sweat')) s.push('<path class="drip" d="M148 194 q-3 6 0 8 q3 -2 0 -8z" fill="#8fd0f0"/><path class="drip" d="M214 198 q-3 6 0 8 q3 -2 0 -8z" fill="#8fd0f0" style="animation-delay:-.9s"/>');
   if (o.fx.includes('breath')) s.push('<g class="puff" opacity=".8"><ellipse cx="198" cy="236" rx="9" ry="6" fill="#fff"/><ellipse cx="208" cy="232" rx="6" ry="4" fill="#fff"/></g>');
+  if (o.fx.includes('steam') && o.hair !== 'wet') s.push('<g class="puff" opacity=".6" style="animation-delay:-1.2s"><ellipse cx="150" cy="150" rx="8" ry="5" fill="#fff"/></g><g class="puff" opacity=".6"><ellipse cx="214" cy="146" rx="9" ry="6" fill="#fff"/></g>');
   return s.join('');
 }
 
@@ -874,8 +1521,38 @@ function pixie(c, o) {
   const windy = o.hair === 'windy';
   const lean = o.fx.includes('gale') ? -12 : o.fx.includes('lean') ? -7 : 0;
   const cls = ['pixie', o.fx.includes('shiver') ? 'shiver' : '', windy ? 'windy' : ''].join(' ').trim();
-  const g = [wings(o), hairBack(o), hoodBack(o), overBack(o), legs(), bottom(o, windy), feet(o), torso(o), over(o), scarfBand(o, windy), arms(o), head(o), bigScarf(o), hat(o), held(o), effects(o)];
-  return '<g class="' + cls + '"><g transform="rotate(' + lean + ' 180 372)">' + g.join('') + '</g></g>';
+  const [sx, sy] = PX.scale || [1, 1];
+  const g = [wings(o), hairBack(o), hoodBack(o), overBack(o), legs(), drawBottom(o, windy), drawFeet(o), drawTop(o), drawOver(o), scarfBand(o, windy), arms(o), head(o), bigScarf(o), drawHat(o), hoodFront(o), extras(), drawUmbrella(o), drawHold(o), effects(o)];
+  return '<g class="' + cls + '"><g transform="rotate(' + lean + ' 180 372) translate(180 372) scale(' + sx + ' ' + sy + ') translate(-180 -372)">' + g.join('') + '</g></g>';
+}
+
+// ---------- a pixie's home, standing in for the toadstool
+function home(c, P) {
+  const snow = c.snowy || (c.feelsF < 30 && c.cloud > 60);
+  switch (PX.home) {
+    case 'stump': return '<g class="home">' + P2('M36 372 L40 340 Q64 332 88 340 L92 372Z', '#6b4a2e') + '<ellipse cx="64" cy="340" rx="24" ry="8" fill="#a67c52"/><ellipse cx="64" cy="340" rx="14" ry="4.5" fill="none" stroke="#8a6238" stroke-width="1.2"/><ellipse cx="64" cy="340" rx="7" ry="2.2" fill="none" stroke="#8a6238" stroke-width="1"/>' +
+      P2('M56 372 L56 354 Q64 346 72 354 L72 372Z', '#3f2a1c') + '<circle cx="69" cy="364" r="1.5" fill="#c9a25a"/>' + (P.night ? '<rect class="lamp" x="60" y="352" width="8" height="6" rx="2" fill="#ffd27a"/>' : '') + P2('M42 356 q6 -6 12 0 q-6 4 -12 0z', '#5f8f3f') + P2('M78 348 q8 -4 12 2 q-6 4 -12 -2z', '#5f8f3f') +
+      (snow ? P2('M40 340 Q64 328 88 340 Q64 336 40 340Z', '#fff') : '<circle cx="82" cy="336" r="4" fill="#c9a25a"/><circle cx="82" cy="336" r="2" fill="none" stroke="#a67c52" stroke-width="1"/><path d="M78 338 q-6 2 -8 0" stroke="#c9a25a" stroke-width="2" fill="none"/>') + '</g>';
+    case 'moonlamp': return '<g class="home">' + ln(64, 372, 64, 300, '#3a3750', 4) + '<path d="M64 300 Q64 288 76 288 Q84 288 84 296" stroke="#3a3750" stroke-width="3" fill="none"/>' + (P.night ? '<circle cx="84" cy="312" r="30" fill="url(#glow)" opacity=".8"/>' : '') + '<circle class="' + (P.night ? 'lamp' : '') + '" cx="84" cy="312" r="11" fill="' + (P.night ? '#f6efd2' : '#e6e2ea') + '" stroke="#3a3750" stroke-width="1.5"/>' + ln(84, 296, 84, 301, '#3a3750', 2) + (P.night ? '<circle class="dust" cx="98" cy="300" r="1.6" fill="#fff"/><circle class="dust" cx="70" cy="326" r="1.3" fill="#fff" style="animation-delay:-.8s"/>' : '') + '<ellipse cx="64" cy="372" rx="12" ry="3" fill="#3a3750"/>' + '</g>';
+    case 'kiln': return '<g class="home">' + P2('M34 372 C34 340 94 340 94 372Z', '#c7623a') + P2('M40 372 C40 350 88 350 88 372Z', '#b5522e') + '<rect x="70" y="330" width="8" height="18" fill="#9a4526"/>' + P2('M54 372 C54 356 74 356 74 372Z', '#3a1c14') + (P.night || c.feelsF < 50 ? '<path class="lamp" d="M58 372 C58 362 70 362 70 372Z" fill="#ff9a3c"/>' : '') +
+      '<circle class="steam" cx="74" cy="326" r="5" fill="#fff" opacity=".55"/><circle class="steam" cx="76" cy="318" r="4" fill="#fff" opacity=".45" style="animation-delay:-1s"/>' + (snow ? P2('M40 350 C50 338 78 338 88 350 Q64 344 40 350Z', '#fff') : '') + '</g>';
+    case 'reeds': return '<g class="home">' + ln(44, 372, 40, 318, '#5a6b3f', 3) + ln(56, 372, 58, 308, '#6b7f48', 3) + ln(70, 372, 76, 314, '#5a6b3f', 3) + ln(84, 372, 92, 324, '#6b7f48', 3) + '<ellipse cx="40" cy="316" rx="3.5" ry="10" fill="#6b4a2e"/><ellipse cx="58" cy="306" rx="3.5" ry="10" fill="#6b4a2e"/><ellipse cx="92" cy="322" rx="3" ry="9" fill="#6b4a2e"/>' +
+      '<ellipse cx="66" cy="382" rx="34" ry="6" fill="' + (P.night ? '#556a86' : '#7fb8c9') + '" opacity=".6"/>' + P2('M56 380 a10 6 0 1 1 20 0 L66 380Z', '#4f8a5a') + '<ellipse cx="82" cy="367" rx="7" ry="5" fill="#5fa35a"/><circle cx="79" cy="363" r="2" fill="#fff"/><circle cx="85" cy="363" r="2" fill="#fff"/><circle cx="79" cy="363" r="1" fill="#1a1518"/><circle cx="85" cy="363" r="1" fill="#1a1518"/>' + (snow ? P2('M36 372 Q64 364 94 372Z', '#fff') : '') + '</g>';
+    default: return '<g class="home"><rect x="56" y="346" width="16" height="30" rx="6" fill="#f1e6cf"/>' +
+      (P.night ? '<circle cx="64" cy="360" r="14" fill="url(#lamp)" opacity=".8"/><rect class="lamp" x="61" y="354" width="6" height="8" rx="2" fill="#ffd27a"/>' : '<rect x="61" y="354" width="6" height="8" rx="2" fill="#d9c9a8"/>') +
+      '<path d="M30 350 C30 318 98 318 98 350 Z" fill="#d9483b"/><circle cx="50" cy="336" r="4" fill="#fff"/><circle cx="70" cy="330" r="3" fill="#fff"/><circle cx="84" cy="342" r="2.6" fill="#fff"/>' +
+      (snow ? '<path d="M36 336 C44 322 84 320 92 336 C80 330 48 330 36 336Z" fill="#fff"/>' : '') + '</g>';
+  }
+}
+
+// ---------- a portrait for the picker: head and shoulders, neutral face
+function portrait(p) {
+  const keep = PX; applyPixie(p);
+  const o = { g: {}, top: 'none', hair: 'normal', face: 'content', band: 'mild', fx: [], hat: null, hood: false, shades: false, nose: false, earmuffs: false };
+  const svg = '<svg viewBox="110 120 140 140" aria-hidden="true"><defs><linearGradient id="flameP" gradientUnits="userSpaceOnUse" x1="0" y1="110" x2="0" y2="250"><stop offset="0" stop-color="#ffd76a"/><stop offset=".5" stop-color="#f08a2e"/><stop offset="1" stop-color="#c8442a"/></linearGradient></defs>' +
+    (hairBack(o) + head(o) + extras()).replace(/url\(#flameG\)/g, 'url(#flameP)') + '</svg>';
+  applyPixie(keep);
+  return svg;
 }
 
 // ============================================================
@@ -909,7 +1586,7 @@ const longPlace = p => [p.name, p.admin, p.country].filter((x, i, a) => x && a.i
 
 function altText(c, o) {
   const worn = o.items.filter(i => ['top', 'over', 'bottom', 'feet', 'hat', 'scarf', 'umbrella', 'hold'].includes(i.slot)).map(i => i.label);
-  return 'Wisp the pixie wearing ' + worn.join(', ') + ', under ' + c.label.toLowerCase() + ' skies at ' + c.phase + '.';
+  return PX.name + ' the ' + PX.kind + ' wearing ' + worn.join(', ') + ', under ' + c.label.toLowerCase() + ' skies at ' + c.phase + '.';
 }
 
 function render() {
@@ -919,6 +1596,7 @@ function render() {
   const { svg, P } = scene(c, o, alt);
   $('#scene').innerHTML = svg;
   applyMood(c, P);
+  renderPicker();
   $('#caption').innerHTML = '<span>' + esc(shortPlace(place)) + '</span><span>' + fmtT(c.tempC) + (state.unit === 'f' ? 'F' : 'C') + ' · ' + esc(c.label) + '</span><span>' + clock(c.iso) + '</span>';
   document.title = 'Pixiecast · ' + shortPlace(place) + ' ' + fmtT(c.tempC);
 
@@ -936,7 +1614,7 @@ function render() {
     '<div><h2>' + esc(longPlace(place)) + '</h2><div class="when">' + weekday(c.iso) + ' · ' + clock(c.iso) + ' local' + (state.demo ? ' · <b>dress-up mode</b>, not live weather' : '') + '</div></div>' +
     '<div class="now"><div class="temp">' + fmtT(c.tempC) + '</div><div class="cond"><div class="label">' + esc(c.label) + '</div><div class="feels">feels like ' + fmtT(c.feelsC) + ' · high ' + fmtT(c.hi) + ' / low ' + fmtT(c.lo) + '</div></div></div>' +
     '<p class="note">' + esc(note(c, o)) + '</p>' +
-    '<div><h3>Wisp is wearing</h3><ul class="chips">' + o.items.map(i => '<li><button type="button" data-part="' + esc(i.id) + '" style="--swatch:' + esc(i.color || '#999') + '"><b>' + esc(i.label) + '</b><span>' + esc(i.why) + '</span></button></li>').join('') + '</ul><p class="hint">Tap a garment to find it on the pixie.</p></div>' +
+    '<div><h3>' + esc(PX.name) + ' is wearing</h3><ul class="chips">' + o.items.map(i => '<li><button type="button" data-part="' + esc(i.id) + '" style="--swatch:' + esc(i.color || '#999') + '"><b>' + esc(i.label) + '</b><span>' + esc(i.why) + '</span></button></li>').join('') + '</ul><p class="hint">Tap a garment to find it on the pixie.</p></div>' +
     '<dl class="facts">' +
       '<div><dt>Wind</dt><dd>' + fmtWind(c.windKmh) + ' <small>' + compass(c.windDir) + '</small>' + gust + '</dd></div>' +
       '<div><dt>Humidity</dt><dd>' + Math.round(c.humidity) + '%</dd></div>' +
@@ -948,15 +1626,18 @@ function render() {
       '<div><dt>Sunset</dt><dd>' + clock(c.sunset) + '</dd></div>' +
     '</dl>' +
     '<div><h3>Next twelve hours</h3><div class="strip">' + hours.join('') + '</div>' +
-      '<p class="upcoming">' + (next ? 'Around <b>' + next.when + '</b> Wisp ' + esc(next.text) + '.' : 'No outfit changes expected for the next twelve hours. Wisp approves.') + '</p></div>';
+      '<p class="upcoming">' + (next ? 'Around <b>' + next.when + '</b> ' + esc(PX.name) + ' ' + esc(next.text) + '.' : 'No outfit changes expected for the next twelve hours. ' + esc(PX.name) + ' approves.') + '</p></div>';
 }
 
 function renderLoading(msg, worried) {
+  state.lastLoading = { msg, worried };
   const c = { phase: 'day', cloud: 25, kind: 'clear', label: 'Clear', intensity: 0, feelsF: 65, isDay: true, sunT: .5, nightT: 0, wet: false, snowy: false, moon: .5 };
-  const o = { top: 'towel', over: null, bottom: null, feet: 'slippers', hat: 'turban', hood: false, earmuffs: false, scarf: null, mittens: false, shades: false, nose: false, hold: null, umbrella: null, hair: 'normal', face: worried ? 'worried' : 'content', fx: [], items: [], band: 'warm' };
-  const { svg, P } = scene(c, o, 'Wisp the pixie wrapped in a towel, getting dressed.');
+  const o = { g: { top: G('towel', 'towel', 'towel', { color: '#f6e9d6' }), feet: G('slippers', 'slippers', 'slippers', {}) }, top: 'towel', over: null, bottom: null, feet: 'slippers', hat: 'turban', hood: false, earmuffs: false, scarf: null, mittens: false, shades: false, nose: false, hold: null, umbrella: null, hair: 'normal', face: worried ? 'worried' : 'content', fx: [], items: [], band: 'warm' };
+  const px = PIXIES[state.pixie] || PIXIES.wisp;
+  const { svg, P } = scene(c, o, px.name + ' the ' + px.kind + ' wrapped in a towel, getting dressed.');
   $('#scene').innerHTML = svg;
   applyMood(c, P);
+  renderPicker();
   $('#caption').innerHTML = '<span>PIXIECAST</span><span>' + esc(worried ? 'STANDING BY' : 'GETTING DRESSED') + '</span>';
   $('#report').innerHTML = '<div class="empty"><h2>' + esc(msg.title) + '</h2><p class="note">' + esc(msg.body) + '</p>' +
     (msg.actions ? '<div class="actions">' + msg.actions + '</div>' : '') + '</div>';
@@ -990,10 +1671,11 @@ async function reverse(lat, lon) {
 //  STATE, STORAGE, URL
 // ============================================================
 const KEY = 'pixiecast:v1';
-function save() { try { localStorage.setItem(KEY, JSON.stringify({ place: state.place, unit: state.unit })); } catch (e) { /* private mode */ } }
-function restore() { try { const j = JSON.parse(localStorage.getItem(KEY) || 'null'); if (j) { if (j.unit) state.unit = j.unit; if (j.place && isFinite(j.place.lat)) state.place = j.place; } } catch (e) { /* ignore */ } }
+function save() { try { localStorage.setItem(KEY, JSON.stringify({ place: state.realPlace, unit: state.unit, pixie: state.pixie })); } catch (e) { /* private mode */ } }   // never persist a dress-up town
+function restore() { try { const j = JSON.parse(localStorage.getItem(KEY) || 'null'); if (j) { if (j.unit) state.unit = j.unit; if (j.pixie && PIXIES[j.pixie]) state.pixie = j.pixie; if (j.place && isFinite(j.place.lat) && (j.place.lat || j.place.lon)) state.place = state.realPlace = j.place; } } catch (e) { /* ignore */ } }
 function pushURL() {
   const u = new URL(location.href); u.search = '';
+  if (state.pixie !== 'wisp') u.searchParams.set('pixie', state.pixie);
   if (state.demo) u.searchParams.set('demo', state.demo);
   else if (state.place) { u.searchParams.set('lat', state.place.lat.toFixed(4)); u.searchParams.set('lon', state.place.lon.toFixed(4)); u.searchParams.set('name', shortPlace(state.place)); }
   history.replaceState(null, '', u);
@@ -1002,8 +1684,8 @@ function pushURL() {
 let inflight = 0;
 async function load(place) {
   const id = ++inflight;
-  state.place = place; state.demo = null; state.data = null;
-  renderLoading({ title: 'Checking the sky over ' + place.name + '…', body: 'One moment. Wisp is getting dressed.' });
+  state.place = state.realPlace = place; state.demo = null; state.data = null;
+  renderLoading({ title: 'Checking the sky over ' + place.name + '…', body: 'One moment. ' + PX.name + ' is getting dressed.' });
   try {
     const data = await forecast(place.lat, place.lon);
     if (id !== inflight) return;
@@ -1011,7 +1693,7 @@ async function load(place) {
     clearTimeout(state.timer); state.timer = setTimeout(() => { if (document.visibilityState === 'visible' && !state.demo) load(state.place); }, 15 * 60 * 1000);
   } catch (e) {
     if (id !== inflight) return;
-    renderLoading({ title: 'The weather did not answer.', body: (e && e.message ? e.message + '. ' : '') + 'Wisp is standing by in a towel.', actions: '<button class="btn" id="retry">Try again</button>' }, true);
+    renderLoading({ title: 'The weather did not answer.', body: (e && e.message ? e.message + '. ' : '') + PX.name + ' is standing by in a towel.', actions: '<button class="btn" id="retry">Try again</button>' }, true);
     $('#retry').onclick = () => load(place);
   }
 }
@@ -1067,6 +1749,45 @@ function runDemo(key) {
 }
 
 // ============================================================
+//  THE PICKER
+// ============================================================
+const PORTRAITS = Object.fromEntries(PIXIE_ORDER.map(k => [k, portrait(PIXIES[k])]));
+function renderPicker() {
+  const box = $('#pixies'); if (!box) return;
+  if (!box.dataset.built) {
+    box.innerHTML = PIXIE_ORDER.map(k => { const p = PIXIES[k]; return '<button type="button" role="radio" data-pixie="' + k + '" title="' + esc(p.name + ' · ' + p.kind + ' · ' + p.pro) + '" aria-label="' + esc(p.name + ', ' + p.kind + ', ' + p.pro) + '">' + PORTRAITS[k] + '</button>'; }).join('');
+    box.dataset.built = '1';
+    box.addEventListener('click', e => { const b = e.target.closest('button[data-pixie]'); if (b) setPixie(b.dataset.pixie); });
+  }
+  box.querySelectorAll('button').forEach(b => b.setAttribute('aria-checked', String(b.dataset.pixie === state.pixie)));
+  const p = PIXIES[state.pixie];
+  $('#pixieBlurb').innerHTML = '<b>' + esc(p.name) + '</b> · ' + esc(p.kind) + ' · ' + esc(p.pro) + '<span>' + esc(p.blurb) + '</span>';
+}
+function setPixie(key) {
+  if (!PIXIES[key] || key === state.pixie) return;
+  state.pixie = key; applyPixie(PIXIES[key]); save(); pushURL();
+  if (state.data) render(); else if (state.lastLoading) renderLoading(state.lastLoading.msg, state.lastLoading.worried); else renderPicker();
+}
+
+// ?gallery — every pixie in every preset, for looking at the whole wardrobe at once
+function renderGallery() {
+  const keys = Object.keys(DEMOS), cells = [];
+  const savedPixie = state.pixie;
+  for (const pk of PIXIE_ORDER) {
+    state.pixie = pk;
+    for (const dk of keys) {
+      const data = synth(DEMOS[dk]), c = conditions(data), o = dress(c);
+      const { svg } = scene(c, o, PIXIES[pk].name + ' in ' + DEMOS[dk].label);
+      cells.push('<figure><div class="scene">' + svg + '</div><figcaption><b>' + PIXIES[pk].name + '</b> · ' + esc(DEMOS[dk].label) + ' · ' + fmtT(c.feelsC) + '<span>' + esc(o.items.map(i => i.label).join(', ')) + '</span></figcaption></figure>');
+    }
+  }
+  state.pixie = savedPixie; applyPixie(PIXIES[savedPixie]);
+  document.body.classList.add('gallery-mode');
+  $('#card').outerHTML = '<main class="gallery" id="card">' + cells.join('') + '</main>';
+  document.title = 'Pixiecast · the whole wardrobe';
+}
+
+// ============================================================
 //  UI WIRING
 // ============================================================
 const q = $('#q'), sug = $('#suggest'), status = $('#status');
@@ -1115,12 +1836,12 @@ function locate(auto) {
     document.querySelectorAll('#dressup button').forEach(b => b.classList.remove('on'));
     const { latitude: lat, longitude: lon } = pos.coords;
     inflight++;
-    renderLoading({ title: 'Found you. Naming the place…', body: 'One moment. Wisp is getting dressed.' });
+    renderLoading({ title: 'Found you. Naming the place…', body: 'One moment. ' + PX.name + ' is getting dressed.' });
     load(await reverse(lat, lon));
   }, err => {
     btn.classList.remove('busy');
     status.textContent = err.code === 1 ? 'Location was declined; search for a place instead.' : 'Could not get a location; search for a place instead.';
-    if (auto && !state.data) renderLoading({ title: 'Where are you?', body: 'Search for a town above, or allow location access, and Wisp will get dressed for it.', actions: '<button class="btn" id="tryloc">Use my location</button><button class="btn ghost" id="tryrain">Or just try the rain</button>' });
+    if (auto && !state.data) renderLoading({ title: 'Where are you?', body: 'Search for a town above, or allow location access, and ' + PX.name + ' will get dressed for it.', actions: '<button class="btn" id="tryloc">Use my location</button><button class="btn ghost" id="tryrain">Or just try the rain</button>' });
     const t = $('#tryloc'); if (t) t.onclick = () => locate(false);
     const r = $('#tryrain'); if (r) r.onclick = () => runDemo('rain');
   }, { timeout: 12000, maximumAge: 600000 });
@@ -1138,7 +1859,7 @@ const dressup = $('#dressup');
 Object.entries(DEMOS).forEach(([k, d]) => { const b = document.createElement('button'); b.type = 'button'; b.dataset.demo = k; b.textContent = d.label; b.addEventListener('click', () => runDemo(k)); dressup.appendChild(b); });
 
 // expose a little for headless verification
-window.__pixiecast = { conditions, dress, note, upcoming, synth, DEMOS, runDemo, load, state };
+window.__pixiecast = { conditions, dress, note, upcoming, synth, DEMOS, PIXIES, portrait, setPixie, runDemo, load, state };
 
 // ============================================================
 //  BOOT
@@ -1147,6 +1868,9 @@ window.__pixiecast = { conditions, dress, note, upcoming, synth, DEMOS, runDemo,
   restore();
   setUnit(state.unit);
   const p = new URLSearchParams(location.search);
+  if (p.get('pixie') && PIXIES[p.get('pixie')]) state.pixie = p.get('pixie');
+  applyPixie(PIXIES[state.pixie]);
+  if (p.has('gallery')) return renderGallery();
   if (p.get('demo') && DEMOS[p.get('demo')]) return runDemo(p.get('demo'));
   const lat = parseFloat(p.get('lat')), lon = parseFloat(p.get('lon'));
   if (isFinite(lat) && isFinite(lon)) {
@@ -1155,7 +1879,7 @@ window.__pixiecast = { conditions, dress, note, upcoming, synth, DEMOS, runDemo,
     return load(known || { name: name.split(',')[0] || lat.toFixed(2) + ', ' + lon.toFixed(2), admin: '', country: name.split(',').slice(1).join(',').trim(), cc: '', lat, lon });
   }
   if (state.place) return load(state.place);
-  renderLoading({ title: 'Finding you…', body: 'Wisp needs to know where you are before choosing socks.' });
+  renderLoading({ title: 'Finding you…', body: (PIXIES[state.pixie] || PIXIES.wisp).name + ' needs to know where you are before choosing socks.' });
   locate(true);
 })();
 })();
