@@ -1,3 +1,20 @@
+# Restore the secluded haunted forest — 2026-09-11
+
+Goal: a single greenhouse surrounded on every side by dense, believable forest. The user rejected the broad flat dirt clearing, sparse props and conspicuous photographic backdrop. Preserve solid foliage, task behavior and the 120-plant rapid-movement performance target.
+
+- [x] Replace the visible panorama with depth-correct forest and matching atmospheric sky/fog; retain environment lighting separately.
+- [x] Model overlapping near/middle/far tree layers, varied mature trunks and an enclosing canopy.
+- [x] Cover irregular forest banks with dense ferns, shrubs, roots, fallen branches and litter.
+- [x] Inspect the view through every greenhouse wall, canopy overhead, and parallax during movement in the current browser build.
+- [x] Measure 120-plant fast movement at day/dusk/night; fix regressions and retain failed runs.
+- [x] Skeptically review, record limitations and prepare the scoped correction for the authorized origin/main push.
+
+Plan check-in: this implements the user's explicit correction. The setting and enclosure are acceptance criteria; texture resolution alone cannot satisfy them. No changes to task flowers or bench design are intended.
+
+Forest review: visible panorama removed; 280 modeled trees and 519,480 closed leaves enclose the greenhouse, with uneven scanned forest litter and 416 fern crowns. All four walls and the canopy were inspected after final spatial culling. Four 60-second/120-plant runs pass the sustained target: averages 118.22–119.53 FPS, p99 9.3–16.6 ms, worst rolling seconds 101–105 FPS. The perimeter still contains a 116.7 ms interval; no hard 60 FPS guarantee or real-video visual acceptance is claimed. External 60 Hz and earlier failed runs are retained, with empty-page display baselines. All 58 r160 Node tests pass. Independent review findings on sky compositing, moon occlusion, shadow coverage, route duration, and lamp bounce are fixed. Full proof is in `greenhouse-todo/REALISM.md` and `proof/v3-verification.json`. No unrelated tower-defense or terrain-map changes belong in this commit.
+
+---
+
 # Greenhouse realism and frame budget — 2026-09-11
 
 Goal: physically plausible greenhouse materials and solid botanical geometry; target at least 60 fps with all 120 task slots filled during rapid traversal. Project: The Grove / Moon Dog Atlas personal work. Scope: `greenhouse-todo/` only. Preserve to-do persistence, growth, completion, audio, controls, and solar clock. Existing unrelated tower-defense artifact is untouched.

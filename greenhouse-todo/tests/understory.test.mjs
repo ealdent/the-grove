@@ -9,22 +9,38 @@ import { createBotanicalLeafMaterial } from '../realism-botany.js';
 // CPU only: node --test greenhouse-todo/tests/understory.test.mjs
 test('height sampler agrees with the actual floor triangles and retains its dimensions', () => {
     const geometry = createWoodlandGroundGeometry();
-    assert.equal(geometry.attributes.position.count, 129 * 129);
-    assert.equal(geometry.index.count / 3, 32768);
+    assert.equal(geometry.attributes.position.count, 131 * 131);
+    assert.equal(geometry.index.count / 3, 33800);
     assert.equal(geometry.boundingBox.min.x, -100);
     assert.equal(geometry.boundingBox.max.x, 100);
     assert.equal(geometry.boundingBox.min.z, -100);
     assert.equal(geometry.boundingBox.max.z, 100);
-    assert.equal(geometry.boundingBox.min.y, 0, 'full floor retained without a sunken skirt');
-    assert.ok(geometry.boundingBox.max.y < .6, 'no distant metre-high bare ridge');
+    assert.equal(geometry.boundingBox.min.y, 0, 'full floor retained');
+    assert.ok(geometry.boundingBox.max.y > 2 && geometry.boundingBox.max.y < 4.5, 'rolling forest banks');
     const position = geometry.attributes.position;
+    assert.deepEqual(Array.from(geometry.groups, ({ start, count, materialIndex }) => [start, count, materialIndex]),
+        [[0, 2448, 0], [2448, 98952, 1]], 'two contiguous groups cover every original triangle');
+    for (const group of geometry.groups) {
+        for (let i = group.start; i < group.start + group.count; i += 3) {
+            const ids = [0, 1, 2].map(offset => geometry.index.getX(i + offset));
+            const x = ids.reduce((sum, id) => sum + position.getX(id), 0) / 3;
+            const z = ids.reduce((sum, id) => sum + position.getZ(id), 0) / 3;
+            const inside = Math.abs(x) < 8.5 && z > -45.5 && z < 5.5;
+            assert.equal(group.materialIndex, inside ? 0 : 1, 'only foundation triangles use interior mud');
+        }
+    }
     for (let i = 0; i < position.count; i++) assert.equal(
         getWoodlandGroundHeight(position.getX(i), position.getZ(i)), position.getY(i));
-    for (const x of [-7, 0, 7]) for (const z of [-43, -20, 3]) assert.equal(getWoodlandGroundHeight(x, z), 0);
-    assert.ok(getWoodlandGroundHeight(24, -20) > 0);
-    for (const x of [-90, 90]) for (const z of [-70, -20, 50]) {
-        const height = getWoodlandGroundHeight(x, z);
-        assert.ok(height >= .035 && height <= .047, 'far floor settles gently but remains present');
+    for (const x of [-8.5, -8.499, -8, 0, 8, 8.499, 8.5]) {
+        for (const z of [-45.5, -45.499, -45, -20, 5, 5.499, 5.5]) {
+            assert.equal(getWoodlandGroundHeight(x, z), 0, 'entire foundation stays level, including cell edges');
+        }
+    }
+    const bankHeights = Array.from({ length: 30 }, (_, i) => getWoodlandGroundHeight(11.5, -45 + i * 1.6));
+    assert.ok(Math.min(...bankHeights) > .35, 'banks rise close to the foundation');
+    assert.ok(Math.max(...bankHeights) - Math.min(...bankHeights) > .3, 'irregular bank profile');
+    for (const [x, z] of [[0, 9], [0, -49], [-12, -20], [12, -20]]) {
+        assert.ok(getWoodlandGroundHeight(x, z) > .4, 'banks enclose every side');
     }
     const material = new THREE.MeshBasicMaterial();
     const mesh = new THREE.Mesh(geometry, material);
@@ -45,9 +61,15 @@ test('height sampler agrees with the actual floor triangles and retains its dime
     material.dispose();
 });
 
+function renderMeshes(group) {
+    const meshes = [];
+    group.traverse(mesh => { if (mesh.isMesh) meshes.push(mesh); });
+    return meshes;
+}
+
 function fingerprint(group) {
     const hash = createHash('sha256');
-    for (const mesh of group.children) {
+    for (const mesh of renderMeshes(group)) {
         for (const attribute of Object.values(mesh.geometry.attributes)) hash.update(Buffer.from(
             attribute.array.buffer, attribute.array.byteOffset, attribute.array.byteLength));
         hash.update(Buffer.from(mesh.geometry.index.array.buffer));
@@ -83,24 +105,69 @@ function verifyClosedGeometry(geometry) {
     }
 }
 
+// Rasterize only projected physical triangles, not crown radii: many widely
+// separated leaflets must not pass as a dense canopy just because roots overlap.
+function foliageCoverage(group) {
+    const step = .25, x0 = -17.5, z0 = -43, nx = 140, nz = 184;
+    const covered = new Uint8Array(nx * nz);
+    for (const mesh of renderMeshes(group)) {
+        if (!mesh.name.includes('foliage')) continue;
+        const p = mesh.geometry.attributes.position.array, indices = mesh.geometry.index.array;
+        for (let i = 0; i < indices.length; i += 3) {
+            const a = indices[i] * 3, b = indices[i + 1] * 3, c = indices[i + 2] * 3;
+            const ax = p[a], az = p[a + 2], bx = p[b], bz = p[b + 2], cx = p[c], cz = p[c + 2];
+            const denom = (bz - cz) * (ax - cx) + (cx - bx) * (az - cz);
+            if (Math.abs(denom) < 1e-10) continue;
+            const minX = Math.max(0, Math.ceil((Math.min(ax, bx, cx) - x0) / step - .5));
+            const maxX = Math.min(nx - 1, Math.floor((Math.max(ax, bx, cx) - x0) / step - .5));
+            const minZ = Math.max(0, Math.ceil((Math.min(az, bz, cz) - z0) / step - .5));
+            const maxZ = Math.min(nz - 1, Math.floor((Math.max(az, bz, cz) - z0) / step - .5));
+            for (let iz = minZ; iz <= maxZ; iz++) for (let ix = minX; ix <= maxX; ix++) {
+                if (covered[iz * nx + ix]) continue;
+                const x = x0 + (ix + .5) * step, z = z0 + (iz + .5) * step;
+                const u = ((bz - cz) * (x - cx) + (cx - bx) * (z - cz)) / denom;
+                const v = ((cz - az) * (x - cx) + (ax - cx) * (z - cz)) / denom;
+                if (u >= 0 && v >= 0 && u + v <= 1) covered[iz * nx + ix] = 1;
+            }
+        }
+    }
+    const result = {};
+    for (const [name, lo, hi] of [['near', 2, 4], ['belt', 1, 8]]) {
+        let samples = 0, occupied = 0;
+        for (let iz = 0; iz < nz; iz++) for (let ix = 0; ix < nx; ix++) {
+            const depth = Math.abs(x0 + (ix + .5) * step) - 8.5;
+            if (depth >= lo && depth <= hi) { samples++; occupied += covered[iz * nx + ix]; }
+        }
+        result[name] = occupied / samples;
+    }
+    return result;
+}
+
 test('understory is deterministic, closed, static and inside the bank/budget constraints', t => {
     const scene = new THREE.Scene();
     const a = createWoodlandUnderstory(scene), b = createWoodlandUnderstory(scene);
     t.after(() => { a.dispose(); b.dispose(); });
     assert.deepEqual(a.stats, b.stats);
     assert.equal(fingerprint(a.group), fingerprint(b.group));
-    assert.equal(a.stats.drawCalls, 12);
-    assert.equal(a.stats.triangles, 144600);
-    assert.ok(a.stats.triangles <= 150000);
+    assert.equal(a.stats.drawCalls, 24);
+    assert.ok(a.stats.drawCalls < 30);
+    assert.equal(a.stats.chunks, 8);
+    assert.equal(a.stats.triangles, 1791808);
+    assert.ok(a.stats.triangles < 1800000);
     assert.equal(a.stats.shadowDrawCalls, 0);
-    assert.equal(a.stats.shrubs, 36);
-    assert.equal(a.stats.ferns, 36);
-    assert.equal(a.stats.litterLeaves, 840);
-    assert.equal(a.stats.twigs, 108);
-    assert.equal(a.stats.groundCoverPatches, 56);
-    assert.equal(a.stats.groundCoverLeaves, 1344);
+    assert.equal(a.stats.shrubs, 64);
+    assert.equal(a.stats.brambles, 64);
+    assert.equal(a.stats.ferns, 416);
+    assert.equal(a.stats.fernFronds, 3328);
+    assert.equal(a.stats.litterLeaves, 3776);
+    assert.equal(a.stats.twigs, 192);
+    assert.equal(a.stats.fallenLogs, 32);
+    assert.equal(a.stats.exposedRoots, 160);
+    assert.equal(a.stats.liveLeaves, 117504);
+    assert.equal(a.stats.groundCoverPatches, 96);
+    assert.equal(a.stats.groundCoverLeaves, 2304);
     let triangles = 0;
-    for (const mesh of a.group.children) {
+    for (const mesh of renderMeshes(a.group)) {
         assert.equal(mesh.isMesh, true);
         assert.equal(mesh.isPoints, undefined);
         assert.equal(mesh.isSprite, undefined);
@@ -122,27 +189,41 @@ test('understory is deterministic, closed, static and inside the bank/budget con
         const p = mesh.geometry.attributes.position;
         for (let i = 0; i < p.count; i++) {
             const x = p.getX(i), y = p.getY(i), z = p.getZ(i);
-            assert.ok(Math.abs(x) >= 10 && Math.abs(x) <= 40, 'complete silhouette clears the walls');
-            if (mesh.name.includes('Shrub leaves') || mesh.name.includes('Fern blades')) {
-                assert.ok(Math.abs(x) <= 25, 'original shrubs/ferns stay in the near planting belt');
-            }
-            assert.ok(z >= -55 && z <= 15);
-            assert.ok(mesh.name.startsWith('West') ? x < 0 : x > 0);
+            const outside = Math.hypot(Math.max(0, Math.abs(x) - 8.5), Math.max(0, Math.abs(z + 20) - 25.5));
+            assert.ok(outside > .4, 'whole silhouettes leave a narrow clear foundation strip');
+            assert.ok(Math.abs(x) < 24 && z > -60 && z < 20, 'dense belt stays near the greenhouse');
             const gap = y - getWoodlandGroundHeight(x, z);
             if (mesh.name.includes('Curled leaf litter')) {
-                assert.ok(gap >= .0014 && gap < .075, 'litter follows soil with a small curl');
-            } else if (mesh.name.includes('Attached stems')) {
-                assert.ok(gap >= -.025 && gap < 1.1, 'only root/twig contact can enter the soil');
-            } else if (mesh.name.includes('ground cover')) {
-                assert.ok(gap > .025 && gap < .22, 'connected creeping leaves stay low over their runners');
-            } else assert.ok(gap > .05 && gap < 1.1, 'living foliage remains above the soil');
+                assert.ok(gap >= .0013 && gap < .085, 'litter follows soil with a small curl');
+            } else if (mesh.name.includes('Stems, deadwood')) {
+                assert.ok(gap >= -.12 && gap < 1.6, 'roots/logs contact or enter the soil');
+            } else assert.ok(gap > .015 && gap < 1.6, 'living foliage follows its bank above the soil');
         }
+        const size = mesh.geometry.boundingBox.getSize(new THREE.Vector3());
+        assert.ok(Math.max(size.x, size.z) < 28, 'spatial batches do not span the whole forest');
         verifyClosedGeometry(mesh.geometry);
     }
     assert.equal(triangles, a.stats.triangles);
-    for (const [x, y, z] of a.group.userData.shrubRoots) {
-        assert.ok(Math.abs(y - getWoodlandGroundHeight(x, z) + .012) < 1e-10);
+    for (const { point: [x, y, z] } of a.group.userData.plantRoots) {
+        assert.equal(y, getWoodlandGroundHeight(x, z), 'all plant origins use the exact surface');
     }
+    assert.equal(Object.keys(a.sections).length, 8);
+    for (const [name, section] of Object.entries(a.sections)) {
+        assert.equal(section.children.length, 3);
+        assert.ok(a.stats.sections[name].ferns >= 50);
+        assert.equal(a.stats.sections[name].brambles, 8);
+        assert.ok(a.stats.sections[name].triangles < 240000);
+    }
+    const roots = a.group.userData.plantRoots.map(root => root.point);
+    assert.ok(roots.some(([x, , z]) => Math.abs(x) < 8 && z > 8), 'vegetation closes the north end');
+    assert.ok(roots.some(([x, , z]) => Math.abs(x) < 8 && z < -48), 'vegetation closes the south end');
+    const coverage = foliageCoverage(a.group);
+    assert.ok(coverage.near > .55, 'narrow pinnae still overlap across the near bank');
+    assert.ok(coverage.belt > .4, 'feathered foliage retains layered coverage above scanned litter');
+    assert.equal(createHash('sha256').update(JSON.stringify(a.group.userData.plantRoots)).digest('hex'),
+        '63324a5c1f0e29f07323ed539eba8cbdc5c46c6422ecd84def34f388d310b088',
+        'fern shape refinement preserves every previous plant origin');
+    t.diagnostic(`Projected physical foliage coverage: ${JSON.stringify(coverage)}`);
     t.diagnostic(JSON.stringify(a.stats));
 });
 
@@ -157,7 +238,7 @@ test('disposing/rebuilding understory preserves every shared photo texture and o
     const onTextureDispose = () => textureDisposals++;
     maps.forEach(map => map.addEventListener('dispose', onTextureDispose));
     const materials = new Set();
-    for (const mesh of built.group.children) {
+    for (const mesh of renderMeshes(built.group)) {
         mesh.geometry.addEventListener('dispose', () => geometryDisposals++);
         materials.add(mesh.material);
         if (mesh.material.map) {
@@ -168,17 +249,47 @@ test('disposing/rebuilding understory preserves every shared photo texture and o
     materials.forEach(material => material.addEventListener('dispose', () => materialDisposals++));
     built.dispose();
     built.dispose();
-    assert.equal(geometryDisposals, 12);
+    assert.equal(geometryDisposals, 24);
     assert.equal(materialDisposals, 3);
     assert.equal(textureDisposals, 0);
     assert.deepEqual(external.color, colors);
     assert.equal(scene.children.length, 1);
     assert.equal(scene.children[0], unrelated);
     const rebuilt = createWoodlandUnderstory(scene);
-    assert.equal(rebuilt.group.children[0].material.map, external.map);
+    assert.equal(renderMeshes(rebuilt.group)[0].material.map, external.map);
     rebuilt.dispose();
     assert.equal(textureDisposals, 0);
     maps.forEach(map => map.removeEventListener('dispose', onTextureDispose));
     external.dispose();
     assert.throws(() => createWoodlandUnderstory(null), TypeError);
+});
+
+test('near fern fronds have slender sword pinnae with a gradual distal taper', t => {
+    const built = createWoodlandUnderstory(new THREE.Scene());
+    t.after(() => built.dispose());
+    const geometry = renderMeshes(built.group).find(mesh => mesh.name.includes('foliage')).geometry;
+    const p = geometry.attributes.position;
+    const unwarped = index => {
+        const point = new THREE.Vector3().fromBufferAttribute(p, index);
+        point.y -= getWoodlandGroundHeight(point.x, point.z);
+        return point;
+    };
+    // The first frond has 20 pairs, each closed pinna has two 7-vertex sides.
+    // Measure the emitted surface, undoing only its terrain-following warp.
+    const lengths = [];
+    for (let pair = 0; pair < 20; pair++) {
+        const start = pair * 2 * 14;
+        const length = unwarped(start).distanceTo(unwarped(start + 3));
+        const width = unwarped(start + 1).distanceTo(unwarped(start + 5));
+        assert.ok(length < .285 && width < .056, 'no oversized broad pinnae');
+        if (pair < 10) {
+            assert.ok(length > .18 && width > .033, 'mature pinnae retain their physical scale');
+            assert.ok(length / width > 4.5, 'long slender blades rather than broad oval leaves');
+        }
+        if (pair > 11) assert.ok(length < lengths[pair - 1], 'progressive tip taper');
+        lengths.push(length);
+    }
+    assert.ok(lengths[19] < lengths[9] * .2, 'small distal pair finishes the feathered outline');
+    const terminal = 40 * 14;
+    assert.ok(unwarped(terminal).distanceTo(unwarped(terminal + 3)) < .1, 'small terminal blade');
 });

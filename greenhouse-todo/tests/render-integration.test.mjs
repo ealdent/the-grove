@@ -5,6 +5,7 @@ import vm from 'node:vm';
 import * as THREE from 'three';
 import { FrameProfiler } from '../frame-profiler.js';
 import { PlantBatches } from '../plant-batches.js';
+import { attenuateWoodlandRadiance } from '../forest-atmosphere.js';
 
 // Run the actual app helpers without starting its DOM, audio or WebGL renderer.
 const app = readFileSync(new URL('../app.js', import.meta.url), 'utf8');
@@ -14,11 +15,11 @@ function appFunction(name) {
     return match[0];
 }
 
-test('higher-detail HDR accepts a 48-second download and retains bounded failure cleanup', async () => {
+test('forest lighting HDR accepts a 48-second download and retains bounded failure cleanup', async () => {
     function fixture() {
         let callback, timeout, deadline, now = 0, sunUpdates = 0;
         const context = vm.createContext({
-            URL, THREE,
+            URL, THREE, attenuateWoodlandRadiance,
             setTimeout(fn, ms) { timeout = fn; deadline = now + ms; return 1; },
             clearTimeout() { timeout = null; },
             RGBELoader: class { load(url, loaded) { callback = loaded; } },
@@ -26,7 +27,7 @@ test('higher-detail HDR accepts a 48-second download and retains bounded failure
             scene: { getObjectByName: () => null },
             updateSunAndLighting() { sunUpdates++; },
         });
-        vm.runInContext('let woodlandMap, woodlandEnvRT, woodlandFloorTransition;\n'
+        vm.runInContext('let woodlandEnvRT;\n'
             + appFunction('loadWoodlandEnvironment').replace('import.meta.url', '"https://example.test/app.js"'), context);
         return {
             load: () => context.loadWoodlandEnvironment(),
@@ -40,7 +41,7 @@ test('higher-detail HDR accepts a 48-second download and retains bounded failure
     const texture = { disposed: false, dispose() { this.disposed = true; } };
     slow.deliver(texture);
     assert.equal((await successful).failed.length, 0, '5 Mbps downloads must not be discarded at 30 seconds');
-    assert.equal(texture.disposed, false);
+    assert.equal(texture.disposed, true, 'lighting-only source is released after PMREM');
     assert.equal(slow.updates(), 1);
 
     const stalled = fixture(), failed = stalled.load();
@@ -119,6 +120,27 @@ function lightingFixture() {
     vm.runInContext('const _lampOrder = []; let lastLampAssign = 0;\n' + appFunction('assignLampLights'), context);
     return context;
 }
+
+test('interior lamp bounce follows warmup and snapped night clocks immediately', () => {
+    const context = vm.createContext({
+        THREE, lampState: { on: false, level: 0 }, currentDayness: 0,
+        warmFill: new THREE.PointLight(), LAMP_WARMUP: 4, LAMP_COOLDOWN: 2,
+        _lampColor: new THREE.Color(), _lampWarm: new THREE.Color(0xffd9a0),
+        bulbLights: [], sharedAssets: {}, shaftMeshes: [], lampMotes: null, lampMoths: null,
+    });
+    vm.runInContext(appFunction('updateLamps'), context);
+    context.updateLamps(0, 0);
+    assert.equal(context.warmFill.intensity, 0);
+    context.lampState.on = true;
+    context.updateLamps(2000, 2);
+    assert.equal(context.warmFill.intensity, 1.2);
+    context.lampState.level = 1;
+    context.updateLamps(2000, 0);
+    assert.equal(context.warmFill.intensity, 2.4);
+    context.currentDayness = 1;
+    context.updateLamps(2000, 0);
+    assert.equal(context.warmFill.intensity, .6);
+});
 
 test('walking assigns the nearest pair to shadow casters without duplicate slots or flag changes', () => {
     const context = lightingFixture();

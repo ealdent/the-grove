@@ -1,10 +1,8 @@
-# Current runtime detail
+# Current runtime use: lighting only
 
-The app now loads the original **4096 × 2048** `forest_slope_4k.hdr` (29,764,886 bytes).
-Its source URL and SHA-256 are in [detail-upgrade-provenance.json](../detail-upgrade-provenance.json).
-RGBA16F storage is approximately 64 MiB before the derived PMREM. The earlier 2K
-asset below remains archived with the first-pass evidence. Both are unchanged CC0
-versions of Andreas Mischok's same photographed panorama.
+The forest correction removes the visible panorama and its ground transition. The app uses **2048 × 1024** `forest_slope_2k.hdr` (7,562,873 bytes) solely to build indirect lighting. It scales linear RGB radiance by 0.48 before PMREM to match the enclosed canopy. The source file is unchanged. Real modeled trees, terrain and an atmospheric sky supply the visible surroundings and translation parallax.
+
+The **4096 × 2048** `forest_slope_4k.hdr` remains archived with the previous evidence, but is no longer requested by the runtime. Its original provenance is in [detail-upgrade-provenance.json](../detail-upgrade-provenance.json).
 
 # Woodland environment
 
@@ -30,34 +28,8 @@ trees. It is a wooded slope, not a large flat clearing.
 
 ## Parent integration
 
-The parent has integrated this HDR as the visible background with a PMREM-derived
-image-based lighting environment. Source inspection confirms RGBELoader and
-`pmremGen.fromEquirectangular(texture)` in `loadWoodlandEnvironment()`. The pattern
-below summarizes that setup; this asset slice changes no application/module API:
+`loadWoodlandEnvironment()` decodes the 2K source as linear half-float RGB, attenuates it once, and passes it to `pmremGen.fromEquirectangular`. The app assigns only the derived texture to `scene.environment`; `scene.background` remains null. An overcast sky mesh and actual forest geometry render the view. No floor shader samples this panorama.
 
-```js
-const hdr = await new RGBELoader().loadAsync(
-    new URL('./assets/environment/forest_slope_4k.hdr', import.meta.url).href
-);
-hdr.mapping = THREE.EquirectangularReflectionMapping;
-scene.background = hdr;
-const environmentTarget = pmremGen.fromEquirectangular(hdr);
-scene.environment = environmentTarget.texture;
-```
+RGBELoader r160 supplies linear-sRGB half-float data. Do not mark it sRGB; ACES/output conversion remains in the normal render pipeline. A 2K RGBA16F image is approximately 16 MiB before PMREM storage. The source GPU texture is disposed after PMREM conversion; the derived render target remains alive for lighting.
 
-RGBELoader r160 provides linear-sRGB half-float data. **Do not set the HDR to
-SRGBColorSpace.** Retain ACES/output color management in the integrating app.
-Use the PMREM for environment lighting and keep the original equirectangular
-texture for the visible background. Keep both resources alive while in use;
-dispose the render target and HDR texture when replacing/removing them. A 2K
-RGBA16F image is about 16 MiB on the GPU before derived cube/PMREM storage.
-
-This panorama records one location and one lighting condition. It supplies
-rotation-correct surroundings but no translation parallax or changing weather.
-Nearby photographed trunks/rocks will not move physically as the camera walks;
-keep real foreground geometry and check the transition in the greenhouse.
-Review existing sky meshes, distant tree planes, fog, direct sunlight, and night
-behavior during integration so they do not obscure or contradict the panorama.
-The four-direction preview loaded at 2048 × 1024 with linear color space and no
-console warnings/errors. Full-app compositing, exposure, night behavior, and
-120-plant performance remain unverified in this asset task.
+The capture contains dappled sunlight and cannot provide dynamic local occlusion. Modeled canopy shadows, muted direct light and restrained fill supply that approximation. It is not a baked or path-traced greenhouse lighting solution.

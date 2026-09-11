@@ -5,6 +5,8 @@ import * as THREE from 'three';
 const DEFINITIONS = {
     wood: { asset: 'weathered_planks', resolution: '2k', fallback: 0x827467, normalScale: 0.5, tileMeters: 2 },
     ground: { asset: 'brown_mud_02', fallback: 0x4d4437, tint: 0xb7a889, normalScale: 0.65, tileMeters: 1.3 },
+    forest: { asset: 'forest_leaves_02', resolution: '2k', fallback: 0x494e34, normalScale: 0.8, tileMeters: 3.001,
+        channels: { map: 'diffuse', normalMap: 'nor_gl', roughnessMap: 'rough' } },
     pot: {
         asset: 'planter_pot_clay', fallback: 0xa56d51, normalScale: 0.35,
         // A model atlas, not a square tile. Use only the red exterior-wall strip.
@@ -24,7 +26,7 @@ const CHANNELS = { map: 'diff', normalMap: 'nor_gl', roughnessMap: 'rough' };
 const loader = new THREE.TextureLoader();
 const sources = new Map();
 const pendingMaterials = new Set();
-// Allow the 2K maps to finish alongside the 29.8 MB environment on slower links.
+// Allow the scanned 2K surfaces to finish on slower connections.
 const LOAD_TIMEOUT_MS = 90000;
 
 function loadSource(asset, channel, resolution = '1k') {
@@ -179,4 +181,9 @@ export async function texturesReady() {
         failed: [...sources.values()].filter(record => record.status === 'failed')
             .map(record => ({ url: record.url, reason: record.error })),
     };
+}
+
+/** Scanned moss and leaf litter on the exterior 200 m terrain UVs. */
+export function createScannedForestFloorMaterial(renderer) {
+    return createMaterial('forest', renderer, [200 / 3.001, 200 / 3.001]);
 }

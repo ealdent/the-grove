@@ -29,7 +29,12 @@
     entry: { x: 0, z: 2, yaw: 0, pitch: 0 },
     left: { x: -1.75, z: -12, yaw: Math.PI / 2, pitch: -0.12 },
     right: { x: 1.75, z: -24, yaw: -Math.PI / 2, pitch: -0.12 },
-    reverse: { x: 0, z: -40, yaw: Math.PI, pitch: 0 }
+    reverse: { x: 0, z: -40, yaw: Math.PI, pitch: 0 },
+    'forest-left': { x: -6.7, z: -16, yaw: Math.PI / 2, pitch: 0.08 },
+    'forest-right': { x: 6.7, z: -26, yaw: -Math.PI / 2, pitch: 0.08 },
+    'forest-front': { x: 0, z: 3.6, yaw: Math.PI, pitch: 0.08 },
+    'forest-back': { x: 0, z: -43.6, yaw: 0, pitch: 0.08 },
+    canopy: { x: 0, z: -20, yaw: 0.45, pitch: 1.18 }
   });
   let debug = null, hookedDocument = null, unhook = () => {}, initialView = null;
   let loaded = null, sunTime = null, pinnedPose = null, operation = null, run = null;
@@ -123,7 +128,7 @@
   function setButtons() {
     const busy = !!operation || !!run;
     for (const el of document.querySelectorAll('#load, #run, #reset-view, [data-pose], [data-light]')) el.disabled = !debug || busy;
-    for (const id of ['count', 'mix', 'duration', 'light', 'resolution', 'threshold', 'restore']) $(id).disabled = busy;
+    for (const id of ['count', 'mix', 'duration', 'route', 'light', 'resolution', 'threshold', 'restore']) $(id).disabled = busy;
     $('stop').disabled = !busy;
   }
 
@@ -223,10 +228,36 @@
     return { x: 0, z: returning ? 2 : -40, yaw: heading + Math.PI * smooth((t - 6.95) / 0.55), pitch: 0 };
   }
 
+  // Strafe along all four walls at 8 m/s while looking into the closest forest.
+  // Four 0.55 s turns and a roof inspection complete an exact 20 s loop.
+  function forestRoute(seconds) {
+    const corners = [[-6.7, 3], [-6.7, -43], [6.7, -43], [6.7, 3], [-6.7, 3]];
+    let t = seconds % 20;
+    for (let side = 0; side < 4; side++) {
+      const a = corners[side], b = corners[side + 1];
+      const travel = Math.hypot(b[0] - a[0], b[1] - a[1]) / 8;
+      const yaw = Math.PI / 2 - side * Math.PI / 2;
+      if (t < travel) return { x: lerp(a[0], b[0], t / travel), z: lerp(a[1], b[1], t / travel), yaw, pitch: .08 };
+      t -= travel;
+      if (t < .55) return { x: b[0], z: b[1], yaw: yaw - Math.PI / 2 * smooth(t / .55), pitch: .08 };
+      t -= .55;
+    }
+    const roof = 2.95;
+    return { x: -6.7, z: 3, yaw: -Math.PI * 1.5,
+      pitch: .08 + 1.10 * Math.sin(Math.PI * t / roof) ** 2 };
+  }
+
+  function sampleRoute(seconds, config) {
+    return config.route === 'forest' ? forestRoute(seconds) : route(seconds);
+  }
+
   function configuration() {
     if (!$('count').reportValidity()) throw new Error('Plant count must be a whole number from 0 to 120.');
+    if ($('route').value === 'forest' && Number($('duration').value) < 20) {
+      throw new Error('Choose at least 30 seconds to measure the complete forest route and canopy.');
+    }
     return { count: Number($('count').value), mix: $('mix').value, durationMs: Number($('duration').value) * 1000,
-      light: $('light').value, sunISO: SUN[$('light').value], viewport: $('resolution').value,
+      route: $('route').value, light: $('light').value, sunISO: SUN[$('light').value], viewport: $('resolution').value,
       thresholdMs: Number($('threshold').value), restore: $('restore').checked };
   }
 
@@ -369,23 +400,23 @@
         r.previous = timestamp;
         if (r.phase === 'warmup') {
           r.warmupMs += delta; r.totalWarmupMs += delta;
-          pose(route(r.warmupMs * 3 / 1000));
+          pose(sampleRoute(r.warmupMs * (r.config.route === 'forest' ? 4 : 3) / 1000, r.config));
           if (r.warmupMs >= WARMUP_MS) {
             r.phase = 'sampling';
             r.sampleStartedAt ||= new Date().toISOString();
             // This callback is the new sample's anchor, not a measured interval.
-            pose(route(r.elapsedMs / 1000));
+            pose(sampleRoute(r.elapsedMs / 1000, r.config));
           }
         } else if (delta > 0) {
           r.elapsedMs += delta; r.segmentMs += delta;
           const m = frameSnapshot();
           r.samples.push({ elapsedMs: r.elapsedMs, segment: r.segment, segmentMs: r.segmentMs, frameMs: delta,
             cpuMs: finite(m.cpuMs), calls: finite(m.calls), triangles: finite(m.triangles), gpuMs: finite(m.gpuMs), pixelRatio: finite(m.pixelRatio) });
-          pinnedPose = route(r.elapsedMs / 1000);
+          pinnedPose = sampleRoute(r.elapsedMs / 1000, r.config);
           pose(pinnedPose);
           if (r.elapsedMs >= r.config.durationMs) finish('completed');
         }
-        if (run && timestamp - lastPaint >= 250) { lastPaint = timestamp; paintProgress(); }
+        if (run && timestamp - lastPaint >= 250) { lastPaint = timestamp; recordDisplayChange(run); paintProgress(); }
       } else if (!r && pinnedPose && visible()) pose(pinnedPose);
     } catch (error) {
       diagnostic('harness-error', describe(error));
@@ -432,6 +463,23 @@
     return Number.isFinite(worst) ? worst : null;
   }
 
+  function displayEnvironment() {
+    const screen = window.screen;
+    return { screenCSS: { width: screen.width, height: screen.height, availWidth: screen.availWidth, availHeight: screen.availHeight },
+      hostWindowCSS: { x: window.screenX, y: window.screenY }, nativeDPR: frame.contentWindow.devicePixelRatio };
+  }
+
+  // Screen/window movement need not emit resize (including equal-DPR displays).
+  // Poll only these cheap properties; query the full environment only on change.
+  function recordDisplayChange(r, current = displayEnvironment()) {
+    const previous = r.lastDisplay ?? r.environmentStart;
+    if (!previous) return;
+    const key = env => JSON.stringify([env.screenCSS, env.hostWindowCSS, env.nativeDPR]);
+    if (key(previous) !== key(current)) r.viewportChanges.push({ reason: 'display or host window changed',
+      afterSampleMs: round(r.elapsedMs), environment: current.viewportCSS ? current : environment() });
+    r.lastDisplay = current;
+  }
+
   function environment() {
     const renderer = debug.renderer, canvas = renderer.domElement, win = frame.contentWindow;
     const rect = canvas.getBoundingClientRect();
@@ -447,7 +495,7 @@
       viewportCSS: { width: win.innerWidth, height: win.innerHeight },
       canvasCSS: { width: rect.width, height: rect.height },
       drawingBuffer: { width: gl?.drawingBufferWidth ?? canvas.width, height: gl?.drawingBufferHeight ?? canvas.height },
-      nativeDPR: win.devicePixelRatio, renderDPR: finite(renderer.getPixelRatio?.()),
+      ...displayEnvironment(), renderDPR: finite(renderer.getPixelRatio?.()),
       hostViewportCSS: { width: innerWidth, height: innerHeight },
       frameMetricsAvailable: typeof debug.frameMetrics === 'function', audio: 'Not initiated by harness' };
   }
@@ -487,7 +535,8 @@
       r.interruptions.at(-1).hiddenMs = round(hidden);
     }
     let environmentEnd = null, restoration = r.config.restore ? 'restored' : 'held last camera and sun';
-    try { environmentEnd = environment(); } catch (error) { diagnostic('environment-error', describe(error)); }
+    try { environmentEnd = environment(); recordDisplayChange(r, environmentEnd); }
+    catch (error) { diagnostic('environment-error', describe(error)); }
     try { if (r.config.restore) restoreView(r.restore); else restoreControls(r.restore); }
     catch (error) { restoration = `failed: ${describe(error)}`; diagnostic('restore-error', describe(error)); }
     const intervals = distribution(r.samples.map(s => s.frameMs));
@@ -504,10 +553,10 @@
       comparableRun: comparable, hard60FPSClaim: false };
     const report = { schemaVersion: 1, status: outcome, reason, startedAt: r.startedAt, sampleStartedAt: r.sampleStartedAt, endedAt: new Date().toISOString(),
       iframeURL: frame.src, scenario: r.config, seed: r.seed ?? null, exploringDuringSample: true,
-      route: { version: ROUTE_VERSION, cycleSeconds: 15, centerSpeedMetersPerSecond: 8, eyeHeightMeters: 1.6, maxAbsX: 1.75, zRange: [-40, 2], turnSeconds: .55, inspectionSeconds: 1.7 },
+      route: r.config.route === 'forest' ? { version: 'forest-perimeter-v1', cycleSeconds: 20, speedMetersPerSecond: 8, eyeHeightMeters: 1.6, maxAbsX: 6.7, zRange: [-43, 3], turnSeconds: .55, canopyInspectionSeconds: 2.95 } : { version: ROUTE_VERSION, cycleSeconds: 15, centerSpeedMetersPerSecond: 8, eyeHeightMeters: 1.6, maxAbsX: 1.75, zRange: [-40, 2], turnSeconds: .55, inspectionSeconds: 1.7 },
       timing: { requestedSampleMs: r.config.durationMs, observedSampleMs: r.elapsedMs, sampleCount: r.samples.length,
-        requestedWarmupMs: WARMUP_MS, observedWarmupMs: r.totalWarmupMs, warmupRouteSpeedMultiplier: 3,
-        warmupRouteCoverage: 'One full 15 s route in 5 s, including both bench inspections and both turns', preparationMs: r.preparationMs ?? null,
+        requestedWarmupMs: WARMUP_MS, observedWarmupMs: r.totalWarmupMs, warmupRouteSpeedMultiplier: r.config.route === 'forest' ? 4 : 3,
+        warmupRouteCoverage: r.config.route === 'forest' ? 'One full 20 s perimeter route in 5 s, including all four turns and canopy inspection' : 'One full 15 s route in 5 s, including both bench inspections and both turns', preparationMs: r.preparationMs ?? null,
         wallDurationMs: ended - r.wallStart, hiddenMs: r.hiddenMs, interruptions: r.interruptions,
         method: 'Unclamped iframe native rAF intervals; nearest-rank percentiles; full rolling 1 s windows including just-before-callback windows. No hidden gaps or unobserved tail to Stop.' },
       threshold, stats, environment: { start: r.environmentStart, end: environmentEnd, changes: r.viewportChanges }, restoration,
@@ -566,6 +615,11 @@
     ownControls(false); pinnedPose = POSES[button.dataset.pose]; pose(pinnedPose);
     status(`${button.textContent} camera held at eye height 1.6 m. Scene animation continues.`);
     writeReport({ schemaVersion: 1, status: 'inspection', scenario: loaded, pose: { name: button.dataset.pose, ...pinnedPose, y: 1.6 }, sunISO: sunTime, environment: environment(), samples: [], diagnostics: diagnosticReport() });
+  });
+  $('route').addEventListener('change', () => {
+    const forest = $('route').value === 'forest';
+    $('duration').querySelector('option[value="15"]').disabled = forest;
+    if (forest && $('duration').value === '15') $('duration').value = '30';
   });
   $('reset-view').addEventListener('click', () => { if (debug && !run && !operation) { restoreView(initialView); status('Initial camera restored; sun follows the wall clock.'); } });
   $('download').addEventListener('click', () => {

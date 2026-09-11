@@ -47,3 +47,9 @@ The 4K HDR has a 120-second deadline, accommodating roughly 48 seconds of transf
 Dispose returned surface materials only after their final owner is removed; their listeners own their texture clones. Task caches and batch materials share source resources for the page lifetime. See individual module/asset notes for ownership details and CPU checks.
 
 Final integrated screenshots, performance results and remaining limits are in [REALISM.md](../REALISM.md).
+
+## Forest bark correction
+
+[Tree Bark 03](https://polyhaven.com/a/tree_bark_03), photographed by Rob Tuytel, supplies 1024 × 1024 albedo, OpenGL normal and roughness maps for the modeled forest trunks. The source metadata specifies a 1 × 1 metre sample; cylindrical UVs preserve that physical scale. Original bytes and source MD5 values were verified, with SHA-256 provenance in [forest/manifest.json](forest/manifest.json). The three maps total 2,766,458 bytes and use [CC0](https://polyhaven.com/license). No asset preview or rendered tree backdrop is used as a texture.
+
+[Forest Leaves 02](https://polyhaven.com/a/forest_leaves_02), also by Rob Tuytel, supplies 2048 × 2048 moss/leaf-litter albedo, OpenGL normals and roughness for the exterior terrain only. The roughly 3 × 3 metre scan is mapped at physical scale; modeled leaf litter, roots and ferns provide raised silhouettes. Interior mud and task soil retain their own materials. Original bytes and hashes: [materials/forest_leaves_02/manifest.json](materials/forest_leaves_02/manifest.json).

@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { getWoodlandGroundHeight } from './realism-terrain.js';
 
 /**
  * Static, opaque botany for the greenhouse (Three.js r160+).
@@ -418,7 +419,13 @@ export function createBotanicalLeafMaterial() {
 
 /** Resolves once local photo maps are published, or reports the neutral fallback. */
 export function texturesReady() {
-    return photoTextures().ready;
+    const foliage = photoTextures().ready;
+    if (!forestTextureSets.size) return foliage;
+    return Promise.all([foliage, ...Array.from(forestTextureSets, record => record.ready)]).then(results => ({
+        status: results.every(result => result.status === 'ready') ? 'ready'
+            : results.some(result => result.status === 'disposed') ? 'disposed' : 'fallback',
+        loaded: results.flatMap(result => result.loaded), failed: results.flatMap(result => result.failed)
+    }));
 }
 
 /** Call only after ALL task leaves, their cached material and batches are retired. */
@@ -590,6 +597,444 @@ function makeBarkMaterial() {
     });
 }
 
+const forestTextureSets = new Set();
+const FOREST_BARK_CHANNELS = [
+    ['map', 'tree_bark_03_diff_1k.jpg', THREE.SRGBColorSpace],
+    ['normalMap', 'tree_bark_03_nor_gl_1k.jpg', THREE.NoColorSpace],
+    ['roughnessMap', 'tree_bark_03_rough_1k.jpg', THREE.NoColorSpace]
+];
+
+async function loadForestBarkTextures(record) {
+    if (typeof document === 'undefined') return { status: 'fallback', loaded: [],
+        failed: [{ reason: 'Image decoding unavailable outside the browser.' }] };
+    const results = await Promise.all(FOREST_BARK_CHANNELS.map(([key, file]) => {
+        const url = new URL(`./assets/forest/${file}`, import.meta.url).href;
+        return new Promise(resolve => {
+            let settled = false;
+            const finish = result => {
+                if (settled) return;
+                settled = true;
+                clearTimeout(timer);
+                record.cancelLoads.delete(cancel);
+                resolve({ key, url, ...result });
+            };
+            const cancel = () => finish({ error: 'Forest texture owner disposed.' });
+            const timer = setTimeout(() => finish({ error: 'Forest bark load exceeded 90 seconds.' }), 90000);
+            record.cancelLoads.add(cancel);
+            try {
+                new THREE.ImageLoader().load(url, image => {
+                    if (settled || record.cancelled) return;
+                    try {
+                        if (image.width !== 1024 || image.height !== 1024) throw new Error('Unexpected forest bark dimensions.');
+                        const canvas = document.createElement('canvas');
+                        canvas.width = canvas.height = 1024;
+                        const context = canvas.getContext('2d', { willReadFrequently: true });
+                        if (!context) throw new Error('Canvas image decoding unavailable.');
+                        context.drawImage(image, 0, 0);
+                        const pixels = context.getImageData(0, 0, 1024, 1024).data;
+                        for (let i = 3; i < pixels.length; i += 4) if (pixels[i] !== 255) throw new Error('Forest bark must remain opaque.');
+                        finish({ pixels });
+                    } catch (error) { finish({ error: error.message }); }
+                }, undefined, () => finish({ error: 'Forest bark texture request failed.' }));
+            } catch (error) { finish({ error: error.message }); }
+        });
+    }));
+    const failed = results.filter(result => result.error).map(({ url, error }) => ({ url, reason: error }));
+    if (record.cancelled || failed.length) return { status: record.cancelled ? 'disposed' : 'fallback', loaded: [], failed };
+    // All three maps publish together into the existing typed arrays. Materials,
+    // clones and GPU batch keys retain their original texture object identities.
+    for (const { key, pixels } of results) {
+        const texture = record.maps[key], stride = 1024 * 4;
+        for (let y = 0; y < 1024; y++) texture.image.data.set(
+            pixels.subarray(y * stride, (y + 1) * stride), (1023 - y) * stride);
+        texture.needsUpdate = true;
+    }
+    return { status: 'ready', loaded: results.map(result => result.url), failed: [] };
+}
+
+// Forest wood is deliberately independent of the decorative-vine bark above.
+// Domain-warped cellular fissures break up broad plates; no sinusoidal stripes,
+// baked directional lighting, photographic horizon or invented CC0 attribution.
+function makeForestBarkMaterial() {
+    function barkField(u, v) {
+        const x = u * 29 + tissueNoise(u * 8, v * 4) * 3.1;
+        const y = v * 7 + tissueNoise(u * 5 + 19, v * 6) * 1.5;
+        const ix = Math.floor(x), iy = Math.floor(y);
+        let first = 10, second = 10;
+        for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+            const cx = ix + dx, cy = iy + dy;
+            const px = cx + .15 + .7 * tissueNoise(cx * 13.7 + 93, cy * 7.1);
+            const py = cy + .15 + .7 * tissueNoise(cx * 8.3, cy * 19.3 + 73);
+            const d = Math.hypot(x - px, (y - py) * 1.3);
+            if (d < first) { second = first; first = d; } else if (d < second) second = d;
+        }
+        const plate = THREE.MathUtils.smoothstep(second - first, .025, .22);
+        const flake = tissueNoise(u * 95, v * 44);
+        return .28 + plate * .36 + flake * .12 + tissueNoise(u * 9, v * 15) * .08;
+    }
+    const relief = new Float32Array(256 * 256);
+    for (let y = 0; y < 256; y++) for (let x = 0; x < 256; x++) relief[y * 256 + x] = barkField(x / 255, y / 255);
+    const record = { maps: {}, cancelled: false, cancelLoads: new Set(), ready: null };
+    const mapData = new Uint8Array(1024 * 1024 * 4), normalData = new Uint8Array(mapData.length), roughData = new Uint8Array(mapData.length);
+    const fallbackNormal = new THREE.Vector3();
+    for (let y = 0; y < 1024; y++) for (let x = 0; x < 1024; x++) {
+        const sx = x >> 2, sy = y >> 2, i = (y * 1024 + x) * 4;
+        const h = relief[sy * 256 + sx], shade = .68 + h * .15;
+        mapData[i] = Math.round(129 * shade); mapData[i + 1] = Math.round(123 * shade); mapData[i + 2] = Math.round(108 * shade);
+        fallbackNormal.set((relief[sy * 256 + Math.max(0, sx - 1)] - relief[sy * 256 + Math.min(255, sx + 1)]) * .9,
+            (relief[Math.max(0, sy - 1) * 256 + sx] - relief[Math.min(255, sy + 1) * 256 + sx]) * .9, 1).normalize();
+        normalData[i] = Math.round((fallbackNormal.x * .5 + .5) * 255);
+        normalData[i + 1] = Math.round((fallbackNormal.y * .5 + .5) * 255);
+        normalData[i + 2] = Math.round((fallbackNormal.z * .5 + .5) * 255);
+        roughData[i] = roughData[i + 1] = roughData[i + 2] = Math.round(222 + h * 18);
+        mapData[i + 3] = normalData[i + 3] = roughData[i + 3] = 255;
+    }
+    for (const [index, [key, file, colorSpace]] of FOREST_BARK_CHANNELS.entries()) {
+        const texture = dataTexture([mapData, normalData, roughData][index], 1024, 1024, colorSpace);
+        texture.name = `Forest bark / ${file}`;
+        texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
+        texture.flipY = false;
+        record.maps[key] = texture;
+    }
+    const material = new THREE.MeshStandardMaterial({ name: 'Photographed tree_bark_03 / procedural fallback',
+        color: 0xffffff, ...record.maps, normalScale: new THREE.Vector2(.72, .72),
+        vertexColors: true, roughness: 1, metalness: 0, envMapIntensity: .5 });
+    forestTextureSets.add(record);
+    record.ready = loadForestBarkTextures(record);
+    material.addEventListener('dispose', () => {
+        record.cancelled = true;
+        for (const cancel of record.cancelLoads) cancel();
+        forestTextureSets.delete(record);
+    });
+    return material;
+}
+
+// Variable-radius, slightly eccentric closed axes. Components are merged by
+// chunk, so individual trunks/roots/limbs never become extra scene-graph draws.
+function forestAxis(writer, points, radii, sides, seed, tint = [1, 1, 1]) {
+    const first = writer.positions.length / 3, indexStart = writer.indices.length;
+    const stride = sides + 1; // UV seam duplicates positions, never a long wrapped face.
+    let distance = 0, axis;
+    const tangent = new THREE.Vector3();
+    for (let row = 0; row < points.length; row++) {
+        const previous = points[Math.max(0, row - 1)], next = points[Math.min(points.length - 1, row + 1)];
+        tangent.subVectors(next, previous).normalize();
+        if (!axis) axis = Math.abs(tangent.y) > .9 ? FRONT.clone() : UP.clone();
+        axis.addScaledVector(tangent, -axis.dot(tangent)).normalize();
+        const other = new THREE.Vector3().crossVectors(tangent, axis).normalize();
+        if (row) distance += points[row].distanceTo(points[row - 1]);
+        for (let side = 0; side <= sides; side++) {
+            const angle = side === sides ? 0 : side / sides * TAU;
+            const irregular = 1 + .10 * Math.sin(angle * 3 + seed)
+                + .055 * Math.sin(angle * 5 - seed * .7 + row * .35);
+            const point = points[row].clone().addScaledVector(axis, Math.cos(angle) * radii[row] * irregular)
+                .addScaledVector(other, Math.sin(angle) * radii[row] * (1 + .08 * Math.sin(seed)));
+            writer.positions.push(point.x, point.y, point.z);
+            const weather = .80 + .14 * tissueNoise(point.x * 1.3 + seed, point.y * .55 + point.z * .7);
+            writer.colors.push(tint[0] * weather, tint[1] * weather, tint[2] * weather);
+            writer.uvs.push(side / sides * TAU * radii[0] + seed * .117, distance);
+            if (row && side < sides) {
+                const a = first + (row - 1) * stride + side, b = a + 1;
+                writer.indices.push(a, b, b + stride, a, b + stride, a + stride);
+            }
+        }
+    }
+    const centers = [];
+    for (const end of [0, points.length - 1]) {
+        const center = writer.positions.length / 3;
+        centers.push(center);
+        writer.positions.push(...points[end].toArray());
+        writer.colors.push(...tint);
+        writer.uvs.push(.5 + seed * .117, end ? distance : 0);
+        for (let side = 0; side < sides; side++) {
+            const a = first + end * stride + side, b = a + 1;
+            if (end) writer.indices.push(center, a, b); else writer.indices.push(center, b, a);
+        }
+    }
+    return { first, count: writer.positions.length / 3 - first, indexStart, rings: points.length, sides,
+        indexCount: writer.indices.length - indexStart, centers };
+}
+
+function forestDistance(x, z) {
+    return Math.hypot(Math.max(0, Math.abs(x) - 8), Math.max(0, Math.abs(z + 20) - 25));
+}
+
+// Keep an extra 2 m around the roof/walls free, including the widths of leaves
+// and limbs. The highest ridge is 11 m. This is static geometry, not a camera LOD.
+function clearForestRoof(point) {
+    if (Math.abs(point.x) < 10 && point.z > -47 && point.z < 7) point.y = Math.max(13.6, point.y);
+    return point;
+}
+
+function buildForest({ ownGeometry, ownMaterial, solid, instances, section }) {
+    const bark = ownMaterial(makeForestBarkMaterial());
+    const foliage = ownMaterial(createBotanicalLeafMaterial());
+    foliage.name = 'Forest foliage / shared opaque photographed cuticle';
+    foliage.color.setHex(0x889870);
+    const farFoliage = ownMaterial(foliage.clone());
+    farFoliage.name = 'Far forest foliage / diffuse-only opaque PBR';
+    farFoliage.normalMap = null;
+    farFoliage.roughnessMap = null;
+    farFoliage.roughness = .62;
+    // Task material and its shared map identities remain untouched. These are
+    // smaller closed leaf LODs, with the same full-blade photo UV convention.
+    const leafShapes = [
+        ownGeometry(leafGeometry(.105, .23, 617, 2, false)),
+        ownGeometry(leafGeometry(.11, .24, 811, 2, false)),
+        ownGeometry(leafGeometry(.105, .23, 953, 1, false))
+    ];
+    const layers = [
+        { name: 'near', count: 32, min: 3.4, max: 7.4, sectors: 8, shadow: true },
+        { name: 'middle', count: 88, min: 10, max: 27, sectors: 8, shadow: false },
+        { name: 'far', count: 160, min: 28, max: 55, sectors: 12, shadow: false }
+    ];
+    const trees = [], chunks = [], rootContacts = [];
+    const architectures = ['spreading', 'forked', 'upright', 'crooked'];
+    const matrix = new THREE.Matrix4();
+
+    function addTree(x, z, layer, ordinal, chunk) {
+        const seed = 80123 + layer * 13037 + ordinal * 977;
+        const random = randomSource(seed);
+        const architecture = ordinal % architectures.length;
+        // Deliberate gaps in living crowns expose occasional broken wood, not a
+        // repeated bare tree at every ring boundary. Near snags retain buttresses.
+        const snag = (ordinal + layer * 3) % 13 === 6;
+        const ground = getWoodlandGroundHeight(x, z);
+        const base = new THREE.Vector3(x, ground - .065, z);
+        const height = (layer === 0 ? 21 : 18) + random() * (layer === 0 ? 8 : 15);
+        const radius = layer === 0 ? .48 + random() * .39 : layer === 1 ? .29 + random() * .34 : .18 + random() * .30;
+        const lean = new THREE.Vector3((random() - .5) * 5.8, 0, (random() - .5) * 5.8);
+        if (architecture === 3) lean.multiplyScalar(1.55);
+        const reach = (layer === 0 ? 9.5 : layer === 1 ? 6.6 : 5.7)
+            * (.88 + random() * .28) * (architecture === 2 ? .80 : 1);
+        const tree = { id: trees.length, layer: layers[layer].name, architecture: architectures[architecture],
+            snag, root: base.toArray(), height: snag ? height * .65 : height, radius,
+            lean: lean.toArray(), crownRadius: reach, chunk: chunk.id,
+            leafStart: chunk.leaves.length, leafCount: 0, contacts: [], parts: [] };
+        trees.push(tree);
+        const wood = chunk.wood;
+        function axis(points, radii, sides, tone = [1, 1, 1]) {
+            const part = forestAxis(wood, points, radii, sides, seed + tree.parts.length * 2.713, tone);
+            tree.parts.push(part);
+            return part;
+        }
+        const trunkHeight = tree.height;
+        const segments = layer === 0 ? 13 : layer === 1 ? 9 : 6;
+        const trunk = [], trunkRadii = [];
+        for (let row = 0; row <= segments; row++) {
+            const t = row / segments;
+            const dogleg = Math.sin(t * Math.PI * (architecture === 3 ? 2 : 1));
+            trunk.push(base.clone().addScaledVector(lean, t * t).add(new THREE.Vector3(
+                Math.sin(seed) * dogleg * .48, trunkHeight * t, Math.cos(seed) * dogleg * .39)));
+            trunkRadii.push(radius * (.085 + .915 * Math.pow(1 - t, .9)) * (1 + .38 * Math.exp(-t * 22)));
+        }
+        // The root flare lies outside the building; canopy-height lean is free.
+        const trunkPart = axis(trunk, trunkRadii, layer === 0 ? 12 : layer === 1 ? 9 : 6,
+            snag ? [1.06, 1.01, .92] : [.89 + random() * .12, .96, .87]);
+        tree.contacts.push({ point: base.toArray(), vertex: trunkPart.centers[0], embed: .065 });
+        const rootCount = layer === 0 ? 5 + ordinal % 3 : layer === 1 ? 3 : 0;
+        for (let root = 0; root < rootCount; root++) {
+            const angle = root / rootCount * TAU + random() * .55;
+            const outward = new THREE.Vector3(Math.cos(angle), 0, Math.sin(angle));
+            const length = radius * (2.8 + random() * 1.8);
+            const points = [base.clone().add(new THREE.Vector3(0, .85 + random() * .65, 0))];
+            for (let node = 1; node <= 3; node++) {
+                const t = node / 3;
+                const p = base.clone().addScaledVector(outward, length * t);
+                p.y = getWoodlandGroundHeight(p.x, p.z) - .045 + .28 * Math.pow(1 - t, 2);
+                points.push(p);
+            }
+            const part = axis(points, [radius * .43, radius * .35, radius * .18, .026], layer === 0 ? 6 : 4,
+                [.73, .79, .60]);
+            tree.contacts.push({ point: points.at(-1).toArray(), vertex: part.centers[1], embed: .045 });
+        }
+        if (snag) {
+            for (let b = 0; b < 4 + (ordinal % 3); b++) {
+                const start = pathFrame(trunk, .28 + random() * .61).point;
+                const angle = random() * TAU;
+                const tip = clearForestRoof(start.clone().add(new THREE.Vector3(
+                    Math.cos(angle) * (1 + random() * 2.8), -.4 + random() * 2.1,
+                    Math.sin(angle) * (1 + random() * 2.8))));
+                axis([start, start.clone().lerp(tip, .51).add(new THREE.Vector3(0, -.25, 0)), tip],
+                    [radius * .36, radius * .19, .023 + random() * .028], layer === 0 ? 6 : 4, [1.12, 1.07, .98]);
+            }
+            // Splintered top: tapered solid spurs, not an open cone or a flat cap.
+            for (let spur = 0; spur < 3; spur++) {
+                const start = trunk.at(-1).clone().add(new THREE.Vector3((random() - .5) * .10, -.20, (random() - .5) * .10));
+                axis([start, start.clone().add(new THREE.Vector3((random() - .5) * .19, .25 + random() * .55, (random() - .5) * .19))],
+                    [radius * .055, .003], 3, [1.13, 1.08, .96]);
+            }
+        } else {
+            const limbCount = layer === 0 ? 10 + ordinal % 3 : layer === 1 ? 7 + ordinal % 3 : 4 + ordinal % 3;
+            const phase = random() * TAU;
+            for (let limb = 0; limb < limbCount; limb++) {
+                const fraction = limb / limbCount;
+                const t = .42 + fraction * .45 + (random() - .5) * .04;
+                const start = pathFrame(trunk, t).point;
+                let angle = phase + limb * 2.39996 + (random() - .5) * .85;
+                // Lower limbs face away from the house, admitting foliage at the
+                // windows without branches penetrating walls or canopy-floor gaps.
+                if (limb < 2 && layer === 0) angle = Math.atan2(z + 20, x) + (random() - .5) * 1.5;
+                let span = reach * (.90 - fraction * .45) * (.86 + random() * .27);
+                // Mature edge trees extend several asymmetric scaffold limbs
+                // into the clearing. A radial crown confined beside the walls
+                // leaves an artificial open slot above the entire centre aisle.
+                if (layer === 0 && [2, 3, 5, 7, 9].includes(limb)) {
+                    const targetX = (random() - .5) * 7;
+                    const targetZ = THREE.MathUtils.clamp(z + (random() - .5) * 15, -40, 0);
+                    angle = Math.atan2(targetZ - start.z, targetX - start.x);
+                    span = Math.hypot(targetX - start.x, targetZ - start.z);
+                }
+                const outward = new THREE.Vector3(Math.cos(angle), 0, Math.sin(angle));
+                const lateral = new THREE.Vector3(-outward.z, 0, outward.x);
+                const forked = architecture === 1 && limb < 3;
+                const rise = forked ? height * .31 : height * (.16 + random() * .065);
+                const end = clearForestRoof(start.clone().addScaledVector(outward, span)
+                    .addScaledVector(lateral, (random() - .5) * span * .42).add(new THREE.Vector3(0, rise, 0)));
+                const branch = new THREE.CubicBezierCurve3(start,
+                    clearForestRoof(start.clone().addScaledVector(outward, span * .28).addScaledVector(lateral, span * .11).add(new THREE.Vector3(0, rise * .34, 0))),
+                    clearForestRoof(start.clone().lerp(end, .69).addScaledVector(lateral, -span * .10).add(new THREE.Vector3(0, rise * .20, 0))), end);
+                const branchPath = curvePoints(branch, layer === 0 ? 10 : layer === 1 ? 7 : 4).map(clearForestRoof);
+                const branchRadius = radius * (forked ? .65 : .48) * (1 - fraction * .65);
+                axis(branchPath, branchPath.map((_, i) => THREE.MathUtils.lerp(branchRadius, .016, i / (branchPath.length - 1))),
+                    layer === 0 ? 8 : layer === 1 ? 6 : 4);
+                const forks = layer === 0 ? 8 : layer === 1 ? 5 : 3;
+                for (let fork = 0; fork < forks; fork++) {
+                    const attach = pathFrame(branchPath, .20 + fork / (forks - 1) * .78).point;
+                    const sign = fork % 2 ? 1 : -1;
+                    const tip = clearForestRoof(attach.clone().addScaledVector(outward, .70 + random() * 1.2)
+                        .addScaledVector(lateral, sign * (.70 + random() * 2.15)).add(new THREE.Vector3(0, -.9 + random() * 3.1, 0)));
+                    const forkPath = [attach, clearForestRoof(attach.clone().lerp(tip, .48).add(new THREE.Vector3(0, .23, 0))), tip];
+                    axis(forkPath, [layer === 0 ? .050 : .033, .026, .005], layer === 0 ? 5 : 3);
+                    const shoots = layer === 0 ? 6 : layer === 1 ? 4 : 3;
+                    for (let shoot = 0; shoot < shoots; shoot++) {
+                        const root = pathFrame(forkPath, .18 + shoot / (shoots - 1) * .80).point;
+                        const heading = angle + sign * .65 + (shoot - 1) * 1.33 + (random() - .5) * .6;
+                        const along = new THREE.Vector3(Math.cos(heading), 0, Math.sin(heading));
+                        const across = new THREE.Vector3(-along.z, 0, along.x);
+                        const twigEnd = clearForestRoof(root.clone().addScaledVector(along, .83 + random() * .74)
+                            .add(new THREE.Vector3(0, -.52 + random() * .91, 0)));
+                        const twigPath = [root, clearForestRoof(root.clone().lerp(twigEnd, .54).add(new THREE.Vector3(0, .16, 0))), twigEnd];
+                        axis(twigPath, [.009, .005, .0015], 3);
+                        const nodes = layer === 0 ? 18 : layer === 1 ? 14 : 8;
+                        for (let node = 0; node < nodes; node++) {
+                            const point = pathFrame(twigPath, .055 + (node + random() * .45) / nodes * .91).point;
+                            const direction = across.clone().multiplyScalar(node % 2 ? -1 : 1)
+                                .addScaledVector(along, -.10 + random() * .95);
+                            direction.y = -.7 + random() * 1.3;
+                            const size = (.82 + random() * .36) * (architecture === 2 ? .88 : 1);
+                            matrix.copy(leafMatrix(leafShapes[layer], point, direction, size, (random() - .5) * 1.25));
+                            matrix.scale(new THREE.Vector3(.74 + random() * .48, 1, 1));
+                            const color = foliageTint(random, .81 + architecture * .035);
+                            if (node > nodes - 3) color.multiplyScalar(1.055);
+                            chunk.leaves.push({ matrix: matrix.clone(), color });
+                        }
+                    }
+                }
+                // A few dead lower stubs among live limbs interrupt the repeated
+                // leafy architecture. They end naturally rather than as leaf balls.
+                if (limb < 2 && layer < 2) {
+                    const root = pathFrame(trunk, .22 + limb * .09).point;
+                    const tip = root.clone().addScaledVector(outward, 1.1 + random() * 1.2).add(new THREE.Vector3(0, .1, 0));
+                    if (Math.abs(tip.x) > 10 || tip.z < -47 || tip.z > 7) axis([root, root.clone().lerp(tip, .6), tip],
+                        [radius * .28, radius * .15, .028], 5, [1.08, 1.04, .95]);
+                }
+            }
+        }
+        tree.leafCount = chunk.leaves.length - tree.leafStart;
+        rootContacts.push(...tree.contacts.map(contact => ({ ...contact, tree: tree.id, chunk: chunk.id })));
+        chunk.treeIds.push(tree.id);
+    }
+
+    for (let layer = 0; layer < layers.length; layer++) {
+        const settings = layers[layer];
+        const random = randomSource(52910 + layer * 3109);
+        const sectorChunks = Array.from({ length: settings.sectors }, (_, sector) => ({
+            id: `${settings.name}-${sector}`, layer: settings.name, sector, wood: new GeometryWriter(), leaves: [], treeIds: []
+        }));
+        const positions = [];
+        if (layer === 0) {
+            for (const side of [-1, 1]) for (let bay = 0; bay < 12; bay++) positions.push([
+                side * (11.8 + random() * 2.8), -44 + bay * 4.30 + (random() - .5) * 2.0]);
+            for (const end of [-1, 1]) for (let bay = 0; bay < 4; bay++) positions.push([
+                -8 + bay * 5.2 + (random() - .5) * 2, -20 + end * (29.5 + random() * 2.5)]);
+        } else {
+            // Poisson-like rejection on a rectangular annulus avoids aligned
+            // rows, circular walls and equal-height copies of one sapling.
+            for (let attempt = 0; positions.length < settings.count && attempt < 20000; attempt++) {
+                const x = (random() - .5) * (16 + 2 * settings.max);
+                const z = -20 + (random() - .5) * (50 + 2 * settings.max);
+                const distance = forestDistance(x, z);
+                if (distance < settings.min || distance > settings.max || Math.abs(z) > 94) continue;
+                if (positions.some(([px, pz]) => Math.hypot(px - x, pz - z) < (layer === 1 ? 3.5 : 4.0))) continue;
+                positions.push([x, z]);
+            }
+            if (positions.length !== settings.count) throw new Error('Forest placement could not fill the depth band.');
+        }
+        positions.forEach(([x, z], ordinal) => {
+            const angle = (Math.atan2(z + 20, x) + TAU) % TAU;
+            addTree(x, z, layer, ordinal, sectorChunks[Math.floor(angle / TAU * settings.sectors)]);
+        });
+        // Three-dimensional leaf bins keep bounding spheres above the
+        // actual canopy floor. A tall X/Z column's sphere reaches down into
+        // horizontal views and submits foliage that is entirely above the view.
+        // Static frustum culling works independently for every render/shadow pass;
+        // never hide offscreen shadow casters using the main camera's visibility.
+        const cellSize = [[12, 10, 12], [20, 12, 20], [32, 16, 32]][layer];
+        const crownCells = new Map();
+        for (const chunk of sectorChunks) for (const entry of chunk.leaves) {
+            const ix = Math.floor(entry.matrix.elements[12] / cellSize[0]);
+            const iy = Math.floor(entry.matrix.elements[13] / cellSize[1]);
+            const iz = Math.floor(entry.matrix.elements[14] / cellSize[2]);
+            const key = `${ix},${iy},${iz}`;
+            if (!crownCells.has(key)) crownCells.set(key, { index: [ix, iy, iz], entries: [] });
+            crownCells.get(key).entries.push(entry);
+        }
+        for (const chunk of sectorChunks) {
+            const wood = solid(chunk.wood, bark, 'forest', `Forest ${chunk.id}: buttressed trunks and attached branches`);
+            // UV seams need equal geometric normals on both sides. Otherwise a
+            // straight lighting seam would remain even with continuous bark UVs.
+            const normals = wood.geometry.attributes.normal;
+            const a = new THREE.Vector3(), b = new THREE.Vector3();
+            for (const id of chunk.treeIds) for (const part of trees[id].parts) {
+                for (let row = 0; row < part.rings; row++) {
+                    const first = part.first + row * (part.sides + 1), last = first + part.sides;
+                    a.fromBufferAttribute(normals, first).add(b.fromBufferAttribute(normals, last)).normalize();
+                    normals.setXYZ(first, a.x, a.y, a.z); normals.setXYZ(last, a.x, a.y, a.z);
+                }
+            }
+            wood.castShadow = settings.shadow;
+            wood.receiveShadow = settings.shadow;
+            wood.userData.forestChunk = chunk.id;
+            wood.userData.forestLayer = settings.name;
+            chunks.push({ id: chunk.id, layer: settings.name, treeIds: chunk.treeIds,
+                woodVertices: chunk.wood.positions.length / 3, leaves: chunk.leaves.length,
+                triangles: chunk.wood.indices.length / 3 + chunk.leaves.length * leafShapes[layer].index.count / 3 });
+        }
+        crownCells.forEach(({ index, entries }, cell) => {
+            const id = `${settings.name}-crown-${cell}`;
+            const mesh = instances(leafShapes[layer], layer === 2 ? farFoliage : foliage,
+                entries, 'forest', `Forest ${id}: individual closed leaves`);
+            mesh.castShadow = settings.shadow;
+            mesh.receiveShadow = settings.shadow;
+            mesh.userData.forestChunk = id;
+            mesh.userData.forestLayer = settings.name;
+            mesh.userData.forestCell = { index, size: cellSize };
+        });
+    }
+    const stats = { trees: trees.length, livingTrees: trees.filter(tree => !tree.snag).length,
+        snags: trees.filter(tree => tree.snag).length, leaves: trees.reduce((sum, tree) => sum + tree.leafCount, 0),
+        triangles: chunks.reduce((sum, chunk) => sum + chunk.triangles, 0), drawCalls: section.children.length,
+        shadowDrawCalls: section.children.filter(mesh => mesh.castShadow).length,
+        layers: Object.fromEntries(layers.map(layer => [layer.name, {
+            trees: trees.filter(tree => tree.layer === layer.name).length,
+            triangles: chunks.filter(chunk => chunk.layer === layer.name).reduce((sum, chunk) => sum + chunk.triangles, 0),
+            drawCalls: section.children.filter(mesh => mesh.userData.forestLayer === layer.name).length
+        }])), budget: { triangles: 9000000, drawCalls: 256 } };
+    section.userData.forest = { trees, chunks, rootContacts, stats };
+    return stats;
+}
+
 /**
  * Adds a self-contained environment. scene should have identity world transform,
  * existing greenhouse lighting/fog, walls x=±8, ends z=-45/5, eaves y=6, ridge y=11.
@@ -623,7 +1068,6 @@ export function createBotanicalEnvironment(scene) {
         name: 'Unglazed weathered basket clay', color: 0x806554, vertexColors: true,
         roughness: .94, metalness: 0, envMapIntensity: .45
     }));
-    const crownLeaf = ownGeometry(leafGeometry(.16, .31, 41, 2, false)); // 16 tris
     const ivyLeaf = ownGeometry(leafGeometry(.14, .18, 13, 7, false, true)); // 56 tris
     const frond = ownGeometry(makeFernFrond(97));
 
@@ -661,90 +1105,6 @@ export function createBotanicalEnvironment(scene) {
         return register(new THREE.Mesh(ownGeometry(writer.geometry(name)), material), section, name);
     }
 
-    function addTree(base, height, variant, random, wood, leaves) {
-        const lean = new THREE.Vector3((random() - .5) * 1.7, 0, (random() - .5) * 1.7);
-        const crownWidth = [2.65, 2.95, 3.15][variant] * (.94 + random() * .12);
-        const leafSize = [.93, 1.07, 1.13][variant];
-        const trunk = new THREE.CubicBezierCurve3(base,
-            base.clone().add(new THREE.Vector3(lean.z * .4, height * .31, -lean.x * .4)),
-            base.clone().addScaledVector(lean, .6).add(new THREE.Vector3(0, height * .70, 0)),
-            base.clone().add(lean).add(new THREE.Vector3(0, height, 0)));
-        const radius = height * (.023 + random() * .007);
-        const trunkPath = curvePoints(trunk, 8);
-        wood.tube(trunkPath, radius, .023, 10);
-        for (let root = 0; root < 4; root++) {
-            const angle = root * TAU / 4 + random() * .7;
-            const outward = new THREE.Vector3(Math.cos(angle), 0, Math.sin(angle));
-            wood.tube([base.clone().add(new THREE.Vector3(0, .50, 0)),
-                base.clone().addScaledVector(outward, radius * 1.5).add(new THREE.Vector3(0, .07, 0)),
-                base.clone().addScaledVector(outward, radius * 2.8).add(new THREE.Vector3(0, -.01, 0))],
-            radius * .58, .026, 5);
-        }
-        const phase = random() * TAU;
-        // Eleven irregular scaffold limbs, three secondary forks per limb,
-        // three terminal shoots per fork, twelve leaves per shoot: 1,188 actual
-        // leaves per tree. Broad, overlapping crowns replace the sparse poles.
-        for (let limb = 0; limb < 11; limb++) {
-            const t = .24 + limb * .056 + random() * .022;
-            const angle = phase + limb * 2.39996 + (random() - .5) * .70;
-            const outward = new THREE.Vector3(Math.cos(angle), 0, Math.sin(angle));
-            const side = new THREE.Vector3(-outward.z, 0, outward.x);
-            const reach = crownWidth * (1 - limb * .050) * (.88 + random() * .16);
-            const rise = (limb < 4 ? .85 : 1.35) + random() * .65;
-            const sweep = (random() - .5) * .8;
-            const start = pathFrame(trunkPath, t).point;
-            const branch = new THREE.CubicBezierCurve3(start,
-                start.clone().addScaledVector(outward, reach * .35).addScaledVector(side, sweep * .35)
-                    .add(new THREE.Vector3(0, -.25 + random() * .30, 0)),
-                start.clone().addScaledVector(outward, reach * .72).addScaledVector(side, sweep)
-                    .add(new THREE.Vector3(0, rise * .45, 0)),
-                start.clone().addScaledVector(outward, reach).addScaledVector(side, sweep * .60)
-                    .add(new THREE.Vector3(0, rise, 0)));
-            const branchPath = curvePoints(branch, 5);
-            wood.tube(branchPath, radius * (1 - t) * .76, .013, 5);
-            for (let fork = 0; fork < 3; fork++) {
-                const attach = pathFrame(branchPath, .25 + fork * .34).point;
-                const sign = fork % 2 ? 1 : -1;
-                const extension = outward.clone().multiplyScalar(.35 + random() * .25)
-                    .addScaledVector(side, sign * (.45 + random() * .40));
-                extension.y = .12 + random() * .48;
-                const secondary = new THREE.CubicBezierCurve3(attach,
-                    attach.clone().addScaledVector(extension, .30).add(new THREE.Vector3(0, -.08, 0)),
-                    attach.clone().addScaledVector(extension, .72).add(new THREE.Vector3(0, .11, 0)),
-                    attach.clone().add(extension));
-                const secondaryPath = curvePoints(secondary, 3);
-                wood.tube(secondaryPath, .030 - fork * .006, .004, 4);
-                for (let shoot = 0; shoot < 3; shoot++) {
-                    const root = pathFrame(secondaryPath, .20 + shoot * .37).point;
-                    const shootAngle = angle + sign * .55 + (shoot - 1) * 1.10 + random() * .36;
-                    const axis = new THREE.Vector3(Math.cos(shootAngle), 0, Math.sin(shootAngle));
-                    const lateral = new THREE.Vector3(-axis.z, 0, axis.x);
-                    const tip = root.clone().addScaledVector(axis, .50 + random() * .28);
-                    tip.y += -.24 + random() * .67;
-                    const twig = new THREE.QuadraticBezierCurve3(root,
-                        root.clone().lerp(tip, .56).add(new THREE.Vector3(0, .13, 0)), tip);
-                    const twigPath = curvePoints(twig, 2);
-                    wood.tube(twigPath, .007, .0012, 3);
-                    for (let node = 0; node < 12; node++) {
-                        const point = pathFrame(twigPath, .09 + node * .079).point;
-                        const turn = node % 2 ? -1 : 1;
-                        const direction = lateral.clone().multiplyScalar(turn * (.7 + random() * .3))
-                            .addScaledVector(axis, .28 + random() * .38);
-                        direction.y = -.32 + random() * .88;
-                        const matrix = leafMatrix(crownLeaf, point, direction,
-                            leafSize * (.95 + random() * .47), (random() - .5) * 2.0);
-                        matrix.scale(new THREE.Vector3(.78 + random() * .40, 1, .85 + random() * .3));
-                        const color = foliageTint(random, .92 + variant * .035);
-                        // New terminal growth is fractionally warmer than mature
-                        // shaded leaves, without neon tips or toy-green crowns.
-                        if (node > 8) color.r *= 1.05;
-                        leaves.push({ matrix, color });
-                    }
-                }
-            }
-        }
-    }
-
     function fernClump(base, scale, random, entries) {
         for (let i = 0; i < 5; i++) {
             const angle = i * 2.39996 + random() * .34;
@@ -755,59 +1115,9 @@ export function createBotanicalEnvironment(scene) {
         }
     }
 
-    // Eight small exterior sectors: three bays on each long wall and two end
-    // groves. All trunks AND crowns remain outside the greenhouse footprint.
-    const groves = [];
-    for (const side of [-1, 1]) {
-        for (let bay = 0; bay < 3; bay++) groves.push({ x: side * 14.4, z: -38 + bay * 18, side });
-    }
-    groves.push({ x: 0, z: -53, side: 0 }, { x: 0, z: 13, side: 0 });
-    groves.forEach((grove, sector) => {
-        const random = randomSource(1200 + sector * 89);
-        const wood = new GeometryWriter(), leaves = [], ferns = [];
-        for (let tree = 0; tree < 2; tree++) {
-            const x = grove.side ? grove.x + grove.side * tree * 5.1 + (random() - .5) * .85
-                : (tree - .5) * 10 + (random() - .5) * 1.5;
-            const z = grove.side ? grove.z + (tree ? -5.4 : 2.7) + (random() - .5) * 2.5
-                : grove.z + (tree ? -1 : 1) * .8;
-            addTree(new THREE.Vector3(x, -.02, z), 8.3 + random() * 3.8, (sector + tree) % 3, random, wood, leaves);
-        }
-        // Irregular multi-stem shrubs put green at the window sill/eye line.
-        // Each leaf is still attached to a woody shoot, including the understory.
-        for (let shrub = 0; shrub < 3; shrub++) {
-            const base = new THREE.Vector3(grove.side ? grove.side * (10.3 + random() * 1.8) : -7 + shrub * 7,
-                0, grove.side ? grove.z - 5 + shrub * 4.3 + random() * 1.4 : grove.z + (random() - .5) * 3);
-            for (let stem = 0; stem < 3; stem++) {
-                const angle = stem * 2.39996 + random();
-                const axis = new THREE.Vector3(Math.cos(angle), 0, Math.sin(angle));
-                const top = base.clone().addScaledVector(axis, .26 + random() * .35);
-                top.y += 1.0 + random() * .85;
-                const path = [base, base.clone().lerp(top, .52).add(new THREE.Vector3(0, .12, 0)), top];
-                wood.tube(path, .024, .004, 4);
-                for (let fork = 0; fork < 3; fork++) {
-                    const root = pathFrame(path, .34 + fork * .26).point;
-                    const direction = new THREE.Vector3(Math.cos(angle + fork * 1.8), .35, Math.sin(angle + fork * 1.8));
-                    const end = root.clone().addScaledVector(direction, .45 + random() * .23);
-                    wood.tube([root, end], .006, .0015, 3);
-                    for (let node = 0; node < 6; node++) {
-                        const leafDirection = new THREE.Vector3(-direction.z, .18, direction.x)
-                            .multiplyScalar(node % 2 ? 1 : -1).addScaledVector(direction, .40);
-                        leaves.push({ matrix: leafMatrix(crownLeaf, root.clone().lerp(end, .12 + node * .17),
-                            leafDirection, 1.05 + random() * .35, (random() - .5) * .8), color: foliageTint(random) });
-                    }
-                }
-            }
-        }
-        const fernBase = new THREE.Vector3(grove.side ? grove.side * 10.2 : 6, .015,
-            grove.side ? grove.z : grove.z + 3);
-        fernClump(fernBase, .75, random, ferns);
-        const bark = solid(wood, barkMaterial, 'forest', `Grove ${sector}: mature trunks, forked branches and shrubs`);
-        const foliage = instances(crownLeaf, leafMaterial, leaves, 'forest', `Grove ${sector}: dense individual crown and shrub leaves`);
-        // The six side groves provide real leaf-shaped sun shadows through the
-        // glazing. No cutout shadow material and no per-frame shadow invalidation.
-        bark.castShadow = foliage.castShadow = sector < 6;
-        instances(frond, leafMaterial, ferns, 'undergrowth', `Grove ${sector}: understory fern`);
-    });
+    // Exterior terrain and low planting belong to the parent's terrain and
+    // understory modules. This layer owns only trees and their attached crowns.
+    const forest = buildForest({ ownGeometry, ownMaterial, solid, instances, section: sections.forest });
 
     function vine(curve, random, stems, leaves, spacing = .21, scale = 1, surfaceNormal = FRONT) {
         const length = curve.getLength();
@@ -926,9 +1236,9 @@ export function createBotanicalEnvironment(scene) {
     }
     solid(ground, earthMaterial, 'ground', 'Opaque woodland soil outside greenhouse rectangle');
 
-    const stats = { triangles: 0, drawCalls: meshes.length, leafInstances: 0, fernFronds: 0, trees: 16,
-        crownLeavesPerTree: 1188, shadowDrawCalls: meshes.filter(mesh => mesh.castShadow).length,
-        sections: {}, budget: { triangles: 500000, drawCalls: 49 } };
+    const stats = { triangles: 0, drawCalls: meshes.length, leafInstances: forest.leaves, fernFronds: 0, trees: forest.trees,
+        forest, crownLeavesPerTree: forest.leaves / forest.livingTrees, shadowDrawCalls: meshes.filter(mesh => mesh.castShadow).length,
+        sections: {}, budget: { triangles: 9100000, drawCalls: 273 } };
     for (const [name, section] of Object.entries(sections)) {
         const totals = { triangles: 0, drawCalls: 0 };
         section.traverse(mesh => {
@@ -937,7 +1247,7 @@ export function createBotanicalEnvironment(scene) {
             totals.triangles += mesh.geometry.index.count / 3 * count;
             totals.drawCalls++;
             if (mesh.geometry === frond) stats.fernFronds += count;
-            if (mesh.geometry === crownLeaf || mesh.geometry === ivyLeaf) stats.leafInstances += count;
+            if (mesh.geometry === ivyLeaf) stats.leafInstances += count;
         });
         stats.sections[name] = totals;
         stats.triangles += totals.triangles;
@@ -954,7 +1264,7 @@ export function createBotanicalEnvironment(scene) {
         for (const mesh of meshes) if (mesh.isInstancedMesh) mesh.dispose();
         const textures = new Set();
         for (const material of materials) {
-            for (const value of Object.values(material)) if (value && value.isTexture) textures.add(value);
+            for (const value of Object.values(material)) if (value && value.isTexture && !value.userData.shared) textures.add(value);
             material.dispose();
         }
         for (const texture of textures) texture.dispose();
@@ -965,7 +1275,8 @@ export function createBotanicalEnvironment(scene) {
         geometries.clear();
         materials.clear();
     }
-    if (stats.triangles >= stats.budget.triangles || stats.drawCalls > stats.budget.drawCalls) {
+    if (forest.triangles > forest.budget.triangles || forest.drawCalls > forest.budget.drawCalls
+        || stats.triangles > stats.budget.triangles || stats.drawCalls > stats.budget.drawCalls) {
         dispose();
         throw new Error(`Botanical budget exceeded: ${stats.triangles} triangles, ${stats.drawCalls} draws.`);
     }

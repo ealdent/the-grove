@@ -13,13 +13,14 @@ import { N8AOPass } from 'n8ao';
 // Ambient beds, creature one-shots and the solo-violin soundtrack. Created on
 // the first "enter" gesture; fed dayness every frame from animate().
 import { greenhouseAudio } from './audio.js';
-import { createScannedMetalMaterial, createScannedWoodMaterial, createScannedGroundMaterial, createScannedPotMaterial, createScannedSoilMaterial, texturesReady } from './realism-materials.js';
+import { createScannedMetalMaterial, createScannedWoodMaterial, createScannedGroundMaterial, createScannedForestFloorMaterial, createScannedPotMaterial, createScannedSoilMaterial, texturesReady } from './realism-materials.js';
 import { buildPottingBenches, createThinGlazing, mergeStaticArchitecture, timberUV, metalUV } from './realism-architecture.js';
 import { createBotanicalEnvironment, createBotanicalLeafGeometry, createBotanicalLeafMaterial, texturesReady as botanicalTexturesReady } from './realism-botany.js';
 import { PlantBatches } from './plant-batches.js';
 import { FrameProfiler } from './frame-profiler.js';
 import { warmRenderer } from './warm-renderer.js';
-import { createWoodlandGroundGeometry, applyWoodlandGroundTransition } from './realism-terrain.js';
+import { createWoodlandGroundGeometry } from './realism-terrain.js';
+import { createForestAtmosphere, attenuateWoodlandRadiance, fitForestShadow } from './forest-atmosphere.js';
 import { createWoodlandUnderstory } from './realism-understory.js';
 import { createFlowerPrototype } from './realism-flowers.js';
 
@@ -29,9 +30,9 @@ let renderingReady = false;
 let plantBatches = null, plantBatchesDirty = false, botanicalEnvironment = null;
 let lastDecayUpdate = -Infinity, lastHoverUpdate = -Infinity;
 let frameProfiler = null;
-let woodlandMap = null, woodlandEnvRT = null;
+let woodlandEnvRT = null;
 let woodlandReady = Promise.resolve({ loaded: [], failed: [] });
-let woodlandFloorTransition = null;
+let forestAtmosphere = null;
 const frameMetrics = { cpuMs: 0, calls: 0, triangles: 0, pixelRatio: 1, frameMs: 0 };
 const slowFrames = [];
 const quality = { pixelRatio: Math.min(window.devicePixelRatio || 1, 1) };
@@ -352,7 +353,7 @@ function setupScene() {
     // The scene transform is identity and never moves. Re-composing it every
     // renderer pass forces r160 to update even our frozen, hidden task trees.
     scene.matrixAutoUpdate = false;
-    scene.fog = new THREE.FogExp2(0xc8dfee, 0.005); // soft humid haze
+    scene.fog = new THREE.FogExp2(0x667568, 0.020); // depth within the surrounding forest
 }
 
 function setupCamera() {
@@ -410,7 +411,8 @@ function setupLighting() {
     // off, makes them a true background: the forest and the greenhouse paint over
     // them afterwards, which is also what gives correct occlusion.
     sky.renderOrder = -3;
-    scene.add(sky);
+    forestAtmosphere = createForestAtmosphere();
+    scene.add(forestAtmosphere.mesh);
 
     // 6. Lighting — sun (directional) + soft fill from sky
     sunLight = new THREE.DirectionalLight(0xfff0d6, 0); // intensity set by updateSunAndLighting
@@ -1084,7 +1086,7 @@ function init() {
 }
 
 function loadWoodlandEnvironment() {
-    const url = new URL('./assets/environment/forest_slope_4k.hdr', import.meta.url).href;
+    const url = new URL('./assets/environment/forest_slope_2k.hdr', import.meta.url).href;
     return new Promise(resolve => {
         let settled = false;
         const failed = reason => {
@@ -1093,17 +1095,16 @@ function loadWoodlandEnvironment() {
             clearTimeout(timer);
             resolve({ loaded: [], failed: [{ url, reason }] });
         };
-        // The 4K source is 29.8 MB: a valid 5 Mbps transfer alone needs ~48 s.
+        // The 2K source supplies indirect light only; no photograph is drawn behind the forest.
         const timer = setTimeout(() => failed('Woodland HDR exceeded 120 seconds; using analytic sky.'), 120000);
         new RGBELoader().load(url, texture => {
             if (settled) { texture.dispose(); return; }
             settled = true;
             clearTimeout(timer);
             texture.mapping = THREE.EquirectangularReflectionMapping;
-            woodlandMap = texture;
+            attenuateWoodlandRadiance(texture);
             woodlandEnvRT = pmremGen.fromEquirectangular(texture);
-            const floor = scene.getObjectByName('Scanned woodland earth');
-            if (floor) woodlandFloorTransition = applyWoodlandGroundTransition(floor.material, texture);
+            texture.dispose(); // PMREM owns its result; no visible panorama retains the source.
             updateSunAndLighting();
             resolve({ loaded: [url], failed: [] });
         }, undefined, () => failed('Woodland HDR could not load; using analytic sky.'));
@@ -3988,8 +3989,9 @@ function buildGreenhouse() {
     // Floor
     const floorGeometry = createWoodlandGroundGeometry();
     const floorMaterial = createScannedGroundMaterial(renderer);
-    floorMaterial.vertexColors = true;
-    const floor = new THREE.Mesh(floorGeometry, floorMaterial);
+    const forestFloorMaterial = createScannedForestFloorMaterial(renderer);
+    floorMaterial.vertexColors = forestFloorMaterial.vertexColors = true;
+    const floor = new THREE.Mesh(floorGeometry, [floorMaterial, forestFloorMaterial]);
     floor.name = "Scanned woodland earth";
     floor.receiveShadow = true;
     scene.add(floor);
@@ -4860,6 +4862,9 @@ function updateLamps(now, delta) {
         : Math.max(target, lampState.level - rate);
 
     const lvl = lampState.level;
+    // Indirect lamp bounce follows the filament, including snapped debug clocks.
+    // Updating it only on the solar tick left it stale for up to two minutes.
+    warmFill.intensity = 0.6 * currentDayness + 2.4 * (1 - currentDayness) * lvl;
     const lit = lvl > 0.004;
     // Radiant output climbs far faster than temperature, so the perceived
     // brightness curve is steep while the colour is still crawling up from ember.
@@ -5667,18 +5672,10 @@ function computeMoonIllumination(date) {
 
 // --- Night sky: stars and the moon, seen through the roof glass ---
 //
-// The Sky mesh is hidden after dark (its pre-dawn glow used to leak through the
-// windows), which left the roof a black void — so this supplies what should
-// actually be up there.
-//
-// Both materials are deliberately OPAQUE. The renderer builds its transmission
-// buffer from the opaque draw list, and the roof glass reads what you see through
-// it out of that buffer, so a transparent star would simply not exist as far as
-// the glass is concerned. Being opaque costs nothing here: on a night sky the
-// background is essentially black, so "replace" and "add" look identical.
-//
-// Both also set fog:false. Fog is exponential-squared and at 1.4 km these would be
-// swallowed whole.
+// The overcast sky fills canopy gaps. Stars add restrained radiance over it;
+// the opaque moon disc and modeled forest occlude them through thin glazing.
+// Celestial materials bypass distance fog, which would otherwise swallow
+// everything at the 1.4 km sky-dome distance.
 const STAR_COUNT = 1600;
 const STAR_RADIUS = 1400;
 let nightSky = null, starField = null, starRig = null, moonDisc = null;
@@ -5758,29 +5755,28 @@ function buildNightSky() {
                 // Soft core so the bigger stars don't read as flat discs.
                 float core = 1.0 - smoothstep(0.01, 0.25, r2);
                 float b = vBright * core;
-                if (b < 0.004) discard;   // never paint a dark dot on the sky
+                if (b < 0.004) discard;
+                // Add radiance over the cloud sky; never replace it with dark pixels.
                 gl_FragColor = vec4(vTint * b, 1.0);
             }
         `,
-        transparent: false,
+        transparent: true,
+        blending: THREE.AdditiveBlending,
         depthWrite: false,
         fog: false
     });
 
     starField = new THREE.Points(starGeom, starMat);
     starField.frustumCulled = false;
-    starField.renderOrder = -2; // just after the Sky, before all real geometry
+    starField.renderOrder = -2; // first transparent layer; solid forest depth still occludes it
     // Own group so the sidereal rotation applies to the stars only, not the moon.
     starRig = new THREE.Group();
     starRig.add(starField);
     nightSky.add(starRig);
 
     // ---- Moon ----
-    // The real disc is 0.52° across. At true scale it renders about 8 px here and
-    // vanishes among the stars, so this is 40/1344 rad ≈ 1.7°, a bit over 3x life
-    // size. Games routinely exaggerate the moon for exactly this reason, and it
-    // needs the help more than usual seen through algae-covered glass.
-    const moonGeom = new THREE.PlaneGeometry(40, 40);
+    // Physical apparent diameter: 0.52 degrees at the celestial dome distance.
+    const moonGeom = new THREE.PlaneGeometry(12.2, 12.2);
     const moonMat = new THREE.ShaderMaterial({
         uniforms: {
             uFraction: { value: 1 },     // illuminated fraction, 0 new .. 1 full
@@ -5826,7 +5822,7 @@ function buildNightSky() {
             }
         `,
         transparent: false,
-        depthWrite: false,
+        depthWrite: true, // the visible disc occludes additive stars behind it
         fog: false
     });
     moonDisc = new THREE.Mesh(moonGeom, moonMat);
@@ -5845,12 +5841,12 @@ const _moonDir = new THREE.Vector3();
 // that time — so this rides along with updateSunAndLighting.
 function placeNightSky(date, nightness) {
     if (!nightSky) return;
-    // The photographed canopy has no depth mask. Drawing procedural stars or
-    // an enlarged moon in front of it puts bright points on opaque tree trunks.
-    nightSky.visible = !woodlandMap && nightness > 0.01;
+    // The modeled canopy writes depth and naturally occludes the celestial sky.
+    nightSky.visible = nightness > 0.01;
     if (!nightSky.visible) return;
 
-    starField.material.uniforms.uNight.value = nightness;
+    // Overcast gaps reveal a restrained star field only after dusk.
+    starField.material.uniforms.uNight.value = Math.pow(nightness, 4) * 0.3;
     starField.material.uniforms.uPixelRatio.value = renderer.getPixelRatio();
 
     // Turn the catalogue about the true north celestial pole, which sits due
@@ -5907,7 +5903,7 @@ function updateSunAndLighting() {
     );
 
     sky.material.uniforms.sunPosition.value.copy(dir);
-    sunLight.position.copy(dir).multiplyScalar(40);
+    fitForestShadow(sunLight, dir);
     sunDir.copy(dir); // read every frame by updateSunShafts
 
     // Three bands, keyed off solar elevation:
@@ -5923,12 +5919,10 @@ function updateSunAndLighting() {
     // for anything that should only happen while the sun is on the horizon.
     const twilight = 1 - Math.abs(dayness * 2 - 1);
 
-    // Stronger key light + weaker ambient fill = harder shadows and more
-    // contrast, which reads far more photographic than even flat lighting.
-    sunLight.intensity = 4 * dayness;
-    // Prune the sun entirely after dark. Left visible it costs a full 2048²
-    // shadow-map render per frame for a light contributing nothing, and it would
-    // be a second directional shadow alongside the moon's.
+    // Canopy-filtered daylight: muted sun, cool skylight and local warm lamps.
+    sunLight.intensity = 1.65 * dayness;
+    // Keep the light configuration stable; intensity changes do not compile
+    // new shader variants. Shadow maps remain cached between invalidations.
     sunLight.visible = true;
     // Sunlight reddens as it goes through more atmosphere. This is the
     // difference between "the sun got dimmer" and sunset.
@@ -5951,27 +5945,23 @@ function updateSunAndLighting() {
         // that a full moon throws a faint pattern of frame shadows on the floor.
         moonLight.intensity = 1.15 * moonStrength;
         moonLight.visible = true;
-        // Shadows only from a moon bright enough to actually throw one. Below
-        // that it is a 1024² map rendered for a shadow nobody can see.
+        // Retain the cached shadow configuration across the solar cycle.
         moonLight.castShadow = true;
         if (moonLight.visible) {
-            moonLight.position.set(
+            fitForestShadow(moonLight, new THREE.Vector3(
                 Math.sin(moon.azimuth) * Math.cos(moon.altitude),
                 Math.sin(moon.altitude),
                 -Math.cos(moon.azimuth) * Math.cos(moon.altitude)
-            ).multiplyScalar(40);
+            ));
         }
     }
 
     // A restrained approximation of light bouncing through the room keeps
     // nighttime timber readable instead of crushing every unlit face to black.
-    skyFill.intensity = 0.3 * dayness + 0.32 * nightness;
+    skyFill.intensity = 0.25 * dayness + 0.24 * nightness;
     skyFill.color.setHex(0xb6dbff).lerp(new THREE.Color(0xaeb9c9), nightness);
     skyFill.groundColor.setHex(0x4a3a2a).lerp(new THREE.Color(0x554431), nightness);
-    // Warm bounce — light kicked off the wood and floor. At night this is a
-    // stand-in for the lamp row's own bounce, so it follows the filament level
-    // rather than nightness, and stays low: the lamps light the room, not this.
-    warmFill.intensity = 0.6 * dayness + 2.4 * nightness * lampState.level;
+    // updateLamps() keeps the warm interior bounce in step with the filament.
 
 
     // Renderer exposure dips at night, but not as far as it used to. Raising the
@@ -5994,13 +5984,9 @@ function updateSunAndLighting() {
     // moon take over from it, so the roof is not a black void.
     sky.material.uniforms.rayleigh.value = 1.4 * dayness + 2.6 * twilight * (0.35 + 0.65 * dayness);
     sky.material.uniforms.turbidity.value = 6 * dayness + 5 * twilight + 0.6 * nightness;
-    sky.visible = !woodlandMap && dayness > 0.02;
-    if (woodlandMap) {
-        scene.background = woodlandMap;
-        scene.backgroundIntensity = 0.72 * dayness + 0.006 * nightness;
-        woodlandFloorTransition?.setIntensity(scene.backgroundIntensity);
-        scene.backgroundBlurriness = 0;
-    }
+    // The HDR is lighting only. All surrounding trees and ground have world depth.
+    sky.visible = false;
+    scene.background = null;
     placeNightSky(now, nightness);
 
     // --- Lamp switch, with hysteresis ---
@@ -6061,11 +6047,12 @@ function updateSunAndLighting() {
     // exactly when a greenhouse fogs, and it is what puts the sunbeams and the
     // lamp cones in visible air at the moment they overlap.
     if (scene.fog) {
-        scene.fog.density = 0.003 + nightness * 0.005 + twilight * 0.004;
+        scene.fog.density = 0.020 + nightness * 0.006 + twilight * 0.003;
         scene.fog.color
-            .setHex(0xb6c9c2)
-            .lerp(new THREE.Color(0x8a6f5e), twilight * 0.55)   // dusty gold on the horizon
+            .setHex(0x667568)
+            .lerp(new THREE.Color(0x716e68), twilight * 0.3)
             .lerp(new THREE.Color(0x070d12), nightness * nightness);
+        forestAtmosphere?.update(scene.fog.color, dayness, nightness, dir);
     }
 
     // Painted forest wall darkens with the night but keeps a moonlit trace so
@@ -6677,13 +6664,13 @@ function animate() {
         updateDecay();
     }
 
-    // Refresh sun position every 30s — slow real-time motion
+    // Refresh the real solar clock every two minutes; shadow maps are cached.
     if (!sunClockOverride && time - lastSunUpdate > 120000) {
         lastSunUpdate = time;
         updateSunAndLighting();
     }
 
-    // Lamps run per frame, not on the 30 s sun tick: the filament warm-up is a
+    // Lamps run per frame, not on the solar tick: the filament warm-up is a
     // few seconds long and the shadow-caster assignment follows the camera.
     assignLampLights(time);
     updateLamps(time, delta);

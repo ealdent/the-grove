@@ -2,7 +2,7 @@
 
 ## Acceptance target
 
-A greenhouse with photographed surface detail, physical scale, modeled botanical silhouettes, readable daylight and lamp lighting, and smooth rapid movement with all 120 task slots filled. Preserve to-do creation, health, growth, completion, persistence, keyboard/touch input, and audio. Synthetic performance scenarios must not touch saved tasks.
+A single greenhouse secluded in a dense haunted forest, with continuous modeled depth, an enclosing canopy, photographed surface detail, physical scale, modeled botanical silhouettes, readable daylight and lamp lighting, and smooth rapid movement with all 120 task slots filled. Preserve to-do creation, health, growth, completion, persistence, keyboard/touch input, and audio. Synthetic performance scenarios must not touch saved tasks.
 
 Performance is measured on a named GPU at a stated drawing-buffer resolution. The target is a 16.67 ms frame budget, at least 60 frames in the worst full rolling second, and p99 below 16.67 ms after asset/shader warmup. Also report the worst individual interval; never conceal a hitch behind average FPS. A browser/OS can miss a presentation deadline even when scene rendering is under budget, so measured results are not a guarantee for every device or every future frame.
 
@@ -14,6 +14,50 @@ Performance is measured on a named GPU at a stated drawing-buffer resolution. Th
 4. **Bound rendering work.** Share task geometry and completed-flower prototypes. Instance task parts in spatial chunks, retain original task objects for interaction, and synchronize only changed plants. Merge static structural members. Eight local hooded spotlights with two cached shadow maps replace twenty point lights with four six-face maps. [Three.js InstancedMesh](https://threejs.org/docs/pages/InstancedMesh.html).
 5. **Spend pixels where they matter.** Render at one physical pixel per CSS pixel on desktop (up to 1920×1080 in the benchmark). Contact AO runs at half resolution; remove redundant transparency renders and bloom. SMAA stabilizes edges because the AO beauty target does not inherit the canvas's antialiasing. [N8AO documentation](https://github.com/N8python/n8ao).
 6. **Measure and iterate.** Test 120 growing plants, 120 completed flowers, and a mixed scene during an 8 m/s route with fast turns and close inspections. Repeat daylight, dusk and night. Keep GPU timing queries asynchronous, include all rendering passes in draw counters, and exclude hidden-tab intervals explicitly.
+
+## Forest correction after user inspection
+
+The user rejected the second pass's exposed flat dirt, sparse trees and obvious panoramic background. Higher resolution did not preserve the intended secluded, haunted setting. The new acceptance gate is the actual view through every wall and the roof while translating the camera; prior captures are historical evidence, not visual approval.
+
+Implementation plan:
+
+- Replace visible landscape photography with overlapping 3D tree layers and a restrained overcast sky. Keep photographed forest radiance solely for indirect material lighting; use the existing 2K source (7.56 MB) instead of the 4K background (29.76 MB). Scale linear source radiance before PMREM because the deployed r160 lacks the newer scene-wide environment-intensity control. [Three.js scene environment/background separation](https://threejs.org/docs/pages/Scene.html).
+- Fill the perimeter with mature, irregular trees, canopy above the 11 m roof ridge, dense understory and uneven banks. Near and middle geometry must create translation parallax; mist should separate distant trees without drawing a horizon seam. All foliage remains opaque solid geometry.
+- Share geometry and materials within bounded spatial groups so enclosure does not require thousands of object updates or draws. Compute instance bounds after placement. [Three.js InstancedMesh](https://threejs.org/docs/pages/InstancedMesh.html).
+- Add west/east/entrance/rear/canopy inspection poses to the isolated benchmark, then repeat 120-plant day/dusk/night movement samples at 1080p. Preserve failures and distinguish visible improvement from the user's ultimate real-video acceptance standard.
+
+The rebuilt woodland contains 280 trees (258 living trees and 22 snags), 519,480 attached, closed leaves, buttressed roots, irregular limbs, and crowns that overlap above the greenhouse. Photographed bark uses its one-metre physical scale. The exterior terrain rises in irregular banks beyond an exactly level foundation. Its three-metre leaf-litter scan is covered with 416 fern crowns, brambles, roots, twigs and fallen logs. No visible forest photograph, alpha-cut vegetation or camera-facing foliage is used.
+
+The forest has 8,920,464 stored triangles; the understory adds 1,791,808. These are scene totals, not the per-frame draw cost. Closed leaf detail decreases with distance while placement remains fixed. Spatial instance bounds allow the renderer to omit crowns outside each camera frustum. Only nearby forest casts/receives mapped shadows; all understory receives shadows, with no additional understory shadow draws. Directional shadow bounds are fitted in light space so the rear of the greenhouse stays covered as the sun changes azimuth. Lamp bounce now follows the actual filament ramp immediately, including a snapped inspection clock.
+
+The forest benchmark follows all four walls and looks through the canopy in a continuous 20-second loop. It refuses a sample shorter than the route. The harness also records display dimensions, window position and DPR, and marks display movement as noncomparable.
+
+The final culling change groups near/middle/far leaves into 12×10×12 m, 20×12×20 m and 32×16×32 m cells respectively. A regression hashes every instance matrix/color and the complete leaf geometries against the preceding build. Across 150 sampled aisle poses, CPU frustum evaluation reports 9.8% fewer submitted forest triangles on average, with more draw calls; only the browser measurements below establish the resulting frame-time tradeoff.
+
+### Final forest verification
+
+All four final runs use the byte-verified release modules, Chrome 152 / ANGLE Metal / Apple M5 Pro, a 1920×1080 drawing buffer, render DPR 1, 120 synthetic tasks, 8 m/s movement and 60-second samples after warmup. They load all 21 required image assets, report no visibility/display changes, and observe zero rendering/resource errors. The browser window remains on the built-in display; no other application or GPU workload was stopped.
+
+| Scenario | Average FPS | p99 ms | Worst interval ms | Worst rolling 1 s | Sustained target |
+| --- | ---: | ---: | ---: | ---: | --- |
+| [Day / mixed aisle](proof/v3-final-day-120-mixed-aisle.json) | 118.47 | 16.5 | 25.2 | 105 FPS | Pass |
+| [Dusk / mixed aisle](proof/v3-final-dusk-120-mixed-aisle.json) | 118.35 | 16.6 | 25.6 | 105 FPS | Pass |
+| [Night / flowering aisle](proof/v3-final-night-120-flowers-aisle.json) | 118.22 | 16.6 | 17.5 | 101 FPS | Pass |
+| [Day / growing forest perimeter](proof/v3-final-day-120-growing-forest.json) | 119.53 | 9.3 | 116.7 | 104 FPS | Pass |
+
+**The perimeter run contains a 116.7 ms interval.** Its p99 and worst rolling second pass the bounded sustained criterion, but this hitch prevents claiming an absolute 60 FPS floor. Earlier failures remain below. The lower mean triangle count after culling comes with extra draw calls; recorded aisle performance, rather than the triangle count alone, supports retaining the change.
+
+[Actual loaded source](proof/v3-loaded-source-release.json) matches all fourteen local JS modules. Debugger instrumentation is disabled before sampling. [All 58 Node tests pass on runtime Three.js r160](proof/v3-runtime-tests.txt), including exact leaf preservation, spatial bounds, foundation/root placement, roof clearance, radiance conversion, shadow coverage, asset lifetimes, route continuity and display-change rejection. The preceding full suite and the final forest-specific cases also passed on local r184. The existing Jest storage-quota regression passed earlier in this revision; no storage code changed in the forest correction.
+
+Final rendered views: [day aisle](proof/v3-final-day-entry.png), [dusk aisle](proof/v3-final-dusk-entry.png), [night aisle](proof/v3-final-night-entry.png), [west](proof/v3-final-day-forest-left.png), [east](proof/v3-final-day-forest-right.png), [entrance](proof/v3-final-day-forest-front.png), [rear](proof/v3-final-day-forest-back.png), and [canopy](proof/v3-final-day-canopy.png). All were inspected after the last culling change. These are unedited canvas captures of the running application. The new enclosure fixes the sparse clearing/panorama mismatch; procedural branch patterns and approximate light transport remain visibly different from video of a real place.
+
+### Display cadence and retained failures
+
+An external-display run sampled at about 60 Hz while another window used the built-in display's approximately 120 Hz cadence. Both had DPR 2, so the previous metadata did not distinguish them. The [display comparison](proof/v3-display-comparison.json) records their separate screen dimensions and window locations. A five-second [empty external page](proof/v3-external-empty-page-cadence.json) measured 60.00 FPS, 17.6 ms p99 and 17.7 ms worst; the [empty built-in-display page](proof/v3-empty-page-cadence.json) measured 119.04 FPS and 10.0 ms p99. The small [baseline page](proof/cadence.html) can reproduce the check without rendering the greenhouse.
+
+The external-display [day](proof/v3-day-120-mixed-aisle.json), [dusk](proof/v3-dusk-120-mixed-aisle.json), and [night](proof/v3-night-120-flowers-aisle.json) results remain available. They fail the unchanged strict 16.67 ms/60-callback criterion, just as normal scheduling jitter can cross that boundary on a 60 Hz display. An [interrupted night run](proof/v3-night-interrupted-120-flowers-aisle.json) is excluded from comparisons. No system refresh-rate, power or graphics setting was changed.
+
+The [initial dense-forest trial](proof/v3-dense-initial-15s.json) and the [matched-display aisle run before final culling](proof/v3-internal-day-120-mixed-aisle.json) also remain failures: both recorded 16.7 ms p99. The latter averaged 116.47 FPS and 5.01 million submitted triangles, with 97 FPS in its slowest rolling second. These failures are not replaced by subsequent passes.
 
 ## Second implementation pass
 
@@ -74,7 +118,7 @@ Open [benchmark.html](benchmark.html) from the same HTTP server. It loads `index
 
 The active scene has solid, closed leaves throughout the task plants, ivy, ferns and exterior trees. Task plants use three cached photographed leaf shapes, fine petioles, irregular node heights, small natural lean and health-driven wilt. Twenty benches have individual rounded boards, aprons, stretchers, legs and 560 modeled fasteners. Pots have open rims and photographed clay; soil uses planar surface UVs. The woodland floor rises beyond the level greenhouse foundation, with static vertex color and subtle UV variation to reduce obvious repetition.
 
-The illustrated dialog vines, foliage cards, attention halos, visible lamp-cone shells and decorative particle clouds are no longer built. Stars and the oversized procedural moon are hidden when the photographed canopy is present: that panorama has no tree depth mask, so drawing them would put stars on tree trunks. The analytic sky remains a loading fallback.
+The illustrated dialog vines, foliage cards, attention halos, visible lamp-cone shells and decorative particle clouds are no longer built. The forest correction replaces the visible panorama with real tree depth and an overcast sky. Restrained stars and a moon at approximately 0.52 degrees apparent diameter are occluded by the modeled crowns; the moon also occludes stars. The forest HDR supplies indirect lighting only.
 
 Task rendering uses spatial instance batches while keeping the original objects for interaction. Static architecture is merged. Eight nearby spots share two stable shadow-casting slots, replacing the old point-light cube-map workload. Shadows refresh for visible growth/wilt/watering changes; minute background decay does not trigger repeated shadow renders. The static woodland PMREM is reused during the day instead of regenerating an unused analytic environment.
 
@@ -133,6 +177,6 @@ Open `http://127.0.0.1:8765/greenhouse-todo/benchmark.html` for isolated synthet
 
 ## Remaining acceptance limits
 
-The photographs and modeled silhouettes substantially improve the materials, but the scene is still visibly rendered. Procedural flower forms and branch distribution, repeated scan detail, a fixed 4K woodland panorama and approximate glazing/bounce light remain visible limitations. It has not been proven indistinguishable from video of a real greenhouse. Remaining realism work is calibrated thin-tissue/bounce lighting and specimen-level variation against a real reference capture. Increased texture resolution and solid geometry alone do not establish video-level realism.
+The photographs and modeled silhouettes substantially improve the materials, but the scene is still visibly rendered. Procedural flower forms and branch distribution, repeated scan detail, and approximate glazing/bounce light remain visible limitations. The conspicuous woodland panorama has been removed from the view. It has not been proven indistinguishable from video of a real greenhouse. Remaining realism work is calibrated thin-tissue/bounce lighting and specimen-level variation against a real reference capture. Increased texture resolution and solid geometry alone do not establish video-level realism.
 
 Desktop physical mouse/keyboard traversal and aiming, fresh listening, mobile-device FPS and cross-GPU behavior remain unverified. Automated desktop pointer lock was unreliable; dialog opening used the existing debug entry point before exercising the real forms. Touch proof used desktop GPU emulation. The existing Three.js/N8AO CDN dependency remains. The first pass was committed and pushed to origin/main as 1479c99 at Jason's request. Deployment behavior has not been verified.
