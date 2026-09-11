@@ -4,7 +4,7 @@
 :root{
   --bg:#EDEFE8; --panel:#F7F8F4; --panel-2:#E3E7DE; --ink:#1C231F; --ink-2:#56615A; --ink-3:#8A948D;
   --line:#CDD3CA; --accent:#8A5A2B; --accent-ink:#6E4620; --accent-soft:#E8DCCB;
-  --water:#4B84B3; --vis:#F2B53A; --nf:#5E8F5A; --scene-bg:#DCE4EA;
+  --water:#4B84B3; --vis:#F2B53A; --nf:#7A4FB5; --scene-bg:#DCE4EA;
   --sky-top:#B7CCE0; --sky-h:#E6EDF2;
   --r0:#3E5A3A; --r1:#5D7F58; --r2:#7C9C86; --r3:#98AFB0; --r4:#B4C3CF; --r5:#CDD6E0;
   --focus:#2F6FBF; --shadow:0 6px 24px rgba(28,35,31,.14);
@@ -15,7 +15,7 @@
 @media (prefers-color-scheme:dark){ :root:not([data-theme="light"]){
   --bg:#12171A; --panel:#1B2226; --panel-2:#252E33; --ink:#E6EAE5; --ink-2:#A3ADA6; --ink-3:#6F7A73;
   --line:#2F3A3F; --accent:#D8B27F; --accent-ink:#E8C99A; --accent-soft:#3A3128;
-  --water:#78A8D6; --vis:#F2B53A; --nf:#7FB37A; --scene-bg:#1A2228;
+  --water:#78A8D6; --vis:#F2B53A; --nf:#B49BE6; --scene-bg:#1A2228;
   --sky-top:#131B25; --sky-h:#2C3946;
   --r0:#26362A; --r1:#35503B; --r2:#4A6A5C; --r3:#5F7E86; --r4:#74899A; --r5:#8B9BAD;
   --focus:#7FB0F0; --shadow:0 6px 24px rgba(0,0,0,.45); color-scheme:dark;
@@ -23,7 +23,7 @@
 :root[data-theme="dark"]{
   --bg:#12171A; --panel:#1B2226; --panel-2:#252E33; --ink:#E6EAE5; --ink-2:#A3ADA6; --ink-3:#6F7A73;
   --line:#2F3A3F; --accent:#D8B27F; --accent-ink:#E8C99A; --accent-soft:#3A3128;
-  --water:#78A8D6; --vis:#F2B53A; --nf:#7FB37A; --scene-bg:#1A2228;
+  --water:#78A8D6; --vis:#F2B53A; --nf:#B49BE6; --scene-bg:#1A2228;
   --sky-top:#131B25; --sky-h:#2C3946;
   --r0:#26362A; --r1:#35503B; --r2:#4A6A5C; --r3:#5F7E86; --r4:#74899A; --r5:#8B9BAD;
   --focus:#7FB0F0; --shadow:0 6px 24px rgba(0,0,0,.45); color-scheme:dark;
@@ -119,6 +119,7 @@ button,input{font:inherit;color:inherit}
 .key .k.line{height:0;border-top:3px solid var(--ink)}
 .key .k.dash{height:0;border-top:2px dashed var(--ink-2)}
 .key .k.cont{height:0;border-top:1px solid #8A5A2B}
+.k.nfk{background:repeating-linear-gradient(135deg,var(--nf) 0 1.5px,transparent 1.5px 4px),color-mix(in srgb,var(--nf) 35%,transparent);border:1px solid var(--nf)}
 
 /* panorama */
 .pano{border-top:1px solid var(--line);background:var(--panel);display:flex;flex-direction:column;min-width:0}
@@ -180,7 +181,7 @@ button,input{font:inherit;color:inherit}
       <div class="grp">
         <h2>Layers</h2>
         <label class="sw"><span><i class="k" style="background:var(--vis)"></i>Visible from viewpoint</span><input type="checkbox" id="lyVis" checked></label>
-        <label class="sw"><span><i class="k" style="background:var(--nf);opacity:.7"></i>National Forest land</span><input type="checkbox" id="lyNf" checked></label>
+        <label class="sw"><span><i class="k nfk"></i>National Forest land</span><input type="checkbox" id="lyNf" checked></label>
         <label class="sw"><span><i class="k" style="background:var(--ink)"></i>Property boundaries</span><input type="checkbox" id="lyParcel" checked></label>
         <label class="sw"><span><i class="k" style="background:var(--water)"></i>Roads, river, lakes</span><input type="checkbox" id="lyRoads" checked></label>
         <label class="sw"><span><i class="k" style="background:var(--ink-3)"></i>Peak &amp; place names</span><input type="checkbox" id="lyLabels" checked></label>
@@ -344,7 +345,23 @@ function maskCanvas(mask, rgb, alpha){
   cx.putImageData(im, 0, 0); return c;
 }
 const waterCanvas = waterMask ? maskCanvas(waterMask, [0x4B,0x84,0xB3], 255) : null;
-const nfCanvas = nfMask ? maskCanvas(nfMask, [0x3E,0x7A,0x3C], 78) : null;
+// National Forest: violet fill, diagonal hatch and a boundary line, so it reads against the terrain greens
+function nfLayerCanvas(mask){
+  const fill = maskCanvas(mask, [0x7A,0x4F,0xB5], 70);
+  const edge = Object.assign(document.createElement('canvas'), {width:n, height:n}); const ex = edge.getContext('2d');
+  const im = ex.createImageData(n, n), p = im.data;
+  for (let r=0;r<n;r++) for (let c=0;c<n;c++){ const k=r*n+c; if (!mask[k]) continue;
+    if ((r>0&&!mask[k-n])||(r<n-1&&!mask[k+n])||(c>0&&!mask[k-1])||(c<n-1&&!mask[k+1])){ const o=k*4; p[o]=0x4B; p[o+1]=0x2C; p[o+2]=0x7A; p[o+3]=235; } }
+  ex.putImageData(im, 0, 0);
+  const layer = Object.assign(document.createElement('canvas'), {width:T, height:T}); const lx = layer.getContext('2d');
+  lx.imageSmoothingEnabled = true; lx.drawImage(fill, 0, 0, T, T);
+  const pat = document.createElement('canvas'); pat.width = pat.height = 16; const px = pat.getContext('2d');
+  px.strokeStyle = 'rgba(91,58,142,.6)'; px.lineWidth = 1.6; px.beginPath(); px.moveTo(-4,20); px.lineTo(20,-4); px.moveTo(-4,4); px.lineTo(4,-4); px.moveTo(12,20); px.lineTo(20,12); px.stroke();
+  lx.globalCompositeOperation = 'source-atop'; lx.fillStyle = lx.createPattern(pat, 'repeat'); lx.fillRect(0, 0, T, T);
+  lx.globalCompositeOperation = 'source-over'; lx.drawImage(edge, 0, 0, T, T);
+  return layer;
+}
+const nfCanvas = nfMask ? nfLayerCanvas(nfMask) : null;
 const visCanvas = Object.assign(document.createElement('canvas'), {width:n, height:n});
 const visCtx = visCanvas.getContext('2d'); const visImg = visCtx.createImageData(n, n);
 // roads + rivers as vector strokes on a transparent 2x canvas
@@ -370,7 +387,7 @@ let texture;
 function compose(){
   texCtx.globalAlpha = 1; texCtx.drawImage(hypsCanvas, 0, 0);
   texCtx.imageSmoothingEnabled = true;
-  if (layers.nf && nfCanvas) texCtx.drawImage(nfCanvas, 0, 0, T, T);
+  if (layers.nf && nfCanvas) texCtx.drawImage(nfCanvas, 0, 0);
   if (layers.roads){ if (waterCanvas) texCtx.drawImage(waterCanvas, 0, 0, T, T); texCtx.drawImage(roadCanvas, 0, 0); }
   if (layers.vis){ texCtx.globalAlpha = .58; texCtx.drawImage(visCanvas, 0, 0, T, T); texCtx.globalAlpha = 1; }
   if (texture) texture.needsUpdate = true;

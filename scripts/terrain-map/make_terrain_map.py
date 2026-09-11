@@ -245,7 +245,7 @@ nodes_raw = overpass(f'(node["place"~"^(town|village|hamlet|locality)$"]{bb};nod
 roads_raw = overpass(f'way["highway"~"^(primary|secondary|tertiary|unclassified)$"]{bb};out geom;', P("osm_roads.json"))
 resid_raw = overpass(f'way["highway"~"^(residential|living_street|track|service)$"]{small};out geom;', P("osm_resid.json"), 120)
 rivers_raw = overpass(f'way["waterway"~"^(river|stream)$"]["name"]{bb};out geom;', P("osm_rivers.json"))
-water_raw = overpass(f'(way["natural"="water"]["name"]{bb};relation["natural"="water"]["name"]{bb};);out center;', P("osm_water.json"))
+water_raw = overpass(f'(way["natural"="water"]["name"]{bb};relation["natural"="water"]["name"]{bb};);out bb;', P("osm_water.json"))
 towns_raw = overpass(f'node["place"~"^(town|city)$"]{bbw};out;', P("osm_towns.json"))
 log(f"  peaks {len(peaks_raw)} nodes {len(nodes_raw)} roads {len(roads_raw)} local {len(resid_raw)} rivers {len(rivers_raw)} water {len(water_raw)} towns {len(towns_raw)}")
 
@@ -306,24 +306,31 @@ for (r, c) in zip(*np.where(flat)):
             if 0 <= r2 < n and 0 <= c2 < n and flat[r2, c2] and not lab[r2, c2]: lab[r2, c2] = cid; q.append((r2, c2))
     comps.append(cells)
 watermask = np.zeros((n, n), dtype=bool); lakes = []
+# named water bodies from OSM: match by bounding box first (a reservoir's centre point can sit outside the
+# tile), then by distance to the centre; each name is used once, on the largest matching surface
 named = []
 for e in water_raw:
-    t = e.get("tags", {}); c = e.get("center") or ({"lat": e.get("lat"), "lon": e.get("lon")} if "lat" in e else None)
-    if t.get("name") and c and in_detail(c["lon"], c["lat"]): named.append((t["name"], to_rc(c["lon"], c["lat"])))
+    t = e.get("tags", {}); b = e.get("bounds")
+    c = e.get("center") or ({"lat": (b["minlat"] + b["maxlat"]) / 2, "lon": (b["minlon"] + b["maxlon"]) / 2} if b else ({"lat": e.get("lat"), "lon": e.get("lon")} if "lat" in e else None))
+    if not (t.get("name") and c): continue
+    brc = None
+    if b:
+        r1, c1 = to_rc(b["minlon"], b["maxlat"]); r2, c2 = to_rc(b["maxlon"], b["minlat"])  # top-left, bottom-right in grid space
+        brc = (r1 - 15, c1 - 15, r2 + 15, c2 + 15, (r2 - r1) * (c2 - c1))
+    named.append((t["name"], to_rc(c["lon"], c["lat"]), brc))
 used = set()
 for cid, cells in sorted(enumerate(comps, 1), key=lambda kv: -len(kv[1])):
     if len(cells) < 150: continue
     rs = np.array([c[0] for c in cells]); cs = np.array([c[1] for c in cells]); watermask[rs, cs] = True
-    name = None
-    for nm, (r, c) in named:
-        rr_, cc_ = int(round(r)), int(round(c))
-        if nm not in used and 0 <= rr_ < n and 0 <= cc_ < n and lab[rr_, cc_] == cid: name = nm; break
-    if name is None:  # nearest named centre within 400 m
-        best = None
-        for nm, (r, c) in named:
+    name = None; cr, cc0 = rs.mean(), cs.mean()
+    inside = [(brc[4], nm) for nm, _, brc in named if nm not in used and brc and brc[0] <= cr <= brc[2] and brc[1] <= cc0 <= brc[3]]
+    if inside: name = min(inside)[1]  # the most specific (smallest) bounding box that contains the surface
+    if name is None:  # nearest named centre, tolerance grows with the size of the surface
+        best = None; tol = max(400, 2 * math.sqrt(len(cells) * mppx * mppy))
+        for nm, (r, c), _ in named:
             if nm in used: continue
             dmin = float(np.min(np.hypot((rs - r) * mppy, (cs - c) * mppx)))
-            if dmin < 400 and (best is None or dmin < best[0]): best = (dmin, nm)
+            if dmin < tol and (best is None or dmin < best[0]): best = (dmin, nm)
         if best: name = best[1]
     if name: used.add(name)
     lakes.append(dict(name=name, z=rnd(detail[rs[0], cs[0]]), cells=len(cells), x=rnd((cs.mean() + 0.5) * mppx), y=rnd((n - rs.mean() - 0.5) * mppy)))
