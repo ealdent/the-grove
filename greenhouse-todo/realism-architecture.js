@@ -3,6 +3,21 @@ import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.j
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { createScannedWoodMaterial } from './realism-materials.js';
 
+// Planar metre-scale projection for the thin rectangular glazing bars. A UV
+// square stretched over a 50 m rail would turn small corrosion into long stripes.
+export function metalUV(geometry) {
+    const p = geometry.attributes.position, n = geometry.attributes.normal, uv = geometry.attributes.uv;
+    for (let i = 0; i < p.count; i++) {
+        const axis = [Math.abs(n.getX(i)), Math.abs(n.getY(i)), Math.abs(n.getZ(i))];
+        const face = axis.indexOf(Math.max(...axis));
+        const coords = [p.getX(i), p.getY(i), p.getZ(i)];
+        const [u, v] = [0, 1, 2].filter(a => a !== face);
+        uv.setXY(i, coords[u] / 1.3 + .37, coords[v] / 1.3 + .63);
+    }
+    uv.needsUpdate = true;
+    return geometry;
+}
+
 // Select the interior of a single photographed board. Mapping a full sheet of
 // planks onto a chair leg paints false joints across the leg every few cm.
 export function timberUV(geometry, board = 0, grain) {

@@ -15,6 +15,43 @@ Performance is measured on a named GPU at a stated drawing-buffer resolution. Th
 5. **Spend pixels where they matter.** Render at one physical pixel per CSS pixel on desktop (up to 1920×1080 in the benchmark). Contact AO runs at half resolution; remove redundant transparency renders and bloom. SMAA stabilizes edges because the AO beauty target does not inherit the canvas's antialiasing. [N8AO documentation](https://github.com/N8python/n8ao).
 6. **Measure and iterate.** Test 120 growing plants, 120 completed flowers, and a mixed scene during an 8 m/s route with fast turns and close inspections. Repeat daylight, dusk and night. Keep GPU timing queries asynchronous, include all rendering passes in draw counters, and exclude hidden-tab intervals explicitly.
 
+## Second implementation pass
+
+After pushing `1479c99` to `origin/main`, implementation continued:
+
+- **Matrix work:** retain hidden task hierarchies with matrix updates frozen. Explicit `sync` temporarily restores their original update flags, updates transforms, then freezes them again. Rebuild/removal/disposal restores caller ownership, including children moved between roots. The scene's identity transform no longer forces all retained descendants dirty every render pass.
+- **Botanical form:** replace the old open petal builders with closed curved surfaces for five permanent saved species. A shared neutral tissue atlas adds fine venation, roughness and subtle relief. Each head uses three stock PBR meshes, 5,140–9,888 triangles; completed stems now keep species-proportioned foliage. No emissive flowers, alpha silhouettes or camera-facing plant cards.
+- **Materials:** original 2K timber maps, a 4K HDR panorama, and photographed corroded steel with roughness/metallic coverage. Steel UVs retain the scan's 1.3 m physical scale on long narrow bars. Provenance and unmodified file hashes are in `assets/`.
+- **Woodland ground:** 36 shrubs, 36 ferns, curled leaves, twigs and 56 connected ground-cover patches add 144,600 triangles in 12 static beauty draws, with no shadow draws. Exact triangle-height sampling keeps their roots on the floor. A fully opaque far-ground shader gradually joins the same HDR panorama at 20–54 m beyond the foundation; nearby ground remains lit scanned geometry. This is a distant-environment projection, not additional physical parallax.
+- **Loading:** surface deadlines are 90 seconds and the 29.8 MB HDR deadline is 120 seconds. A clock-controlled regression reproduces the former 30-second rejection of a valid 48-second download and verifies late-error cleanup. The larger assets improve detail at the cost of download size and GPU memory; the 4K half-float panorama alone is approximately 64 MiB before PMREM storage.
+
+The flower morphology follows the botanical references listed in `realism-flowers.js`. Thin-tissue light transport remains approximate: [Blender's subsurface documentation](https://docs.blender.org/manual/en/4.1/render/shader_nodes/shader/sss.html) describes scattering effects not implemented by these opaque stock materials. Actual scanned glazing-bar assets: [Poly Haven Rusty Metal 05](https://polyhaven.com/a/rusty_metal_05).
+
+### Profile comparison and unresolved stalls
+
+The anchor-aligned 60-second dusk windows in `proof/dusk-cpu-profile.json` and `proof/dusk-cpu-profile-optimized.json` show mean app elapsed CPU time falling from **3.91 to 2.64 ms (33%)**. Matrix-world stack sample weight drops from **11.31 to 1.04 seconds**. The complete profiles have different durations; only their report-aligned windows support this comparison. The rejected stale-import comparison is retained as `dusk-cpu-profile-stale-cache.json` with an explicit exclusion reason.
+
+The optimized profile still captured a 292.5 ms interval. Sampling gaps inside small rendering helpers do not prove those functions consumed CPU for the whole gap. A subsequent native Chromium trace did not reproduce that large hitch. Its six renderer tasks over 20 ms peaked at **28.38 ms wall / 6.77 ms thread CPU**, consistent with time spent outside CPU execution but insufficient to distinguish waiting from descheduling. The sanitized local analysis is `proof/v2-native-trace-analysis.json`; the raw multi-process trace remains temporary and is not included in the repository. The installed xctrace lists no instruments and lacks System Trace, so a macOS scheduler trace was unavailable.
+
+### Current source and verification
+
+`proof/v2-loaded-source-validation.json` compares actual `Debugger.getScriptSource` bytes with all thirteen local JS modules after an explicit cache-bypassing reload. Every module matches. Debugger/Profiler/Tracing instrumentation is stopped before the final scenario runs. Temporary browser cache and debugging overrides are restored after verification. Thirty-eight repository Node tests pass against both runtime Three.js r160 and local r184; the existing Jest storage regression passes. Current screenshots are rendered-canvas captures, not generated targets.
+
+All four second-pass runs use 120 tasks, Chrome 152 / ANGLE Metal / Apple M5 Pro, 1920 × 1080, DPR 1, 60-second samples and the same fast route. All report 15 loaded assets, zero visibility interruptions and zero observed run errors. The earlier day run preceded only the loading-deadline correction; the repeat, dusk and night runs use the byte-verified current modules.
+
+| Scenario | Average FPS | p99 ms | Worst ms | Worst rolling 1 s | Sustained target |
+| --- | ---: | ---: | ---: | ---: | --- |
+| [Day / earlier run](proof/v2-day-120-growing.json) | 117.26 | 9.4 | 284.0 | 75 FPS | Pass |
+| [Day / repeat](proof/v2-day-120-growing-repeat.json) | 119.57 | 9.3 | 58.6 | 113 FPS | Pass |
+| [Dusk / mixed](proof/v2-dusk-120-mixed.json) | 119.72 | 9.3 | 33.5 | 114 FPS | Pass |
+| [Night / flowers](proof/v2-night-120-flowers.json) | 119.94 | 9.3 | 25.0 | 117 FPS | Pass |
+
+**The earlier 284 ms day interval remains visible in the table.** The repeat does not invalidate it. These results establish the bounded sustained target for the recorded runs, not an absolute 60 fps minimum. Earlier checkpoint failures remain below. No unrelated game/QA processes were stopped.
+
+Current visual captures: [growing plants](proof/v2-day-growing-bench.png), [flowering bench](proof/v2-day-bench-final.png), [dusk](proof/v2-dusk-aisle.png), [night](proof/v2-night-aisle.png). These show the remaining visible differences from a real video; no photorealism acceptance is inferred from test passes.
+
+The isolated real-form [UI recheck](proof/v2-ui-checks.json) creates a task, reloads it, changes status, completes it, reloads again, and observes the same sunflower with five foliage leaves. Only the temporary test save is removed afterward. The automated close/resume flow still emits Pointer Lock / WrongDocumentError diagnostics; desktop physical entry and aiming remain unverified. There were no rendering errors in the final benchmark runs.
+
 ## Initial baseline
 
 Live Chrome on Apple M5 Pro / ANGLE Metal, 1920×929 CSS pixels, native device ratio 2, original render ratio 1.5. Empty task save, forced daylight, 15-second native rAF sample:
@@ -43,11 +80,11 @@ Task rendering uses spatial instance batches while keeping the original objects 
 
 Normal entry waits for required assets, shader compilation and one unculled GPU warm frame. A WebGL2 fence is polled asynchronously with zero wait timeout; only a signaled fence counts as completed preparation. Timeout/context-loss/error paths restore culling flags and dispose the fence. This reduces first-use work but cannot guarantee that every future driver pipeline is warm. [WebGL 2 synchronization specification](https://registry.khronos.org/webgl/specs/latest/2.0/).
 
-## Performance evidence
+## First checkpoint performance evidence (1479c99)
 
-Final scenario measurements are recorded in `proof/day-120-growing.json`, `proof/dusk-120-mixed.json`, and `proof/night-120-flowers.json`. Each uses Chrome 152 / ANGLE Metal / Apple M5 Pro, a 1920 × 1080 drawing buffer, render DPR 1 and native DPR 2. The route moves at 8 m/s with 0.55-second turns and close bench inspections. Twelve required image assets must load successfully before sampling.
+First-checkpoint scenario measurements are recorded in `proof/day-120-growing.json`, `proof/dusk-120-mixed.json`, and `proof/night-120-flowers.json`. Each uses Chrome 152 / ANGLE Metal / Apple M5 Pro, a 1920 × 1080 drawing buffer, render DPR 1 and native DPR 2. The route moves at 8 m/s with 0.55-second turns and close bench inspections. Twelve required image assets must load successfully before sampling.
 
-| Final scenario | Sample | Average | p99 interval | Worst interval | Worst rolling second | Sustained target |
+| First-checkpoint scenario | Sample | Average | p99 interval | Worst interval | Worst rolling second | Sustained target |
 | --- | ---: | ---: | ---: | ---: | ---: | --- |
 | [Day / 120 growing](proof/day-120-growing.json) | 60.00 s | 119.73 | 9.3 ms | 25.9 ms | 116 FPS | Pass |
 | [Dusk / 120 mixed](proof/dusk-120-mixed.json) | 60.00 s | 110.43 | 15.8 ms | 717.5 ms | 22 FPS | **Fail** |
@@ -96,6 +133,6 @@ Open `http://127.0.0.1:8765/greenhouse-todo/benchmark.html` for isolated synthet
 
 ## Remaining acceptance limits
 
-The photographs and modeled silhouettes substantially improve the materials, but the scene is still visibly rendered. Procedural flower forms and branch distribution, repeated scan detail, a 2K woodland panorama and approximate glazing/bounce light remain visible limitations. It has not been proven indistinguishable from video of a real greenhouse. A further realism pass should use species-faithful modeled specimens, calibrated lighting against a reference capture, and a higher-detail woodland background while retaining closed geometry and the measured budget.
+The photographs and modeled silhouettes substantially improve the materials, but the scene is still visibly rendered. Procedural flower forms and branch distribution, repeated scan detail, a fixed 4K woodland panorama and approximate glazing/bounce light remain visible limitations. It has not been proven indistinguishable from video of a real greenhouse. Remaining realism work is calibrated thin-tissue/bounce lighting and specimen-level variation against a real reference capture. Increased texture resolution and solid geometry alone do not establish video-level realism.
 
-Desktop physical mouse/keyboard traversal and aiming, fresh listening, mobile-device FPS and cross-GPU behavior remain unverified. Automated desktop pointer lock was unreliable; dialog opening used the existing debug entry point before exercising the real forms. Touch proof used desktop GPU emulation. The existing Three.js/N8AO CDN dependency remains. No deployment or publication was performed.
+Desktop physical mouse/keyboard traversal and aiming, fresh listening, mobile-device FPS and cross-GPU behavior remain unverified. Automated desktop pointer lock was unreliable; dialog opening used the existing debug entry point before exercising the real forms. Touch proof used desktop GPU emulation. The existing Three.js/N8AO CDN dependency remains. The first pass was committed and pushed to origin/main as 1479c99 at Jason's request. Deployment behavior has not been verified.

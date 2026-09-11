@@ -1,3 +1,11 @@
+# Current runtime detail
+
+The app now loads the original **4096 × 2048** `forest_slope_4k.hdr` (29,764,886 bytes).
+Its source URL and SHA-256 are in [detail-upgrade-provenance.json](../detail-upgrade-provenance.json).
+RGBA16F storage is approximately 64 MiB before the derived PMREM. The earlier 2K
+asset below remains archived with the first-pass evidence. Both are unchanged CC0
+versions of Andreas Mischok's same photographed panorama.
+
 # Woodland environment
 
 `forest_slope_2k.hdr` is an unchanged, photographed 360° outdoor woodland HDRI by
@@ -29,7 +37,7 @@ below summarizes that setup; this asset slice changes no application/module API:
 
 ```js
 const hdr = await new RGBELoader().loadAsync(
-    new URL('./assets/environment/forest_slope_2k.hdr', import.meta.url).href
+    new URL('./assets/environment/forest_slope_4k.hdr', import.meta.url).href
 );
 hdr.mapping = THREE.EquirectangularReflectionMapping;
 scene.background = hdr;

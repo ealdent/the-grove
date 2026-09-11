@@ -61,6 +61,74 @@ function assertBoundsContainVertices(batches) {
     }
 }
 
+test('renderer passes skip retained-source matrix work; sync still updates growth and picking transforms', t => {
+    const { scene, batches } = fixture(t);
+    // The greenhouse scene itself never moves. A constantly recomposed scene
+    // matrix would force every child subtree dirty in Three r160.
+    scene.updateMatrix();
+    scene.matrixAutoUpdate = false;
+    const { root, mesh } = rootAt(scene, 0);
+    const leaf = new THREE.Mesh(new THREE.BoxGeometry(.03, .09, .01), mesh.material);
+    leaf.position.y = .2;
+    mesh.add(leaf);
+    batches.rebuild([root]);
+    scene.updateMatrixWorld();
+    let compositions = 0;
+    for (const object of [root, mesh, leaf]) {
+        const update = object.updateMatrix;
+        object.updateMatrix = function () { compositions++; return update.call(this); };
+    }
+    scene.updateMatrixWorld();
+    scene.updateMatrixWorld();
+    assert.equal(compositions, 0, 'render-only passes must not recompose hidden sources');
+    root.position.x += .7;
+    mesh.rotation.z = .4;
+    leaf.scale.setScalar(.8);
+    batches.sync(root);
+    assert.equal(compositions, 3, 'explicit sync refreshes every retained source exactly once');
+    const expected = new THREE.Matrix4().multiplyMatrices(scene.matrixWorld, root.matrix)
+        .multiply(mesh.matrix).multiply(leaf.matrix);
+    nearArray(leaf.matrixWorld.elements, expected.elements);
+    const leafBatch = renderMeshes(batches).find(batch => batch.geometry === leaf.geometry);
+    nearArray(matrixAt(leafBatch).elements, expected.elements);
+    scene.updateMatrixWorld();
+    assert.equal(compositions, 3);
+});
+
+test('rebuild removal and dispose restore caller matrix-update flags', t => {
+    const { scene, batches } = fixture(t);
+    const a = rootAt(scene, 0), b = rootAt(scene, 24);
+    b.mesh.matrixAutoUpdate = false;
+    b.mesh.matrixWorldAutoUpdate = false;
+    batches.rebuild([a.root, b.root]);
+    assert.equal(a.mesh.matrixAutoUpdate, false);
+    assert.equal(a.root.matrixWorldAutoUpdate, false);
+    batches.rebuild([b.root]);
+    assert.equal(a.mesh.matrixAutoUpdate, true);
+    assert.equal(a.root.matrixWorldAutoUpdate, true);
+    batches.dispose();
+    assert.equal(b.root.matrixAutoUpdate, true);
+    assert.equal(b.root.matrixWorldAutoUpdate, true);
+    assert.equal(b.mesh.matrixAutoUpdate, false);
+    assert.equal(b.mesh.matrixWorldAutoUpdate, false);
+});
+
+test('reparenting a retained child preserves its original update flags across roots', t => {
+    const { scene, batches } = fixture(t);
+    const a = rootAt(scene, 0), b = rootAt(scene, 24);
+    const child = new THREE.Mesh(new THREE.BoxGeometry(.03, .05, .02), a.mesh.material);
+    a.root.add(child);
+    batches.rebuild([a.root, b.root]);
+    b.root.add(child);
+    batches.rebuild([a.root, b.root]);
+    child.position.x = 7;
+    batches.sync(b.root);
+    assert.equal(child.matrix.elements[12], 7);
+    batches.dispose();
+    assert.equal(child.matrixAutoUpdate, true);
+    assert.equal(child.matrixWorldAutoUpdate, true);
+});
+
 test('nested pot, bent stem, leaf and flower world transforms survive batching and sync', t => {
     const { scene, batches } = fixture(t);
     scene.position.set(3, -1, 2);

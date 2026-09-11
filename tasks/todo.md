@@ -15,6 +15,17 @@ Plan check-in: user explicitly requested both development and implementation; pr
 
 Research/design details and proof will live in `greenhouse-todo/REALISM.md`.
 
+## Continued implementation after checkpoint 1479c99
+
+- [x] Commit the first graphics/performance pass and verify it on `origin/main`.
+- [x] Profile a fresh dusk run with low-overhead CPU sampling and retain the failed-frame correlation.
+- [x] Compare routine matrix work and native browser wall/thread CPU timing; retain the unresolved scheduling/wait cause.
+- [x] Improve botanical flower forms and the bare exterior ground while preserving solid geometry and bounded draws.
+- [x] Integrate measured fixes, inspect current daylight/dusk/night output, and repeat the heavy rapid-movement acceptance runs.
+- [x] Review the changes and update evidence without discarding failures.
+
+
+Second-pass review: removed redundant hidden-source matrix work (3.91 → 2.64 ms mean in aligned CPU profiles); closed five-species flower heads and living foliage; 2K timber, 4K HDR, scanned steel, and 12-draw solid woodland ground cover. Fixed the review's reparenting-flags and slow-HDR timeout findings. All 38 Node tests pass on r160/r184; Jest storage regression passes; thirteen loaded JS modules match disk byte-for-byte. Final 120-plant day/dusk/night samples average 119.57/119.72/119.94 fps, with worst rolling seconds 113/114/117. Earlier second-pass day retained a 284 ms interval; neither that nor first-pass failures is concealed. Actual form creation/completion/reload passes on isolated origin; automated Pointer Lock remains unsuccessful. Full results, screenshots and limitations are in REALISM.md.
 
 ## Review and remaining acceptance
 
@@ -24,7 +35,7 @@ Research/design details and proof will live in `greenhouse-todo/REALISM.md`.
 - Proof: 24 Node tests plus the existing Jest storage-quota regression pass. Real-browser task creation/status/completion and reload persistence pass on an isolated origin; touch joystick/look/pause and responsive forms pass. Screenshots and raw performance results are in `greenhouse-todo/proof/`; detailed interpretation is in `greenhouse-todo/REALISM.md`.
 - [ ] Establish the strict 60 fps minimum under an agreed, controlled host workload and physically test desktop rapid movement/aiming. Passing bounded runs coexist with retained earlier CPU stalls up to 717.5 ms; other Unity QA workloads were active and left untouched.
 - [ ] Obtain visual acceptance against the requested real-video standard. Surface quality improved substantially, but procedural forms, repeated detail and approximate lighting remain distinguishable from a real capture.
-- Not verified: physical desktop mouse/keyboard playtest, fresh listening, mobile hardware FPS, cross-GPU behavior, deployment. No unrelated artifact was edited, and no commit/push/deployment was performed.
+- Not verified: physical desktop mouse/keyboard playtest, fresh listening, mobile hardware FPS, cross-GPU behavior, deployment. The first pass was committed and pushed as 1479c99 at Jason's request. No unrelated artifact was edited; deployment behavior has not been verified.
 
 ---
 

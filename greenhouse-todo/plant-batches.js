@@ -95,6 +95,22 @@ function markRange(attribute, offset, count) {
     attribute.needsUpdate = true;
 }
 
+function restoreSourceMatrices(record, released = false) {
+    for (const [object, flags] of record.matrixStates) {
+        object.matrixAutoUpdate = flags.local;
+        object.matrixWorldAutoUpdate = flags.world;
+        if (released) object.matrixWorldNeedsUpdate = true;
+    }
+}
+
+function freezeSourceMatrices(record) {
+    for (const [object] of record.matrixStates) {
+        object.matrixAutoUpdate = false;
+        object.matrixWorldAutoUpdate = false;
+        object.matrixWorldNeedsUpdate = false;
+    }
+}
+
 /**
  * Render createPlant's retained task roots as spatially grouped instances.
  *
@@ -112,6 +128,11 @@ function markRange(attribute, offset, count) {
  * or reuse the actual geometry object; geometry buffers are immutable between
  * rebuilds. Unkeyed primitives are merged only after checking their full buffers.
  *
+ * Retained source matrices are frozen between sync calls, including invisible
+ * groups: Three updates invisible objects' matrices during ordinary renders.
+ * sync temporarily restores caller flags, updates the full source hierarchy,
+ * and freezes it again. Removal/dispose restores the caller's original flags.
+ * For r160 subtree skipping, a static scene should set matrixAutoUpdate=false.
  * sync changes transforms, effective visibility and diffuse instance colors.
  * Rebuild for hierarchy/slot/geometry/non-color material or render-flag changes.
  * Call sync for every affected root if a shared ancestor/material changes.
@@ -147,6 +168,12 @@ export class PlantBatches {
         const batches = new Map();
         const resolveGeometry = geometryResolver();
         const materialKeys = new WeakMap();
+        // A caller may move a child between retained roots before rebuilding.
+        // Recover ownership flags by object identity, not by its former root.
+        const previousMatrixStates = new WeakMap();
+        for (const record of this._roots.values()) {
+            for (const [object, flags] of record.matrixStates) previousMatrixStates.set(object, flags);
+        }
 
         // Gather and validate before removing the current render representation.
         for (const root of roots) {
@@ -156,9 +183,13 @@ export class PlantBatches {
                 throw new TypeError('PlantBatches roots need a nonnegative integer userData.positionIndex.');
             }
             const chunk = Math.floor(slot / SLOTS_PER_CHUNK);
-            const record = { root, visible: this._roots.get(root)?.visible ?? root.visible, entries: [] };
+            const previous = this._roots.get(root);
+            const record = { root, visible: previous?.visible ?? root.visible, entries: [], matrixStates: new Map() };
             nextRoots.set(root, record);
             root.traverse(source => {
+                record.matrixStates.set(source, previousMatrixStates.get(source) ?? {
+                    local: source.matrixAutoUpdate, world: source.matrixWorldAutoUpdate
+                });
                 if (!source.isMesh) return;
                 if (source.isInstancedMesh || source.isSkinnedMesh
                     || Object.keys(source.geometry.morphAttributes).length
@@ -186,6 +217,7 @@ export class PlantBatches {
 
         this._clearBatches();
         for (const [root, record] of this._roots) {
+            restoreSourceMatrices(record, true);
             if (!nextRoots.has(root)) root.visible = record.visible;
         }
         this._roots = nextRoots;
@@ -240,7 +272,9 @@ export class PlantBatches {
         const record = this._roots.get(root);
         if (!record) return false;
         root.visible = false;
-        root.updateWorldMatrix(true, true);
+        restoreSourceMatrices(record);
+        try { root.updateWorldMatrix(true, true); }
+        finally { freezeSourceMatrices(record); }
         this.scene.updateWorldMatrix(true, false);
         this._sceneInverse.copy(this.scene.matrixWorld).invert();
         for (const entry of record.entries) {
@@ -331,7 +365,10 @@ export class PlantBatches {
         if (this._disposed) return;
         this._disposed = true;
         this._clearBatches();
-        for (const [root, record] of this._roots) root.visible = record.visible;
+        for (const [root, record] of this._roots) {
+            root.visible = record.visible;
+            restoreSourceMatrices(record, true);
+        }
         this._roots.clear();
         for (const material of this._materials.values()) material.dispose();
         this._materials.clear();

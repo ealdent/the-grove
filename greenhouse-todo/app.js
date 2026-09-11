@@ -13,13 +13,15 @@ import { N8AOPass } from 'n8ao';
 // Ambient beds, creature one-shots and the solo-violin soundtrack. Created on
 // the first "enter" gesture; fed dayness every frame from animate().
 import { greenhouseAudio } from './audio.js';
-import { createScannedWoodMaterial, createScannedGroundMaterial, createScannedPotMaterial, createScannedSoilMaterial, texturesReady } from './realism-materials.js';
-import { buildPottingBenches, createThinGlazing, mergeStaticArchitecture, timberUV } from './realism-architecture.js';
+import { createScannedMetalMaterial, createScannedWoodMaterial, createScannedGroundMaterial, createScannedPotMaterial, createScannedSoilMaterial, texturesReady } from './realism-materials.js';
+import { buildPottingBenches, createThinGlazing, mergeStaticArchitecture, timberUV, metalUV } from './realism-architecture.js';
 import { createBotanicalEnvironment, createBotanicalLeafGeometry, createBotanicalLeafMaterial, texturesReady as botanicalTexturesReady } from './realism-botany.js';
 import { PlantBatches } from './plant-batches.js';
 import { FrameProfiler } from './frame-profiler.js';
 import { warmRenderer } from './warm-renderer.js';
-import { createWoodlandGroundGeometry } from './realism-terrain.js';
+import { createWoodlandGroundGeometry, applyWoodlandGroundTransition } from './realism-terrain.js';
+import { createWoodlandUnderstory } from './realism-understory.js';
+import { createFlowerPrototype } from './realism-flowers.js';
 
 // This separate QA route never reads or writes the user's tasks.
 const benchmarkMode = new URLSearchParams(location.search).get('benchmark') === '1';
@@ -29,6 +31,7 @@ let lastDecayUpdate = -Infinity, lastHoverUpdate = -Infinity;
 let frameProfiler = null;
 let woodlandMap = null, woodlandEnvRT = null;
 let woodlandReady = Promise.resolve({ loaded: [], failed: [] });
+let woodlandFloorTransition = null;
 const frameMetrics = { cpuMs: 0, calls: 0, triangles: 0, pixelRatio: 1, frameMs: 0 };
 const slowFrames = [];
 const quality = { pixelRatio: Math.min(window.devicePixelRatio || 1, 1) };
@@ -346,6 +349,9 @@ function vinesFor() {
 
 function setupScene() {
     scene = new THREE.Scene();
+    // The scene transform is identity and never moves. Re-composing it every
+    // renderer pass forces r160 to update even our frozen, hidden task trees.
+    scene.matrixAutoUpdate = false;
     scene.fog = new THREE.FogExp2(0xc8dfee, 0.005); // soft humid haze
 }
 
@@ -1078,7 +1084,7 @@ function init() {
 }
 
 function loadWoodlandEnvironment() {
-    const url = new URL('./assets/environment/forest_slope_2k.hdr', import.meta.url).href;
+    const url = new URL('./assets/environment/forest_slope_4k.hdr', import.meta.url).href;
     return new Promise(resolve => {
         let settled = false;
         const failed = reason => {
@@ -1087,7 +1093,8 @@ function loadWoodlandEnvironment() {
             clearTimeout(timer);
             resolve({ loaded: [], failed: [{ url, reason }] });
         };
-        const timer = setTimeout(() => failed('Woodland HDR exceeded 30 seconds; using analytic sky.'), 30000);
+        // The 4K source is 29.8 MB: a valid 5 Mbps transfer alone needs ~48 s.
+        const timer = setTimeout(() => failed('Woodland HDR exceeded 120 seconds; using analytic sky.'), 120000);
         new RGBELoader().load(url, texture => {
             if (settled) { texture.dispose(); return; }
             settled = true;
@@ -1095,6 +1102,8 @@ function loadWoodlandEnvironment() {
             texture.mapping = THREE.EquirectangularReflectionMapping;
             woodlandMap = texture;
             woodlandEnvRT = pmremGen.fromEquirectangular(texture);
+            const floor = scene.getObjectByName('Scanned woodland earth');
+            if (floor) woodlandFloorTransition = applyWoodlandGroundTransition(floor.material, texture);
             updateSunAndLighting();
             resolve({ loaded: [url], failed: [] });
         }, undefined, () => failed('Woodland HDR could not load; using analytic sky.'));
@@ -1515,75 +1524,9 @@ function getRoofGlassMaterial() {
     return sharedAssets.roofGlass ||= createThinGlazing(true);
 }
 
-// Verdigris (oxidized) copper — patinated greenish-blue with mottled texture
-function getCopperMaterial() {
-    if (sharedAssets.copper) return sharedAssets.copper;
-    const SIZE = 256;
-
-    const colorCanvas = document.createElement('canvas');
-    colorCanvas.width = colorCanvas.height = SIZE;
-    const ctx = colorCanvas.getContext('2d');
-    // Base verdigris green
-    ctx.fillStyle = '#5a9b80';
-    ctx.fillRect(0, 0, SIZE, SIZE);
-    // Patina patches — varying greens and blues
-    for (let i = 0; i < 350; i++) {
-        const r = 60 + Math.random() * 50;
-        const g = 130 + Math.random() * 70;
-        const b = 100 + Math.random() * 60;
-        ctx.fillStyle = `rgba(${r|0},${g|0},${b|0},${0.25 + Math.random() * 0.45})`;
-        ctx.beginPath();
-        ctx.arc(Math.random() * SIZE, Math.random() * SIZE, 3 + Math.random() * 12, 0, Math.PI * 2);
-        ctx.fill();
-    }
-    // Exposed copper streaks (warmer reddish-brown)
-    for (let i = 0; i < 40; i++) {
-        const r = 140 + Math.random() * 60;
-        const g = 80 + Math.random() * 30;
-        const b = 40 + Math.random() * 20;
-        ctx.fillStyle = `rgba(${r|0},${g|0},${b|0},${0.35 + Math.random() * 0.35})`;
-        ctx.beginPath();
-        ctx.arc(Math.random() * SIZE, Math.random() * SIZE, 1.5 + Math.random() * 4, 0, Math.PI * 2);
-        ctx.fill();
-    }
-    // Dark crevices
-    for (let i = 0; i < 200; i++) {
-        ctx.fillStyle = `rgba(20,40,30,${0.15 + Math.random() * 0.25})`;
-        ctx.fillRect(Math.random() * SIZE, Math.random() * SIZE, 1 + Math.random() * 2, 1 + Math.random() * 2);
-    }
-    const colorTex = new THREE.CanvasTexture(colorCanvas);
-    colorTex.colorSpace = THREE.SRGBColorSpace;
-    colorTex.wrapS = colorTex.wrapT = THREE.RepeatWrapping;
-
-    // Bumpy patina surface
-    const heightCanvas = document.createElement('canvas');
-    heightCanvas.width = heightCanvas.height = SIZE;
-    const hctx = heightCanvas.getContext('2d');
-    hctx.fillStyle = '#808080';
-    hctx.fillRect(0, 0, SIZE, SIZE);
-    for (let i = 0; i < 300; i++) {
-        const grey = 80 + Math.random() * 130;
-        hctx.fillStyle = `rgb(${grey|0},${grey|0},${grey|0})`;
-        hctx.beginPath();
-        hctx.arc(Math.random() * SIZE, Math.random() * SIZE, 2 + Math.random() * 6, 0, Math.PI * 2);
-        hctx.fill();
-    }
-    const normalTex = makeNormalMapFromCanvas(heightCanvas, 5);
-    normalTex.wrapS = normalTex.wrapT = THREE.RepeatWrapping;
-
-    sharedAssets.copper = new THREE.MeshPhysicalMaterial({
-        map: colorTex,
-        normalMap: normalTex,
-        normalScale: new THREE.Vector2(1, 1),
-        color: 0xb0d8c0,
-        roughness: 0.55,
-        metalness: 0.35,
-        envMapIntensity: 0.85,
-        sheen: 0.25,
-        sheenColor: new THREE.Color(0x9adfba),
-        sheenRoughness: 0.7
-    });
-    return sharedAssets.copper;
+// Scanned corrosion and real metallic coverage on the glazing bars.
+function getGlazingFrameMaterial() {
+    return sharedAssets.glazingFrame ||= createScannedMetalMaterial(renderer);
 }
 
 // Edison-style bulb glass with controllable emissive (off during day, glowing at night)
@@ -3925,391 +3868,41 @@ function buildClutter() {
     scene.add(stains);
 }
 
-// --- Flower variants (one is randomly chosen per completed todo) ---
-
+// Permanent saved species indices: daisy, sunflower, rose, tulip, hydrangea.
 const NUM_FLOWER_VARIANTS = 5;
 
-// Curved, cupped petal geometry: base at origin extending +Y, edges cupping
-// toward +Z (concave inner face), tip curling toward -Z. Dense segments so the
-// silhouette reads organic instead of polygonal. `curl` < 0 wraps the tip
-// inward instead (rose hearts, tulip cups).
-function makeRealisticPetal(width, length, opts = {}) {
-    const {
-        cup = 0.4,        // edge lift across the width
-        curl = 0.45,      // tip bend along the length (negative = inward)
-        tipShape = 1.0,   // >1 pointier tip, <1 rounder
-        baseWidth = 0.3   // fraction of width kept at the very base
-    } = opts;
-    const geom = new THREE.PlaneGeometry(width, length, 8, 14);
-    geom.translate(0, length / 2, 0);
-    const pos = geom.attributes.position;
-    const halfW = width / 2;
-    for (let i = 0; i < pos.count; i++) {
-        const x = pos.getX(i);
-        const y = pos.getY(i);
-        const t = THREE.MathUtils.clamp(y / length, 0, 1);
-        const profile = Math.pow(Math.sin(t * Math.PI), tipShape) * (1 - baseWidth) + baseWidth;
-        const nx = x * profile;
-        pos.setX(i, nx);
-        const cupZ = cup * Math.pow(Math.abs(nx) / halfW, 2) * halfW;
-        const curlZ = -curl * t * t * length * 0.45;
-        // faint lengthwise mid-vein crease
-        const crease = -0.12 * (1 - Math.abs(nx) / halfW) * halfW * Math.sin(t * Math.PI);
-        pos.setZ(i, cupZ + curlZ + crease);
-    }
-    geom.computeVertexNormals();
-    return geom;
-}
-
-// Bake a base→tip color gradient into the petal's vertices. Real petals are
-// never one flat color — the base sits deeper/greener and the tip carries the
-// display color. Used with vertexColors materials; survives geometry cloning
-// and merging, so the gradient costs nothing per flower.
-function applyPetalGradient(geom, baseHex, tipHex) {
-    const base = new THREE.Color(baseHex);
-    const tip = new THREE.Color(tipHex);
-    const pos = geom.attributes.position;
-    // Petal extends 0..length along +Y; find length from the geometry itself
-    let maxY = 0;
-    for (let i = 0; i < pos.count; i++) maxY = Math.max(maxY, pos.getY(i));
-    const colors = new Float32Array(pos.count * 3);
-    const c = new THREE.Color();
-    for (let i = 0; i < pos.count; i++) {
-        const t = THREE.MathUtils.clamp(pos.getY(i) / maxY, 0, 1);
-        c.copy(base).lerp(tip, Math.pow(t, 0.75));
-        colors[i * 3 + 0] = c.r;
-        colors[i * 3 + 1] = c.g;
-        colors[i * 3 + 2] = c.b;
-    }
-    geom.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-    return geom;
-}
-
-// Matte organic petal material with velvety sheen — no emissive glow. Petals
-// should catch light like tissue, not radiate like plastic toys.
-function makePetalMaterial(hex, opts = {}) {
-    const { rough = 0.55, sheen = 0.5, clearcoat = 0, vertexColors = false } = opts;
-    return new THREE.MeshPhysicalMaterial({
-        color: hex,
-        vertexColors,
-        roughness: rough,
-        metalness: 0,
-        sheen,
-        sheenColor: new THREE.Color(0xffffff),
-        sheenRoughness: 0.6,
-        clearcoat,
-        clearcoatRoughness: 0.35,
-        side: THREE.DoubleSide,
-        envMapIntensity: 0.45
-    });
-}
-
-// Place a petal: ring rotation -> radial/height offset -> outward tilt -> roll
-// -> scale. Tilt is "outward lean" (0 = vertical, ~1.4 = nearly flat); the
-// rotation signs keep the cupped (concave) face toward the flower center.
-const _petalM = new THREE.Matrix4();
-const _petalTmp = new THREE.Matrix4();
-function petalMatrix(ringAngle, tilt, y, radial, scale, roll = 0) {
-    _petalM.makeRotationY(ringAngle);
-    _petalTmp.makeTranslation(0, y, -radial); _petalM.multiply(_petalTmp);
-    _petalTmp.makeRotationX(-tilt); _petalM.multiply(_petalTmp);
-    if (roll) { _petalTmp.makeRotationZ(roll); _petalM.multiply(_petalTmp); }
-    if (scale !== 1) { _petalTmp.makeScale(scale, scale, scale); _petalM.multiply(_petalTmp); }
-    return _petalM;
-}
-
-// One whorl of petals with natural per-petal jitter, appended pre-transformed
-// to `list` for merging into a single draw call per material.
-function addPetalRing(list, petalGeom, count, { tilt, y = 0, radial = 0, scale = 1, phase = 0, jitter = 0.12 }) {
-    for (let i = 0; i < count; i++) {
-        const g = petalGeom.clone();
-        g.applyMatrix4(petalMatrix(
-            (i / count) * Math.PI * 2 + phase + (Math.random() - 0.5) * jitter,
-            tilt + (Math.random() - 0.5) * jitter,
-            y, radial,
-            scale * (0.9 + Math.random() * 0.2),
-            (Math.random() - 0.5) * jitter * 1.5
-        ));
-        list.push(g);
-    }
-}
-
-// Sunflower-style phyllotaxis spiral over a slightly domed disc.
-function addPhyllotaxis(list, srcGeom, count, radius, { y = 0, dome = 0.25, scaleMin = 0.8, scaleMax = 1.2 } = {}) {
-    const golden = Math.PI * (3 - Math.sqrt(5));
-    for (let i = 0; i < count; i++) {
-        const r = radius * Math.sqrt((i + 0.5) / count);
-        const a = i * golden;
-        const g = srcGeom.clone();
-        const s = scaleMin + Math.random() * (scaleMax - scaleMin);
-        _petalM.makeTranslation(
-            Math.cos(a) * r,
-            y + dome * radius * (1 - (r / radius) * (r / radius)),
-            Math.sin(a) * r
-        );
-        _petalTmp.makeScale(s, s, s);
-        _petalM.multiply(_petalTmp);
-        g.applyMatrix4(_petalM);
-        list.push(g);
-    }
-}
-
-// Green calyx (sepal star) tucked under every bloom so it joins the stem.
-function getCalyxAssets() {
-    if (sharedAssets.calyx) return sharedAssets.calyx;
-    sharedAssets.calyx = {
-        geom: applyPetalGradient(
-            makeRealisticPetal(0.018, 0.034, { cup: 0.3, curl: 0.7, tipShape: 1.6, baseWidth: 0.5 }),
-            0x29401e, 0x5f8042
-        ),
-        mat: new THREE.MeshPhysicalMaterial({
-            color: 0xffffff, vertexColors: true, roughness: 0.7, metalness: 0,
-            sheen: 0.3, sheenColor: new THREE.Color(0xa8c890), sheenRoughness: 0.6,
-            side: THREE.DoubleSide, envMapIntensity: 0.4
-        })
-    };
-    return sharedAssets.calyx;
-}
-
-function buildCalyx(scale = 1) {
-    const a = getCalyxAssets();
-    const parts = [];
-    addPetalRing(parts, a.geom, 5, { tilt: 1.45, y: 0.002, radial: 0.004, scale });
-    return new THREE.Mesh(mergeGeometries(parts), a.mat);
-}
-
-function getDaisyAssets() {
-    if (sharedAssets.daisy) return sharedAssets.daisy;
-    const baseGeom = new THREE.SphereGeometry(0.02, 12, 8);
-    baseGeom.scale(1, 0.45, 1);
-    sharedAssets.daisy = {
-        petalGeom: applyPetalGradient(
-            makeRealisticPetal(0.018, 0.066, { cup: 0.25, curl: 0.3, tipShape: 0.8, baseWidth: 0.35 }),
-            0xcdbf94, 0xfbf8ef
-        ),
-        petalMat: makePetalMaterial(0xffffff, { rough: 0.6, sheen: 0.55, vertexColors: true }),
-        floretGeom: new THREE.SphereGeometry(0.0032, 5, 4),
-        floretMat: new THREE.MeshPhysicalMaterial({ color: 0xc8860f, roughness: 0.85, metalness: 0 }),
-        baseGeom,
-        baseMat: new THREE.MeshPhysicalMaterial({ color: 0x6e7e2e, roughness: 0.8, metalness: 0 })
-    };
-    return sharedAssets.daisy;
-}
-
-function buildFlower_Daisy() {
-    const a = getDaisyAssets();
-    const group = new THREE.Group();
-    // Disc florets — a true 3D dome of tiny florets, not a painted ball
-    const florets = [];
-    addPhyllotaxis(florets, a.floretGeom, 60, 0.0205, { y: 0.012, dome: 0.45 });
-    group.add(new THREE.Mesh(mergeGeometries(florets), a.floretMat));
-    const base = new THREE.Mesh(a.baseGeom, a.baseMat);
-    base.position.y = 0.008;
-    group.add(base);
-    // Two offset whorls of white ray petals with a relaxed droop
-    const petals = [];
-    addPetalRing(petals, a.petalGeom, 18, { tilt: 1.42, y: 0.012, radial: 0.012 });
-    addPetalRing(petals, a.petalGeom, 14, { tilt: 1.26, y: 0.014, radial: 0.010, scale: 0.85, phase: 0.22 });
-    group.add(new THREE.Mesh(mergeGeometries(petals), a.petalMat));
-    group.add(buildCalyx(1.1));
-    return group;
-}
-
-function getSunflowerAssets() {
-    if (sharedAssets.sunflower) return sharedAssets.sunflower;
-    const discGeom = new THREE.SphereGeometry(0.043, 16, 10);
-    discGeom.scale(1, 0.32, 1);
-    sharedAssets.sunflower = {
-        discGeom,
-        discMat: new THREE.MeshPhysicalMaterial({ color: 0x3a2210, roughness: 0.95, metalness: 0 }),
-        seedGeom: new THREE.ConeGeometry(0.0028, 0.006, 5),
-        seedMat: new THREE.MeshPhysicalMaterial({ color: 0x1c0f06, roughness: 1, metalness: 0 }),
-        petalGeom: applyPetalGradient(
-            makeRealisticPetal(0.02, 0.085, { cup: 0.3, curl: 0.35, tipShape: 1.5, baseWidth: 0.25 }),
-            0x8a4206, 0xf2b322
-        ),
-        petalMat: makePetalMaterial(0xffffff, { rough: 0.55, sheen: 0.45, vertexColors: true }),
-        innerPetalMat: makePetalMaterial(0xc89058, { rough: 0.55, sheen: 0.45, vertexColors: true })
-    };
-    return sharedAssets.sunflower;
-}
-
-function buildFlower_Sunflower() {
-    const a = getSunflowerAssets();
-    const group = new THREE.Group();
-    const disc = new THREE.Mesh(a.discGeom, a.discMat);
-    disc.position.y = 0.012;
-    group.add(disc);
-    // Seed head — phyllotaxis spiral of tiny cones, like a real sunflower disc
-    const seeds = [];
-    addPhyllotaxis(seeds, a.seedGeom, 110, 0.04, { y: 0.018, dome: 0.32 });
-    group.add(new THREE.Mesh(mergeGeometries(seeds), a.seedMat));
-    const outer = [];
-    addPetalRing(outer, a.petalGeom, 21, { tilt: 1.38, y: 0.012, radial: 0.04 });
-    group.add(new THREE.Mesh(mergeGeometries(outer), a.petalMat));
-    const inner = [];
-    addPetalRing(inner, a.petalGeom, 16, { tilt: 1.18, y: 0.016, radial: 0.036, scale: 0.8, phase: 0.15 });
-    group.add(new THREE.Mesh(mergeGeometries(inner), a.innerPetalMat));
-    group.add(buildCalyx(1.7));
-    return group;
-}
-
-function getRoseAssets() {
-    if (sharedAssets.rose) return sharedAssets.rose;
-    sharedAssets.rose = {
-        // Inner petals wrap inward (negative curl) into the classic spiral heart;
-        // outer petals relax and roll back outward.
-        innerGeom: applyPetalGradient(
-            makeRealisticPetal(0.03, 0.042, { cup: 0.9, curl: -0.5, tipShape: 0.7, baseWidth: 0.55 }),
-            0x2c0206, 0x6e0c1a
-        ),
-        midGeom: applyPetalGradient(
-            makeRealisticPetal(0.042, 0.055, { cup: 0.75, curl: -0.15, tipShape: 0.75, baseWidth: 0.5 }),
-            0x42040e, 0x9c1830
-        ),
-        outerGeom: applyPetalGradient(
-            makeRealisticPetal(0.055, 0.062, { cup: 0.55, curl: 0.4, tipShape: 0.8, baseWidth: 0.45 }),
-            0x560818, 0xc04060
-        ),
-        innerMat: makePetalMaterial(0xffffff, { rough: 0.5, sheen: 0.6, vertexColors: true }),
-        midMat:   makePetalMaterial(0xffffff, { rough: 0.5, sheen: 0.6, vertexColors: true }),
-        outerMat: makePetalMaterial(0xffffff, { rough: 0.5, sheen: 0.6, vertexColors: true })
-    };
-    return sharedAssets.rose;
-}
-
-function buildFlower_Rose() {
-    const a = getRoseAssets();
-    const group = new THREE.Group();
-    const inner = [];
-    addPetalRing(inner, a.innerGeom, 4,  { tilt: 0.18, y: 0.020, radial: 0.002, scale: 0.8, jitter: 0.2 });
-    addPetalRing(inner, a.innerGeom, 6,  { tilt: 0.45, y: 0.016, radial: 0.006, phase: 0.5, jitter: 0.18 });
-    group.add(new THREE.Mesh(mergeGeometries(inner), a.innerMat));
-    const mid = [];
-    addPetalRing(mid, a.midGeom, 8,  { tilt: 0.78, y: 0.012, radial: 0.009, phase: 0.2 });
-    addPetalRing(mid, a.midGeom, 11, { tilt: 1.05, y: 0.008, radial: 0.012, scale: 1.08, phase: 0.65 });
-    group.add(new THREE.Mesh(mergeGeometries(mid), a.midMat));
-    const outer = [];
-    addPetalRing(outer, a.outerGeom, 14, { tilt: 1.32, y: 0.004, radial: 0.014, phase: 0.35 });
-    group.add(new THREE.Mesh(mergeGeometries(outer), a.outerMat));
-    group.add(buildCalyx(1.3));
-    return group;
-}
-
-function getTulipAssets() {
-    if (sharedAssets.tulip) return sharedAssets.tulip;
-    sharedAssets.tulip = {
-        petalGeom: applyPetalGradient(
-            makeRealisticPetal(0.038, 0.082, { cup: 0.85, curl: -0.25, tipShape: 1.2, baseWidth: 0.55 }),
-            0xe6d2b4, 0xa22850 // pale waxy base flaring into the deep tip — classic tulip
-        ),
-        // Waxy tulip petals — a touch of clearcoat for that glossy skin
-        outerMat: makePetalMaterial(0xffffff, { rough: 0.45, sheen: 0.4, clearcoat: 0.5, vertexColors: true }),
-        innerMat: makePetalMaterial(0xffe2ea, { rough: 0.45, sheen: 0.4, clearcoat: 0.5, vertexColors: true }),
-        stamenGeom: new THREE.CylinderGeometry(0.0028, 0.0024, 0.05, 5),
-        anther: new THREE.CapsuleGeometry(0.0034, 0.008, 3, 6),
-        stamenMat: new THREE.MeshPhysicalMaterial({ color: 0x2c2418, roughness: 0.8, metalness: 0 })
-    };
-    return sharedAssets.tulip;
-}
-
-function buildFlower_Tulip() {
-    const a = getTulipAssets();
-    const group = new THREE.Group();
-    const outer = [];
-    addPetalRing(outer, a.petalGeom, 3, { tilt: 0.42, y: 0.0, radial: 0.012, jitter: 0.08 });
-    group.add(new THREE.Mesh(mergeGeometries(outer), a.outerMat));
-    const inner = [];
-    addPetalRing(inner, a.petalGeom, 3, { tilt: 0.28, y: 0.002, radial: 0.008, phase: Math.PI / 3, scale: 0.94, jitter: 0.08 });
-    group.add(new THREE.Mesh(mergeGeometries(inner), a.innerMat));
-    const stamens = [];
-    for (let i = 0; i < 5; i++) {
-        const ang = (i / 5) * Math.PI * 2;
-        const stalk = a.stamenGeom.clone();
-        stalk.translate(Math.cos(ang) * 0.007, 0.028, Math.sin(ang) * 0.007);
-        stamens.push(stalk);
-        const tip = a.anther.clone();
-        tip.translate(Math.cos(ang) * 0.007, 0.056, Math.sin(ang) * 0.007);
-        stamens.push(tip);
-    }
-    group.add(new THREE.Mesh(mergeGeometries(stamens), a.stamenMat));
-    group.add(buildCalyx(1.0));
-    return group;
-}
-
-function getHydrangeaAssets() {
-    if (sharedAssets.hydrangea) return sharedAssets.hydrangea;
-    // One floret = four tiny cupped petals around a dot center — real geometry,
-    // merged per color into a mophead.
-    const floretPetal = applyPetalGradient(
-        makeRealisticPetal(0.016, 0.024, { cup: 0.25, curl: 0.15, tipShape: 0.7, baseWidth: 0.4 }),
-        0x9ab886, 0xf6f4ff // greenish heart fading to near-white; material tint sets the hue
-    );
-    const parts = [];
-    addPetalRing(parts, floretPetal, 4, { tilt: 1.2, y: 0, radial: 0.003, jitter: 0.18 });
-    const floretGeom = mergeGeometries(parts);
-    sharedAssets.hydrangea = {
-        floretGeom,
-        centerGeom: new THREE.SphereGeometry(0.0028, 5, 4),
-        centerMat: new THREE.MeshPhysicalMaterial({ color: 0xe8e2c0, roughness: 0.8, metalness: 0 }),
-        blueMat:   makePetalMaterial(0x8fa8d8, { rough: 0.6, sheen: 0.5, vertexColors: true }),
-        violetMat: makePetalMaterial(0xb09cd6, { rough: 0.6, sheen: 0.5, vertexColors: true }),
-        pinkMat:   makePetalMaterial(0xd8a0bc, { rough: 0.6, sheen: 0.5, vertexColors: true })
-    };
-    return sharedAssets.hydrangea;
-}
-
-function buildFlower_Hydrangea() {
-    const a = getHydrangeaAssets();
-    const lists = [[], [], []];
-    const centers = [];
-    const up = new THREE.Vector3(0, 1, 0);
-    const n = new THREE.Vector3();
-    const q = new THREE.Quaternion();
-    const m = new THREE.Matrix4();
-    const COUNT = 46, R = 0.052;
-    const golden = Math.PI * (3 - Math.sqrt(5));
-    for (let i = 0; i < COUNT; i++) {
-        const u = (i + 0.5) / COUNT;
-        const phi = Math.acos(1 - 1.05 * u); // upper cap of the sphere
-        const theta = i * golden;
-        n.set(Math.sin(phi) * Math.cos(theta), Math.cos(phi), Math.sin(phi) * Math.sin(theta));
-        q.setFromUnitVectors(up, n);
-        const s = 0.85 + Math.random() * 0.3;
-        m.compose(
-            new THREE.Vector3(n.x * R, n.y * R * 0.75 + 0.02, n.z * R),
-            q,
-            new THREE.Vector3(s, s, s)
-        );
-        const g = a.floretGeom.clone();
-        g.applyMatrix4(m);
-        lists[(i * 7) % 3].push(g);
-        const c = a.centerGeom.clone();
-        c.applyMatrix4(m);
-        centers.push(c);
-    }
-    const group = new THREE.Group();
-    [a.blueMat, a.violetMat, a.pinkMat].forEach((mat, idx) => {
-        if (lists[idx].length) group.add(new THREE.Mesh(mergeGeometries(lists[idx]), mat));
-    });
-    group.add(new THREE.Mesh(mergeGeometries(centers), a.centerMat));
-    group.add(buildCalyx(1.4));
-    return group;
-}
-
 function buildFlowerByVariant(variantIdx) {
-    const v = ((variantIdx | 0) % NUM_FLOWER_VARIANTS + NUM_FLOWER_VARIANTS) % NUM_FLOWER_VARIANTS;
-    sharedAssets.flowerPrototypes ||= new Map();
-    if (!sharedAssets.flowerPrototypes.has(v)) {
-        const builders = [buildFlower_Daisy, buildFlower_Sunflower, buildFlower_Rose, buildFlower_Tulip, buildFlower_Hydrangea];
-        const prototype = builders[v]();
-        prototype.traverse(mesh => {
-            if (mesh.geometry) mesh.geometry.userData.shared = true;
-            if (mesh.material) mesh.material.userData.shared = true;
-        });
-        sharedAssets.flowerPrototypes.set(v, prototype);
+    return createFlowerPrototype(variantIdx);
+}
+
+function addFlowerFoliage(stem, variantIdx, positionIndex, stemMaterial) {
+    const variant = ((variantIdx | 0) % 5 + 5) % 5;
+    const tulip = variant === 3;
+    const length = tulip ? .23 : .14;
+    const width = tulip ? .052 : variant === 4 ? .092 : .066;
+    const geometry = sharedGeometry(`flower-leaf-${variant}`, () =>
+        createBotanicalLeafGeometry(width, length, 317 + variant * 13));
+    if (!sharedLeafMat) sharedLeafMat = createBotanicalLeafMaterial();
+    const leafMaterial = sharedLeafMat.clone();
+    const petioleGeometry = sharedGeometry('flower-leaf-petiole', () =>
+        new THREE.CylinderGeometry(.0011, .0017, .02, 6).translate(0, .01, 0));
+    const count = tulip ? 3 : variant === 4 ? 6 : 5;
+    const turn = slotRandom(positionIndex, 241) * Math.PI * 2;
+    for (let i = 0; i < count; i++) {
+        const branch = new THREE.Group();
+        branch.position.y = .022 + i * (tulip ? .025 : .022);
+        branch.rotation.set(.10, turn + i * 2.40, tulip ? -.42 - i * .13 : -.86 - i * .065);
+        branch.scale.setScalar((tulip ? 1 : .93 - i * .06)
+            * (.92 + slotRandom(positionIndex, 250 + i) * .16));
+        const petiole = new THREE.Mesh(petioleGeometry, stemMaterial);
+        const leaf = new THREE.Mesh(geometry, leafMaterial);
+        leaf.position.y = .02 + length * .5;
+        leaf.rotation.y = (slotRandom(positionIndex, 260 + i) - .5) * .32;
+        leaf.name = 'Flowering plant leaf';
+        petiole.castShadow = petiole.receiveShadow = leaf.castShadow = leaf.receiveShadow = true;
+        branch.add(petiole, leaf);
+        stem.add(branch);
     }
-    return sharedAssets.flowerPrototypes.get(v).clone(true);
 }
 
 function createLeafGeometry(variant = 0) {
@@ -4400,6 +3993,7 @@ function buildGreenhouse() {
     floor.name = "Scanned woodland earth";
     floor.receiveShadow = true;
     scene.add(floor);
+    createWoodlandUnderstory(scene);
 
     buildPottingBenches(scene, renderer);
     const numTables = 10;
@@ -4408,7 +4002,7 @@ function buildGreenhouse() {
     // Greenhouse Structure
     const glassMat = getWallGlassMaterial();
     const roofGlassMat = getRoofGlassMaterial();
-    const copperMat = getCopperMaterial();
+    const glazingFrameMat = getGlazingFrameMaterial();
 
     const ghGroup = new THREE.Group();
 
@@ -4548,7 +4142,7 @@ function buildGreenhouse() {
     for (let i = 0; i <= longPanes; i++) {
         const z = -45 + (totalLength / longPanes) * i;
         for (const x of [-halfWidth - 0.04, halfWidth + 0.04]) {
-            const m = new THREE.Mesh(longMullionGeom, copperMat);
+            const m = new THREE.Mesh(longMullionGeom, glazingFrameMat);
             m.position.set(x, wallTopY - wallHeight / 2, z);
             m.userData.detail = true;
             ghGroup.add(m);
@@ -4561,13 +4155,13 @@ function buildGreenhouse() {
     for (let i = 0; i <= shortPanes; i++) {
         const x = -halfWidth + (totalWidth / shortPanes) * i;
         // Front wall (z = -45)
-        const fm = new THREE.Mesh(shortMullionGeom, copperMat);
+        const fm = new THREE.Mesh(shortMullionGeom, glazingFrameMat);
         fm.position.set(x, wallTopY - wallHeight / 2, -45 - 0.04);
         fm.userData.detail = true;
         ghGroup.add(fm);
         // Back wall (z = 5) — skip if mullion would land in the door gap
         if (Math.abs(x) > 1.05) {
-            const bm = new THREE.Mesh(shortMullionGeom, copperMat);
+            const bm = new THREE.Mesh(shortMullionGeom, glazingFrameMat);
             bm.position.set(x, wallTopY - wallHeight / 2, 5 + 0.04);
             bm.userData.detail = true;
             ghGroup.add(bm);
@@ -4578,14 +4172,14 @@ function buildGreenhouse() {
     const midY = wallTopY - wallHeight / 2;
     const longRailGeom = new THREE.BoxGeometry(mullionDepth, mullionThickness, totalLength);
     for (const x of [-halfWidth - 0.04, halfWidth + 0.04]) {
-        const rail = new THREE.Mesh(longRailGeom, copperMat);
+        const rail = new THREE.Mesh(longRailGeom, glazingFrameMat);
         rail.position.set(x, midY, zCenter);
         rail.userData.detail = true;
         ghGroup.add(rail);
     }
     const frontRail = new THREE.Mesh(
         new THREE.BoxGeometry(totalWidth, mullionThickness, mullionDepth),
-        copperMat
+        glazingFrameMat
     );
     frontRail.position.set(0, midY, -45 - 0.04);
     frontRail.userData.detail = true;
@@ -4594,17 +4188,17 @@ function buildGreenhouse() {
     // Cap rail at top of glass walls (along all four walls) — copper
     const longCapGeom = new THREE.BoxGeometry(0.12, 0.1, totalLength);
     for (const x of [-halfWidth, halfWidth]) {
-        const cap = new THREE.Mesh(longCapGeom, copperMat);
+        const cap = new THREE.Mesh(longCapGeom, glazingFrameMat);
         cap.position.set(x, wallTopY, zCenter);
         cap.userData.detail = true;
         ghGroup.add(cap);
     }
     const shortCapGeom = new THREE.BoxGeometry(totalWidth, 0.1, 0.12);
-    const frontCap = new THREE.Mesh(shortCapGeom, copperMat);
+    const frontCap = new THREE.Mesh(shortCapGeom, glazingFrameMat);
     frontCap.position.set(0, wallTopY, -45);
     frontCap.userData.detail = true;
     ghGroup.add(frontCap);
-    const backCap = new THREE.Mesh(shortCapGeom, copperMat);
+    const backCap = new THREE.Mesh(shortCapGeom, glazingFrameMat);
     backCap.position.set(0, wallTopY, 5);
     backCap.userData.detail = true;
     ghGroup.add(backCap);
@@ -5008,6 +4602,7 @@ function buildGreenhouse() {
         const isDetail = obj.userData.detail === true;
         const isGlass = obj.material === glassMat || obj.material === roofGlassMat;
         if (obj.material === woodMat || obj.material === rafterMat) timberUV(obj.geometry);
+        if (obj.material === glazingFrameMat) metalUV(obj.geometry);
         obj.castShadow = !isDetail && !isGlass;
         obj.receiveShadow = !isDetail;
     });
@@ -5720,10 +5315,11 @@ function createPlant(todoData, isLoad = false) {
         flower.position.y = stemHeight + 0.015;
         flower.scale.setScalar(1.7);
         stem.add(flower);
+        addFlowerFoliage(stem, variantIdx, positionIndex, plantMat);
 
         // Slight bend
         stem.rotation.x = Math.PI / 14;
-        stem.rotation.z = (Math.random() - 0.5) * 0.12;
+        stem.rotation.z = (slotRandom(positionIndex, 240) - 0.5) * 0.12;
     } else {
         // Shorter thinner stem for growing plants too.
         const stemHeight = 0.35;
@@ -6402,6 +5998,7 @@ function updateSunAndLighting() {
     if (woodlandMap) {
         scene.background = woodlandMap;
         scene.backgroundIntensity = 0.72 * dayness + 0.006 * nightness;
+        woodlandFloorTransition?.setIntensity(scene.backgroundIntensity);
         scene.backgroundBlurriness = 0;
     }
     placeNightSky(now, nightness);

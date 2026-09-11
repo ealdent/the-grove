@@ -3,7 +3,7 @@ import * as THREE from 'three';
 // Original CC0 photographs/scans, vendored unchanged. See assets/MATERIALS.md
 // and assets/materials/planter_pot_clay/README.md for the pot/soil additions.
 const DEFINITIONS = {
-    wood: { asset: 'weathered_planks', fallback: 0x827467, normalScale: 0.5, tileMeters: 2 },
+    wood: { asset: 'weathered_planks', resolution: '2k', fallback: 0x827467, normalScale: 0.5, tileMeters: 2 },
     ground: { asset: 'brown_mud_02', fallback: 0x4d4437, tint: 0xb7a889, normalScale: 0.65, tileMeters: 1.3 },
     pot: {
         asset: 'planter_pot_clay', fallback: 0xa56d51, normalScale: 0.35,
@@ -14,15 +14,21 @@ const DEFINITIONS = {
         asset: 'brown_mud_02', fallback: 0x30251c, tint: 0x59442e, normalScale: 0.8,
         tileMeters: 1.3, detailTileMeters: 0.25, offset: [-0.3, -0.3],
     },
+    metal: {
+        asset: 'rusty_metal_05', fallback: 0x57574d, normalScale: .22, tileMeters: 1.3,
+        metalness: 1,
+        channels: { map: 'diff', normalMap: 'nor_gl', roughnessMap: 'arm', metalnessMap: 'arm' },
+    },
 };
 const CHANNELS = { map: 'diff', normalMap: 'nor_gl', roughnessMap: 'rough' };
 const loader = new THREE.TextureLoader();
 const sources = new Map();
 const pendingMaterials = new Set();
-const LOAD_TIMEOUT_MS = 30000;
+// Allow the 2K maps to finish alongside the 29.8 MB environment on slower links.
+const LOAD_TIMEOUT_MS = 90000;
 
-function loadSource(asset, channel) {
-    const url = new URL(`./assets/materials/${asset}/${asset}_${channel}_1k.jpg`, import.meta.url).href;
+function loadSource(asset, channel, resolution = '1k') {
+    const url = new URL(`./assets/materials/${asset}/${asset}_${channel}_${resolution}.jpg`, import.meta.url).href;
     if (sources.has(url)) return sources.get(url).promise;
 
     const record = { url, status: 'loading', error: null, promise: null };
@@ -43,7 +49,7 @@ function loadSource(asset, channel) {
             if (!loaded) texture?.dispose();
             resolve(loaded);
         };
-        const timer = setTimeout(() => finish(null, 'Texture load exceeded 30 seconds'), LOAD_TIMEOUT_MS);
+        const timer = setTimeout(() => finish(null, 'Texture load exceeded 90 seconds'), LOAD_TIMEOUT_MS);
         try {
             texture = loader.load(url, loaded => finish(loaded), undefined,
                 () => finish(null, 'Texture could not be loaded or decoded'));
@@ -67,7 +73,7 @@ function createMaterial(kind, renderer, repeat) {
     const material = new THREE.MeshStandardMaterial({
         color: definition.fallback,
         roughness: definition.uniformRoughness ?? 0.95,
-        metalness: 0,
+        metalness: definition.metalness ?? 0,
         normalScale: new THREE.Vector2(definition.normalScale, definition.normalScale),
     });
     material.name = `Scanned ${definition.asset}`;
@@ -85,9 +91,9 @@ function createMaterial(kind, renderer, repeat) {
     });
 
     // Uniform matte clay keeps the stock shader compatible with PlantBatches.
-    const channels = Object.entries(CHANNELS).filter(([slot]) =>
+    const channels = Object.entries(definition.channels ?? CHANNELS).filter(([slot]) =>
         slot !== 'roughnessMap' || definition.uniformRoughness === undefined);
-    const ready = Promise.all(channels.map(([, channel]) => loadSource(definition.asset, channel)))
+    const ready = Promise.all(channels.map(([, channel]) => loadSource(definition.asset, channel, definition.resolution)))
         .then(loaded => {
             if (disposed) return;
             // Keep the complete neutral fallback if any map fails. Never bind an
@@ -130,6 +136,12 @@ function createMaterial(kind, renderer, repeat) {
  * A tile spans 2 m: use [1, 1.5] for a 2 x 3 m potting-bench top. */
 export function createScannedWoodMaterial(renderer, repeat = [1, 1]) {
     return createMaterial('wood', renderer, repeat);
+}
+
+/** Weathered steel: ARM green is roughness, blue is metallic coverage.
+ * Geometry UVs use physical metres divided by the scan's 1.3 m width. */
+export function createScannedMetalMaterial(renderer) {
+    return createMaterial('metal', renderer, [1, 1]);
 }
 
 /** Immediate soil material for the existing 200 x 200 m floor (1.3 m tiles).

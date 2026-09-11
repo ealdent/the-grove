@@ -14,6 +14,44 @@ function appFunction(name) {
     return match[0];
 }
 
+test('higher-detail HDR accepts a 48-second download and retains bounded failure cleanup', async () => {
+    function fixture() {
+        let callback, timeout, deadline, now = 0, sunUpdates = 0;
+        const context = vm.createContext({
+            URL, THREE,
+            setTimeout(fn, ms) { timeout = fn; deadline = now + ms; return 1; },
+            clearTimeout() { timeout = null; },
+            RGBELoader: class { load(url, loaded) { callback = loaded; } },
+            pmremGen: { fromEquirectangular: () => ({ texture: {} }) },
+            scene: { getObjectByName: () => null },
+            updateSunAndLighting() { sunUpdates++; },
+        });
+        vm.runInContext('let woodlandMap, woodlandEnvRT, woodlandFloorTransition;\n'
+            + appFunction('loadWoodlandEnvironment').replace('import.meta.url', '"https://example.test/app.js"'), context);
+        return {
+            load: () => context.loadWoodlandEnvironment(),
+            advance(ms) { now += ms; if (timeout && now >= deadline) timeout(); },
+            deliver(texture) { callback(texture); },
+            updates: () => sunUpdates,
+        };
+    }
+    const slow = fixture(), successful = slow.load();
+    slow.advance(48000);
+    const texture = { disposed: false, dispose() { this.disposed = true; } };
+    slow.deliver(texture);
+    assert.equal((await successful).failed.length, 0, '5 Mbps downloads must not be discarded at 30 seconds');
+    assert.equal(texture.disposed, false);
+    assert.equal(slow.updates(), 1);
+
+    const stalled = fixture(), failed = stalled.load();
+    stalled.advance(120001);
+    assert.equal((await failed).failed.length, 1);
+    const late = { disposed: false, dispose() { this.disposed = true; } };
+    stalled.deliver(late);
+    assert.equal(late.disposed, true);
+    assert.equal(stalled.updates(), 0);
+});
+
 for (const ready of [false, true]) {
     test(`disjoint discards all ${ready ? 'ready' : 'unavailable'} queries and recovers with a fresh sample`, () => {
         const ext = { GPU_DISJOINT_EXT: 1, TIME_ELAPSED_EXT: 2 };
