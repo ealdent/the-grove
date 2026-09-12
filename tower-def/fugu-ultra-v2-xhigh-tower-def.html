@@ -1,0 +1,3554 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<title>Needleward &mdash; Hold the Hole Until Help Comes</title>
+<meta name="description" content="A tower defense of the Great Coat. Five stitched notions, twenty-four courses of the Unpicking, and a new snag every game. No dependencies.">
+<style>
+/* ============================================================
+   NEEDLEWARD
+   A defense of the Great Coat.
+   Single file. No network requests. No dependencies.
+   ============================================================ */
+
+:root{
+  --soot:#0d0b09;
+  --walnut:#1e1712;
+  --walnut-2:#2a201a;
+  --walnut-3:#3a2c23;
+  --walnut-4:#4b382c;
+  --linen:#e7dcc4;
+  --bone:#f2ead9;
+  --bone-dim:#bfb298;
+  --brass:#c9a227;
+  --brass-2:#e6c65b;
+  --brass-dim:#7d6418;
+  --madder:#bf4436;
+  --indigo:#5a7fb5;
+  --verdigris:#4f9b7d;
+  --saffron:#e2a331;
+  --plum:#9a6392;
+  --ok:#77c493;
+  --bad:#d75648;
+  --warn:#e0a02c;
+  --serif: ui-serif, "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, "Times New Roman", serif;
+  --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  --sans: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --r: 3px;
+  --shadow: 0 10px 34px rgba(0,0,0,.55);
+}
+
+*{ margin:0; padding:0; box-sizing:border-box; }
+
+html,body{ height:100%; }
+
+body{
+  background:
+    radial-gradient(1200px 700px at 50% -10%, #35271e 0%, transparent 62%),
+    radial-gradient(900px 600px at 100% 110%, #241a14 0%, transparent 60%),
+    var(--walnut);
+  color:var(--bone);
+  font-family:var(--sans);
+  font-size:15px;
+  line-height:1.45;
+  -webkit-font-smoothing:antialiased;
+  -webkit-tap-highlight-color:transparent;
+  overflow-x:hidden;
+}
+
+/* faint woodgrain over the whole chrome */
+body::before{
+  content:"";
+  position:fixed; inset:0; pointer-events:none; z-index:0;
+  opacity:.32;
+  background-image:
+    repeating-linear-gradient(97deg, rgba(0,0,0,.22) 0 1px, transparent 1px 6px),
+    repeating-linear-gradient(93deg, rgba(255,225,180,.035) 0 1px, transparent 1px 13px);
+}
+
+button{ font:inherit; color:inherit; background:none; border:none; cursor:pointer; }
+button:disabled{ cursor:not-allowed; }
+:focus-visible{ outline:2px solid var(--brass-2); outline-offset:2px; }
+
+/* ---------------- layout shell ---------------- */
+
+.app{
+  position:relative; z-index:1;
+  display:grid;
+  grid-template-rows:auto 1fr;
+  gap:10px;
+  padding:10px;
+  max-width:1720px;
+  margin:0 auto;
+  min-height:100%;
+}
+
+@media (min-width:1001px){
+  html,body{ overflow:hidden; }
+  .app{ height:100dvh; height:100vh; }
+}
+
+/* ---------------- top bar ---------------- */
+
+.topbar{
+  display:flex; align-items:center; gap:14px; flex-wrap:wrap;
+  padding:9px 14px;
+  background:linear-gradient(180deg, var(--walnut-3), var(--walnut-2));
+  border:1px solid #0000;
+  border-image:none;
+  box-shadow: inset 0 1px 0 rgba(255,220,170,.10), inset 0 -1px 0 rgba(0,0,0,.5), var(--shadow);
+  border-radius:var(--r);
+}
+
+.brand{ display:flex; align-items:center; gap:11px; min-width:0; }
+.brand svg{ width:34px; height:34px; flex:0 0 auto; filter:drop-shadow(0 2px 4px rgba(0,0,0,.6)); }
+.brand h1{
+  font-family:var(--serif); font-size:1.28rem; font-weight:600;
+  letter-spacing:.22em; color:var(--bone); line-height:1;
+  text-transform:uppercase; white-space:nowrap;
+}
+.brand p{
+  font-family:var(--serif); font-style:italic; font-size:.74rem;
+  color:var(--bone-dim); opacity:.75; margin-top:3px; white-space:nowrap;
+}
+
+.gauges{ display:flex; gap:8px; margin-left:auto; flex-wrap:wrap; }
+
+.gauge{
+  display:flex; align-items:center; gap:8px;
+  padding:5px 11px 5px 9px;
+  background:linear-gradient(180deg, rgba(0,0,0,.34), rgba(0,0,0,.16));
+  border:1px solid rgba(201,162,39,.22);
+  border-radius:var(--r);
+  min-width:104px;
+}
+.gauge .ico{ width:19px; height:19px; flex:0 0 auto; opacity:.95; }
+.gauge .lab{
+  font-size:.56rem; letter-spacing:.19em; text-transform:uppercase;
+  color:var(--bone-dim); opacity:.72; line-height:1.1;
+}
+.gauge .val{
+  font-family:var(--mono); font-size:1.02rem; font-weight:600;
+  line-height:1.1; letter-spacing:.01em;
+  font-variant-numeric:tabular-nums;
+}
+#warpVal{ color:var(--madder); }
+#flossVal{ color:var(--brass-2); }
+#waveVal{ color:var(--bone); }
+.gauge.pulse{ animation:gaugePulse .5s ease; }
+@keyframes gaugePulse{
+  0%{ transform:scale(1); }
+  35%{ transform:scale(1.07); box-shadow:0 0 20px rgba(201,162,39,.4); }
+  100%{ transform:scale(1); }
+}
+.gauge.hurt{ animation:gaugeHurt .5s ease; }
+@keyframes gaugeHurt{
+  0%,100%{ transform:translateX(0); }
+  20%{ transform:translateX(-4px); }
+  50%{ transform:translateX(4px); }
+  80%{ transform:translateX(-2px); }
+}
+
+.tools{ display:flex; gap:6px; align-items:center; flex-wrap:wrap; }
+
+.tbtn{
+  display:inline-flex; align-items:center; gap:6px;
+  padding:7px 11px; min-height:36px;
+  font-size:.7rem; letter-spacing:.13em; text-transform:uppercase;
+  color:var(--bone-dim);
+  background:linear-gradient(180deg, rgba(255,225,180,.055), rgba(0,0,0,.22));
+  border:1px solid rgba(201,162,39,.24);
+  border-radius:var(--r);
+  transition:background .15s, color .15s, border-color .15s, transform .08s;
+}
+.tbtn:hover{ color:var(--bone); border-color:rgba(201,162,39,.5); background:linear-gradient(180deg, rgba(255,225,180,.12), rgba(0,0,0,.16)); }
+.tbtn:active{ transform:translateY(1px); }
+.tbtn.on{ color:var(--soot); background:linear-gradient(180deg, var(--brass-2), var(--brass)); border-color:var(--brass-2); font-weight:700; }
+.tbtn svg{ width:15px; height:15px; }
+.tbtn .kbd{
+  font-family:var(--mono); font-size:.6rem; opacity:.5;
+  border:1px solid currentColor; border-radius:2px; padding:0 3px; margin-left:2px;
+}
+
+a.tbtn{ text-decoration:none; }
+
+/* ---------------- stage ---------------- */
+
+.stage{
+  display:grid;
+  grid-template-columns:minmax(0,1fr) 356px;
+  gap:10px;
+  min-height:0;
+}
+
+@media (max-width:1000px){
+  .stage{ grid-template-columns:minmax(0,1fr); }
+}
+
+/* ---------------- board ---------------- */
+
+.board{
+  position:relative;
+  min-width:0; min-height:0;
+  display:flex; align-items:center; justify-content:center;
+  background:
+    linear-gradient(180deg, rgba(0,0,0,.30), rgba(0,0,0,.55));
+  border-radius:var(--r);
+  box-shadow: inset 0 0 0 1px rgba(201,162,39,.14), var(--shadow);
+  padding:10px;
+  overflow:hidden;
+}
+
+.board-inner{
+  position:relative;
+  width:100%;
+  max-width:100%;
+  max-height:100%;
+  aspect-ratio:3 / 2;
+  /* the slate frame */
+  padding:11px;
+  background:
+    linear-gradient(180deg,#5b4331,#39281c 42%,#2b1d14);
+  border-radius:5px;
+  box-shadow:
+    inset 0 2px 0 rgba(255,214,158,.20),
+    inset 0 -2px 0 rgba(0,0,0,.6),
+    0 14px 44px rgba(0,0,0,.62);
+}
+/* frame woodgrain + lacing */
+.board-inner::before{
+  content:""; position:absolute; inset:0; border-radius:5px; pointer-events:none;
+  background-image:repeating-linear-gradient(90deg, rgba(0,0,0,.20) 0 1px, transparent 1px 7px);
+  opacity:.5;
+}
+.board-inner::after{
+  content:""; position:absolute; inset:6px; border-radius:3px; pointer-events:none;
+  box-shadow: 0 0 0 1px rgba(0,0,0,.55), 0 0 0 2px rgba(255,214,158,.10);
+}
+
+canvas#cv{
+  display:block; width:100%; height:100%;
+  border-radius:2px;
+  touch-action:none;
+  cursor:crosshair;
+  background:#ddd0b4;
+}
+
+/* board-anchored HUD */
+.boardHud{
+  position:absolute; inset:11px; pointer-events:none; border-radius:2px; overflow:hidden;
+}
+
+.courseTag{
+  position:absolute; top:9px; left:9px;
+  display:flex; align-items:baseline; gap:8px;
+  padding:5px 11px;
+  background:rgba(16,12,9,.74);
+  border-left:2px solid var(--brass);
+  border-radius:2px;
+  backdrop-filter:blur(3px);
+  max-width:min(72%,520px);
+}
+.courseTag .n{ font-family:var(--mono); font-size:.62rem; letter-spacing:.18em; color:var(--brass-2); text-transform:uppercase; }
+.courseTag .t{ font-family:var(--serif); font-size:.92rem; color:var(--bone); letter-spacing:.03em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+
+.bossBar{
+  position:absolute; top:9px; left:50%; transform:translateX(-50%);
+  width:min(58%,460px); display:none;
+}
+.bossBar.on{ display:block; }
+.bossBar .nm{
+  font-family:var(--serif); font-size:.76rem; letter-spacing:.14em; text-transform:uppercase;
+  color:var(--madder); text-align:center; margin-bottom:3px; text-shadow:0 1px 3px #000;
+}
+.bossBar .tr{ height:7px; background:rgba(10,7,5,.8); border:1px solid rgba(191,68,54,.5); border-radius:99px; overflow:hidden; }
+.bossBar .fl{ height:100%; width:100%; background:linear-gradient(90deg,#8e2c22,#d75648,#f0a08f); transition:width .12s linear; }
+
+.ledgerLine{
+  position:absolute; left:9px; right:9px; bottom:9px;
+  padding:9px 13px;
+  background:linear-gradient(90deg, rgba(16,12,9,.88), rgba(16,12,9,.62));
+  border-left:2px solid var(--brass-dim);
+  font-family:var(--serif); font-style:italic; font-size:.86rem;
+  color:#e9dcc0; letter-spacing:.012em;
+  opacity:0; transform:translateY(8px);
+  transition:opacity .5s ease, transform .5s ease;
+  backdrop-filter:blur(3px);
+}
+.ledgerLine.on{ opacity:1; transform:translateY(0); }
+.ledgerLine b{ color:var(--brass-2); font-weight:600; font-style:normal; font-family:var(--mono); font-size:.7rem; letter-spacing:.16em; text-transform:uppercase; display:block; margin-bottom:2px; }
+
+.toastWrap{ position:absolute; top:52px; left:50%; transform:translateX(-50%); display:flex; flex-direction:column; gap:5px; align-items:center; }
+.toast{
+  font-family:var(--mono); font-size:.7rem; letter-spacing:.12em; text-transform:uppercase;
+  padding:6px 13px; border-radius:2px;
+  background:rgba(16,12,9,.86); border:1px solid rgba(201,162,39,.34); color:var(--brass-2);
+  animation:toastIn 2.4s ease forwards;
+}
+.toast.bad{ color:#ffb4aa; border-color:rgba(215,86,72,.5); }
+.toast.good{ color:#a9e8c0; border-color:rgba(119,196,147,.45); }
+@keyframes toastIn{
+  0%{ opacity:0; transform:translateY(-8px); }
+  12%,72%{ opacity:1; transform:translateY(0); }
+  100%{ opacity:0; transform:translateY(-6px); }
+}
+
+/* ---------------- side panel ---------------- */
+
+.panel{
+  display:flex; flex-direction:column; min-height:0;
+  background:linear-gradient(180deg, var(--walnut-2), #211913);
+  border-radius:var(--r);
+  box-shadow: inset 0 1px 0 rgba(255,220,170,.08), inset 0 0 0 1px rgba(201,162,39,.13), var(--shadow);
+  overflow:hidden;
+}
+
+.panelScroll{ flex:1 1 auto; min-height:0; overflow-y:auto; overscroll-behavior:contain; padding:11px; display:flex; flex-direction:column; gap:11px; }
+.panelScroll::-webkit-scrollbar{ width:8px; }
+.panelScroll::-webkit-scrollbar-track{ background:rgba(0,0,0,.28); }
+.panelScroll::-webkit-scrollbar-thumb{ background:rgba(201,162,39,.28); border-radius:9px; }
+.panelScroll::-webkit-scrollbar-thumb:hover{ background:rgba(201,162,39,.5); }
+
+.sect{ display:flex; flex-direction:column; gap:8px; }
+.sectHead{
+  display:flex; align-items:center; gap:9px;
+  font-family:var(--mono); font-size:.6rem; letter-spacing:.22em; text-transform:uppercase;
+  color:var(--brass); opacity:.9;
+}
+.sectHead::after{ content:""; flex:1; height:1px; background:linear-gradient(90deg, rgba(201,162,39,.34), transparent); }
+.sectHead .hint{ font-size:.55rem; letter-spacing:.1em; opacity:.55; color:var(--bone-dim); }
+
+/* workbasket cards */
+.basket{ display:grid; grid-template-columns:1fr 1fr; gap:7px; }
+
+.nCard{
+  position:relative; text-align:left;
+  padding:8px 8px 7px 8px;
+  background:linear-gradient(180deg, rgba(255,228,186,.045), rgba(0,0,0,.24));
+  border:1px solid rgba(201,162,39,.17);
+  border-radius:var(--r);
+  transition:border-color .14s, background .14s, transform .08s;
+  overflow:hidden;
+  min-height:76px;
+}
+.nCard:hover{ border-color:rgba(201,162,39,.45); background:linear-gradient(180deg, rgba(255,228,186,.1), rgba(0,0,0,.18)); }
+.nCard:active{ transform:translateY(1px); }
+.nCard.sel{ border-color:var(--brass-2); box-shadow:0 0 0 1px var(--brass-2), 0 0 18px rgba(201,162,39,.24); background:linear-gradient(180deg, rgba(255,228,186,.15), rgba(0,0,0,.1)); }
+.nCard.poor{ opacity:.42; }
+.nCard .swatch{ position:absolute; left:0; top:0; bottom:0; width:3px; }
+.nCard .row1{ display:flex; align-items:center; gap:7px; }
+.nCard canvas{ width:30px; height:30px; flex:0 0 auto; image-rendering:auto; }
+.nCard .nm{ font-family:var(--serif); font-size:.83rem; letter-spacing:.02em; color:var(--bone); line-height:1.15; }
+.nCard .role{ font-size:.58rem; letter-spacing:.13em; text-transform:uppercase; color:var(--bone-dim); opacity:.7; margin-top:2px; }
+.nCard .cost{ display:flex; align-items:center; gap:4px; margin-top:6px; font-family:var(--mono); font-size:.76rem; color:var(--brass-2); font-variant-numeric:tabular-nums; }
+.nCard .cost svg{ width:12px; height:12px; }
+.nCard .hot{ position:absolute; top:5px; right:6px; font-family:var(--mono); font-size:.58rem; color:var(--bone-dim); opacity:.42; }
+
+/* inspector */
+.insp{
+  background:linear-gradient(180deg, rgba(255,228,186,.05), rgba(0,0,0,.22));
+  border:1px solid rgba(201,162,39,.19);
+  border-radius:var(--r);
+  padding:10px;
+  display:flex; flex-direction:column; gap:9px;
+}
+.insp .top{ display:flex; gap:10px; align-items:flex-start; }
+.insp canvas{ width:44px; height:44px; flex:0 0 auto; }
+.insp .ttl{ font-family:var(--serif); font-size:1rem; color:var(--bone); line-height:1.2; }
+.insp .tier{ font-family:var(--mono); font-size:.58rem; letter-spacing:.16em; text-transform:uppercase; color:var(--brass); margin-top:3px; }
+.insp .flav{ font-family:var(--serif); font-style:italic; font-size:.78rem; color:var(--bone-dim); opacity:.82; line-height:1.4; }
+
+.pips{ display:flex; gap:4px; margin-top:5px; }
+.pip{ width:15px; height:4px; border-radius:9px; background:rgba(255,255,255,.11); }
+.pip.on{ background:var(--brass-2); box-shadow:0 0 7px rgba(230,198,91,.55); }
+
+.stats{ display:grid; grid-template-columns:1fr 1fr; gap:5px 9px; }
+.stat{ display:flex; justify-content:space-between; align-items:baseline; gap:6px; font-size:.7rem; border-bottom:1px dotted rgba(201,162,39,.16); padding-bottom:3px; }
+.stat .k{ color:var(--bone-dim); opacity:.72; letter-spacing:.05em; }
+.stat .v{ font-family:var(--mono); color:var(--bone); font-variant-numeric:tabular-nums; }
+.stat .v .up{ color:var(--ok); font-size:.62rem; margin-left:3px; }
+
+.tgt{ display:flex; gap:4px; }
+.tgt button{
+  flex:1; padding:5px 2px; font-size:.58rem; letter-spacing:.09em; text-transform:uppercase;
+  color:var(--bone-dim); border:1px solid rgba(201,162,39,.18); border-radius:2px; background:rgba(0,0,0,.2);
+  transition:.13s;
+}
+.tgt button:hover{ color:var(--bone); border-color:rgba(201,162,39,.4); }
+.tgt button.on{ background:linear-gradient(180deg,var(--brass-2),var(--brass)); color:var(--soot); font-weight:700; border-color:var(--brass-2); }
+
+.acts{ display:flex; gap:6px; }
+.bigBtn{
+  flex:1; padding:9px 8px; min-height:42px;
+  font-size:.72rem; letter-spacing:.13em; text-transform:uppercase; font-weight:700;
+  border-radius:var(--r); transition:.14s; text-align:center;
+  border:1px solid transparent;
+}
+.bUp{ background:linear-gradient(180deg,#3f7f5f,#2a5b43); color:#eafff2; border-color:#54a077; box-shadow:0 2px 0 rgba(0,0,0,.4); }
+.bUp:hover:not(:disabled){ background:linear-gradient(180deg,#4d9772,#336a4e); }
+.bUp:disabled{ background:rgba(255,255,255,.05); color:rgba(255,255,255,.28); border-color:rgba(255,255,255,.08); box-shadow:none; }
+.bUp .sub{ display:block; font-size:.62rem; letter-spacing:.08em; opacity:.85; font-weight:400; text-transform:none; margin-top:2px; font-family:var(--mono); }
+.bSell{ flex:0 0 96px; background:linear-gradient(180deg,#6a3830,#4a2620); color:#ffd9d1; border-color:#8b4a3f; box-shadow:0 2px 0 rgba(0,0,0,.4); }
+.bSell:hover{ background:linear-gradient(180deg,#7d443a,#5a2f27); }
+.bSell .sub{ display:block; font-size:.62rem; letter-spacing:.06em; opacity:.85; font-weight:400; text-transform:none; margin-top:2px; font-family:var(--mono); }
+
+.emptyInsp{ padding:16px 12px; text-align:center; font-family:var(--serif); font-style:italic; font-size:.8rem; color:var(--bone-dim); opacity:.55; line-height:1.5; }
+
+/* next course preview */
+.nextBox{
+  background:linear-gradient(180deg, rgba(0,0,0,.28), rgba(0,0,0,.14));
+  border:1px solid rgba(201,162,39,.16);
+  border-radius:var(--r); padding:9px 10px; display:flex; flex-direction:column; gap:7px;
+}
+.nextBox .hdr{ display:flex; justify-content:space-between; align-items:baseline; gap:8px; }
+.nextBox .cn{ font-family:var(--serif); font-size:.86rem; color:var(--bone); }
+.nextBox .cc{ font-family:var(--mono); font-size:.6rem; color:var(--brass); letter-spacing:.16em; }
+.threats{ display:flex; flex-wrap:wrap; gap:5px; }
+.threat{
+  display:flex; align-items:center; gap:5px; padding:3px 7px 3px 4px;
+  background:rgba(0,0,0,.32); border:1px solid rgba(201,162,39,.15); border-radius:99px;
+  font-size:.64rem; color:var(--bone-dim);
+}
+.threat canvas{ width:20px; height:20px; }
+.threat .q{ font-family:var(--mono); color:var(--bone); font-size:.62rem; }
+.threat.boss{ border-color:rgba(215,86,72,.55); background:rgba(80,20,14,.35); color:#ffc8c0; }
+
+.panelFoot{ flex:0 0 auto; padding:10px; border-top:1px solid rgba(201,162,39,.14); background:linear-gradient(180deg, rgba(0,0,0,.2), rgba(0,0,0,.42)); }
+
+.mendBtn{
+  width:100%; padding:13px 12px; min-height:56px;
+  background:linear-gradient(180deg,#d8b544,#a5811a);
+  color:#241a06; border-radius:var(--r);
+  font-size:.92rem; letter-spacing:.26em; text-transform:uppercase; font-weight:800;
+  box-shadow:0 3px 0 #6b520d, 0 8px 22px rgba(201,162,39,.24);
+  transition:.14s; position:relative; overflow:hidden;
+}
+.mendBtn:hover:not(:disabled){ background:linear-gradient(180deg,#eccb5c,#b8912a); transform:translateY(-1px); box-shadow:0 4px 0 #6b520d, 0 10px 26px rgba(201,162,39,.32); }
+.mendBtn:active:not(:disabled){ transform:translateY(2px); box-shadow:0 1px 0 #6b520d; }
+.mendBtn:disabled{ background:linear-gradient(180deg,#3a3128,#2a231c); color:rgba(242,234,217,.34); box-shadow:none; }
+.mendBtn .sub{ display:block; font-size:.6rem; letter-spacing:.14em; font-weight:500; margin-top:3px; opacity:.8; font-family:var(--mono); text-transform:none; }
+.mendBtn .fuse{ position:absolute; left:0; bottom:0; height:3px; background:rgba(36,26,6,.5); width:0%; }
+
+/* ---------------- overlay screens ---------------- */
+
+.ovl{
+  position:absolute; inset:11px; border-radius:2px; z-index:20;
+  display:flex; align-items:center; justify-content:center; padding:18px;
+  background:radial-gradient(120% 100% at 50% 0%, rgba(28,20,14,.90), rgba(8,6,4,.96));
+  backdrop-filter:blur(4px);
+  opacity:0; pointer-events:none; transition:opacity .35s ease;
+  overflow-y:auto;
+}
+.ovl.on{ opacity:1; pointer-events:auto; }
+
+.card{
+  width:min(660px,100%); text-align:center;
+  padding:clamp(16px,3.4vw,34px);
+  background:linear-gradient(180deg, rgba(46,34,25,.95), rgba(22,16,12,.97));
+  border:1px solid rgba(201,162,39,.3);
+  border-radius:4px;
+  box-shadow:0 20px 70px rgba(0,0,0,.7), inset 0 1px 0 rgba(255,220,170,.12);
+}
+.card .kicker{ font-family:var(--mono); font-size:.6rem; letter-spacing:.4em; text-transform:uppercase; color:var(--brass); opacity:.85; }
+.card h2{
+  font-family:var(--serif); font-weight:600;
+  font-size:clamp(1.7rem,5.6vw,3rem); letter-spacing:.14em; text-transform:uppercase;
+  margin:9px 0 4px; color:var(--bone);
+  text-shadow:0 3px 20px rgba(0,0,0,.7);
+}
+.card .tag{ font-family:var(--serif); font-style:italic; font-size:clamp(.86rem,2.3vw,1.02rem); color:var(--brass-2); opacity:.9; }
+.card .prose{
+  margin:16px auto 0; max-width:52ch; text-align:left;
+  font-family:var(--serif); font-size:clamp(.82rem,2.1vw,.94rem); line-height:1.66; color:#ddd0b7;
+}
+.card .prose p{ margin-bottom:9px; }
+.card .prose p:last-child{ margin-bottom:0; }
+.card .prose em{ color:var(--brass-2); font-style:italic; }
+.rule{ height:1px; margin:16px 0; background:linear-gradient(90deg,transparent,rgba(201,162,39,.42),transparent); }
+
+.diffRow{ display:flex; gap:7px; justify-content:center; flex-wrap:wrap; margin-bottom:14px; }
+.diffRow button{
+  padding:8px 14px; min-height:44px; border-radius:var(--r);
+  border:1px solid rgba(201,162,39,.25); background:rgba(0,0,0,.28);
+  font-size:.68rem; letter-spacing:.16em; text-transform:uppercase; color:var(--bone-dim);
+  transition:.14s;
+}
+.diffRow button .d{ display:block; font-size:.56rem; letter-spacing:.05em; text-transform:none; opacity:.6; font-family:var(--mono); margin-top:2px; }
+.diffRow button:hover{ color:var(--bone); border-color:rgba(201,162,39,.5); }
+.diffRow button.on{ background:linear-gradient(180deg,var(--brass-2),var(--brass)); color:var(--soot); font-weight:700; border-color:var(--brass-2); }
+
+.ctaRow{ display:flex; gap:9px; justify-content:center; flex-wrap:wrap; }
+.cta{
+  padding:13px 26px; min-height:52px; border-radius:var(--r);
+  background:linear-gradient(180deg,#d8b544,#a5811a); color:#241a06;
+  font-size:.8rem; letter-spacing:.22em; text-transform:uppercase; font-weight:800;
+  box-shadow:0 3px 0 #6b520d, 0 10px 26px rgba(201,162,39,.24); transition:.14s;
+}
+.cta:hover{ background:linear-gradient(180deg,#eccb5c,#b8912a); transform:translateY(-1px); }
+.cta:active{ transform:translateY(2px); box-shadow:0 1px 0 #6b520d; }
+.cta.ghost{
+  background:rgba(0,0,0,.3); color:var(--bone-dim); border:1px solid rgba(201,162,39,.3); box-shadow:none; font-weight:600;
+}
+.cta.ghost:hover{ color:var(--bone); border-color:var(--brass); background:rgba(0,0,0,.16); }
+
+.tally{ display:flex; gap:14px; justify-content:center; flex-wrap:wrap; margin:14px 0 4px; }
+.tally div{ text-align:center; }
+.tally .k{ font-family:var(--mono); font-size:.55rem; letter-spacing:.19em; text-transform:uppercase; color:var(--bone-dim); opacity:.65; }
+.tally .v{ font-family:var(--mono); font-size:1.4rem; color:var(--brass-2); font-variant-numeric:tabular-nums; }
+
+/* ---------------- ledger modal ---------------- */
+
+.modal{
+  position:fixed; inset:0; z-index:60; display:flex; align-items:center; justify-content:center;
+  padding:16px; background:rgba(6,4,3,.82); backdrop-filter:blur(6px);
+  opacity:0; pointer-events:none; transition:opacity .28s;
+}
+.modal.on{ opacity:1; pointer-events:auto; }
+.modalCard{
+  width:min(760px,100%); max-height:86dvh; max-height:86vh; display:flex; flex-direction:column;
+  background:linear-gradient(180deg, rgba(46,34,25,.98), rgba(22,16,12,.99));
+  border:1px solid rgba(201,162,39,.3); border-radius:4px; box-shadow:0 24px 80px rgba(0,0,0,.75);
+}
+.modalHead{ display:flex; align-items:center; gap:12px; padding:14px 16px; border-bottom:1px solid rgba(201,162,39,.2); }
+.modalHead h3{ font-family:var(--serif); font-size:1.1rem; letter-spacing:.2em; text-transform:uppercase; font-weight:600; }
+.modalHead .sub{ font-family:var(--mono); font-size:.58rem; letter-spacing:.16em; color:var(--brass); opacity:.75; margin-left:auto; }
+.modalBody{ overflow-y:auto; padding:16px; display:flex; flex-direction:column; gap:14px; }
+.modalBody::-webkit-scrollbar{ width:8px; }
+.modalBody::-webkit-scrollbar-thumb{ background:rgba(201,162,39,.3); border-radius:9px; }
+.entry{ border-left:2px solid rgba(201,162,39,.35); padding-left:13px; }
+.entry.locked{ border-left-color:rgba(255,255,255,.08); opacity:.42; }
+.entry h4{ font-family:var(--mono); font-size:.62rem; letter-spacing:.22em; text-transform:uppercase; color:var(--brass); margin-bottom:5px; }
+.entry p{ font-family:var(--serif); font-size:.87rem; line-height:1.7; color:#ddd0b7; }
+.entry.locked p{ font-style:italic; color:var(--bone-dim); }
+.xBtn{ margin-left:auto; width:34px; height:34px; border-radius:2px; border:1px solid rgba(201,162,39,.25); color:var(--bone-dim); font-size:1.1rem; line-height:1; }
+.xBtn:hover{ color:var(--bone); border-color:var(--brass); }
+.modalHead .sub + .xBtn{ margin-left:10px; }
+
+/* ---------------- tooltip ---------------- */
+
+.tip{
+  position:fixed; z-index:80; pointer-events:none; max-width:270px;
+  padding:9px 11px; border-radius:3px;
+  background:rgba(12,9,6,.96); border:1px solid rgba(201,162,39,.34);
+  box-shadow:0 10px 30px rgba(0,0,0,.6);
+  opacity:0; transition:opacity .12s;
+}
+.tip.on{ opacity:1; }
+.tip .tt{ font-family:var(--serif); font-size:.86rem; color:var(--bone); margin-bottom:3px; }
+.tip .tr2{ font-family:var(--mono); font-size:.56rem; letter-spacing:.15em; text-transform:uppercase; color:var(--brass); margin-bottom:5px; }
+.tip .tb{ font-size:.74rem; color:#cfc2a8; line-height:1.45; }
+.tip .tb i{ color:var(--bone-dim); }
+.tip .tstats{ margin-top:6px; display:grid; grid-template-columns:auto 1fr; gap:2px 10px; font-family:var(--mono); font-size:.66rem; }
+.tip .tstats span:nth-child(odd){ color:var(--bone-dim); opacity:.7; }
+.tip .tstats span:nth-child(even){ color:var(--bone); text-align:right; }
+
+/* ---------------- responsive ---------------- */
+
+@media (max-width:1000px){
+  .panel{ max-height:none; }
+  .panelScroll{ overflow:visible; }
+  .basket{ grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); }
+  .board-inner{ margin:0 auto; }
+  .brand p{ display:none; }
+}
+
+@media (max-width:720px){
+  body{ font-size:14px; }
+  .app{ padding:7px; gap:7px; }
+  .topbar{ padding:7px 9px; gap:9px; }
+  .brand h1{ font-size:1.02rem; letter-spacing:.16em; }
+  .brand svg{ width:27px; height:27px; }
+  .gauges{ width:100%; margin-left:0; order:3; }
+  .gauge{ flex:1 1 0; min-width:0; padding:4px 7px; }
+  .gauge .ico{ width:16px; height:16px; }
+  .gauge .val{ font-size:.9rem; }
+  .tools{ margin-left:auto; }
+  .tbtn{ padding:6px 8px; font-size:.62rem; }
+  .tbtn .lbl{ display:none; }
+  .tbtn .kbd{ display:none; }
+  .board{ padding:4px; }
+  .board-inner{ padding:7px; }
+  .ovl{ inset:7px; padding:10px; }
+  .boardHud{ inset:7px; }
+  .courseTag .t{ font-size:.78rem; }
+  .ledgerLine{ font-size:.76rem; padding:7px 10px; }
+  .bSell{ flex:0 0 82px; }
+}
+
+@media (max-width:430px){
+  .basket{ grid-template-columns:1fr 1fr; }
+  .nCard{ min-height:70px; padding:6px; }
+  .nCard .nm{ font-size:.74rem; }
+  .nCard canvas{ width:26px; height:26px; }
+  .stats{ grid-template-columns:1fr; }
+  .courseTag{ padding:4px 8px; }
+  .tally{ gap:9px; }
+}
+
+@media (prefers-reduced-motion:reduce){
+  *{ animation-duration:.01ms !important; transition-duration:.06s !important; }
+}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <header class="topbar">
+    <div class="brand">
+      <svg viewBox="0 0 40 40" aria-hidden="true">
+        <defs>
+          <linearGradient id="ndl" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0" stop-color="#f6e9c6"/><stop offset="1" stop-color="#9c8752"/>
+          </linearGradient>
+        </defs>
+        <path d="M6 34 C 12 30, 10 22, 16 19 C 22 16, 22 10, 30 7"
+              fill="none" stroke="#bf4436" stroke-width="2.1" stroke-linecap="round" opacity=".92"/>
+        <path d="M31 5 L36 10 L14 32 L7 34 L9 27 Z" fill="url(#ndl)" stroke="#3a2c23" stroke-width="1"/>
+        <ellipse cx="32.6" cy="8.4" rx="2.2" ry="1.4" transform="rotate(45 32.6 8.4)" fill="#2a201a"/>
+      </svg>
+      <div>
+        <h1>Needleward</h1>
+        <p>Hold the hole until help comes</p>
+      </div>
+    </div>
+
+    <div class="gauges">
+      <div class="gauge" id="gWarp" data-tip="warp">
+        <svg class="ico" viewBox="0 0 24 24" aria-hidden="true">
+          <g stroke="#bf4436" stroke-width="1.7" fill="none" stroke-linecap="round">
+            <path d="M5 3v18M9.6 3v18M14.4 3v18M19 3v18"/>
+          </g>
+          <path d="M2 8.5h20M2 15.5h20" stroke="#e7dcc4" stroke-width="1.2" opacity=".6"/>
+        </svg>
+        <div>
+          <div class="lab">Warp</div>
+          <div class="val" id="warpVal">20</div>
+        </div>
+      </div>
+      <div class="gauge" id="gFloss" data-tip="floss">
+        <svg class="ico" viewBox="0 0 24 24" aria-hidden="true">
+          <rect x="8" y="3" width="8" height="18" rx="1.6" fill="#c9a227"/>
+          <rect x="6" y="6" width="12" height="12" rx="1" fill="#e6c65b"/>
+          <path d="M6 9h12M6 12h12M6 15h12" stroke="#8a6f1c" stroke-width=".9" opacity=".65"/>
+        </svg>
+        <div>
+          <div class="lab">Floss</div>
+          <div class="val" id="flossVal">280</div>
+        </div>
+      </div>
+      <div class="gauge" id="gWave" data-tip="course">
+        <svg class="ico" viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M3 17c3-6 6 6 9 0s6 6 9 0" fill="none" stroke="#e7dcc4" stroke-width="1.7" stroke-linecap="round"/>
+          <path d="M3 10c3-6 6 6 9 0s6 6 9 0" fill="none" stroke="#c9a227" stroke-width="1.7" stroke-linecap="round" opacity=".8"/>
+        </svg>
+        <div>
+          <div class="lab">Course</div>
+          <div class="val" id="waveVal">0/24</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="tools">
+      <button class="tbtn" id="btnSpeed" title="Cycle game speed (F)"><span id="spdTxt">1&times;</span><span class="kbd">F</span></button>
+      <button class="tbtn" id="btnPause" title="Pause / resume (Space or P)">
+        <svg viewBox="0 0 24 24" aria-hidden="true" id="pauseIco"><g fill="currentColor"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></g></svg>
+        <span class="lbl">Pause</span>
+      </button>
+      <button class="tbtn on" id="btnSound" title="Toggle sound">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9v6h4l5 4V5L8 9H4z" fill="currentColor"/><path id="sndWaves" d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+        <span class="lbl">Sound</span>
+      </button>
+      <button class="tbtn" id="btnLedger" title="Open the Ledger (L)">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h11l3 3v13H5z" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M8 9h8M8 12.5h8M8 16h5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+        <span class="lbl">Ledger</span><span class="kbd">L</span>
+      </button>
+      <a class="tbtn" href="./index.html" title="Back to the tower defense index">&larr;<span class="lbl">&nbsp;Back</span></a>
+    </div>
+  </header>
+
+  <main class="stage">
+    <section class="board">
+      <div class="board-inner">
+        <canvas id="cv" aria-label="Needleward play field"></canvas>
+
+        <div class="boardHud" aria-hidden="true">
+          <div class="courseTag">
+            <span class="n" id="ctN">Course 00</span>
+            <span class="t" id="ctT">Awaiting the first flutter</span>
+          </div>
+          <div class="bossBar" id="bossBar">
+            <div class="nm" id="bossNm">&nbsp;</div>
+            <div class="tr"><div class="fl" id="bossFl"></div></div>
+          </div>
+          <div class="toastWrap" id="toastWrap"></div>
+          <div class="ledgerLine" id="ledgerLine"><b>Ledger</b><span id="ledgerTxt"></span></div>
+        </div>
+
+        <div class="ovl on" id="ovl">
+          <div class="card" id="ovlCard"></div>
+        </div>
+      </div>
+    </section>
+
+    <aside class="panel">
+      <div class="panelScroll">
+        <div class="sect">
+          <div class="sectHead">The Workbasket <span class="hint" id="basketHint">keys 1&ndash;5</span></div>
+          <div class="basket" id="basket"></div>
+        </div>
+
+        <div class="sect">
+          <div class="sectHead">Notion</div>
+          <div id="inspector"></div>
+        </div>
+
+        <div class="sect">
+          <div class="sectHead">Next Course</div>
+          <div class="nextBox" id="nextBox"></div>
+        </div>
+      </div>
+
+      <div class="panelFoot">
+        <button class="mendBtn" id="btnMend">
+          <span id="mendTxt">Mend</span>
+          <span class="sub" id="mendSub">Begin Course 1</span>
+          <span class="fuse" id="mendFuse"></span>
+        </button>
+      </div>
+    </aside>
+  </main>
+</div>
+
+<div class="modal" id="ledgerModal" role="dialog" aria-modal="true" aria-label="The Ledger">
+  <div class="modalCard">
+    <div class="modalHead">
+      <h3>The Ledger</h3>
+      <span class="sub" id="ledgerCount">0 / 8 recovered</span>
+      <button class="xBtn" id="ledgerClose" aria-label="Close">&times;</button>
+    </div>
+    <div class="modalBody" id="ledgerBody"></div>
+  </div>
+</div>
+
+<div class="tip" id="tip" role="tooltip"></div>
+
+<script>
+"use strict";
+/* ============================================================================
+   NEEDLEWARD — a defense of the Great Coat
+   ----------------------------------------------------------------------------
+   Everything below is self-contained: no fonts, no images, no libraries.
+   The linen, the snag, every notion and every moth is drawn from arithmetic.
+   ========================================================================== */
+(function () {
+
+/* ---------------------------------------------------------------- constants */
+
+const WORLD_W = 1200, WORLD_H = 800;   // fixed world; canvas scales to fit
+const CELL    = 50;
+const COLS    = WORLD_W / CELL;        // 24
+const ROWS    = WORLD_H / CELL;        // 16
+const TOTAL_COURSES = 24;
+
+/* ---------------------------------------------------------------------- rng */
+// Small deterministic PRNG so a "snag" can be reproduced from a seed.
+function mulberry32(a) {
+  return function () {
+    a |= 0; a = (a + 0x6D2B79F5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+let rng = mulberry32((Math.random() * 4294967295) >>> 0);
+const rand  = (a, b) => a + rng() * (b - a);
+const randi = (a, b) => Math.floor(rand(a, b + 1));
+const pick  = arr => arr[Math.floor(rng() * arr.length)];
+const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
+const lerp  = (a, b, t) => a + (b - a) * t;
+const TAU   = Math.PI * 2;
+
+/* --------------------------------------------------------------- palette */
+
+const C = {
+  linen:   '#e5d9bf',
+  linenHi: '#f0e6d1',
+  linenLo: '#c9b994',
+  channel: '#c2b08a',
+  cord:    '#a8916a',
+  dark:    '#17110c',
+  brass:   '#c9a227',
+  brass2:  '#e6c65b',
+  bone:    '#f2ead9',
+  madder:  '#bf4436',
+  indigo:  '#5a7fb5',
+  verd:    '#4f9b7d',
+  saffron: '#e2a331',
+  plum:    '#9a6392',
+  steel:   '#cfd4d8',
+  soot:    '#2a221b'
+};
+
+/* =========================================================================
+   NOTIONS (towers) — five archetypes, five tiers each (base + four upgrades)
+   ========================================================================= */
+
+const TOWERS = {
+  knot: {
+    key:'knot', name:'French Knot', role:'Quickstitch',
+    color:C.saffron, cost:70, air:true, dmgType:'pierce',
+    flavour:'A knot is the smallest promise the cloth can keep.',
+    blurb:'Cheap, fast, single target. Hits fliers. Wants company.',
+    tiers:[
+      { n:'Seed Knot',      cost:0,   dmg:7,  rate:0.42, range:118, crit:0,    critX:1,   burst:1, note:'A single wrap of the floss.' },
+      { n:'Colonial Knot',  cost:60,  dmg:11, rate:0.36, range:128, crit:0,    critX:1,   burst:1, note:'Figure-eight wrap. Sits prouder.' },
+      { n:'Bullion Knot',   cost:110, dmg:17, rate:0.30, range:138, crit:0.12, critX:2.0, burst:1, note:'Coiled seven times. Occasionally spiteful.' },
+      { n:'Pistil Knot',    cost:190, dmg:26, rate:0.25, range:150, crit:0.18, critX:2.2, burst:1, note:'A knot on a stalk. Reaches.' },
+      { n:'Thousand Knots', cost:340, dmg:34, rate:0.50, range:165, crit:0.22, critX:2.5, burst:3, note:'The Handwork signed its work this way.' }
+    ]
+  },
+  chain: {
+    key:'chain', name:'Chain Stitch', role:'Arcweaver',
+    color:C.indigo, cost:135, air:true, dmgType:'sever',
+    flavour:'Every loop holds the next one. That is the whole trick.',
+    blurb:'Damage leaps between nearby vermin. Later tiers snarl them.',
+    tiers:[
+      { n:'Chain Stitch', cost:0,   dmg:12, rate:0.95, range:132, bounce:2, fall:0.72, slow:0,    slowT:0,   note:'One loop pulled through the last.' },
+      { n:'Lazy Daisy',   cost:110, dmg:17, rate:0.95, range:142, bounce:3, fall:0.74, slow:0,    slowT:0,   note:'Detached loops. Prettier, meaner.' },
+      { n:'Cable Chain',  cost:185, dmg:24, rate:0.85, range:152, bounce:4, fall:0.76, slow:0.18, slowT:1.2, note:'A link between every link.' },
+      { n:'Heavy Chain',  cost:300, dmg:34, rate:0.85, range:165, bounce:5, fall:0.78, slow:0.28, slowT:1.5, note:'Worked in six strands. Audible.' },
+      { n:'Endless Chain',cost:520, dmg:46, rate:0.70, range:180, bounce:7, fall:0.80, slow:0.38, slowT:1.8, note:'No one has found where it starts.' }
+    ]
+  },
+  pin: {
+    key:'pin', name:'Couching Pin', role:'Longsight',
+    color:C.steel, cost:190, air:true, dmgType:'pierce',
+    flavour:'Couching is holding a thread down while somebody else decides.',
+    blurb:'Slow, enormous range, punches armour and pins things in place.',
+    tiers:[
+      { n:'Couching Pin',    cost:0,   dmg:46,  rate:1.75, range:265, pierce:1, apen:0.50, root:0,    boss:1.0, note:'Held in the mouth between passes.' },
+      { n:'Long Pin',        cost:150, dmg:68,  rate:1.60, range:295, pierce:1, apen:0.60, root:0,    boss:1.0, note:'Two inches of unkind opinion.' },
+      { n:'Glass Head',      cost:250, dmg:98,  rate:1.55, range:325, pierce:2, apen:0.75, root:0.35, boss:1.15,note:'You can see the wardrobe in the bead.' },
+      { n:'Bodkin',          cost:420, dmg:150, rate:1.45, range:360, pierce:3, apen:1.00, root:0.60, boss:1.35,note:'Blunt on purpose. Parts the weave.' },
+      { n:'The Bodkin Prime',cost:720, dmg:235, rate:1.25, range:420, pierce:5, apen:1.00, root:0.90, boss:1.80,note:'Left in the seam allowance, point out.' }
+    ]
+  },
+  blanket: {
+    key:'blanket', name:'Blanket Stitch', role:'Hemguard',
+    color:C.madder, cost:160, air:false, dmgType:'sever',
+    flavour:'An edge that is finished cannot fray. That is not a metaphor here.',
+    blurb:'Pulses a stitched ring outward. Ground only, but it clears swarms.',
+    tiers:[
+      { n:'Blanket Stitch', cost:0,   dmg:14, rate:1.50, range:96,  fray:0,  frayT:0, slowBonus:0,   note:'The stitch you learn second.' },
+      { n:'Buttonhole',     cost:130, dmg:21, rate:1.50, range:108, fray:0,  frayT:0, slowBonus:0,   note:'Packed tight enough to carry weight.' },
+      { n:'Overcast',       cost:215, dmg:31, rate:1.35, range:122, fray:0,  frayT:0, slowBonus:0,   note:'Whipped over the raw edge, fast.' },
+      { n:'Whipped Edge',   cost:360, dmg:46, rate:1.35, range:138, fray:9,  frayT:3, slowBonus:0,   note:'Leaves the vermin coming apart.' },
+      { n:'Sawtooth Hem',   cost:610, dmg:66, rate:1.10, range:158, fray:18, frayT:4, slowBonus:0.30,note:'Cut like pinking shears, sewn like a promise.' }
+    ]
+  },
+  wax: {
+    key:'wax', name:'Beeswax Font', role:'Conditioner',
+    color:'#d99b2c', cost:150, air:false, dmgType:'none', support:true,
+    flavour:'Run the thread through wax and it stops arguing with the needle.',
+    blurb:'No damage. Slows everything near it, sharpens every notion in reach, and later pays.',
+    tiers:[
+      { n:'Beeswax Font',   cost:0,   slow:0.20, range:120, buffD:0.06, buffR:0.00, income:0,  freeze:0,    note:'A pale block, thumbprinted.' },
+      { n:'Resin Blend',    cost:120, slow:0.28, range:134, buffD:0.12, buffR:0.00, income:0,  freeze:0,    note:'Pine sap cut into the wax.' },
+      { n:'Amber Wax',      cost:200, slow:0.36, range:150, buffD:0.20, buffR:0.08, income:0,  freeze:0,    note:'Something small is caught inside it.' },
+      { n:'Honeycomb Font', cost:330, slow:0.44, range:168, buffD:0.30, buffR:0.15, income:12, freeze:0,    note:'Still warm. Nobody asks from what.' },
+      { n:'The Golden Cell',cost:560, slow:0.55, range:190, buffD:0.45, buffR:0.25, income:30, freeze:0.12, note:'The Handwork kept its spare hours in here.' }
+    ]
+  }
+};
+
+const TOWER_ORDER = ['knot','chain','pin','blanket','wax'];
+
+/* =========================================================================
+   THE UNPICKING (enemies)
+   ========================================================================= */
+
+const ENEMIES = {
+  nib:        { id:'nib',        name:'Nib',            hp:32,  spd:44,  armor:0,  bounty:6,  leak:1, r:11, col:'#e0d3ae', col2:'#9a875c',
+                desc:'A moth grub. Eats in a straight line and never looks up.' },
+  flit:       { id:'flit',       name:'Flit',           hp:24,  spd:92,  armor:0,  bounty:8,  leak:1, r:12, col:'#b8a68a', col2:'#6d5f4a', fly:true,
+                desc:'Adult moth. Ignores the snag entirely and cuts across the weave.' },
+  silver:     { id:'silver',     name:'Silverfish',     hp:26,  spd:132, armor:0,  bounty:9,  leak:1, r:10, col:'#c8ced6', col2:'#7e8894', slowRes:0.65,
+                desc:'Wet-fast. Wax slides off it.' },
+  weevil:     { id:'weevil',     name:'Rust Weevil',    hp:120, spd:32,  armor:8,  bounty:16, leak:2, r:15, col:'#b06a34', col2:'#5d3418',
+                desc:'Oxidation with legs. Small hits barely mark it.' },
+  casebearer: { id:'casebearer', name:'Casebearer',     hp:70,  spd:52,  armor:2,  bounty:12, leak:1, r:13, col:'#cdbb92', col2:'#7a6743', split:['nib','nib'],
+                desc:'Carries its own house. Two Nibs come out when it stops.' },
+  bloom:      { id:'bloom',      name:'Mildew Bloom',   hp:96,  spd:30,  armor:0,  bounty:15, leak:2, r:16, col:'#7f9d6d', col2:'#3f5433', heal:7, healR:92,
+                desc:'Damp. Knits its neighbours back together while it walks.' },
+  snarl:      { id:'snarl',      name:'Snarl',          hp:150, spd:40,  armor:4,  bounty:18, leak:2, r:16, col:'#8e7ea8', col2:'#493b60', rootImm:true, slowRes:0.40,
+                desc:'A tangle with intent. Cannot be pinned; barely notices wax.' },
+  mote:       { id:'mote',       name:'Static Mote',    hp:54,  spd:70,  armor:0,  bounty:11, leak:1, r:11, col:'#e9e2c8', col2:'#a89a63', erratic:true, chainVuln:1.35,
+                desc:'Charge trapped in the nap. Chain stitch loves it.' },
+  frayling:   { id:'frayling',   name:'Frayling',       hp:44,  spd:52,  armor:0,  bounty:10, leak:1, r:11, col:'#d9c6a2', col2:'#8b7346', accel:0.09, accelMax:2.4,
+                desc:'Starts as a loose end. Gets faster the longer it runs.' },
+  wraith:     { id:'wraith',     name:'Weft Wraith',    hp:130, spd:60,  armor:0,  bounty:20, leak:2, r:14, col:'#a9b7c4', col2:'#4a5866', phase:[3.4,0.9],
+                desc:'Slips behind the warp. Untargetable while it is under.' },
+  bobbin:     { id:'bobbin',     name:'Bobbin Beetle',  hp:210, spd:36,  armor:12, bounty:26, leak:3, r:17, col:'#9b8f7a', col2:'#4e463a', shield:60, shieldDelay:3,
+                desc:'Armoured, and winds a fresh shield if you leave it alone.' },
+  lint:       { id:'lint',       name:'Lintling',       hp:16,  spd:110, armor:0,  bounty:4,  leak:1, r:8,  col:'#efe7d3', col2:'#b3a888',
+                desc:'Shed matter. Harmless alone. Never alone.' },
+
+  shears:     { id:'shears',     name:'The Pinking Shears', hp:1150, spd:46, armor:10, bounty:170, leak:5, r:28, col:'#d3d8dd', col2:'#5a636c',
+                boss:true, rootImm:true, split:['snarl','snarl'], noScale:true,
+                desc:'Cuts a zigzag so the edge cannot fray. It does not ask which edge.' },
+  ripper:     { id:'ripper',     name:'The Seam Ripper',    hp:2600, spd:31, armor:16, bounty:280, leak:8, r:32, col:'#c9ccd1', col2:'#4a4f56',
+                boss:true, rootImm:true, spawn:{ of:'lint', every:2.2, n:2 }, noScale:true,
+                desc:'The Handwork owned two tools. This is the other one.' },
+  queen:      { id:'queen',      name:'Tineola Rex',        hp:3400, spd:54, armor:6,  bounty:360, leak:8, r:34, col:'#c0ab86', col2:'#6a5940',
+                boss:true, fly:true, spawn:{ of:'flit', every:2.4, n:2 }, noScale:true,
+                desc:'Mother of every hole in the coat. Flies the short way.' },
+  dark:       { id:'dark',       name:'The Wardrobe Dark',  hp:13000, spd:23, armor:20, bounty:900, leak:20, r:44, col:'#0e0b09', col2:'#000000',
+                boss:true, rootImm:true, slowRes:0.55, spawn:{ of:'nib', every:1.7, n:3 }, smother:true, noScale:true,
+                desc:'Not a creature. The absence the moths were making room for.' }
+};
+
+/* =========================================================================
+   COURSES (waves) — 24, each a line in the mending ledger
+   ========================================================================= */
+// g(type, count, gap, delay)
+const g = (t, n, gap, delay) => ({ t, n, gap: gap || 0.8, delay: delay || 0 });
+
+const COURSES = [
+  { n:'First Flutter',        g:[g('nib',8,1.0)] },
+  { n:'Under the Hem',        g:[g('nib',12,0.8)] },
+  { n:'Wingbeat',             g:[g('nib',9,0.85), g('flit',5,1.1,3)] },
+  { n:'Quicksilver',          g:[g('silver',9,0.7), g('nib',7,0.8,2)] },
+  { n:'Oxidation',            g:[g('weevil',4,2.0), g('nib',11,0.6,1)] },
+  { n:'The Casebearers',      g:[g('casebearer',6,1.3), g('flit',6,0.9,4)] },
+  { n:'Damp Corner',          g:[g('bloom',3,2.6), g('nib',14,0.55,2), g('silver',6,0.7,7)] },
+  { n:'The Pinking Shears',   boss:true, g:[g('shears',1,1,0), g('casebearer',5,1.2,4), g('silver',9,0.6,10)] },
+  { n:'Tangleweft',           g:[g('snarl',6,1.7), g('weevil',5,1.6,3)] },
+  { n:'Static in the Nap',    g:[g('mote',13,0.6), g('flit',8,0.75,5)] },
+  { n:'The Fraying',          g:[g('frayling',17,0.45), g('silver',9,0.6,7)] },
+  { n:'Moth Season',          g:[g('flit',22,0.42), g('mote',9,0.7,6)] },
+  { n:'The Seam Ripper',      boss:true, g:[g('ripper',1,1,2), g('weevil',7,1.2,0), g('snarl',5,1.5,8)] },
+  { n:'Wraiths of the Weft',  g:[g('wraith',9,1.0), g('bloom',4,2.2,4)] },
+  { n:'Bobbin Rot',           g:[g('bobbin',6,1.8), g('weevil',9,0.9,3)] },
+  { n:'The Long Chew',        g:[g('nib',32,0.28), g('casebearer',11,0.75,4)] },
+  { n:'Silver Tide',          g:[g('silver',30,0.3), g('frayling',15,0.45,6)] },
+  { n:'Tineola Rex',          boss:true, g:[g('queen',1,1,3), g('flit',20,0.45,0), g('mote',10,0.6,10)] },
+  { n:'Rust and Ruin',        g:[g('weevil',15,0.7), g('bobbin',7,1.5,4), g('snarl',9,1.0,9)] },
+  { n:'The Unpicking',        g:[g('wraith',11,0.8), g('mote',15,0.5,3), g('frayling',18,0.4,8)] },
+  { n:'Everything in the Dark',g:[g('bloom',6,1.6), g('bobbin',8,1.2), g('silver',22,0.35,5), g('flit',18,0.4,8)] },
+  { n:'Twin Rippers',         boss:true, g:[g('ripper',2,7,2), g('lint',26,0.22,0), g('snarl',10,0.9,10)] },
+  { n:'The Last Threads',     g:[g('weevil',18,0.5), g('wraith',13,0.6), g('casebearer',14,0.5,5), g('queen',1,1,16)] },
+  { n:'The Wardrobe Dark',    boss:true, g:[g('dark',1,1,4), g('bobbin',10,1.1,0), g('wraith',12,0.7,8), g('flit',24,0.35,14)] }
+];
+
+/* =========================================================================
+   LORE — one ledger line per cleared course, eight recoverable entries
+   ========================================================================= */
+
+const LEDGER_LINES = [
+  'Snag runs north-northeast. Nine warp threads exposed. Frame set. We hold.',
+  'Grubs came back for the same inch. They always come back for the same inch.',
+  'First adults on the wing. They do not follow the snag. Nothing that can fly does.',
+  'Silverfish in the fold. Damp somewhere above us, or damp a long time ago.',
+  'Rust on the eastern warp. Rust means water, and water means the wardrobe leaked.',
+  'Counted the casebearers. Each one carrying a house made of us.',
+  'Bloom in the corner. Where it walks, the dying get up again. Cut the bloom first.',
+  'Shears in the frame. It was not eating. It was measuring.',
+  'The tangles are older than the moths. They were here when the coat was new.',
+  'Static in the nap all night. The cloth remembers being worn.',
+  'Every loose end in the province started running at once. Something upstream let go.',
+  'Full season. Sky thick with them. Below, the province did not look up.',
+  'The Ripper came down the snag point-first. It knew the way. It has been here before.',
+  'Wraiths under the warp. You cannot pin what is on the other side of the cloth.',
+  'Bobbins winding themselves shields out of our own province. Efficient. Rude.',
+  'Light through the weave today. Somebody has opened the wardrobe.',
+  'Movement above the frame, very large, very slow. The whole coat lifted.',
+  'The Queen came down out of a fold that has not existed for forty years.',
+  'Rust and ruin, and beneath them, a smell of cedar and a woman crying.',
+  'This is not an invasion. This is the damage finally being looked at.',
+  'Everything in the dark came out at once, because the dark is being taken away.',
+  'Two Rippers. Not attacking each other. Working.',
+  'Hold. Hold. There is a light at the edge of the frame and it is shaped like a thumb.',
+  'The needle came through from outside.'
+];
+
+const LEDGER_ENTRIES = [
+  { at:1,  t:'I — What the province is',
+    p:'Nobody here calls it cloth. You call it ground, and the sky above it is a herringbone you have never been able to reach. The river is a basting thread the Handwork forgot to pull. Your neighbours are motifs. So are you. Everything holds for exactly as long as its thread does.' },
+  { at:3,  t:'II — The frame',
+    p:'A Needleward is issued one slate frame, four laces, and a Heart Knot. The Heart Knot is the single stitch tying this province to the rest of the coat. Notions may be placed anywhere the weave is sound. Nothing may be placed on the snag; the snag is already spoken for.' },
+  { at:6,  t:'III — On the Unpicking',
+    p:'It is a misconception that they are killing us. They are eating thread. When enough thread is gone, the thing it depicted stops having existed — not dies, stops having existed, which is worse, because no one is left who remembers to grieve it. Twenty warp threads is what the frame can lose. Then the province goes back to never.' },
+  { at:9,  t:'IV — The wardrobe',
+    p:'Older Needlewards taught that beyond the selvedge lies the Wardrobe Dark. Not a place. A condition. The coat was hung there in the black for a long stretch of what we have no word for, and everything that has ever come up the snag came out of that stretch. The damage is old. Only the noticing is new.' },
+  { at:12, t:'V — Weight and warmth',
+    p:'Three times in recorded courses the whole province has tilted, and the sky has gone from cold to something like blood-warm, and the old motifs in the western seam have wept without being able to say why. The ledger records these as Wearings. There have been none for forty-one years. The last one lasted a funeral.' },
+  { at:16, t:'VI — Hands',
+    p:'Light today, through the weave, in the shape of five fingers. Every child in the province ran to the high dart to look. It is the first time most of them have seen a shadow that came from outside the coat. It was a small hand. Younger than the ones in the old records. Somebody new has picked us up.' },
+  { at:20, t:'VII — What a Needleward is',
+    p:'The recruitment records do not exist, because nobody is recruited. When a province tears, the Heart Knot is worked into a shape that can hold a needle and given a post and a ledger. That is the whole ceremony. It is why you have no name, why you cannot leave the frame, and why, if you fail, there will be no body: you are the stitch, defending itself.' },
+  { at:24, t:'VIII — The mending',
+    p:'She is nine and she is doing it badly, and it does not matter, because a bad darn holds. Her grandmother is telling her to keep the tension loose. Neither of them knows the province is here. Neither of them will ever know. That is the whole shape of it: to be saved carefully by someone who does not know you exist, and to have no way at all to say thank you.' }
+];
+
+/* =========================================================================
+   THE SNAG — procedural map generation
+   A snag is a thread pulled loose. It runs where it runs; no two postings
+   look alike. The generator refuses paths that touch themselves, so there is
+   always a course of sound weave between passes for the notions to sit in.
+   ========================================================================= */
+
+const idxOf = (c, r) => r * COLS + c;
+const md    = (a, b) => Math.abs(a.c - b.c) + Math.abs(a.r - b.r);
+const cheb  = (a, b) => Math.max(Math.abs(a.c - b.c), Math.abs(a.r - b.r));
+
+function tryGenSnag() {
+  const heart = { c: randi(7, COLS - 8), r: randi(4, ROWS - 5) };
+  const edge  = randi(0, 3);
+  let sc, sr;
+  if (edge === 0)      { sc = 0;        sr = randi(1, ROWS - 2); }
+  else if (edge === 1) { sc = COLS - 1; sr = randi(1, ROWS - 2); }
+  else if (edge === 2) { sr = 0;        sc = randi(1, COLS - 2); }
+  else                 { sr = ROWS - 1; sc = randi(1, COLS - 2); }
+
+  const minLen = 27, maxLen = 76;
+  const mark = new Uint8Array(COLS * ROWS);
+  const path = [];
+  let budget = 30000;
+
+  const NB = [[1,0],[-1,0],[0,1],[0,-1]];
+
+  function untouched(c, r, prev) {
+    if (c < 0 || r < 0 || c >= COLS || r >= ROWS) return false;
+    if (mark[idxOf(c, r)]) return false;
+    for (let i = 0; i < 4; i++) {
+      const nc = c + NB[i][0], nr = r + NB[i][1];
+      if (nc < 0 || nr < 0 || nc >= COLS || nr >= ROWS) continue;
+      if (mark[idxOf(nc, nr)] && !(nc === prev.c && nr === prev.r)) return false;
+    }
+    return true;
+  }
+  const okStep  = (c, r, prev) => cheb({c,r}, heart) > 1 && untouched(c, r, prev);
+  const okFinal = (c, r, prev) => untouched(c, r, prev);
+
+  function dfs(cur) {
+    if (budget-- <= 0) return false;
+    if (path.length >= maxLen) return false;
+    const order = NB.slice();
+    for (let i = order.length - 1; i > 0; i--) {
+      const j = Math.floor(rng() * (i + 1));
+      const t = order[i]; order[i] = order[j]; order[j] = t;
+    }
+    // early on we wander; once long enough we start leaning toward the knot
+    if (rng() < (path.length < minLen ? 0.22 : 0.7)) {
+      order.sort((a, b) =>
+        md({ c: cur.c + a[0], r: cur.r + a[1] }, heart) -
+        md({ c: cur.c + b[0], r: cur.r + b[1] }, heart));
+    }
+    for (let i = 0; i < 4; i++) {
+      const nc = cur.c + order[i][0], nr = cur.r + order[i][1];
+      if (md({ c: nc, r: nr }, heart) === 1) {
+        if (path.length + 1 < minLen) continue;
+        if (!okFinal(nc, nr, cur)) continue;
+        path.push({ c: nc, r: nr }, { c: heart.c, r: heart.r });
+        return true;
+      }
+      if (!okStep(nc, nr, cur)) continue;
+      mark[idxOf(nc, nr)] = 1; path.push({ c: nc, r: nr });
+      if (dfs({ c: nc, r: nr })) return true;
+      path.pop(); mark[idxOf(nc, nr)] = 0;
+    }
+    return false;
+  }
+
+  mark[idxOf(sc, sr)] = 1;
+  path.push({ c: sc, r: sr });
+  if (!dfs({ c: sc, r: sr })) return null;
+  return { heart, cells: path, edge };
+}
+
+function fallbackSnag() {
+  // A plain serpentine, used only if the generator somehow starves.
+  const cells = [];
+  let r = 2;
+  for (let band = 0; band < 4; band++) {
+    const l2r = band % 2 === 0;
+    for (let i = 0; i < COLS - 4; i++) cells.push({ c: l2r ? 1 + i : COLS - 2 - i, r });
+    if (band < 3) { cells.push({ c: l2r ? COLS - 3 : 2, r: r + 1 }); cells.push({ c: l2r ? COLS - 3 : 2, r: r + 2 }); r += 3; }
+  }
+  const last = cells[cells.length - 1];
+  return { heart: { c: last.c, r: last.r }, cells, edge: 0 };
+}
+
+function chaikin(p, iters) {
+  for (let k = 0; k < iters; k++) {
+    const out = [p[0]];
+    for (let i = 0; i < p.length - 1; i++) {
+      const a = p[i], b = p[i + 1];
+      out.push({ x: a.x * 0.75 + b.x * 0.25, y: a.y * 0.75 + b.y * 0.25 });
+      out.push({ x: a.x * 0.25 + b.x * 0.75, y: a.y * 0.25 + b.y * 0.75 });
+    }
+    out.push(p[p.length - 1]);
+    p = out;
+  }
+  return p;
+}
+
+function buildMap(seed) {
+  rng = mulberry32(seed >>> 0);
+  let raw = null;
+  for (let a = 0; a < 500 && !raw; a++) raw = tryGenSnag();
+  if (!raw) raw = fallbackSnag();
+
+  const cx = c => c * CELL + CELL / 2;
+  const cy = r => r * CELL + CELL / 2;
+
+  let pts = raw.cells.map(k => ({ x: cx(k.c), y: cy(k.r) }));
+  // Bring the snag in from under the frame.
+  const dx = pts[0].x - pts[1].x, dy = pts[0].y - pts[1].y;
+  const dl = Math.hypot(dx, dy) || 1;
+  pts.unshift({ x: pts[0].x + dx / dl * CELL * 1.6, y: pts[0].y + dy / dl * CELL * 1.6 });
+  pts = chaikin(pts, 2);
+
+  // arc-length table
+  const segs = [];
+  let total = 0;
+  for (let i = 0; i < pts.length - 1; i++) {
+    const a = pts[i], b = pts[i + 1];
+    const len = Math.hypot(b.x - a.x, b.y - a.y);
+    segs.push({ a, b, len, s: total, ang: Math.atan2(b.y - a.y, b.x - a.x) });
+    total += len;
+  }
+
+  // buildability
+  const build = new Uint8Array(COLS * ROWS).fill(1);
+  for (const k of raw.cells) build[idxOf(k.c, k.r)] = 0;
+  for (let dc = -1; dc <= 1; dc++) for (let dr = -1; dr <= 1; dr++) {
+    const c = raw.heart.c + dc, r = raw.heart.r + dr;
+    if (c >= 0 && r >= 0 && c < COLS && r < ROWS) build[idxOf(c, r)] = 0;
+  }
+  // Also protect the mouth of the snag so nothing is built on the entry.
+  const first = raw.cells[0];
+  for (let dc = -1; dc <= 1; dc++) for (let dr = -1; dr <= 1; dr++) {
+    const c = first.c + dc, r = first.r + dr;
+    if (c >= 0 && r >= 0 && c < COLS && r < ROWS) build[idxOf(c, r)] = 0;
+  }
+
+  const heartPt = { x: cx(raw.heart.c), y: cy(raw.heart.r) };
+  const entry   = { x: pts[0].x, y: pts[0].y };
+
+  return { seed, cells: raw.cells, heartCell: raw.heart, heart: heartPt, entry, pts, segs, total, build };
+}
+
+function posAt(map, d) {
+  if (d <= 0) { const s = map.segs[0]; return { x: s.a.x, y: s.a.y, ang: s.ang }; }
+  if (d >= map.total) { const s = map.segs[map.segs.length - 1]; return { x: s.b.x, y: s.b.y, ang: s.ang }; }
+  // segments are short and uniform-ish; a guarded linear scan from a hint is plenty
+  let lo = 0, hi = map.segs.length - 1;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (map.segs[mid].s + map.segs[mid].len < d) lo = mid + 1; else hi = mid;
+  }
+  const s = map.segs[lo];
+  const t = (d - s.s) / (s.len || 1);
+  return { x: lerp(s.a.x, s.b.x, t), y: lerp(s.a.y, s.b.y, t), ang: s.ang };
+}
+
+/* =========================================================================
+   STATE
+   ========================================================================= */
+
+const DIFFS = {
+  apprentice:  { k:'apprentice',  name:'Apprentice',  floss:360, warp:25, hp:0.85, d:'Loose tension. Forgiving.' },
+  journeyman:  { k:'journeyman',  name:'Journeyman',  floss:280, warp:20, hp:1.00, d:'The posting as written.' },
+  master:      { k:'master',      name:'Master Hand', floss:220, warp:14, hp:1.22, d:'One frame. No slack.' }
+};
+
+const S = {
+  phase:'title',            // title | prep | course | won | lost
+  diff: DIFFS.journeyman,
+  map:null,
+  floss:280, warp:20,
+  course:0,                 // last completed / currently running index+1
+  towers:[], enemies:[], shots:[], fx:[], texts:[], rings:[],
+  selectedType:null,        // key from TOWERS while placing
+  selected:null,            // placed tower object
+  hover:{ x:-999, y:-999, c:-1, r:-1, on:false },
+  speed:1, paused:false, sound:true,
+  spawnQ:[], spawnT:0, alive:0, spawnedAll:false,
+  prepT:0, prepMax:26,
+  boss:null,
+  shake:0, flash:0,
+  unlocked:0,               // ledger entries recovered
+  stats:{ killed:0, leaked:0, spent:0, earned:0 },
+  time:0,
+  best: 0,
+  holes:[]                  // permanent cloth damage (baked)
+};
+
+try { S.best = parseInt(localStorage.getItem('needleward.best') || '0', 10) || 0; } catch (e) { S.best = 0; }
+
+/* =========================================================================
+   SOUND — tiny synthesised workroom. Nothing is loaded.
+   ========================================================================= */
+
+const Snd = (function () {
+  let ctx = null, master = null, ready = false;
+  function boot() {
+    if (ready) return;
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return;
+    try {
+      ctx = new AC();
+      master = ctx.createGain();
+      master.gain.value = 0.32;
+      const comp = ctx.createDynamicsCompressor();
+      master.connect(comp); comp.connect(ctx.destination);
+      ready = true;
+    } catch (e) { ready = false; }
+  }
+  function env(type, f0, f1, dur, vol, wave) {
+    if (!ready || !S.sound || ctx.state === 'suspended') return;
+    const t = ctx.currentTime;
+    const o = ctx.createOscillator(), gn = ctx.createGain();
+    o.type = wave || type;
+    o.frequency.setValueAtTime(f0, t);
+    if (f1 !== f0) o.frequency.exponentialRampToValueAtTime(Math.max(20, f1), t + dur);
+    gn.gain.setValueAtTime(0.0001, t);
+    gn.gain.exponentialRampToValueAtTime(vol, t + Math.min(0.012, dur * 0.3));
+    gn.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(gn); gn.connect(master);
+    o.start(t); o.stop(t + dur + 0.02);
+  }
+  function noise(dur, vol, freq, q) {
+    if (!ready || !S.sound) return;
+    const t = ctx.currentTime;
+    const n = Math.max(1, Math.floor(ctx.sampleRate * dur));
+    const buf = ctx.createBuffer(1, n, ctx.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < n; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / n);
+    const src = ctx.createBufferSource(); src.buffer = buf;
+    const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = freq; bp.Q.value = q || 1.2;
+    const gn = ctx.createGain(); gn.gain.value = vol;
+    src.connect(bp); bp.connect(gn); gn.connect(master);
+    src.start(t);
+  }
+  return {
+    resume() { boot(); if (ctx && ctx.state === 'suspended') ctx.resume(); },
+    place()  { env('triangle', 320, 150, 0.13, 0.20); noise(0.07, 0.10, 1500, 2); },
+    sell()   { env('sine', 420, 180, 0.16, 0.16); },
+    up()     { env('triangle', 380, 720, 0.16, 0.18); env('sine', 760, 1100, 0.13, 0.09); },
+    knot()   { env('square', 900 + Math.random() * 120, 620, 0.035, 0.045); },
+    chain()  { env('sawtooth', 1500, 340, 0.10, 0.055); },
+    pin()    { env('triangle', 240, 90, 0.14, 0.13); noise(0.05, 0.07, 3200, 3); },
+    pulse()  { env('sine', 180, 92, 0.24, 0.11); },
+    hit()    { noise(0.035, 0.045, 2600, 2.4); },
+    kill()   { noise(0.10, 0.075, 900, 1.1); env('triangle', 210, 82, 0.10, 0.05); },
+    big()    { noise(0.28, 0.16, 420, 0.9); env('sawtooth', 130, 48, 0.34, 0.14); },
+    leak()   { env('sawtooth', 300, 62, 0.42, 0.20); noise(0.24, 0.10, 700, 1.4); },
+    wave()   { env('sine', 392, 392, 0.11, 0.13); setTimeout(() => env('sine', 587, 587, 0.20, 0.13), 115); },
+    clear()  { [523, 659, 784].forEach((f, i) => setTimeout(() => env('sine', f, f, 0.30, 0.11), i * 95)); },
+    win()    { [392, 523, 659, 784, 1046].forEach((f, i) => setTimeout(() => env('triangle', f, f, 0.55, 0.12), i * 155)); },
+    lose()   { [330, 262, 196, 131].forEach((f, i) => setTimeout(() => env('sawtooth', f, f * 0.94, 0.55, 0.13), i * 210)); },
+    boss()   { env('sawtooth', 74, 58, 1.5, 0.17); env('sine', 148, 116, 1.5, 0.08); }
+  };
+})();
+
+/* =========================================================================
+   CANVAS
+   ========================================================================= */
+
+const cv  = document.getElementById('cv');
+const ctx = cv.getContext('2d', { alpha:false });
+let view = { scale:1, dpr:1, w:WORLD_W, h:WORLD_H };
+
+function fitCanvas() {
+  const r = cv.getBoundingClientRect();
+  const dpr = Math.min(window.devicePixelRatio || 1, 2.25);
+  const w = Math.max(320, Math.round(r.width)), h = Math.max(210, Math.round(r.height));
+  if (cv.width !== Math.round(w * dpr) || cv.height !== Math.round(h * dpr)) {
+    cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr);
+  }
+  view.dpr = dpr; view.w = w; view.h = h;
+  view.scale = Math.min(w / WORLD_W, h / WORLD_H);
+  view.ox = (w - WORLD_W * view.scale) / 2;
+  view.oy = (h - WORLD_H * view.scale) / 2;
+}
+function toWorld(clientX, clientY) {
+  const r = cv.getBoundingClientRect();
+  const x = (clientX - r.left) * (view.w / r.width);
+  const y = (clientY - r.top)  * (view.h / r.height);
+  return { x: (x - view.ox) / view.scale, y: (y - view.oy) / view.scale };
+}
+
+/* ---------- the cloth: baked once per map, damaged permanently in place --- */
+
+const cloth = document.createElement('canvas');
+cloth.width = WORLD_W; cloth.height = WORLD_H;
+const cctx = cloth.getContext('2d');
+
+function bakeLinen() {
+  // Plain weave, generated per pixel: warp over weft, weft over warp, plus
+  // slubs and the general unevenness of anything made by hand.
+  const img = cctx.createImageData(WORLD_W, WORLD_H);
+  const d = img.data;
+  const base = [229, 217, 191];
+  const nr = mulberry32(0x5EED ^ (S.map ? S.map.seed : 1));
+  // low-frequency mottle field
+  const MW = 40, MH = 28, mot = new Float32Array(MW * MH);
+  for (let i = 0; i < mot.length; i++) mot[i] = nr() * 2 - 1;
+  const mottle = (x, y) => {
+    const fx = x / WORLD_W * (MW - 1), fy = y / WORLD_H * (MH - 1);
+    const x0 = fx | 0, y0 = fy | 0, tx = fx - x0, ty = fy - y0;
+    const x1 = Math.min(MW - 1, x0 + 1), y1 = Math.min(MH - 1, y0 + 1);
+    return lerp(lerp(mot[y0 * MW + x0], mot[y0 * MW + x1], tx),
+                lerp(mot[y1 * MW + x0], mot[y1 * MW + x1], tx), ty);
+  };
+  const BUMP = [-7, 4, 4, -7];
+  let p = 0;
+  for (let y = 0; y < WORLD_H; y++) {
+    const by = (y >> 2) & 1, fy = y & 3;
+    for (let x = 0; x < WORLD_W; x++) {
+      const bx = (x >> 2) & 1;
+      const over = bx ^ by;                       // which thread is on top here
+      const fx = x & 3;
+      let v = over ? 9 : -11;                     // over-threads catch the light
+      v += BUMP[over ? fy : fx];                  // rounding across the thread
+      v += mottle(x, y) * 7;                      // hand-dyed unevenness
+      v += (Math.random() * 2 - 1) * 3.2;         // fibre noise
+      d[p]     = clamp(base[0] + v, 0, 255);
+      d[p + 1] = clamp(base[1] + v * 0.96, 0, 255);
+      d[p + 2] = clamp(base[2] + v * 0.86, 0, 255);
+      d[p + 3] = 255;
+      p += 4;
+    }
+  }
+  cctx.putImageData(img, 0, 0);
+
+  // slubs: thicker bits of yarn
+  cctx.save();
+  for (let i = 0; i < 130; i++) {
+    const x = nr() * WORLD_W, y = nr() * WORLD_H, horiz = nr() < 0.5, L = 8 + nr() * 46;
+    cctx.globalAlpha = 0.05 + nr() * 0.07;
+    cctx.strokeStyle = nr() < 0.5 ? '#fdf5e2' : '#a9906a';
+    cctx.lineWidth = 1 + nr() * 2.2;
+    cctx.beginPath();
+    cctx.moveTo(x, y); cctx.lineTo(horiz ? x + L : x, horiz ? y : y + L);
+    cctx.stroke();
+  }
+  // age spots
+  for (let i = 0; i < 16; i++) {
+    const x = nr() * WORLD_W, y = nr() * WORLD_H, R = 22 + nr() * 90;
+    const gr = cctx.createRadialGradient(x, y, 0, x, y, R);
+    gr.addColorStop(0, 'rgba(150,116,64,0.055)');
+    gr.addColorStop(1, 'rgba(150,116,64,0)');
+    cctx.globalAlpha = 1; cctx.fillStyle = gr;
+    cctx.beginPath(); cctx.arc(x, y, R, 0, TAU); cctx.fill();
+  }
+  cctx.restore();
+}
+
+function strokePath(c, pts, w, style, cap) {
+  c.beginPath();
+  c.moveTo(pts[0].x, pts[0].y);
+  for (let i = 1; i < pts.length; i++) c.lineTo(pts[i].x, pts[i].y);
+  c.lineWidth = w; c.strokeStyle = style; c.lineCap = cap || 'round'; c.lineJoin = 'round';
+  c.stroke();
+}
+
+function bakeSnag() {
+  const m = S.map, p = m.pts;
+  cctx.save();
+  // 1. the worn channel: the weave is thin where the thread was dragged out
+  strokePath(cctx, p, 46, 'rgba(120,96,58,0.10)');
+  strokePath(cctx, p, 34, 'rgba(120,96,58,0.13)');
+  strokePath(cctx, p, 26, '#cdbc97');
+  strokePath(cctx, p, 22, '#d6c7a4');
+  // 2. picked fibres along both lips of the channel
+  const nr = mulberry32(0xBEE5 ^ m.seed);
+  cctx.lineWidth = 1;
+  for (let i = 2; i < p.length - 2; i += 1) {
+    const a = p[i], b = p[i + 1];
+    const ang = Math.atan2(b.y - a.y, b.x - a.x);
+    for (let s = -1; s <= 1; s += 2) {
+      if (nr() > 0.55) continue;
+      const nx = Math.cos(ang + s * Math.PI / 2), ny = Math.sin(ang + s * Math.PI / 2);
+      const l0 = 11 + nr() * 2, l1 = l0 + 3 + nr() * 7;
+      cctx.strokeStyle = 'rgba(126,102,64,' + (0.16 + nr() * 0.26).toFixed(3) + ')';
+      cctx.beginPath();
+      cctx.moveTo(a.x + nx * l0, a.y + ny * l0);
+      cctx.lineTo(a.x + nx * l1 + (nr() - 0.5) * 4, a.y + ny * l1 + (nr() - 0.5) * 4);
+      cctx.stroke();
+    }
+  }
+  // 3. the pulled thread itself, couched down the middle with visible twist
+  strokePath(cctx, p, 7, 'rgba(70,54,32,0.20)');
+  strokePath(cctx, p, 5.4, '#b39a70');
+  cctx.save();
+  cctx.setLineDash([3, 4]); cctx.lineDashOffset = 0;
+  strokePath(cctx, p, 4.6, 'rgba(255,243,215,0.35)');
+  cctx.setLineDash([2, 6]);
+  strokePath(cctx, p, 5.6, 'rgba(84,64,38,0.34)');
+  cctx.restore();
+  // 4. couching stitches holding it down
+  let acc = 0;
+  for (let i = 0; i < m.segs.length; i++) {
+    const s = m.segs[i]; acc += s.len;
+    if (acc < 21) continue; acc = 0;
+    const nx = Math.cos(s.ang + Math.PI / 2), ny = Math.sin(s.ang + Math.PI / 2);
+    cctx.strokeStyle = 'rgba(96,74,44,0.5)'; cctx.lineWidth = 1.7; cctx.lineCap = 'round';
+    cctx.beginPath();
+    cctx.moveTo(s.a.x - nx * 6.5, s.a.y - ny * 6.5);
+    cctx.lineTo(s.a.x + nx * 6.5, s.a.y + ny * 6.5);
+    cctx.stroke();
+  }
+  cctx.restore();
+}
+
+/* A leak burns a real hole. It never heals; you can read the whole game off
+   the cloth at the end. */
+function punchHole(x, y, R) {
+  const nr = mulberry32(((x * 7349 + y * 911) | 0) >>> 0);
+  cctx.save();
+  // frayed rim first
+  for (let i = 0; i < 26; i++) {
+    const a = nr() * TAU, r0 = R * (0.72 + nr() * 0.3), r1 = R * (1.02 + nr() * 0.65);
+    cctx.strokeStyle = 'rgba(120,96,58,' + (0.2 + nr() * 0.4).toFixed(2) + ')';
+    cctx.lineWidth = 0.8 + nr() * 1.6;
+    cctx.beginPath();
+    cctx.moveTo(x + Math.cos(a) * r0, y + Math.sin(a) * r0);
+    cctx.lineTo(x + Math.cos(a + (nr() - 0.5) * 0.5) * r1, y + Math.sin(a + (nr() - 0.5) * 0.5) * r1);
+    cctx.stroke();
+  }
+  // the Wardrobe Dark behind
+  cctx.beginPath();
+  const N = 16;
+  for (let i = 0; i <= N; i++) {
+    const a = i / N * TAU, rr = R * (0.62 + nr() * 0.34);
+    const px = x + Math.cos(a) * rr, py = y + Math.sin(a) * rr;
+    if (i === 0) cctx.moveTo(px, py); else cctx.lineTo(px, py);
+  }
+  cctx.closePath();
+  const gr = cctx.createRadialGradient(x, y, 0, x, y, R);
+  gr.addColorStop(0, '#080605'); gr.addColorStop(0.72, '#100c09'); gr.addColorStop(1, 'rgba(24,18,13,0.75)');
+  cctx.fillStyle = gr; cctx.fill();
+  cctx.restore();
+}
+
+function rebakeCloth() {
+  bakeLinen();
+  bakeSnag();
+  for (const h of S.holes) punchHole(h.x, h.y, h.r);
+}
+
+/* =========================================================================
+   ENTITIES
+   ========================================================================= */
+
+function towerAt(c, r) { for (const t of S.towers) if (t.c === c && t.r === r) return t; return null; }
+function canBuild(c, r) {
+  if (c < 0 || r < 0 || c >= COLS || r >= ROWS) return false;
+  if (!S.map.build[idxOf(c, r)]) return false;
+  return !towerAt(c, r);
+}
+
+function makeTower(key, c, r) {
+  return {
+    key, lvl:0, c, r,
+    x: c * CELL + CELL / 2, y: r * CELL + CELL / 2,
+    cd: 0, ang: -Math.PI / 2, mode: 'first',
+    burstLeft: 0, burstT: 0,
+    kills: 0, dealt: 0, invested: TOWERS[key].cost,
+    sew: 0.5, smother: 0, fireFlash: 0, pulseAnim: 0, seed: rng() * 1000
+  };
+}
+
+/* Resolved stats, including whatever wax is within reach. */
+function tstats(t) {
+  const T = TOWERS[t.key];
+  const s = Object.assign({}, T.tiers[t.lvl]);
+  s.type = T; s.lvl = t.lvl;
+  let bd = 0, br = 0;
+  if (t.key !== 'wax') {
+    for (const w of S.towers) {
+      if (w.key !== 'wax' || w === t) continue;
+      const ws = TOWERS.wax.tiers[w.lvl];
+      const dx = w.x - t.x, dy = w.y - t.y;
+      if (dx * dx + dy * dy <= ws.range * ws.range) { bd = Math.max(bd, ws.buffD); br = Math.max(br, ws.buffR); }
+    }
+  }
+  s.buffD = bd; s.buffR = br;
+  if (s.dmg) s.dmg = s.dmg * (1 + bd);
+  if (s.rate) s.rate = s.rate / (1 + br);
+  return s;
+}
+function upgradeCost(t) { const T = TOWERS[t.key]; return t.lvl < 4 ? T.tiers[t.lvl + 1].cost : 0; }
+function sellValue(t) { return Math.floor(t.invested * 0.7); }
+
+/* ------------------------------------------------------------- enemies --- */
+
+function hpScale(courseNo) {
+  const w = courseNo - 1;
+  return (1 + 0.13 * w + 0.006 * w * w) * S.diff.hp;
+}
+
+function spawnEnemy(id, courseNo, offset) {
+  const def = ENEMIES[id];
+  const scale = def.noScale ? (0.62 + 0.38 * S.diff.hp) : hpScale(courseNo);
+  const hp = Math.round(def.hp * scale);
+  const e = {
+    id, def, boss: !!def.boss, fly: !!def.fly,
+    hp, maxHp: hp,
+    d: -(offset || 0), prog: 0,
+    x: S.map.entry.x, y: S.map.entry.y, ang: 0,
+    baseSpd: def.spd * (def.boss ? 1 : rand(0.94, 1.06)),
+    slowT: 0, slowAmt: 0, rootT: 0,
+    frayT: 0, frayDps: 0,
+    phaseT: def.phase ? rand(1, def.phase[0]) : 0, phasing: false,
+    shield: def.shield || 0, maxShield: def.shield || 0, shieldT: 0,
+    accelMul: 1, spawnT: def.spawn ? def.spawn.every : 0,
+    smotherT: 2.5,
+    rootImmT: 0, waxCd: 0,
+    alive: true, hurtT: 0, wob: rng() * TAU, seed: rng() * 1000, bounty: def.bounty
+  };
+  if (e.fly) {
+    const hx = S.map.heart.x - S.map.entry.x, hy = S.map.heart.y - S.map.entry.y;
+    e.flyLen = Math.hypot(hx, hy);
+    e.flyDx = hx / e.flyLen; e.flyDy = hy / e.flyLen;
+  }
+  S.enemies.push(e);
+  S.alive++;
+  if (e.boss) { S.boss = e; Snd.boss(); }
+  return e;
+}
+
+function enemySpeed(e) {
+  let s = e.baseSpd * e.accelMul;
+  if (e.rootT > 0) return 0;
+  if (e.slowT > 0) {
+    const res = e.def.slowRes || 0;
+    s *= (1 - e.slowAmt * (1 - res));
+  }
+  if (e.def.erratic) s *= 0.55 + 0.85 * (0.5 + 0.5 * Math.sin(S.time * 5.5 + e.wob));
+  return s;
+}
+
+function applySlow(e, amt, dur) {
+  if (amt <= 0) return;
+  if (amt >= e.slowAmt || e.slowT <= 0) { e.slowAmt = amt; e.slowT = Math.max(e.slowT, dur); }
+  else e.slowT = Math.max(e.slowT, dur);
+}
+/* Roots have diminishing returns. Without this, two long-rooting Bodkins can
+   overlap forever and an enemy never advances or dies, which hangs the course.
+   After every pin an enemy gets a window in which it cannot be pinned again,
+   so the Unpicking always makes progress no matter how the frame is built. */
+const ROOT_RECOVERY = 1.0;
+function applyRoot(e, dur) {
+  if (e.def.rootImm || dur <= 0) return;
+  if (e.rootImmT > 0) return;
+  e.rootT = Math.max(e.rootT, dur);
+  e.rootImmT = dur + ROOT_RECOVERY;
+}
+
+function damage(e, amount, opts) {
+  if (!e.alive || e.phasing) return 0;
+  opts = opts || {};
+  let armorFactor = 1;
+  if (opts.dmgType === 'sever') armorFactor = 0.5;
+  else if (opts.dmgType === 'true') armorFactor = 0;
+  else armorFactor = 1 - (opts.apen || 0);
+  let amt = amount;
+  if (opts.chain && e.def.chainVuln) amt *= e.def.chainVuln;
+  if (e.boss && opts.bossMul) amt *= opts.bossMul;
+  const eff = (e.def.armor || 0) * armorFactor;
+  let dmg = Math.max(1, amt - eff);
+
+  if (e.shield > 0) {
+    const absorbed = Math.min(e.shield, dmg);
+    e.shield -= absorbed; dmg -= absorbed; e.shieldT = 0;
+    if (dmg <= 0) { e.hurtT = 0.12; return absorbed; }
+  }
+  e.shieldT = 0;
+  e.hp -= dmg; e.hurtT = 0.14;
+  if (opts.src) { opts.src.dealt += dmg; }
+  if (e.hp <= 0) killEnemy(e, opts.src);
+  return dmg;
+}
+
+function killEnemy(e, src) {
+  if (!e.alive) return;
+  e.alive = false; S.alive--;
+  S.stats.killed++;
+  if (src) src.kills++;
+  const gold = Math.round(e.bounty * (1 + 0.03 * (S.course - 1)));
+  addFloss(gold);
+  floatText(e.x, e.y - e.def.r - 6, '+' + gold, C.brass2, e.boss ? 20 : 13);
+  burst(e.x, e.y, e.boss ? 46 : 12, e.def.col, e.def.r);
+  if (e.boss) { Snd.big(); S.shake = Math.max(S.shake, 16); S.flash = 0.5; if (S.boss === e) S.boss = null; }
+  else Snd.kill();
+  if (e.def.split) {
+    for (let i = 0; i < e.def.split.length; i++) {
+      const child = spawnEnemy(e.def.split[i], S.course, 0);
+      child.d = e.d - (i * 13) - 6;
+      child.hp = Math.round(child.maxHp * (e.boss ? 1 : 0.75));
+      child.maxHp = child.hp;
+      if (!e.fly && child.fly) { child.fly = false; }
+    }
+  }
+}
+
+function leak(e) {
+  e.alive = false; S.alive--;
+  S.stats.leaked++;
+  const dmg = Math.min(S.warp, e.def.leak);
+  S.warp -= dmg;
+  S.shake = Math.max(S.shake, e.boss ? 22 : 9);
+  S.flash = Math.max(S.flash, e.boss ? 0.6 : 0.25);
+  Snd.leak();
+  const a = rand(0, TAU), rr = rand(0, 26);
+  const hx = S.map.heart.x + Math.cos(a) * rr, hy = S.map.heart.y + Math.sin(a) * rr;
+  const hole = { x: hx, y: hy, r: 9 + dmg * 5 };
+  S.holes.push(hole); punchHole(hx, hy, hole.r);
+  floatText(S.map.heart.x, S.map.heart.y - 34, '-' + dmg + ' warp', '#ff9c8e', 18);
+  toast(e.def.name + ' reached the knot', 'bad');
+  gaugeHurt();
+  if (S.boss === e) S.boss = null;
+  if (S.warp <= 0) endGame(false);
+}
+
+/* --------------------------------------------------------------- effects - */
+
+function burst(x, y, n, col, spread) {
+  for (let i = 0; i < n; i++) {
+    const a = rng() * TAU, sp = rand(20, 130);
+    S.fx.push({ k:'lint', x, y, vx:Math.cos(a)*sp, vy:Math.sin(a)*sp,
+                life:rand(0.3,0.9), max:0.9, col, s:rand(1.1,3.1), rot:rng()*TAU, vr:rand(-6,6) });
+  }
+  for (let i = 0; i < Math.max(2, n / 4); i++) {
+    const a = rng() * TAU, sp = rand(30, 90);
+    S.fx.push({ k:'snip', x, y, vx:Math.cos(a)*sp, vy:Math.sin(a)*sp,
+                life:rand(0.4,1.0), max:1.0, col, s:rand(4,9), rot:rng()*TAU, vr:rand(-9,9) });
+  }
+}
+function floatText(x, y, txt, col, size) {
+  S.texts.push({ x, y, txt, col, size: size || 13, life: 1.0, vy: -30 });
+}
+function arcFx(pts, col) { S.fx.push({ k:'arc', pts, col, life:0.2, max:0.2 }); }
+
+/* --------------------------------------------------------------- targeting */
+
+function targetable(e, air) {
+  if (!e.alive || e.phasing || e.d < 0) return false;
+  if (e.fly && !air) return false;
+  return true;
+}
+function pickTarget(t, st) {
+  const air = st.type.air, R2 = st.range * st.range;
+  let best = null, bestV = 0;
+  for (const e of S.enemies) {
+    if (!targetable(e, air)) continue;
+    const dx = e.x - t.x, dy = e.y - t.y, d2 = dx * dx + dy * dy;
+    if (d2 > R2) continue;
+    let v;
+    switch (t.mode) {
+      case 'last':   v = -e.prog; break;
+      case 'strong': v = e.hp; break;
+      case 'close':  v = -d2; break;
+      default:       v = e.prog;
+    }
+    if (!best || v > bestV) { best = e; bestV = v; }
+  }
+  return best;
+}
+
+/* =========================================================================
+   SIMULATION
+   ========================================================================= */
+
+function fire(t, st, target) {
+  const T = TOWERS[t.key];
+  t.fireFlash = 0.12;
+  const dx = target.x - t.x, dy = target.y - t.y;
+  t.ang = Math.atan2(dy, dx);
+
+  if (t.key === 'knot') {
+    let dmg = st.dmg, crit = false;
+    if (st.crit && rng() < st.crit) { dmg *= st.critX; crit = true; }
+    S.shots.push({ k:'knot', x:t.x + Math.cos(t.ang)*15, y:t.y + Math.sin(t.ang)*15,
+                   tgt:target, spd:640, dmg, crit, col:T.color, src:t, life:1.6,
+                   dmgType:T.dmgType, trail:[] });
+    Snd.knot();
+
+  } else if (t.key === 'pin') {
+    const ang = t.ang;
+    S.shots.push({ k:'pin', x:t.x + Math.cos(ang)*20, y:t.y + Math.sin(ang)*20,
+                   vx:Math.cos(ang)*1080, vy:Math.sin(ang)*1080,
+                   dmg:st.dmg, pierce:st.pierce, apen:st.apen, root:st.root, bossMul:st.boss,
+                   hit:new Set(), col:T.color, src:t, life:0.72, dmgType:T.dmgType, len:26 });
+    Snd.pin();
+    t.recoil = 1;
+
+  } else if (t.key === 'chain') {
+    let cur = target, dmg = st.dmg;
+    const hitSet = new Set([cur]);
+    const pts = [{ x:t.x, y:t.y }];
+    for (let b = 0; b <= st.bounce; b++) {
+      pts.push({ x:cur.x, y:cur.y });
+      damage(cur, dmg, { dmgType:T.dmgType, chain:true, src:t });
+      applySlow(cur, st.slow, st.slowT);
+      let nxt = null, nd = 1e9;
+      for (const e of S.enemies) {
+        if (!targetable(e, true) || hitSet.has(e)) continue;
+        const ddx = e.x - cur.x, ddy = e.y - cur.y, d2 = ddx * ddx + ddy * ddy;
+        if (d2 < 132 * 132 && d2 < nd) { nd = d2; nxt = e; }
+      }
+      if (!nxt) break;
+      cur = nxt; hitSet.add(cur); dmg *= st.fall;
+    }
+    arcFx(pts, T.color);
+    Snd.chain();
+
+  } else if (t.key === 'blanket') {
+    S.rings.push({ x:t.x, y:t.y, r:10, maxR:st.range, dmg:st.dmg, fray:st.fray, frayT:st.frayT,
+                   slowBonus:st.slowBonus, hit:new Set(), col:T.color, src:t, life:1, dmgType:T.dmgType });
+    t.pulseAnim = 1;
+    Snd.pulse();
+  }
+}
+
+function stepTowers(dt) {
+  for (const t of S.towers) {
+    if (t.sew > 0) t.sew -= dt;
+    if (t.fireFlash > 0) t.fireFlash -= dt;
+    if (t.pulseAnim > 0) t.pulseAnim -= dt * 2.2;
+    if (t.recoil > 0) t.recoil -= dt * 5;
+    if (t.smother > 0) { t.smother -= dt; continue; }
+    if (t.key === 'wax') continue;
+
+    const st = tstats(t);
+    // burst continuation
+    if (t.burstLeft > 0) {
+      t.burstT -= dt;
+      if (t.burstT <= 0) {
+        const tgt = pickTarget(t, st);
+        if (tgt) { fire(t, st, tgt); t.burstLeft--; t.burstT = 0.075; }
+        else t.burstLeft = 0;
+      }
+      continue;
+    }
+    t.cd -= dt;
+    // idle aim so the frame never looks dead
+    const tgt = pickTarget(t, st);
+    if (tgt) {
+      const want = Math.atan2(tgt.y - t.y, tgt.x - t.x);
+      let df = ((want - t.ang + Math.PI * 3) % TAU) - Math.PI;
+      t.ang += df * Math.min(1, dt * 14);
+      if (t.cd <= 0) {
+        fire(t, st, tgt);
+        t.cd = st.rate;
+        if ((st.burst || 1) > 1) { t.burstLeft = st.burst - 1; t.burstT = 0.075; }
+      }
+    }
+  }
+}
+
+function stepWax(dt) {
+  for (const w of S.towers) {
+    if (w.key !== 'wax' || w.smother > 0) continue;
+    const ws = TOWERS.wax.tiers[w.lvl];
+    const R2 = ws.range * ws.range;
+    for (const e of S.enemies) {
+      if (!e.alive || e.d < 0 || e.fly) continue;
+      const dx = e.x - w.x, dy = e.y - w.y;
+      if (dx * dx + dy * dy > R2) continue;
+      applySlow(e, ws.slow, 0.35);
+      /* An occasional proc, on a per-vermin cooldown. Rolling this every tick
+         would set anything in the aura solid permanently. */
+      if (ws.freeze && e.waxCd <= 0 && !e.def.rootImm && e.rootT <= 0 && e.rootImmT <= 0) {
+        e.waxCd = 2.6;
+        if (rng() < ws.freeze) { applyRoot(e, 0.85); floatText(e.x, e.y - 16, 'set', '#ffd27a', 11); }
+      }
+    }
+  }
+}
+
+function stepShots(dt) {
+  for (let i = S.shots.length - 1; i >= 0; i--) {
+    const p = S.shots[i];
+    p.life -= dt;
+    if (p.life <= 0) { S.shots.splice(i, 1); continue; }
+
+    if (p.k === 'knot') {
+      const tgt = p.tgt;
+      if (!tgt || !tgt.alive) {
+        p.x += Math.cos(p.ang || 0) * p.spd * dt;
+        p.life -= dt * 4;
+        continue;
+      }
+      const dx = tgt.x - p.x, dy = tgt.y - p.y, d = Math.hypot(dx, dy) || 1;
+      p.ang = Math.atan2(dy, dx);
+      const step = p.spd * dt;
+      p.trail.push({ x:p.x, y:p.y }); if (p.trail.length > 7) p.trail.shift();
+      if (step >= d - (tgt.def.r * 0.6)) {
+        damage(tgt, p.dmg, { dmgType:p.dmgType, src:p.src });
+        if (p.crit) floatText(tgt.x, tgt.y - tgt.def.r - 4, Math.round(p.dmg) + '!', '#ffd27a', 14);
+        burst(p.x, p.y, 3, p.col, 4);
+        Snd.hit();
+        S.shots.splice(i, 1);
+      } else { p.x += dx / d * step; p.y += dy / d * step; }
+
+    } else if (p.k === 'pin') {
+      const nx = p.x + p.vx * dt, ny = p.y + p.vy * dt;
+      for (const e of S.enemies) {
+        if (!targetable(e, true) || p.hit.has(e)) continue;
+        // point-segment distance
+        const ax = nx - p.x, ay = ny - p.y;
+        const bx = e.x - p.x, by = e.y - p.y;
+        const L2 = ax * ax + ay * ay || 1;
+        const tt = clamp((ax * bx + ay * by) / L2, 0, 1);
+        const px = p.x + ax * tt, py = p.y + ay * tt;
+        if (Math.hypot(e.x - px, e.y - py) <= e.def.r + 5) {
+          p.hit.add(e);
+          damage(e, p.dmg, { dmgType:p.dmgType, apen:p.apen, bossMul:p.bossMul, src:p.src });
+          applyRoot(e, p.root);
+          burst(px, py, 5, '#fff3d8', 4);
+          Snd.hit();
+          if (p.hit.size >= p.pierce) { S.shots.splice(i, 1); break; }
+        }
+      }
+      if (S.shots[i] === p) {
+        p.x = nx; p.y = ny;
+        if (p.x < -60 || p.y < -60 || p.x > WORLD_W + 60 || p.y > WORLD_H + 60) S.shots.splice(i, 1);
+      }
+    }
+  }
+}
+
+function stepRings(dt) {
+  for (let i = S.rings.length - 1; i >= 0; i--) {
+    const g = S.rings[i];
+    const grow = g.maxR / 0.30;
+    g.r += grow * dt;
+    for (const e of S.enemies) {
+      if (!e.alive || e.d < 0 || e.fly || e.phasing || g.hit.has(e)) continue;
+      const d = Math.hypot(e.x - g.x, e.y - g.y);
+      if (d <= g.r + e.def.r * 0.5) {
+        g.hit.add(e);
+        let dmg = g.dmg;
+        if (g.slowBonus && e.slowT > 0) dmg *= 1 + g.slowBonus;
+        damage(e, dmg, { dmgType:g.dmgType, src:g.src });
+        if (g.fray > 0 && e.alive) { e.frayDps = Math.max(e.frayDps, g.fray); e.frayT = Math.max(e.frayT, g.frayT); }
+      }
+    }
+    if (g.r >= g.maxR) S.rings.splice(i, 1);
+  }
+}
+
+function stepEnemies(dt) {
+  const m = S.map;
+  for (let i = S.enemies.length - 1; i >= 0; i--) {
+    const e = S.enemies[i];
+    if (!e.alive) { S.enemies.splice(i, 1); continue; }
+
+    if (e.hurtT > 0) e.hurtT -= dt;
+    if (e.slowT > 0) e.slowT -= dt;
+    if (e.rootT > 0) e.rootT -= dt;
+    if (e.rootImmT > 0) e.rootImmT -= dt;
+    if (e.waxCd > 0) e.waxCd -= dt;
+
+    if (e.frayT > 0) {
+      e.frayT -= dt;
+      e.hp -= e.frayDps * dt;
+      if (rng() < dt * 9) S.fx.push({ k:'lint', x:e.x + rand(-6,6), y:e.y + rand(-6,6),
+                                      vx:rand(-12,12), vy:rand(-26,-6), life:0.5, max:0.5, col:'#d9c9a6', s:1.6, rot:0, vr:0 });
+      if (e.hp <= 0) { killEnemy(e); continue; }
+    }
+    if (e.def.accel) e.accelMul = Math.min(e.def.accelMax, e.accelMul + e.def.accel * dt);
+    if (e.maxShield > 0 && e.shield < e.maxShield) {
+      e.shieldT += dt;
+      if (e.shieldT > (e.def.shieldDelay || 3)) e.shield = Math.min(e.maxShield, e.shield + e.maxShield * 0.8 * dt);
+    }
+    if (e.def.phase) {
+      e.phaseT -= dt;
+      if (e.phaseT <= 0) {
+        e.phasing = !e.phasing;
+        e.phaseT = e.phasing ? e.def.phase[1] : e.def.phase[0];
+      }
+    }
+    if (e.def.heal) {
+      for (const o of S.enemies) {
+        if (o === e || !o.alive || o.hp >= o.maxHp) continue;
+        const dx = o.x - e.x, dy = o.y - e.y;
+        if (dx * dx + dy * dy < e.def.healR * e.def.healR) o.hp = Math.min(o.maxHp, o.hp + e.def.heal * dt);
+      }
+    }
+    if (e.def.spawn && e.d >= 0) {
+      e.spawnT -= dt;
+      if (e.spawnT <= 0) {
+        e.spawnT = e.def.spawn.every;
+        for (let k = 0; k < e.def.spawn.n; k++) {
+          const c = spawnEnemy(e.def.spawn.of, S.course, 0);
+          c.d = Math.max(0, e.d - rand(4, 26));
+          if (c.fly && !e.fly) { /* ground-launched flits still fly */ }
+        }
+      }
+    }
+    if (e.def.smother && e.d >= 0) {
+      e.smotherT -= dt;
+      if (e.smotherT <= 0) {
+        e.smotherT = 3.2;
+        let best = null, bd = 260 * 260;
+        for (const t of S.towers) {
+          const dx = t.x - e.x, dy = t.y - e.y, d2 = dx * dx + dy * dy;
+          if (d2 < bd && t.smother <= 0) { bd = d2; best = t; }
+        }
+        if (best) { best.smother = 2.4; floatText(best.x, best.y - 26, 'smothered', '#b7a3d8', 12); }
+      }
+    }
+
+    const spd = enemySpeed(e);
+    e.d += spd * dt;
+
+    if (e.fly) {
+      const t01 = Math.max(0, e.d) ;
+      e.prog = clamp(t01 / e.flyLen, 0, 1);
+      const wob = Math.sin(S.time * 7 + e.wob) * (e.boss ? 9 : 15);
+      e.x = m.entry.x + e.flyDx * t01 - e.flyDy * wob;
+      e.y = m.entry.y + e.flyDy * t01 + e.flyDx * wob;
+      e.ang = Math.atan2(e.flyDy, e.flyDx);
+      if (t01 >= e.flyLen) { leak(e); S.enemies.splice(i, 1); continue; }
+    } else {
+      e.prog = clamp(e.d / m.total, 0, 1);
+      const p = posAt(m, Math.max(0, e.d));
+      e.x = p.x; e.y = p.y; e.ang = p.ang;
+      if (e.d >= m.total) { leak(e); S.enemies.splice(i, 1); continue; }
+    }
+  }
+}
+
+function stepFx(dt) {
+  for (let i = S.fx.length - 1; i >= 0; i--) {
+    const f = S.fx[i];
+    f.life -= dt;
+    if (f.life <= 0) { S.fx.splice(i, 1); continue; }
+    if (f.k !== 'arc') {
+      f.x += f.vx * dt; f.y += f.vy * dt;
+      f.vx *= 0.94; f.vy *= 0.94; f.vy += 44 * dt;
+      f.rot += f.vr * dt;
+    }
+  }
+  for (let i = S.texts.length - 1; i >= 0; i--) {
+    const t = S.texts[i];
+    t.life -= dt * 1.15; t.y += t.vy * dt; t.vy *= 0.93;
+    if (t.life <= 0) S.texts.splice(i, 1);
+  }
+}
+
+/* =========================================================================
+   COURSE FLOW
+   ========================================================================= */
+
+function buildSpawnQueue(courseNo) {
+  const c = COURSES[courseNo - 1];
+  const q = [];
+  for (const grp of c.g) {
+    for (let i = 0; i < grp.n; i++) q.push({ t: grp.delay + i * grp.gap, id: grp.t });
+  }
+  q.sort((a, b) => a.t - b.t);
+  return q;
+}
+
+function startCourse() {
+  if (S.phase !== 'prep' && S.phase !== 'title') return;
+  S.course++;
+  if (S.course > TOTAL_COURSES) { endGame(true); return; }
+  // early-mend bounty: the sooner you call it, the more floss you keep
+  if (S.prepT > 0) {
+    const bonus = Math.ceil(S.prepT) * 2;
+    addFloss(bonus);
+    toast('Early mend  +' + bonus + ' floss', 'good');
+  }
+  // wax fonts pay out at the head of each course
+  let income = 0;
+  for (const t of S.towers) if (t.key === 'wax') income += TOWERS.wax.tiers[t.lvl].income || 0;
+  if (income > 0) { addFloss(income); toast('Wax rendered  +' + income + ' floss', 'good'); }
+
+  S.phase = 'course';
+  S.spawnQ = buildSpawnQueue(S.course);
+  S.spawnT = 0;
+  S.spawnedAll = false;
+  S.prepT = 0;
+  Snd.wave();
+  const def = COURSES[S.course - 1];
+  showLedgerLine(null);
+  toast('Course ' + S.course + ' \u2014 ' + def.n, def.boss ? 'bad' : '');
+  syncUI();
+}
+
+function finishCourse() {
+  S.phase = 'prep';
+  S.boss = null;
+  const bonus = 35 + S.course * 9;
+  addFloss(bonus);
+  Snd.clear();
+  if (S.course > S.best) {
+    S.best = S.course;
+    try { localStorage.setItem('needleward.best', String(S.best)); } catch (e) {}
+  }
+  showLedgerLine(LEDGER_LINES[S.course - 1] || '');
+  toast('Course held  +' + bonus + ' floss', 'good');
+  unlockEntries();
+  if (S.course >= TOTAL_COURSES) { endGame(true); return; }
+  S.prepT = S.prepMax;
+  syncUI();
+}
+
+function stepCourse(dt) {
+  if (S.phase === 'prep') {
+    if (S.prepT > 0) {
+      S.prepT -= dt;
+      if (S.prepT <= 0) { S.prepT = 0; }
+      syncMendFuse();
+    }
+    return;
+  }
+  if (S.phase !== 'course') return;
+
+  S.spawnT += dt;
+  while (S.spawnQ.length && S.spawnQ[0].t <= S.spawnT) {
+    const item = S.spawnQ.shift();
+    spawnEnemy(item.id, S.course, 0);
+  }
+  if (!S.spawnQ.length) S.spawnedAll = true;
+  /* Derive the live count rather than trusting the running tally: a single
+     missed decrement anywhere would otherwise hang the course forever. */
+  if (S.spawnedAll) {
+    let live = 0;
+    for (let i = 0; i < S.enemies.length; i++) if (S.enemies[i].alive) live++;
+    S.alive = live;
+    if (live <= 0) finishCourse();
+  }
+}
+
+function addFloss(n) { S.floss += n; if (n > 0) S.stats.earned += n; gaugePulse(); }
+
+function endGame(won) {
+  if (S.phase === 'won' || S.phase === 'lost') return;
+  S.phase = won ? 'won' : 'lost';
+  if (won) { S.unlocked = LEDGER_ENTRIES.length; Snd.win(); }
+  else Snd.lose();
+  showEnd(won);
+  syncUI();
+}
+
+function unlockEntries() {
+  let n = 0;
+  for (const e of LEDGER_ENTRIES) if (S.course >= e.at) n++;
+  if (n > S.unlocked) {
+    S.unlocked = n;
+    toast('Ledger entry recovered', 'good');
+    renderLedger();
+  }
+}
+
+/* =========================================================================
+   MAIN LOOP
+   ========================================================================= */
+
+let lastT = performance.now(), acc = 0;
+const STEP = 1 / 120;
+
+function frame(now) {
+  requestAnimationFrame(frame);
+  let raw = (now - lastT) / 1000;
+  lastT = now;
+  if (raw > 0.25) raw = 0.25;
+
+  const running = !S.paused && (S.phase === 'course' || S.phase === 'prep');
+  if (running) {
+    acc += raw * S.speed;
+    let guard = 0;
+    while (acc >= STEP && guard++ < 600) {
+      acc -= STEP;
+      S.time += STEP;
+      stepCourse(STEP);
+      stepWax(STEP);
+      stepTowers(STEP);
+      stepShots(STEP);
+      stepRings(STEP);
+      stepEnemies(STEP);
+      stepFx(STEP);
+    }
+  } else {
+    // keep cosmetic timers alive so the frame breathes while paused
+    S.time += raw * 0.35;
+  }
+  if (S.shake > 0) S.shake = Math.max(0, S.shake - raw * 42);
+  if (S.flash > 0) S.flash = Math.max(0, S.flash - raw * 1.9);
+
+  draw();
+  syncLive();
+}
+
+/* =========================================================================
+   DRAWING — everything is stitched. Nothing here is an image.
+   ========================================================================= */
+
+function stitchDisc(c, x, y, r, fill, edge, hatchAng) {
+  c.save();
+  c.beginPath(); c.arc(x, y, r, 0, TAU);
+  c.fillStyle = fill; c.fill();
+  c.save(); c.clip();
+  c.globalAlpha = 0.3; c.strokeStyle = edge; c.lineWidth = 1.15;
+  const ha = hatchAng || 0.32;
+  for (let i = -r * 2; i < r * 2; i += 3) {
+    c.beginPath();
+    c.moveTo(x - r * 1.6, y + i);
+    c.lineTo(x + r * 1.6, y + i + r * 2 * ha);
+    c.stroke();
+  }
+  c.restore();
+  c.strokeStyle = edge; c.lineWidth = 1.5; c.lineCap = 'round';
+  c.beginPath(); c.arc(x, y, r, 0, TAU); c.stroke();
+  const n = Math.max(9, Math.round(r * 0.85));
+  for (let i = 0; i < n; i++) {
+    const a = i / n * TAU;
+    c.beginPath();
+    c.moveTo(x + Math.cos(a) * r, y + Math.sin(a) * r);
+    c.lineTo(x + Math.cos(a) * (r + 3.2), y + Math.sin(a) * (r + 3.2));
+    c.stroke();
+  }
+  c.restore();
+}
+
+function knotDot(c, x, y, r, col, hi) {
+  c.beginPath(); c.arc(x, y, r, 0, TAU);
+  c.fillStyle = col; c.fill();
+  c.beginPath(); c.arc(x - r * 0.3, y - r * 0.34, r * 0.42, 0, TAU);
+  c.fillStyle = hi; c.globalAlpha = 0.85; c.fill(); c.globalAlpha = 1;
+}
+
+function shade(hex, k) {
+  const n = parseInt(hex.slice(1), 16);
+  let r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+  if (k > 0) { r += (255 - r) * k; g += (255 - g) * k; b += (255 - b) * k; }
+  else { r *= 1 + k; g *= 1 + k; b *= 1 + k; }
+  return 'rgb(' + (r | 0) + ',' + (g | 0) + ',' + (b | 0) + ')';
+}
+
+/* --------------------------------------------------------------- notions - */
+
+function drawNotion(c, key, lvl, x, y, s, ang, tm, st) {
+  const T = TOWERS[key];
+  const col = T.color, dk = shade(col, -0.55), lt = shade(col, 0.5);
+  c.save();
+  c.translate(x, y);
+  c.scale(s, s);
+
+  // shadow onto the cloth
+  c.globalAlpha = 0.22; c.fillStyle = '#4a3a24';
+  c.beginPath(); c.ellipse(2.5, 4, 20, 15, 0, 0, TAU); c.fill();
+  c.globalAlpha = 1;
+
+  if (key === 'knot') {
+    stitchDisc(c, 0, 0, 17, shade(col, -0.18), dk);
+    const rings = [0, 1, 2, 3, 4][lvl];
+    knotDot(c, 0, 0, 5.4, lt, '#fff6dd');
+    const counts = [3, 5, 7, 9, 12][lvl];
+    for (let i = 0; i < counts; i++) {
+      const a = i / counts * TAU + tm * 0.25;
+      const rr = 9.6 + (i % 2) * 2.2;
+      knotDot(c, Math.cos(a) * rr, Math.sin(a) * rr, 2.5 + lvl * 0.2, col, lt);
+    }
+    if (lvl >= 2) { for (let i = 0; i < 6; i++) { const a = i / 6 * TAU - tm * 0.4;
+      knotDot(c, Math.cos(a) * 14.4, Math.sin(a) * 14.4, 1.6, shade(col, .25), '#fff'); } }
+    // the working needle
+    c.rotate(ang);
+    c.strokeStyle = '#bf4436'; c.lineWidth = 1.3;
+    c.beginPath(); c.moveTo(2, 3); c.quadraticCurveTo(10, 4, 17, 0); c.stroke();
+    c.fillStyle = '#efe6d0'; c.strokeStyle = '#5a4a34'; c.lineWidth = 0.8;
+    c.beginPath(); c.moveTo(12, -1.6); c.lineTo(24 + lvl * 0.7, 0); c.lineTo(12, 1.6); c.closePath();
+    c.fill(); c.stroke();
+
+  } else if (key === 'chain') {
+    stitchDisc(c, 0, 0, 17, shade(col, -0.22), dk, -0.3);
+    const n = 6 + lvl;
+    c.lineWidth = 2.3; c.strokeStyle = lt;
+    for (let i = 0; i < n; i++) {
+      const a = i / n * TAU + tm * 0.7;
+      c.save(); c.rotate(a); c.translate(12.6, 0); c.rotate(Math.PI / 2);
+      c.beginPath(); c.ellipse(0, 0, 3.1, 4.6, 0, 0, TAU); c.stroke();
+      c.restore();
+    }
+    const pulse = 0.5 + 0.5 * Math.sin(tm * 3.4);
+    c.globalAlpha = 0.5 + 0.5 * pulse;
+    knotDot(c, 0, 0, 5.6 + pulse * 1.4, shade(col, 0.35), '#eaf3ff');
+    c.globalAlpha = 1;
+    if (lvl >= 3) {
+      c.strokeStyle = 'rgba(200,225,255,0.6)'; c.lineWidth = 1;
+      for (let i = 0; i < 3; i++) { const a = tm * 2 + i / 3 * TAU;
+        c.beginPath(); c.arc(0, 0, 19.5, a, a + 0.7); c.stroke(); }
+    }
+
+  } else if (key === 'pin') {
+    stitchDisc(c, 0, 0, 15, '#b6ac97', '#5b5344', 0.1);
+    c.save();
+    c.rotate(ang);
+    const rec = st && st.recoil > 0 ? st.recoil * 4 : 0;
+    c.translate(-rec, 0);
+    const L = 22 + lvl * 4.6;
+    c.strokeStyle = 'rgba(60,48,32,0.35)'; c.lineWidth = 4.4; c.lineCap = 'round';
+    c.beginPath(); c.moveTo(-12, 1.6); c.lineTo(L, 1.6); c.stroke();
+    c.strokeStyle = '#e8edf1'; c.lineWidth = 3.2;
+    c.beginPath(); c.moveTo(-12, 0); c.lineTo(L, 0); c.stroke();
+    c.strokeStyle = '#ffffff'; c.lineWidth = 1; c.globalAlpha = 0.8;
+    c.beginPath(); c.moveTo(-10, -1); c.lineTo(L - 3, -1); c.stroke();
+    c.globalAlpha = 1;
+    c.fillStyle = '#f4f8fb';
+    c.beginPath(); c.moveTo(L, -1.8); c.lineTo(L + 7 + lvl, 0); c.lineTo(L, 1.8); c.closePath(); c.fill();
+    const bead = ['#bf4436', '#e2a331', '#5a7fb5', '#4f9b7d', '#9a6392'][lvl];
+    c.beginPath(); c.arc(-13, 0, 5 + lvl * 0.45, 0, TAU);
+    c.fillStyle = bead; c.fill();
+    c.strokeStyle = 'rgba(255,255,255,.7)'; c.lineWidth = 0.9; c.stroke();
+    c.beginPath(); c.arc(-14.5, -1.6, 1.7, 0, TAU); c.fillStyle = 'rgba(255,255,255,.8)'; c.fill();
+    c.restore();
+
+  } else if (key === 'blanket') {
+    const R = 15;
+    c.save();
+    c.fillStyle = shade(col, -0.24);
+    c.beginPath();
+    c.roundRect ? c.roundRect(-R, -R, R * 2, R * 2, 3) : c.rect(-R, -R, R * 2, R * 2);
+    c.fill();
+    c.save(); c.clip();
+    c.globalAlpha = 0.32; c.strokeStyle = dk; c.lineWidth = 1.1;
+    for (let i = -R * 2; i < R * 2; i += 3) { c.beginPath(); c.moveTo(-R, i); c.lineTo(R, i + R); c.stroke(); }
+    c.restore();
+    c.strokeStyle = lt; c.lineWidth = 1.7; c.lineJoin = 'round'; c.lineCap = 'round';
+    const per = 4 + lvl;
+    for (let side = 0; side < 4; side++) {
+      c.save(); c.rotate(side * Math.PI / 2);
+      for (let i = 0; i <= per; i++) {
+        const px = -R + (i / per) * (R * 2);
+        c.beginPath(); c.moveTo(px, -R); c.lineTo(px, -R - 4.6); c.stroke();
+      }
+      c.beginPath(); c.moveTo(-R, -R - 4.6); c.lineTo(R, -R - 4.6); c.stroke();
+      c.restore();
+    }
+    c.restore();
+    const p = st && st.pulseAnim > 0 ? st.pulseAnim : 0;
+    c.globalAlpha = 0.4 + 0.4 * Math.sin(tm * 2);
+    knotDot(c, 0, 0, 5 + p * 3, lt, '#ffe8e2');
+    c.globalAlpha = 1;
+
+  } else if (key === 'wax') {
+    const hexR = 9.5;
+    const cells = [[0,0],[1,0],[0.5,0.87],[-0.5,0.87],[-1,0],[-0.5,-0.87],[0.5,-0.87]];
+    const show = [1, 3, 5, 7, 7][lvl];
+    const glow = 0.5 + 0.5 * Math.sin(tm * 1.9);
+    c.save();
+    c.shadowColor = 'rgba(230,170,50,' + (0.4 + glow * 0.45) + ')';
+    c.shadowBlur = 12 + glow * 12;
+    for (let i = 0; i < show; i++) {
+      const hx = cells[i][0] * hexR * 1.62, hy = cells[i][1] * hexR * 1.62;
+      c.beginPath();
+      for (let k = 0; k < 6; k++) {
+        const a = k / 6 * TAU + Math.PI / 6;
+        const px = hx + Math.cos(a) * hexR, py = hy + Math.sin(a) * hexR;
+        if (k === 0) c.moveTo(px, py); else c.lineTo(px, py);
+      }
+      c.closePath();
+      const gr = c.createRadialGradient(hx, hy - 2, 1, hx, hy, hexR);
+      gr.addColorStop(0, lvl >= 4 ? '#ffe9a8' : '#f3cf7a');
+      gr.addColorStop(1, lvl >= 4 ? '#c98b16' : '#a87a20');
+      c.fillStyle = gr; c.fill();
+      c.strokeStyle = 'rgba(90,60,12,.62)'; c.lineWidth = 1.1; c.stroke();
+    }
+    c.restore();
+    if (lvl >= 2) {
+      c.strokeStyle = 'rgba(255,222,150,.5)'; c.lineWidth = 1;
+      c.beginPath(); c.arc(0, 0, 19 + Math.sin(tm * 2.4) * 1.4, 0, TAU); c.stroke();
+    }
+  }
+
+  // tier pips, worked into the ground cloth beneath
+  c.rotate(0);
+  for (let i = 0; i < 5; i++) {
+    const a = Math.PI * 0.62 + (i / 4) * Math.PI * 0.76;
+    const px = Math.cos(a) * 22.5, py = Math.sin(a) * 22.5;
+    c.beginPath(); c.arc(px, py, 1.9, 0, TAU);
+    c.fillStyle = i <= lvl ? C.brass2 : 'rgba(60,48,32,0.30)';
+    c.fill();
+  }
+  c.restore();
+}
+
+/* --------------------------------------------------------------- vermin -- */
+
+function drawVermin(c, id, x, y, s, ang, tm, e) {
+  const D = ENEMIES[id];
+  const col = D.col, dk = D.col2;
+  const wig = Math.sin(tm * 9 + (e ? e.wob : 0));
+  c.save();
+  c.translate(x, y);
+
+  if (D.fly) {
+    c.save(); c.globalAlpha = 0.2; c.fillStyle = '#5a4a30';
+    c.beginPath(); c.ellipse(4, 16 * s, D.r * s * 0.8, D.r * s * 0.34, 0, 0, TAU); c.fill(); c.restore();
+  } else {
+    c.save(); c.globalAlpha = 0.2; c.fillStyle = '#5a4a30';
+    c.beginPath(); c.ellipse(1.6, 3, D.r * s * 0.95, D.r * s * 0.55, 0, 0, TAU); c.fill(); c.restore();
+  }
+
+  c.rotate(ang);
+  c.scale(s, s);
+  if (e && e.hurtT > 0) { c.globalAlpha = 0.86; }
+
+  const R = D.r;
+  c.lineJoin = 'round'; c.lineCap = 'round';
+
+  switch (id) {
+    case 'nib': {
+      c.fillStyle = col; c.strokeStyle = dk; c.lineWidth = 1.2;
+      c.beginPath();
+      c.moveTo(-R, wig * 1.4);
+      c.quadraticCurveTo(-R * 0.2, -R * 0.85 + wig, R * 0.55, wig * 0.6);
+      c.quadraticCurveTo(R * 1.05, R * 0.1, R * 0.4, R * 0.62);
+      c.quadraticCurveTo(-R * 0.3, R * 0.9 + wig, -R, wig * 1.4);
+      c.fill(); c.stroke();
+      c.strokeStyle = dk; c.lineWidth = 0.9; c.globalAlpha = 0.65;
+      for (let i = -2; i <= 2; i++) { c.beginPath(); c.moveTo(i * 3.4, -R * 0.55); c.lineTo(i * 3.4, R * 0.55); c.stroke(); }
+      c.globalAlpha = 1;
+      knotDot(c, R * 0.62, wig * 0.4, 1.5, '#2a221b', '#000');
+      break;
+    }
+    case 'lint': {
+      c.fillStyle = col; c.strokeStyle = dk; c.lineWidth = 0.9;
+      c.beginPath(); c.arc(0, 0, R, 0, TAU); c.fill();
+      for (let i = 0; i < 9; i++) { const a = i / 9 * TAU + tm;
+        c.beginPath(); c.moveTo(Math.cos(a) * R * 0.7, Math.sin(a) * R * 0.7);
+        c.lineTo(Math.cos(a) * (R + 4), Math.sin(a) * (R + 4)); c.stroke(); }
+      break;
+    }
+    case 'flit': case 'queen': {
+      const big = id === 'queen';
+      const flap = Math.abs(Math.sin(tm * (big ? 6 : 15) + (e ? e.wob : 0)));
+      c.save();
+      c.scale(1, 0.42 + 0.58 * flap);
+      for (const sgn of [-1, 1]) {
+        c.save(); c.scale(1, sgn);
+        c.beginPath();
+        c.moveTo(-R * 0.2, 0);
+        c.quadraticCurveTo(-R * 1.1, -R * 1.5, R * 0.15, -R * 1.25);
+        c.quadraticCurveTo(R * 0.95, -R * 0.95, R * 0.35, -R * 0.1);
+        c.closePath();
+        const gr = c.createLinearGradient(0, -R * 1.4, 0, 0);
+        gr.addColorStop(0, shade(col, 0.28)); gr.addColorStop(1, dk);
+        c.fillStyle = gr; c.fill();
+        c.strokeStyle = 'rgba(30,22,14,.55)'; c.lineWidth = 1; c.stroke();
+        c.globalAlpha = 0.5; c.strokeStyle = shade(col, 0.55); c.lineWidth = 0.8;
+        c.beginPath(); c.moveTo(-R * 0.1, -R * 0.3); c.lineTo(R * 0.3, -R * 0.95); c.stroke();
+        if (big) { c.beginPath(); c.arc(R * 0.05, -R * 0.75, R * 0.22, 0, TAU); c.stroke(); }
+        c.globalAlpha = 1;
+        c.restore();
+      }
+      c.restore();
+      c.fillStyle = dk; c.strokeStyle = '#2a221b'; c.lineWidth = 0.9;
+      c.beginPath(); c.ellipse(0, 0, R * 0.6, R * 0.3, 0, 0, TAU); c.fill(); c.stroke();
+      c.strokeStyle = dk; c.lineWidth = 1.1;
+      c.beginPath(); c.moveTo(R * 0.5, -1.5); c.quadraticCurveTo(R * 1.1, -R * 0.6, R * 1.35, -R * 0.75); c.stroke();
+      c.beginPath(); c.moveTo(R * 0.5, 1.5); c.quadraticCurveTo(R * 1.1, R * 0.6, R * 1.35, R * 0.75); c.stroke();
+      if (big) { knotDot(c, R * 0.45, -R * 0.16, 2.1, '#e8d7a8', '#fff'); knotDot(c, R * 0.45, R * 0.16, 2.1, '#e8d7a8', '#fff'); }
+      break;
+    }
+    case 'silver': {
+      c.fillStyle = col; c.strokeStyle = dk; c.lineWidth = 1;
+      c.beginPath();
+      c.moveTo(R, 0);
+      c.quadraticCurveTo(R * 0.2, -R * 0.62, -R * 0.9, -R * 0.3 + wig);
+      c.quadraticCurveTo(-R * 1.1, 0, -R * 0.9, R * 0.3 + wig);
+      c.quadraticCurveTo(R * 0.2, R * 0.62, R, 0);
+      c.fill(); c.stroke();
+      c.globalAlpha = 0.6; c.strokeStyle = '#fff';
+      c.beginPath(); c.moveTo(R * 0.5, -R * 0.15); c.lineTo(-R * 0.5, -R * 0.28); c.stroke();
+      c.globalAlpha = 1;
+      c.strokeStyle = dk; c.lineWidth = 0.9;
+      for (const sgn of [-1, 0, 1]) { c.beginPath(); c.moveTo(-R * 0.85, sgn * R * 0.22);
+        c.lineTo(-R * 1.7, sgn * R * 0.7 + wig * 2); c.stroke(); }
+      for (let i = 0; i < 3; i++) { const yy = (i - 1) * R * 0.34;
+        c.beginPath(); c.moveTo(R * 0.3, yy); c.lineTo(R * 0.75, yy + Math.sin(tm * 26 + i) * 2); c.stroke(); }
+      break;
+    }
+    case 'weevil': {
+      c.fillStyle = dk; c.beginPath(); c.ellipse(-R * 0.15, 0, R * 0.95, R * 0.8, 0, 0, TAU); c.fill();
+      const gr = c.createRadialGradient(-R * 0.4, -R * 0.4, 1, 0, 0, R);
+      gr.addColorStop(0, shade(col, 0.4)); gr.addColorStop(1, col);
+      c.fillStyle = gr;
+      c.beginPath(); c.ellipse(-R * 0.15, 0, R * 0.82, R * 0.68, 0, 0, TAU); c.fill();
+      c.strokeStyle = '#40230c'; c.lineWidth = 1.1;
+      for (let i = -2; i <= 2; i++) { c.beginPath();
+        c.ellipse(-R * 0.15, 0, R * 0.82 - Math.abs(i) * 1.3, R * 0.68, 0, 0, TAU); }
+      c.beginPath(); c.moveTo(-R * 0.15, -R * 0.66); c.lineTo(-R * 0.15, R * 0.66); c.stroke();
+      c.globalAlpha = .5;
+      for (let i = 0; i < 12; i++) { const a = rngFixed(e, i) * TAU, rr = rngFixed(e, i + 40) * R * 0.7;
+        c.beginPath(); c.arc(-R * 0.15 + Math.cos(a) * rr, Math.sin(a) * rr * 0.8, 1.2, 0, TAU);
+        c.fillStyle = '#6d3a12'; c.fill(); }
+      c.globalAlpha = 1;
+      c.strokeStyle = dk; c.lineWidth = 2.2;
+      c.beginPath(); c.moveTo(R * 0.6, 0); c.lineTo(R * 1.15, 0); c.stroke();
+      knotDot(c, R * 0.55, -R * 0.3, 1.6, '#2a221b', '#000');
+      knotDot(c, R * 0.55, R * 0.3, 1.6, '#2a221b', '#000');
+      break;
+    }
+    case 'casebearer': {
+      c.fillStyle = col; c.strokeStyle = dk; c.lineWidth = 1.2;
+      c.beginPath();
+      c.moveTo(-R, -R * 0.5); c.lineTo(R * 0.35, -R * 0.62); c.lineTo(R * 0.4, R * 0.62); c.lineTo(-R, R * 0.5);
+      c.closePath(); c.fill(); c.stroke();
+      c.globalAlpha = .55; c.strokeStyle = dk; c.lineWidth = 1;
+      for (let i = -3; i <= 3; i++) { c.beginPath(); c.moveTo(i * 3.2 - 2, -R * 0.55); c.lineTo(i * 3.2 + 2, R * 0.55); c.stroke(); }
+      c.globalAlpha = 1;
+      c.fillStyle = '#e6dcc0'; c.strokeStyle = dk;
+      c.beginPath(); c.ellipse(R * 0.72, wig, R * 0.42, R * 0.32, 0, 0, TAU); c.fill(); c.stroke();
+      knotDot(c, R * 0.92, wig, 1.4, '#2a221b', '#000');
+      break;
+    }
+    case 'bloom': {
+      const lobes = 7;
+      c.beginPath();
+      for (let i = 0; i <= 40; i++) {
+        const a = i / 40 * TAU;
+        const rr = R * (0.78 + 0.24 * Math.sin(a * lobes + tm * 1.4));
+        const px = Math.cos(a) * rr, py = Math.sin(a) * rr;
+        if (i === 0) c.moveTo(px, py); else c.lineTo(px, py);
+      }
+      c.closePath();
+      const gr = c.createRadialGradient(0, 0, 1, 0, 0, R * 1.1);
+      gr.addColorStop(0, shade(col, 0.4)); gr.addColorStop(1, dk);
+      c.fillStyle = gr; c.fill();
+      c.strokeStyle = 'rgba(30,44,24,.6)'; c.lineWidth = 1; c.stroke();
+      for (let i = 0; i < 8; i++) { const a = i / 8 * TAU + tm * 0.5;
+        knotDot(c, Math.cos(a) * R * 0.48, Math.sin(a) * R * 0.48, 2, shade(col, 0.55), '#f2ffe8'); }
+      break;
+    }
+    case 'snarl': {
+      c.strokeStyle = col; c.lineWidth = 2; c.globalAlpha = 0.95;
+      c.save(); c.rotate(tm * 0.9);
+      for (let k = 0; k < 7; k++) {
+        c.beginPath();
+        const rr = R * (0.4 + rngFixed(e, k) * 0.75);
+        const off = rngFixed(e, k + 20) * TAU;
+        for (let i = 0; i <= 22; i++) {
+          const a = i / 22 * TAU;
+          const w = rr * (0.7 + 0.4 * Math.sin(a * 3 + off));
+          const px = Math.cos(a + off) * w, py = Math.sin(a + off) * w * 0.85;
+          if (i === 0) c.moveTo(px, py); else c.lineTo(px, py);
+        }
+        c.strokeStyle = k % 2 ? col : dk;
+        c.stroke();
+      }
+      c.restore(); c.globalAlpha = 1;
+      knotDot(c, 0, 0, 3.2, shade(col, 0.4), '#fff');
+      break;
+    }
+    case 'mote': {
+      c.save(); c.rotate(tm * 3);
+      c.strokeStyle = col; c.lineWidth = 2.1;
+      for (let i = 0; i < 6; i++) { const a = i / 6 * TAU;
+        const rr = R * (0.7 + 0.5 * Math.abs(Math.sin(tm * 11 + i)));
+        c.beginPath(); c.moveTo(0, 0); c.lineTo(Math.cos(a) * rr, Math.sin(a) * rr); c.stroke(); }
+      c.restore();
+      knotDot(c, 0, 0, R * 0.42, '#fffbe8', '#fff');
+      c.globalAlpha = 0.35; c.strokeStyle = '#fff6c8'; c.lineWidth = 0.9;
+      c.beginPath(); c.arc(0, 0, R * (1.1 + 0.2 * Math.sin(tm * 8)), 0, TAU); c.stroke();
+      c.globalAlpha = 1;
+      break;
+    }
+    case 'frayling': {
+      const spread = e ? clamp((e.accelMul - 1) / 1.4, 0, 1) : 0.4;
+      c.strokeStyle = col; c.lineWidth = 2.2; c.lineCap = 'round';
+      c.beginPath(); c.moveTo(-R * 1.5, 0); c.lineTo(0, 0); c.stroke();
+      for (let i = 0; i < 5; i++) {
+        const a = (i / 4 - 0.5) * (0.55 + spread * 1.5);
+        c.strokeStyle = i % 2 ? col : dk; c.lineWidth = 1.5;
+        c.beginPath(); c.moveTo(0, 0);
+        c.quadraticCurveTo(R * 0.6, Math.sin(a) * R * 0.7,
+          R * 1.35, Math.sin(a + Math.sin(tm * 12 + i) * 0.15) * R * 1.15);
+        c.stroke();
+      }
+      knotDot(c, -R * 1.5, 0, 2.4, dk, col);
+      break;
+    }
+    case 'wraith': {
+      const ph = e && e.phasing ? 0.2 : 0.85;
+      c.globalAlpha = ph;
+      c.beginPath();
+      for (let i = 0; i <= 26; i++) {
+        const a = i / 26 * TAU;
+        const rr = R * (0.85 + 0.2 * Math.sin(a * 4 + tm * 2.2));
+        const px = Math.cos(a) * rr, py = Math.sin(a) * rr * 1.12;
+        if (i === 0) c.moveTo(px, py); else c.lineTo(px, py);
+      }
+      c.closePath();
+      const gr = c.createLinearGradient(0, -R, 0, R);
+      gr.addColorStop(0, shade(col, 0.3)); gr.addColorStop(1, dk);
+      c.fillStyle = gr; c.fill();
+      c.strokeStyle = 'rgba(240,248,255,.5)'; c.lineWidth = 1; c.setLineDash([3, 3]); c.stroke(); c.setLineDash([]);
+      c.globalAlpha = ph;
+      knotDot(c, R * 0.3, -R * 0.22, 1.9, '#0e1218', '#334');
+      knotDot(c, R * 0.3, R * 0.22, 1.9, '#0e1218', '#334');
+      c.globalAlpha = 1;
+      break;
+    }
+    case 'bobbin': {
+      c.fillStyle = dk;
+      c.beginPath(); c.rect(-R * 0.85, -R * 0.9, R * 1.7, R * 1.8); c.fill();
+      c.fillStyle = col;
+      c.beginPath(); c.rect(-R * 0.55, -R * 0.9, R * 1.1, R * 1.8); c.fill();
+      c.strokeStyle = shade(col, -0.4); c.lineWidth = 1;
+      for (let i = -4; i <= 4; i++) { c.beginPath(); c.moveTo(-R * 0.55, i * R * 0.2); c.lineTo(R * 0.55, i * R * 0.2); c.stroke(); }
+      c.fillStyle = shade(col, -0.3);
+      c.beginPath(); c.rect(-R * 0.95, -R, R * 0.35, R * 2); c.fill();
+      c.beginPath(); c.rect(R * 0.6, -R, R * 0.35, R * 2); c.fill();
+      knotDot(c, R * 0.2, -R * 0.35, 1.6, '#1b1712', '#000');
+      break;
+    }
+    case 'shears': {
+      const open = 0.28 + 0.22 * Math.abs(Math.sin(tm * 2.2));
+      for (const sgn of [-1, 1]) {
+        c.save(); c.rotate(sgn * open);
+        c.fillStyle = col; c.strokeStyle = dk; c.lineWidth = 1.4;
+        c.beginPath();
+        c.moveTo(-R * 0.2, sgn * 2);
+        for (let i = 0; i <= 9; i++) {
+          const px = -R * 0.2 + (i / 9) * R * 1.5;
+          const py = sgn * (2 + (i % 2 === 0 ? 0 : R * 0.3));
+          c.lineTo(px, py);
+        }
+        c.lineTo(R * 1.32, sgn * R * 0.05); c.lineTo(-R * 0.2, sgn * R * 0.05);
+        c.closePath(); c.fill(); c.stroke();
+        c.strokeStyle = '#2b3138'; c.lineWidth = 3;
+        c.beginPath(); c.moveTo(-R * 0.25, sgn * 2); c.lineTo(-R * 0.95, sgn * R * 0.5); c.stroke();
+        c.beginPath(); c.ellipse(-R * 1.15, sgn * R * 0.72, R * 0.3, R * 0.22, sgn * 0.5, 0, TAU); c.stroke();
+        c.restore();
+      }
+      knotDot(c, -R * 0.2, 0, 3, '#8d959d', '#e8eef4');
+      break;
+    }
+    case 'ripper': {
+      c.strokeStyle = '#2b3138'; c.lineWidth = R * 0.42; c.lineCap = 'round';
+      c.beginPath(); c.moveTo(-R * 1.25, 0); c.lineTo(R * 0.15, 0); c.stroke();
+      c.strokeStyle = '#4a5058'; c.lineWidth = R * 0.3;
+      c.beginPath(); c.moveTo(-R * 1.2, 0); c.lineTo(-R * 0.2, 0); c.stroke();
+      c.fillStyle = col; c.strokeStyle = '#31363c'; c.lineWidth = 1.3;
+      c.beginPath();
+      c.moveTo(R * 0.1, -R * 0.34);
+      c.lineTo(R * 1.25, -R * 0.5);
+      c.lineTo(R * 0.72, 0);
+      c.lineTo(R * 1.1, R * 0.55);
+      c.lineTo(R * 0.1, R * 0.3);
+      c.closePath(); c.fill(); c.stroke();
+      c.beginPath(); c.arc(R * 1.14, R * 0.6, R * 0.24, 0, TAU);
+      c.fillStyle = '#bf4436'; c.fill(); c.strokeStyle = '#6d2119'; c.stroke();
+      c.globalAlpha = 0.55; c.strokeStyle = '#fff'; c.lineWidth = 1;
+      c.beginPath(); c.moveTo(R * 0.25, -R * 0.2); c.lineTo(R * 1.05, -R * 0.42); c.stroke();
+      c.globalAlpha = 1;
+      break;
+    }
+    case 'dark': {
+      c.save();
+      const wobR = R * (1 + 0.05 * Math.sin(tm * 1.7));
+      c.beginPath();
+      for (let i = 0; i <= 34; i++) {
+        const a = i / 34 * TAU;
+        const rr = wobR * (0.82 + 0.26 * Math.sin(a * 5 + tm * 0.8) * Math.cos(a * 2.3 - tm * 0.5));
+        const px = Math.cos(a) * rr, py = Math.sin(a) * rr;
+        if (i === 0) c.moveTo(px, py); else c.lineTo(px, py);
+      }
+      c.closePath();
+      const gr = c.createRadialGradient(0, 0, 2, 0, 0, wobR);
+      gr.addColorStop(0, '#000'); gr.addColorStop(0.7, '#08060a'); gr.addColorStop(1, '#1b1420');
+      c.fillStyle = gr; c.fill();
+      c.strokeStyle = 'rgba(190,160,110,.5)'; c.lineWidth = 1.2;
+      for (let i = 0; i < 30; i++) {
+        const a = i / 30 * TAU + tm * 0.15;
+        const r0 = wobR * (0.86 + rngFixed(e, i) * 0.2), r1 = r0 + 5 + rngFixed(e, i + 30) * 13;
+        c.beginPath();
+        c.moveTo(Math.cos(a) * r0, Math.sin(a) * r0);
+        c.lineTo(Math.cos(a + 0.05) * r1, Math.sin(a + 0.05) * r1);
+        c.stroke();
+      }
+      for (let i = 0; i < 3; i++) {
+        const a = tm * 0.7 + i * 2.1;
+        const ex = Math.cos(a) * wobR * 0.4, ey = Math.sin(a * 1.3) * wobR * 0.32;
+        const blink = Math.sin(tm * 2 + i * 1.7) > -0.7 ? 1 : 0.06;
+        c.save(); c.globalAlpha = blink;
+        c.beginPath(); c.ellipse(ex, ey, 4.2, 2.4, a, 0, TAU);
+        c.fillStyle = '#e8dcb8'; c.fill();
+        c.beginPath(); c.arc(ex, ey, 1.3, 0, TAU); c.fillStyle = '#100c09'; c.fill();
+        c.restore();
+      }
+      c.restore();
+      break;
+    }
+  }
+  c.restore();
+}
+
+// stable per-entity pseudo-random so texture doesn't crawl between frames
+function rngFixed(e, i) {
+  const s = ((e ? e.seed : 7) * 1013 + i * 7919) % 1000;
+  return (Math.sin(s) * 43758.5453) % 1 < 0 ? -((Math.sin(s) * 43758.5453) % 1) : (Math.sin(s) * 43758.5453) % 1;
+}
+
+/* ------------------------------------------------------------ heart knot - */
+
+function drawHeart(c) {
+  const m = S.map, x = m.heart.x, y = m.heart.y;
+  const pulse = 0.5 + 0.5 * Math.sin(S.time * 1.6);
+  const frac = S.warp / S.diff.warp;
+
+  // anchoring threads out to the selvedge — one per warp thread you still have
+  const N = S.diff.warp;
+  for (let i = 0; i < N; i++) {
+    const a = i / N * TAU + 0.13;
+    const intact = i < S.warp;
+    const L = intact ? 300 : 34 + (i % 3) * 8;
+    c.strokeStyle = intact ? 'rgba(150,120,74,0.30)' : 'rgba(120,60,48,0.55)';
+    c.lineWidth = intact ? 1.3 : 1.9;
+    c.beginPath();
+    c.moveTo(x + Math.cos(a) * 26, y + Math.sin(a) * 26);
+    c.lineTo(x + Math.cos(a) * (26 + L), y + Math.sin(a) * (26 + L));
+    c.stroke();
+    if (!intact) {
+      c.strokeStyle = 'rgba(150,70,54,0.75)'; c.lineWidth = 1.1;
+      for (let k = -1; k <= 1; k += 2) {
+        c.beginPath();
+        c.moveTo(x + Math.cos(a) * (26 + L), y + Math.sin(a) * (26 + L));
+        c.lineTo(x + Math.cos(a + k * 0.22) * (26 + L + 7), y + Math.sin(a + k * 0.22) * (26 + L + 7));
+        c.stroke();
+      }
+    }
+  }
+
+  // the knot itself
+  c.save();
+  c.shadowColor = 'rgba(210,90,60,' + (0.24 + pulse * 0.3) + ')';
+  c.shadowBlur = 18 + pulse * 16;
+  const R = 25 + pulse * 1.6;
+  const gr = c.createRadialGradient(x - 5, y - 6, 2, x, y, R);
+  gr.addColorStop(0, '#e9705c'); gr.addColorStop(0.6, '#bf4436'); gr.addColorStop(1, '#71241c');
+  c.beginPath(); c.arc(x, y, R, 0, TAU); c.fillStyle = gr; c.fill();
+  c.restore();
+  // wrapped floss
+  c.save(); c.beginPath(); c.arc(x, y, R, 0, TAU); c.clip();
+  c.strokeStyle = 'rgba(255,220,200,.24)'; c.lineWidth = 2.1;
+  for (let i = -9; i < 9; i++) {
+    c.beginPath(); c.moveTo(x - R, y + i * 3.2); c.lineTo(x + R, y + i * 3.2 + R * 0.7); c.stroke();
+  }
+  c.restore();
+  // outer French knots, damaged ones missing
+  const OUT = 14;
+  for (let i = 0; i < OUT; i++) {
+    const a = i / OUT * TAU + S.time * 0.16;
+    const gone = (i / OUT) > frac;
+    knotDot(c, x + Math.cos(a) * (R + 7), y + Math.sin(a) * (R + 7), gone ? 1.6 : 3.4,
+      gone ? '#6a4a3c' : C.brass, gone ? '#8a6a54' : C.brass2);
+  }
+  c.font = '600 10px ' + 'ui-monospace, Menlo, monospace';
+  c.fillStyle = 'rgba(255,240,215,.85)'; c.textAlign = 'center'; c.textBaseline = 'middle';
+  c.fillText(String(S.warp), x, y + 0.5);
+}
+
+/* ------------------------------------------------------------------ draw - */
+
+function drawRangeRing(c, x, y, r, col, strong) {
+  c.save();
+  c.globalAlpha = strong ? 0.11 : 0.07;
+  c.fillStyle = col;
+  c.beginPath(); c.arc(x, y, r, 0, TAU); c.fill();
+  c.globalAlpha = strong ? 0.75 : 0.4;
+  c.strokeStyle = col; c.lineWidth = 1.4;
+  c.setLineDash([6, 5]); c.lineDashOffset = -S.time * 16;
+  c.beginPath(); c.arc(x, y, r, 0, TAU); c.stroke();
+  c.setLineDash([]);
+  c.restore();
+}
+
+function draw() {
+  fitCanvas();
+  const c = ctx;
+  c.setTransform(view.dpr, 0, 0, view.dpr, 0, 0);
+  c.fillStyle = '#1a130e';
+  c.fillRect(0, 0, view.w, view.h);
+
+  const sh = S.shake;
+  const sx = sh ? (Math.random() - 0.5) * sh : 0;
+  const sy = sh ? (Math.random() - 0.5) * sh : 0;
+
+  c.save();
+  c.translate(view.ox + sx, view.oy + sy);
+  c.scale(view.scale, view.scale);
+  c.beginPath(); c.rect(0, 0, WORLD_W, WORLD_H); c.clip();
+
+  c.drawImage(cloth, 0, 0);
+
+  // build grid while placing
+  if (S.selectedType) {
+    c.save();
+    c.lineWidth = 1;
+    for (let r = 0; r < ROWS; r++) for (let col = 0; col < COLS; col++) {
+      const ok = canBuild(col, r);
+      c.strokeStyle = ok ? 'rgba(90,140,110,0.30)' : 'rgba(150,70,54,0.13)';
+      c.strokeRect(col * CELL + 3, r * CELL + 3, CELL - 6, CELL - 6);
+    }
+    c.restore();
+  }
+
+  drawHeart(c);
+
+  // range previews
+  if (S.selected) {
+    const st = tstats(S.selected);
+    drawRangeRing(c, S.selected.x, S.selected.y, st.range, TOWERS[S.selected.key].color, true);
+  }
+  if (S.selectedType && S.hover.on) {
+    const T = TOWERS[S.selectedType];
+    const cx = S.hover.c * CELL + CELL / 2, cy = S.hover.r * CELL + CELL / 2;
+    drawRangeRing(c, cx, cy, T.tiers[0].range, T.color, true);
+  }
+  // wax auras always visible, quietly
+  for (const w of S.towers) {
+    if (w.key !== 'wax') continue;
+    const ws = TOWERS.wax.tiers[w.lvl];
+    c.save();
+    const gr = c.createRadialGradient(w.x, w.y, ws.range * 0.2, w.x, w.y, ws.range);
+    gr.addColorStop(0, 'rgba(232,176,60,0.13)');
+    gr.addColorStop(1, 'rgba(232,176,60,0)');
+    c.fillStyle = gr; c.beginPath(); c.arc(w.x, w.y, ws.range, 0, TAU); c.fill();
+    c.restore();
+  }
+
+  // blanket pulses
+  for (const g of S.rings) {
+    const t01 = g.r / g.maxR;
+    c.save();
+    c.globalAlpha = (1 - t01) * 0.85;
+    c.strokeStyle = shade(g.col, 0.25); c.lineWidth = 3;
+    c.beginPath(); c.arc(g.x, g.y, g.r, 0, TAU); c.stroke();
+    const n = Math.max(10, Math.floor(g.r / 7));
+    c.lineWidth = 2;
+    for (let i = 0; i < n; i++) {
+      const a = i / n * TAU + g.r * 0.02;
+      c.beginPath();
+      c.moveTo(g.x + Math.cos(a) * g.r, g.y + Math.sin(a) * g.r);
+      c.lineTo(g.x + Math.cos(a) * (g.r - 7), g.y + Math.sin(a) * (g.r - 7));
+      c.stroke();
+    }
+    c.restore();
+  }
+
+  // towers
+  for (const t of S.towers) {
+    const s = t.sew > 0 ? lerp(0.4, 1, 1 - t.sew / 0.5) : 1;
+    drawNotion(c, t.key, t.lvl, t.x, t.y, s, t.ang, S.time, t);
+    if (t.sew > 0) {
+      const p = 1 - t.sew / 0.5;
+      c.save(); c.globalAlpha = 1 - p;
+      c.strokeStyle = '#efe6d0'; c.lineWidth = 1.6;
+      const a = p * TAU * 2;
+      c.beginPath(); c.moveTo(t.x + Math.cos(a) * 46 * (1 - p), t.y + Math.sin(a) * 46 * (1 - p));
+      c.lineTo(t.x, t.y); c.stroke();
+      c.restore();
+    }
+    if (t.smother > 0) {
+      c.save(); c.globalAlpha = 0.55 + 0.25 * Math.sin(S.time * 12);
+      c.fillStyle = '#241a2c';
+      c.beginPath(); c.arc(t.x, t.y, 22, 0, TAU); c.fill();
+      c.restore();
+    }
+    if (t === S.selected) {
+      c.save();
+      c.strokeStyle = C.brass2; c.lineWidth = 1.7;
+      c.setLineDash([5, 4]); c.lineDashOffset = -S.time * 22;
+      c.strokeRect(t.c * CELL + 2, t.r * CELL + 2, CELL - 4, CELL - 4);
+      c.restore();
+    }
+  }
+
+  // enemies
+  for (const e of S.enemies) {
+    if (e.d < 0) continue;
+    const s = e.boss ? 1 : 1;
+    drawVermin(c, e.id, e.x, e.y, s, e.ang, S.time, e);
+    // status marks
+    if (e.slowT > 0 && !e.phasing) {
+      c.save(); c.globalAlpha = 0.5; c.fillStyle = '#f0c15a';
+      c.beginPath(); c.arc(e.x, e.y, e.def.r + 3, 0, TAU); c.fill(); c.restore();
+    }
+    if (e.rootT > 0) {
+      c.save(); c.strokeStyle = '#dfe8f2'; c.lineWidth = 1.4; c.globalAlpha = 0.85;
+      for (let i = 0; i < 4; i++) { const a = i / 4 * TAU + 0.4;
+        c.beginPath();
+        c.moveTo(e.x + Math.cos(a) * (e.def.r + 2), e.y + Math.sin(a) * (e.def.r + 2));
+        c.lineTo(e.x + Math.cos(a) * (e.def.r + 9), e.y + Math.sin(a) * (e.def.r + 9)); c.stroke(); }
+      c.restore();
+    }
+    if (e.shield > 0) {
+      c.save(); c.globalAlpha = 0.28 + 0.5 * (e.shield / e.maxShield);
+      c.strokeStyle = '#a9d8ff'; c.lineWidth = 2;
+      c.beginPath(); c.arc(e.x, e.y, e.def.r + 5, 0, TAU); c.stroke(); c.restore();
+    }
+    if (e.frayT > 0) {
+      c.save(); c.globalAlpha = 0.6; c.strokeStyle = '#e79a6a'; c.lineWidth = 1;
+      for (let i = 0; i < 5; i++) { const a = S.time * 3 + i * 1.3;
+        c.beginPath();
+        c.moveTo(e.x + Math.cos(a) * e.def.r, e.y + Math.sin(a) * e.def.r);
+        c.lineTo(e.x + Math.cos(a) * (e.def.r + 6), e.y + Math.sin(a) * (e.def.r + 6) - 3); c.stroke(); }
+      c.restore();
+    }
+    // health, only once it matters
+    if (e.hp < e.maxHp && !e.boss) {
+      const w = Math.max(16, e.def.r * 2.1), h = 3.4;
+      const bx = e.x - w / 2, by = e.y - e.def.r - 9;
+      c.fillStyle = 'rgba(20,14,10,.72)'; c.fillRect(bx - 1, by - 1, w + 2, h + 2);
+      const f = clamp(e.hp / e.maxHp, 0, 1);
+      c.fillStyle = f > 0.55 ? '#7fc48f' : f > 0.25 ? '#e0a02c' : '#d75648';
+      c.fillRect(bx, by, w * f, h);
+    }
+  }
+
+  // projectiles
+  for (const p of S.shots) {
+    if (p.k === 'knot') {
+      c.save();
+      if (p.trail.length > 1) {
+        c.strokeStyle = 'rgba(226,163,49,0.4)'; c.lineWidth = 1.2;
+        c.beginPath(); c.moveTo(p.trail[0].x, p.trail[0].y);
+        for (const q of p.trail) c.lineTo(q.x, q.y);
+        c.lineTo(p.x, p.y); c.stroke();
+      }
+      knotDot(c, p.x, p.y, p.crit ? 4.4 : 3.2, p.crit ? '#ffe08a' : p.col, '#fff8e2');
+      c.restore();
+    } else if (p.k === 'pin') {
+      const a = Math.atan2(p.vy, p.vx);
+      c.save(); c.translate(p.x, p.y); c.rotate(a);
+      c.strokeStyle = 'rgba(255,255,255,.35)'; c.lineWidth = 3.4;
+      c.beginPath(); c.moveTo(-p.len, 0); c.lineTo(4, 0); c.stroke();
+      c.strokeStyle = '#f2f7fb'; c.lineWidth = 1.7;
+      c.beginPath(); c.moveTo(-p.len, 0); c.lineTo(6, 0); c.stroke();
+      c.restore();
+    }
+  }
+
+  // effects
+  for (const f of S.fx) {
+    const a = clamp(f.life / f.max, 0, 1);
+    if (f.k === 'arc') {
+      c.save();
+      c.globalAlpha = a;
+      c.lineCap = 'round'; c.lineJoin = 'round';
+      for (let pass = 0; pass < 2; pass++) {
+        c.strokeStyle = pass ? '#dff0ff' : f.col;
+        c.lineWidth = pass ? 1.5 : 5;
+        c.globalAlpha = pass ? a : a * 0.4;
+        c.beginPath();
+        for (let i = 0; i < f.pts.length - 1; i++) {
+          const p0 = f.pts[i], p1 = f.pts[i + 1];
+          c.moveTo(p0.x, p0.y);
+          const steps = 4;
+          for (let k = 1; k <= steps; k++) {
+            const t = k / steps;
+            const jx = (k === steps) ? 0 : (Math.random() - 0.5) * 11;
+            const jy = (k === steps) ? 0 : (Math.random() - 0.5) * 11;
+            c.lineTo(lerp(p0.x, p1.x, t) + jx, lerp(p0.y, p1.y, t) + jy);
+          }
+        }
+        c.stroke();
+      }
+      c.restore();
+    } else if (f.k === 'snip') {
+      c.save(); c.globalAlpha = a; c.translate(f.x, f.y); c.rotate(f.rot);
+      c.strokeStyle = f.col; c.lineWidth = 1.5; c.lineCap = 'round';
+      c.beginPath(); c.moveTo(-f.s / 2, 0); c.lineTo(f.s / 2, 0); c.stroke();
+      c.restore();
+    } else {
+      c.globalAlpha = a;
+      c.fillStyle = f.col;
+      c.beginPath(); c.arc(f.x, f.y, f.s, 0, TAU); c.fill();
+      c.globalAlpha = 1;
+    }
+  }
+  c.globalAlpha = 1;
+
+  // floating text
+  c.textAlign = 'center'; c.textBaseline = 'middle';
+  for (const t of S.texts) {
+    c.save();
+    c.globalAlpha = clamp(t.life, 0, 1);
+    c.font = '700 ' + t.size + 'px ui-monospace, Menlo, monospace';
+    c.lineWidth = 3; c.strokeStyle = 'rgba(16,12,8,.72)';
+    c.strokeText(t.txt, t.x, t.y);
+    c.fillStyle = t.col;
+    c.fillText(t.txt, t.x, t.y);
+    c.restore();
+  }
+
+  // placement ghost
+  if (S.selectedType && S.hover.on) {
+    const ok = canBuild(S.hover.c, S.hover.r) && S.floss >= TOWERS[S.selectedType].cost;
+    const cx = S.hover.c * CELL + CELL / 2, cy = S.hover.r * CELL + CELL / 2;
+    c.save();
+    c.globalAlpha = ok ? 0.72 : 0.34;
+    drawNotion(c, S.selectedType, 0, cx, cy, 1, -Math.PI / 2, S.time, null);
+    c.globalAlpha = 1;
+    c.strokeStyle = ok ? '#8fd6a8' : '#e0776a'; c.lineWidth = 2;
+    c.setLineDash([6, 4]); c.lineDashOffset = -S.time * 20;
+    c.strokeRect(S.hover.c * CELL + 3, S.hover.r * CELL + 3, CELL - 6, CELL - 6);
+    if (!ok) {
+      c.setLineDash([]);
+      c.beginPath();
+      c.moveTo(S.hover.c * CELL + 12, S.hover.r * CELL + 12);
+      c.lineTo(S.hover.c * CELL + CELL - 12, S.hover.r * CELL + CELL - 12);
+      c.moveTo(S.hover.c * CELL + CELL - 12, S.hover.r * CELL + 12);
+      c.lineTo(S.hover.c * CELL + 12, S.hover.r * CELL + CELL - 12);
+      c.stroke();
+    }
+    c.restore();
+  }
+
+  // selvedge: the cloth darkens where the frame grips it
+  const vg = c.createRadialGradient(WORLD_W / 2, WORLD_H / 2, WORLD_H * 0.34, WORLD_W / 2, WORLD_H / 2, WORLD_H * 0.86);
+  vg.addColorStop(0, 'rgba(0,0,0,0)');
+  vg.addColorStop(1, 'rgba(38,26,14,0.42)');
+  c.fillStyle = vg; c.fillRect(0, 0, WORLD_W, WORLD_H);
+
+  if (S.flash > 0) {
+    c.fillStyle = 'rgba(190,60,44,' + (S.flash * 0.34) + ')';
+    c.fillRect(0, 0, WORLD_W, WORLD_H);
+  }
+
+  c.restore();
+
+  if (S.paused && (S.phase === 'course' || S.phase === 'prep')) {
+    c.fillStyle = 'rgba(10,7,5,0.5)';
+    c.fillRect(0, 0, view.w, view.h);
+    c.fillStyle = '#e6c65b';
+    c.font = '600 ' + Math.round(clamp(view.w * 0.035, 14, 30)) + 'px ui-serif, Georgia, serif';
+    c.textAlign = 'center'; c.textBaseline = 'middle';
+    c.fillText('THE FRAME IS STILL', view.w / 2, view.h / 2);
+  }
+}
+
+/* =========================================================================
+   UI
+   ========================================================================= */
+
+const $ = id => document.getElementById(id);
+const elWarp = $('warpVal'), elFloss = $('flossVal'), elWave = $('waveVal');
+const elBasket = $('basket'), elInsp = $('inspector'), elNext = $('nextBox');
+const elMend = $('btnMend'), elMendTxt = $('mendTxt'), elMendSub = $('mendSub'), elFuse = $('mendFuse');
+const elCtN = $('ctN'), elCtT = $('ctT');
+const elOvl = $('ovl'), elOvlCard = $('ovlCard');
+const elTip = $('tip'), elToasts = $('toastWrap');
+const elLine = $('ledgerLine'), elLineTxt = $('ledgerTxt');
+const elBossBar = $('bossBar'), elBossNm = $('bossNm'), elBossFl = $('bossFl');
+
+function makeIcon(key, lvl, px) {
+  const cn = document.createElement('canvas');
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  cn.width = px * dpr; cn.height = px * dpr;
+  cn.style.width = px + 'px'; cn.style.height = px + 'px';
+  const g = cn.getContext('2d');
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const s = px / 54;
+  drawNotion(g, key, lvl, px / 2, px / 2, s, -Math.PI / 2, 0, null);
+  return cn;
+}
+function makeVerminIcon(id, px) {
+  const cn = document.createElement('canvas');
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  cn.width = px * dpr; cn.height = px * dpr;
+  cn.style.width = px + 'px'; cn.style.height = px + 'px';
+  const g = cn.getContext('2d');
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const D = ENEMIES[id];
+  const s = (px * 0.40) / D.r;
+  drawVermin(g, id, px / 2, px / 2, s, 0, 0.6, { wob: 0.4, seed: 3, accelMul: 1.6, phasing: false, hurtT: 0 });
+  return cn;
+}
+
+let toastN = 0;
+function toast(msg, kind) {
+  const d = document.createElement('div');
+  d.className = 'toast' + (kind ? ' ' + kind : '');
+  d.textContent = msg;
+  elToasts.appendChild(d);
+  const mine = ++toastN;
+  setTimeout(() => { if (d.parentNode) d.parentNode.removeChild(d); }, 2450);
+  while (elToasts.children.length > 4) elToasts.removeChild(elToasts.firstChild);
+  return mine;
+}
+function showLedgerLine(txt) {
+  if (!txt) { elLine.classList.remove('on'); return; }
+  elLineTxt.textContent = txt;
+  elLine.classList.add('on');
+}
+function gaugePulse() { const g = $('gFloss'); g.classList.remove('pulse'); void g.offsetWidth; g.classList.add('pulse'); }
+function gaugeHurt()  { const g = $('gWarp');  g.classList.remove('hurt');  void g.offsetWidth; g.classList.add('hurt'); }
+
+/* ------------------------------------------------------------- workbasket */
+
+function buildBasket() {
+  elBasket.innerHTML = '';
+  TOWER_ORDER.forEach((key, i) => {
+    const T = TOWERS[key];
+    const b = document.createElement('button');
+    b.className = 'nCard';
+    b.dataset.key = key;
+    b.innerHTML =
+      '<span class="swatch" style="background:' + T.color + '"></span>' +
+      '<span class="hot">' + (i + 1) + '</span>' +
+      '<div class="row1"></div>' +
+      '<div class="cost"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="3" width="8" height="18" rx="1.6" fill="#c9a227"/><rect x="6" y="6" width="12" height="12" rx="1" fill="#e6c65b"/></svg>' + T.cost + '</div>';
+    const row = b.querySelector('.row1');
+    row.appendChild(makeIcon(key, 0, 30));
+    const txt = document.createElement('div');
+    txt.innerHTML = '<div class="nm">' + T.name + '</div><div class="role">' + T.role + '</div>';
+    row.appendChild(txt);
+    b.addEventListener('click', () => selectType(key));
+    b.addEventListener('pointerenter', ev => showTip(ev, towerTip(key)));
+    b.addEventListener('pointerleave', hideTip);
+    b.addEventListener('pointermove', moveTip);
+    elBasket.appendChild(b);
+  });
+}
+
+function towerTip(key) {
+  const T = TOWERS[key], t0 = T.tiers[0];
+  let stats = '';
+  if (key === 'wax') {
+    stats = '<span>Slow</span><span>' + Math.round(t0.slow * 100) + '%</span>' +
+            '<span>Reach</span><span>' + t0.range + '</span>' +
+            '<span>Notion dmg</span><span>+' + Math.round(t0.buffD * 100) + '%</span>';
+  } else if (key === 'blanket') {
+    stats = '<span>Pulse</span><span>' + t0.dmg + '</span>' +
+            '<span>Every</span><span>' + t0.rate.toFixed(2) + 's</span>' +
+            '<span>Radius</span><span>' + t0.range + '</span>';
+  } else {
+    stats = '<span>Damage</span><span>' + t0.dmg + '</span>' +
+            '<span>Every</span><span>' + t0.rate.toFixed(2) + 's</span>' +
+            '<span>Reach</span><span>' + t0.range + '</span>';
+  }
+  stats += '<span>Fliers</span><span>' + (T.air ? 'yes' : 'no') + '</span>';
+  return '<div class="tt">' + T.name + '</div><div class="tr2">' + T.role + ' &middot; ' + T.cost + ' floss</div>' +
+         '<div class="tb">' + T.blurb + '<br><i>' + T.flavour + '</i></div>' +
+         '<div class="tstats">' + stats + '</div>';
+}
+
+function selectType(key) {
+  Snd.resume();
+  if (S.selectedType === key) { S.selectedType = null; }
+  else { S.selectedType = key; S.selected = null; }
+  syncUI();
+}
+
+/* -------------------------------------------------------------- inspector */
+
+function renderInspector() {
+  const t = S.selected;
+  if (!t) {
+    elInsp.className = '';
+    elInsp.innerHTML = '<div class="emptyInsp">Nothing selected.<br>Pick a notion from the workbasket, or tap one already sewn into the cloth.</div>';
+    return;
+  }
+  const T = TOWERS[t.key], tier = T.tiers[t.lvl], st = tstats(t);
+  const nx = t.lvl < 4 ? T.tiers[t.lvl + 1] : null;
+  const cost = upgradeCost(t);
+  const afford = nx && S.floss >= cost;
+
+  const rows = [];
+  const cmp = (label, a, b, fmt, better) => {
+    const av = fmt ? fmt(a) : a;
+    let up = '';
+    if (nx && b !== undefined && b !== null && b !== a) {
+      const good = better === 'lower' ? b < a : b > a;
+      up = '<span class="up" style="color:' + (good ? '#7fc48f' : '#d99') + '">&rarr; ' + (fmt ? fmt(b) : b) + '</span>';
+    }
+    rows.push('<div class="stat"><span class="k">' + label + '</span><span class="v">' + av + up + '</span></div>');
+  };
+
+  if (t.key === 'wax') {
+    cmp('Slow', tier.slow, nx && nx.slow, v => Math.round(v * 100) + '%');
+    cmp('Reach', tier.range, nx && nx.range);
+    cmp('Notion dmg', tier.buffD, nx && nx.buffD, v => '+' + Math.round(v * 100) + '%');
+    cmp('Notion rate', tier.buffR, nx && nx.buffR, v => '+' + Math.round(v * 100) + '%');
+    cmp('Per course', tier.income, nx && nx.income, v => v ? '+' + v + ' floss' : '&mdash;');
+    cmp('Sets solid', tier.freeze, nx && nx.freeze, v => v ? Math.round(v * 100) + '%' : '&mdash;');
+  } else if (t.key === 'blanket') {
+    cmp('Pulse', tier.dmg, nx && nx.dmg);
+    cmp('Interval', tier.rate, nx && nx.rate, v => v.toFixed(2) + 's', 'lower');
+    cmp('Radius', tier.range, nx && nx.range);
+    cmp('Fray', tier.fray, nx && nx.fray, v => v ? v + '/s' : '&mdash;');
+    cmp('DPS (area)', Math.round(st.dmg / st.rate), null);
+    cmp('Vs slowed', tier.slowBonus, nx && nx.slowBonus, v => v ? '+' + Math.round(v * 100) + '%' : '&mdash;');
+  } else if (t.key === 'chain') {
+    cmp('Damage', tier.dmg, nx && nx.dmg);
+    cmp('Interval', tier.rate, nx && nx.rate, v => v.toFixed(2) + 's', 'lower');
+    cmp('Reach', tier.range, nx && nx.range);
+    cmp('Leaps', tier.bounce, nx && nx.bounce);
+    cmp('Snarl', tier.slow, nx && nx.slow, v => v ? Math.round(v * 100) + '%' : '&mdash;');
+    cmp('DPS', Math.round(st.dmg / st.rate), null);
+  } else if (t.key === 'pin') {
+    cmp('Damage', tier.dmg, nx && nx.dmg);
+    cmp('Interval', tier.rate, nx && nx.rate, v => v.toFixed(2) + 's', 'lower');
+    cmp('Reach', tier.range, nx && nx.range);
+    cmp('Pierces', tier.pierce, nx && nx.pierce);
+    cmp('Pins for', tier.root, nx && nx.root, v => v ? v.toFixed(2) + 's' : '&mdash;');
+    cmp('Vs bosses', tier.boss, nx && nx.boss, v => '\u00d7' + v.toFixed(2));
+  } else {
+    cmp('Damage', tier.dmg, nx && nx.dmg);
+    cmp('Interval', tier.rate, nx && nx.rate, v => v.toFixed(2) + 's', 'lower');
+    cmp('Reach', tier.range, nx && nx.range);
+    cmp('Shots', tier.burst, nx && nx.burst);
+    cmp('Crit', tier.crit, nx && nx.crit, v => v ? Math.round(v * 100) + '%' : '&mdash;');
+    cmp('DPS', Math.round(st.dmg * (st.burst || 1) / st.rate), null);
+  }
+
+  const pips = [0,1,2,3,4].map(i => '<span class="pip' + (i <= t.lvl ? ' on' : '') + '"></span>').join('');
+  const modes = t.key === 'wax' ? '' :
+    '<div class="tgt">' + ['first','last','strong','close'].map(m =>
+      '<button data-mode="' + m + '"' + (t.mode === m ? ' class="on"' : '') + '>' +
+      ({first:'First',last:'Last',strong:'Strong',close:'Near'})[m] + '</button>').join('') + '</div>';
+
+  const buff = (st.buffD > 0)
+    ? '<div class="stat" style="grid-column:1/-1"><span class="k">Waxed</span><span class="v" style="color:#e2a331">+' +
+      Math.round(st.buffD * 100) + '% dmg' + (st.buffR ? ', +' + Math.round(st.buffR * 100) + '% rate' : '') + '</span></div>'
+    : '';
+
+  elInsp.className = 'insp';
+  elInsp.innerHTML =
+    '<div class="top"><div id="inspIco"></div><div style="min-width:0">' +
+      '<div class="ttl">' + tier.n + '</div>' +
+      '<div class="tier">' + T.name + ' &middot; tier ' + (t.lvl + 1) + ' of 5</div>' +
+      '<div class="pips">' + pips + '</div>' +
+    '</div></div>' +
+    '<div class="flav">' + tier.note + '</div>' +
+    '<div class="stats">' + rows.join('') + buff + '</div>' +
+    modes +
+    '<div class="acts">' +
+      '<button class="bigBtn bUp" id="btnUp"' + (nx && afford ? '' : ' disabled') + '>' +
+        (nx ? 'Work up' : 'Fully worked') +
+        '<span class="sub">' + (nx ? nx.n + ' \u00b7 ' + cost + ' floss' : 'tier 5 of 5') + '</span></button>' +
+      '<button class="bigBtn bSell" id="btnSell">Unpick<span class="sub">+' + sellValue(t) + '</span></button>' +
+    '</div>' +
+    '<div style="font-family:var(--mono);font-size:.6rem;letter-spacing:.1em;color:var(--bone-dim);opacity:.55;text-align:center">' +
+      t.kills + ' felled \u00b7 ' + Math.round(t.dealt).toLocaleString() + ' damage \u00b7 ' + t.invested + ' invested</div>';
+
+  $('inspIco').appendChild(makeIcon(t.key, t.lvl, 44));
+  const up = $('btnUp'), sell = $('btnSell');
+  if (up) up.addEventListener('click', doUpgrade);
+  if (sell) sell.addEventListener('click', doSell);
+  elInsp.querySelectorAll('.tgt button').forEach(b =>
+    b.addEventListener('click', () => { t.mode = b.dataset.mode; renderInspector(); }));
+}
+
+function doUpgrade() {
+  const t = S.selected; if (!t || t.lvl >= 4) return;
+  const cost = upgradeCost(t);
+  if (S.floss < cost) { toast('Not enough floss', 'bad'); return; }
+  S.floss -= cost; S.stats.spent += cost;
+  t.invested += cost; t.lvl++;
+  t.sew = 0.35;
+  Snd.up();
+  floatText(t.x, t.y - 30, TOWERS[t.key].tiers[t.lvl].n, C.brass2, 13);
+  burst(t.x, t.y, 12, TOWERS[t.key].color, 10);
+  syncUI();
+}
+function doSell() {
+  const t = S.selected; if (!t) return;
+  S.floss += sellValue(t);
+  burst(t.x, t.y, 14, TOWERS[t.key].color, 10);
+  S.towers.splice(S.towers.indexOf(t), 1);
+  S.selected = null;
+  Snd.sell();
+  syncUI();
+}
+
+/* --------------------------------------------------------- next course --- */
+
+function renderNext() {
+  const n = S.course + (S.phase === 'course' ? 0 : 1);
+  if (n > TOTAL_COURSES) {
+    elNext.innerHTML = '<div class="hdr"><span class="cn">The frame is whole</span></div>' +
+      '<div style="font-family:var(--serif);font-style:italic;font-size:.8rem;color:var(--bone-dim)">Nothing further is scheduled.</div>';
+    return;
+  }
+  const c = COURSES[n - 1];
+  const counts = {};
+  for (const grp of c.g) counts[grp.t] = (counts[grp.t] || 0) + grp.n;
+  const chips = Object.keys(counts).map(id => {
+    const D = ENEMIES[id];
+    return '<span class="threat' + (D.boss ? ' boss' : '') + '" data-vermin="' + id + '">' +
+      '<span class="vico" data-id="' + id + '"></span>' + D.name + ' <span class="q">\u00d7' + counts[id] + '</span></span>';
+  }).join('');
+  elNext.innerHTML =
+    '<div class="hdr"><span class="cn">' + (c.boss ? '\u2694 ' : '') + c.n + '</span>' +
+    '<span class="cc">Course ' + String(n).padStart(2, '0') + '</span></div>' +
+    '<div class="threats">' + chips + '</div>';
+  elNext.querySelectorAll('.vico').forEach(sp => sp.appendChild(makeVerminIcon(sp.dataset.id, 20)));
+  elNext.querySelectorAll('.threat').forEach(sp => {
+    const D = ENEMIES[sp.dataset.vermin];
+    const traits = [];
+    if (D.fly) traits.push('flies the short way');
+    if (D.armor >= 8) traits.push('armoured ' + D.armor);
+    if (D.slowRes) traits.push('resists wax');
+    if (D.rootImm) traits.push('cannot be pinned');
+    if (D.split) traits.push('splits when killed');
+    if (D.heal) traits.push('heals its neighbours');
+    if (D.shield) traits.push('regrows a shield');
+    if (D.phase) traits.push('phases out of reach');
+    if (D.accel) traits.push('accelerates');
+    if (D.spawn) traits.push('spawns ' + ENEMIES[D.spawn.of].name);
+    const body = '<div class="tt">' + D.name + '</div>' +
+      '<div class="tr2">' + (D.boss ? 'Boss' : 'Vermin') + ' &middot; ' + D.leak + ' warp if it lands</div>' +
+      '<div class="tb">' + D.desc + (traits.length ? '<br><i>' + traits.join(' \u00b7 ') + '</i>' : '') + '</div>' +
+      '<div class="tstats"><span>Base life</span><span>' + D.hp + '</span><span>Pace</span><span>' + D.spd + '</span>' +
+      '<span>Bounty</span><span>' + D.bounty + '</span></div>';
+    sp.addEventListener('pointerenter', ev => showTip(ev, body));
+    sp.addEventListener('pointerleave', hideTip);
+    sp.addEventListener('pointermove', moveTip);
+  });
+}
+
+/* -------------------------------------------------------------- tooltips - */
+
+function showTip(ev, html) {
+  if (window.matchMedia('(hover: none)').matches) return;
+  elTip.innerHTML = html;
+  elTip.classList.add('on');
+  moveTip(ev);
+}
+function moveTip(ev) {
+  if (!elTip.classList.contains('on')) return;
+  const r = elTip.getBoundingClientRect();
+  let x = ev.clientX + 16, y = ev.clientY + 16;
+  if (x + r.width > window.innerWidth - 8) x = ev.clientX - r.width - 14;
+  if (y + r.height > window.innerHeight - 8) y = window.innerHeight - r.height - 10;
+  elTip.style.left = Math.max(6, x) + 'px';
+  elTip.style.top = Math.max(6, y) + 'px';
+}
+function hideTip() { elTip.classList.remove('on'); }
+
+/* ------------------------------------------------------------------ sync - */
+
+let lastSync = { warp:-1, floss:-1, wave:'', mend:'' };
+
+function syncLive() {
+  if (S.warp !== lastSync.warp) { elWarp.textContent = S.warp; lastSync.warp = S.warp; }
+  const f = Math.floor(S.floss);
+  if (f !== lastSync.floss) {
+    elFloss.textContent = f.toLocaleString(); lastSync.floss = f;
+    // affordability shading without a full rebuild
+    elBasket.querySelectorAll('.nCard').forEach(b =>
+      b.classList.toggle('poor', S.floss < TOWERS[b.dataset.key].cost));
+    const up = $('btnUp');
+    if (up && S.selected && S.selected.lvl < 4) up.disabled = S.floss < upgradeCost(S.selected);
+  }
+  const wv = Math.max(1, S.course) + '/' + TOTAL_COURSES;
+  if (wv !== lastSync.wave) { elWave.textContent = (S.course || 0) + '/' + TOTAL_COURSES; lastSync.wave = wv; }
+
+  if (S.boss && S.boss.alive) {
+    elBossBar.classList.add('on');
+    elBossNm.textContent = S.boss.def.name;
+    elBossFl.style.width = (clamp(S.boss.hp / S.boss.maxHp, 0, 1) * 100) + '%';
+  } else elBossBar.classList.remove('on');
+
+  if (S.phase === 'prep' && S.prepT > 0) syncMendFuse();
+}
+
+function syncMendFuse() {
+  elFuse.style.width = (S.prepT / S.prepMax * 100) + '%';
+  const bonus = Math.ceil(S.prepT) * 2;
+  elMendSub.textContent = bonus > 0
+    ? 'Begin Course ' + (S.course + 1) + '  \u00b7  early +' + bonus
+    : 'Begin Course ' + (S.course + 1);
+}
+
+function syncUI() {
+  elBasket.querySelectorAll('.nCard').forEach(b => {
+    b.classList.toggle('sel', S.selectedType === b.dataset.key);
+    b.classList.toggle('poor', S.floss < TOWERS[b.dataset.key].cost);
+  });
+  renderInspector();
+  renderNext();
+
+  const running = S.phase === 'course';
+  elMend.disabled = running || S.phase === 'won' || S.phase === 'lost' || S.phase === 'title';
+  if (running) {
+    elMendTxt.textContent = 'In progress';
+    elMendSub.textContent = S.alive + ' on the cloth \u00b7 ' + S.spawnQ.length + ' to come';
+    elFuse.style.width = '0%';
+  } else if (S.phase === 'prep') {
+    elMendTxt.textContent = 'Mend';
+    syncMendFuse();
+  } else {
+    elMendTxt.textContent = 'Mend';
+    elMendSub.textContent = 'Begin Course ' + Math.min(TOTAL_COURSES, S.course + 1);
+  }
+
+  const cn = S.phase === 'course' ? S.course : Math.min(TOTAL_COURSES, S.course + (S.phase === 'prep' ? 1 : 1));
+  const cdef = COURSES[clamp(cn, 1, TOTAL_COURSES) - 1];
+  elCtN.textContent = 'Course ' + String(S.phase === 'course' ? S.course : S.course).padStart(2, '0');
+  elCtT.textContent = S.phase === 'course'
+    ? (COURSES[S.course - 1].boss ? '\u2694 ' : '') + COURSES[S.course - 1].n
+    : (S.course === 0 ? 'The frame is set' : 'Held \u00b7 next: ' + cdef.n);
+
+  lastSync.floss = -1;
+  syncLive();
+}
+
+/* -------------------------------------------------------------- ledger --- */
+
+function renderLedger() {
+  const body = $('ledgerBody');
+  body.innerHTML = LEDGER_ENTRIES.map((e, i) => {
+    const open = i < S.unlocked;
+    return '<div class="entry' + (open ? '' : ' locked') + '"><h4>' + (open ? e.t : e.t.split('\u2014')[0] + '\u2014 sealed') + '</h4>' +
+      '<p>' + (open ? e.p : 'Recovered after course ' + e.at + '.') + '</p></div>';
+  }).join('');
+  $('ledgerCount').textContent = S.unlocked + ' / ' + LEDGER_ENTRIES.length + ' recovered';
+}
+function openLedger()  { renderLedger(); $('ledgerModal').classList.add('on'); }
+function closeLedger() { $('ledgerModal').classList.remove('on'); }
+
+/* ------------------------------------------------------------- overlays -- */
+
+function showTitle() {
+  S.phase = 'title';
+  elOvl.classList.add('on');
+  elOvlCard.innerHTML =
+    '<div class="kicker">Slate frame &middot; province unnamed</div>' +
+    '<h2>Needleward</h2>' +
+    '<div class="tag">Hold the hole until help comes.</div>' +
+    '<div class="prose">' +
+      '<p>The world is the lining of an enormous coat. The sky is a herringbone nobody has reached. Your neighbours are motifs. Everything here holds for exactly as long as its thread does.</p>' +
+      '<p>The coat has been in a wardrobe a long time, in the dark, and the dark had company. A <em>snag</em> now runs across your province &mdash; a thread pulled loose &mdash; and the Unpicking is coming up it.</p>' +
+      '<p>You have a frame, a workbasket of notions the Handwork left behind, and one <em>Heart Knot</em>. Lose the knot and the province goes back to never.</p>' +
+    '</div>' +
+    '<div class="rule"></div>' +
+    '<div class="diffRow" id="diffRow">' +
+      Object.values(DIFFS).map(d =>
+        '<button data-d="' + d.k + '"' + (S.diff.k === d.k ? ' class="on"' : '') + '>' + d.name +
+        '<span class="d">' + d.floss + ' floss &middot; ' + d.warp + ' warp</span></button>').join('') +
+    '</div>' +
+    '<div class="ctaRow">' +
+      '<button class="cta" id="btnStart">Take the post</button>' +
+      '<button class="cta ghost" id="btnResnag">Re-snag the cloth</button>' +
+    '</div>' +
+    (S.best > 0 ? '<div style="margin-top:14px;font-family:var(--mono);font-size:.6rem;letter-spacing:.18em;color:var(--bone-dim);opacity:.6">DEEPEST HOLD &middot; COURSE ' + S.best + '</div>' : '');
+
+  $('diffRow').querySelectorAll('button').forEach(b => b.addEventListener('click', () => {
+    S.diff = DIFFS[b.dataset.d];
+    $('diffRow').querySelectorAll('button').forEach(x => x.classList.remove('on'));
+    b.classList.add('on');
+    S.floss = S.diff.floss; S.warp = S.diff.warp;
+    lastSync.floss = -1; lastSync.warp = -1;
+    syncUI();
+  }));
+  $('btnStart').addEventListener('click', () => {
+    Snd.resume();
+    elOvl.classList.remove('on');
+    S.phase = 'prep';
+    S.prepT = 0;
+    showLedgerLine('Frame set. Laces tight. The snag runs where it runs.');
+    syncUI();
+  });
+  $('btnResnag').addEventListener('click', () => { Snd.resume(); newMap(); });
+}
+
+function showEnd(won) {
+  elOvl.classList.add('on');
+  const st = S.stats;
+  elOvlCard.innerHTML =
+    '<div class="kicker">' + (won ? 'The posting is closed' : 'The province is unmade') + '</div>' +
+    '<h2>' + (won ? 'Mended' : 'Unpicked') + '</h2>' +
+    '<div class="tag">' + (won ? 'Course 24 held. The needle came through from outside.' : 'Course ' + S.course + '. The Heart Knot let go.') + '</div>' +
+    '<div class="prose">' + (won
+      ? '<p>She is nine, and she is doing it badly, and it does not matter, because a bad darn holds. Her grandmother is telling her to keep the tension loose.</p>' +
+        '<p>Neither of them knows the province is here. Neither of them ever will. That is the whole shape of it: to be saved carefully by someone who does not know you exist, and to have <em>no way at all to say thank you.</em></p>'
+      : '<p>The knot let go at ' + (S.diff.warp - S.warp) + ' warp threads lost. The frame slackened. The snag ran the rest of the way on its own.</p>' +
+        '<p>Nobody grieved, because there was nobody left who had ever had a neighbour here. Somewhere outside, a hand smoothed the cloth flat and felt <em>nothing missing.</em></p>') +
+    '</div>' +
+    '<div class="tally">' +
+      '<div><div class="k">Courses held</div><div class="v">' + S.course + (won ? '' : '') + '</div></div>' +
+      '<div><div class="k">Vermin felled</div><div class="v">' + st.killed + '</div></div>' +
+      '<div><div class="k">Warp lost</div><div class="v">' + (S.diff.warp - S.warp) + '</div></div>' +
+      '<div><div class="k">Floss earned</div><div class="v">' + st.earned.toLocaleString() + '</div></div>' +
+    '</div>' +
+    '<div class="rule"></div>' +
+    '<div class="ctaRow">' +
+      '<button class="cta" id="btnAgain">New posting</button>' +
+      '<button class="cta ghost" id="btnReadLedger">Read the Ledger</button>' +
+    '</div>';
+  $('btnAgain').addEventListener('click', () => { hardReset(); });
+  $('btnReadLedger').addEventListener('click', openLedger);
+}
+
+/* ---------------------------------------------------------------- input -- */
+
+function pointerCell(ev) {
+  const w = toWorld(ev.clientX, ev.clientY);
+  return { x:w.x, y:w.y, c:Math.floor(w.x / CELL), r:Math.floor(w.y / CELL) };
+}
+
+cv.addEventListener('pointermove', ev => {
+  const p = pointerCell(ev);
+  S.hover.x = p.x; S.hover.y = p.y; S.hover.c = p.c; S.hover.r = p.r;
+  S.hover.on = p.x >= 0 && p.y >= 0 && p.x < WORLD_W && p.y < WORLD_H;
+});
+cv.addEventListener('pointerleave', () => { S.hover.on = false; });
+
+cv.addEventListener('pointerdown', ev => {
+  ev.preventDefault();
+  Snd.resume();
+  if (S.phase === 'title' || S.phase === 'won' || S.phase === 'lost') return;
+  const p = pointerCell(ev);
+  S.hover.x = p.x; S.hover.y = p.y; S.hover.c = p.c; S.hover.r = p.r; S.hover.on = true;
+
+  if (ev.button === 2) { S.selectedType = null; S.selected = null; syncUI(); return; }
+
+  const existing = towerAt(p.c, p.r);
+  if (S.selectedType) {
+    const T = TOWERS[S.selectedType];
+    if (!canBuild(p.c, p.r)) { toast(existing ? 'Already worked' : 'The weave will not take it', 'bad'); return; }
+    if (S.floss < T.cost) { toast('Not enough floss', 'bad'); return; }
+    S.floss -= T.cost; S.stats.spent += T.cost;
+    const t = makeTower(S.selectedType, p.c, p.r);
+    S.towers.push(t);
+    S.selected = t;
+    if (!ev.shiftKey) S.selectedType = null;
+    Snd.place();
+    burst(t.x, t.y, 8, T.color, 8);
+    syncUI();
+    return;
+  }
+  S.selected = existing || null;
+  syncUI();
+});
+cv.addEventListener('contextmenu', ev => ev.preventDefault());
+
+/* keyboard */
+window.addEventListener('keydown', ev => {
+  const k = ev.key.toLowerCase();
+  if (k === 'escape') {
+    if ($('ledgerModal').classList.contains('on')) { closeLedger(); return; }
+    S.selectedType = null; S.selected = null; syncUI(); return;
+  }
+  if (S.phase === 'title') { if (k === 'enter' || k === ' ') { const b = $('btnStart'); if (b) b.click(); ev.preventDefault(); } return; }
+  if (k >= '1' && k <= '5') { selectType(TOWER_ORDER[parseInt(k, 10) - 1]); ev.preventDefault(); return; }
+  if (k === 'f') { cycleSpeed(); return; }
+  if (k === 'l') { $('ledgerModal').classList.contains('on') ? closeLedger() : openLedger(); return; }
+  if (k === 'm') { toggleSound(); return; }
+  if (k === 'u') { if (S.selected) doUpgrade(); return; }
+  if (k === 'x') { if (S.selected) doSell(); return; }
+  if (k === 'p') { togglePause(); return; }
+  if (k === ' ' || k === 'enter') {
+    ev.preventDefault();
+    if (S.phase === 'prep') startCourse();
+    else if (S.phase === 'course') togglePause();
+  }
+});
+
+/* buttons */
+function cycleSpeed() {
+  S.speed = S.speed === 1 ? 2 : S.speed === 2 ? 3 : 1;
+  $('spdTxt').textContent = S.speed + '\u00d7';
+  $('btnSpeed').classList.toggle('on', S.speed > 1);
+}
+function togglePause() {
+  if (S.phase !== 'course' && S.phase !== 'prep') return;
+  S.paused = !S.paused;
+  $('btnPause').classList.toggle('on', S.paused);
+  $('pauseIco').innerHTML = S.paused
+    ? '<path d="M7 4l12 8-12 8z" fill="currentColor"/>'
+    : '<g fill="currentColor"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></g>';
+}
+function toggleSound() {
+  S.sound = !S.sound;
+  $('btnSound').classList.toggle('on', S.sound);
+  $('sndWaves').style.opacity = S.sound ? '1' : '0.15';
+  if (S.sound) Snd.resume();
+}
+$('btnSpeed').addEventListener('click', cycleSpeed);
+$('btnPause').addEventListener('click', togglePause);
+$('btnSound').addEventListener('click', toggleSound);
+$('btnLedger').addEventListener('click', openLedger);
+$('ledgerClose').addEventListener('click', closeLedger);
+$('ledgerModal').addEventListener('click', ev => { if (ev.target === $('ledgerModal')) closeLedger(); });
+elMend.addEventListener('click', () => { Snd.resume(); if (S.phase === 'prep') startCourse(); });
+
+$('gWarp').addEventListener('pointerenter', ev => showTip(ev,
+  '<div class="tt">Warp threads</div><div class="tr2">' + S.diff.warp + ' at the start</div>' +
+  '<div class="tb">Every leak snaps warp. At zero the Heart Knot lets go and the province is unmade. Heavier vermin snap more than one.</div>'));
+$('gFloss').addEventListener('pointerenter', ev => showTip(ev,
+  '<div class="tt">Floss</div><div class="tr2">currency</div>' +
+  '<div class="tb">Won from felled vermin, from holding a course, from calling the next course early, and from rendered wax.</div>'));
+$('gWave').addEventListener('pointerenter', ev => showTip(ev,
+  '<div class="tt">Course</div><div class="tr2">' + TOTAL_COURSES + ' in the posting</div>' +
+  '<div class="tb">Hold all twenty-four and the mending arrives from outside the frame.</div>'));
+['gWarp','gFloss','gWave'].forEach(id => {
+  $(id).addEventListener('pointerleave', hideTip);
+  $(id).addEventListener('pointermove', moveTip);
+});
+
+/* ------------------------------------------------------------------ boot - */
+
+function newMap(seed) {
+  S.map = buildMap(seed === undefined ? ((Math.random() * 4294967295) >>> 0) : seed);
+  S.holes.length = 0;
+  rebakeCloth();
+}
+
+function hardReset() {
+  S.phase = 'title';
+  S.floss = S.diff.floss; S.warp = S.diff.warp;
+  S.course = 0;
+  S.towers.length = 0; S.enemies.length = 0; S.shots.length = 0;
+  S.fx.length = 0; S.texts.length = 0; S.rings.length = 0;
+  S.selected = null; S.selectedType = null;
+  S.spawnQ.length = 0; S.alive = 0; S.spawnedAll = false;
+  S.boss = null; S.paused = false; S.prepT = 0;
+  S.unlocked = 0;
+  S.stats = { killed:0, leaked:0, spent:0, earned:0 };
+  S.shake = 0; S.flash = 0;
+  $('btnPause').classList.remove('on');
+  newMap();
+  showLedgerLine(null);
+  elBossBar.classList.remove('on');
+  lastSync = { warp:-1, floss:-1, wave:'', mend:'' };
+  showTitle();
+  syncUI();
+}
+
+window.addEventListener('resize', () => { fitCanvas(); });
+if (window.ResizeObserver) new ResizeObserver(() => fitCanvas()).observe(cv);
+
+buildBasket();
+newMap();
+renderLedger();
+showTitle();
+syncUI();
+fitCanvas();
+requestAnimationFrame(frame);
+
+/* A read-only handle on the frame, for anyone who wants to look at the
+   arithmetic. Nothing in the game reads it. */
+window.__needleward = { S, TOWERS, ENEMIES, COURSES, DIFFS, buildMap, newMap,
+                        startCourse, makeTower, tstats, hpScale, syncUI, canBuild };
+
+})();
+</script>
+</body>
+</html>
