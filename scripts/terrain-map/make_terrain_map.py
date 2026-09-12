@@ -5,7 +5,7 @@ Usage (typical):
   python3 make_terrain_map.py --slug gentle-ponds-view \
       --title "57 Gentle Ponds View" --subtitle "7.51 acres in five lots ..." \
       --parcels 451000052387000,451000051649000 --county Cherokee \
-      --acres 7.51 --out /path/to/utils/gentle-ponds-view.html
+      --acres 7.51 --out /path/to/utils/contours/gentle-ponds-view.html
 
 Data: USGS 3DEP (elevation), statewide parcel layers (NC OneMap; Tennessee Property Boundaries), USDA Forest Service (ownership),
 OpenStreetMap Overpass (peaks, roads, rivers, places, lake names). No API keys.

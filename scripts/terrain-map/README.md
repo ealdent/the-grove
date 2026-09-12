@@ -2,8 +2,8 @@
 
 Builds a self-contained 3D contour map for a US land listing: USGS elevation, the parcel
 outline, National Forest ownership, roads and peaks, a click-to-move viewshed and a 360°
-skyline. Output is one HTML file (about 4 MB) that goes in `utils/` and is deliberately
-not linked from `utils/index.html`.
+skyline. Output is one HTML file (about 4 MB) that goes in `utils/contours/`, which has its own
+unlisted `index.html`; nothing else on the site links there.
 
 Requires `python3` with `numpy` and `pillow`, plus `curl`. No API keys.
 
@@ -16,7 +16,7 @@ python3 scripts/terrain-map/make_terrain_map.py \
   --subtitle "7.51 acres in five lots · Wilderness Creek Falls, Murphy, NC" \
   --parcels 451000052387000,451000051649000,451000053637000,451000053888000,451000053171000 \
   --county Cherokee --acres 7.51 \
-  --out utils/gentle-ponds-view.html
+  --out utils/contours/gentle-ponds-view.html
 ```
 
 `--parcels` takes county parcel numbers (`parno`). The page centres on their combined
@@ -46,23 +46,25 @@ title case (`Johnson`):
 ```bash
 python3 scripts/terrain-map/make_terrain_map.py --slug culberson-lane --state tn --county Johnson \
   --parcels "046 064    02400 000 2026,046 064    02500 000 2026" --acres 9.04 \
-  --title "674 Culberson Lane" --subtitle "..." --out utils/culberson-lane.html
+  --title "674 Culberson Lane" --subtitle "..." --out utils/contours/culberson-lane.html
 ```
 
 Georgia counties (Gilmer, for one) publish parcels only through qPublic and paid vendors, so
 there is no `--state ga`. Build from the geocoded address instead; the page then marks an
-address point rather than a boundary and says so in its key:
+address point rather than a boundary and says so in its key. Add each new map to
+`utils/contours/index.html` by hand:
 
 ```bash
 python3 scripts/terrain-map/make_terrain_map.py --slug stone-road --county none --owner-tracts none \
-  --lat 34.658571 --lon -84.479264 --title "472 Stone Road" --subtitle "..." --out utils/stone-road.html
+  --lat 34.658571 --lon -84.479264 --title "472 Stone Road" --subtitle "..." --out utils/contours/stone-road.html
 ```
 
 ## Data sources
 
 - Elevation: USGS 3DEP `exportImage` (bare earth, whole US). Two grids: ~12 m over 14.5 km
   for the map and viewshed, ~140 m over 167 km for the far skyline.
-- Parcels: NC OneMap (North Carolina only; add other states to `PARCEL_SERVICES`).
+- Parcels: NC OneMap for North Carolina, the Tennessee Property Boundaries Public Use layer for
+  Tennessee; add other states to `PARCEL_SERVICES`. Georgia has no public source.
 - Forest ownership: USDA Forest Service EDW basic ownership layer.
 - Roads, rivers, peaks, places, lake names: OpenStreetMap via Overpass. Optional; the
   map still builds without them. Lakes themselves come from flat cells in the DEM.
