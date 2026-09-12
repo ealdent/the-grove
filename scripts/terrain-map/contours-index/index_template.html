@@ -1,0 +1,348 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<meta name="theme-color" content="#0E1418">
+<title>Mountain Land</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=Archivo+Narrow:wght@400;500;600&display=swap">
+<style>
+:root{
+  --bg:#0E1418; --ink:#EEF1EC; --ink-2:#A9B3AC; --ink-3:#6F7A73; --line:rgba(238,241,236,.14);
+  --card:rgba(20,27,31,.78); --card-line:rgba(238,241,236,.12); --pin:#F2B53A; --pin-ink:#2A1E05;
+  --f-ui:"Archivo",ui-sans-serif,system-ui,sans-serif; --f-narrow:"Archivo Narrow","Archivo",ui-sans-serif,system-ui,sans-serif;
+  --safe-b:env(safe-area-inset-bottom,0px);
+  color-scheme:dark;
+}
+@media (prefers-color-scheme:light){ :root:not([data-theme="dark"]){
+  --bg:#E9EDE6; --ink:#1B221E; --ink-2:#55605A; --ink-3:#8A948D; --line:rgba(27,34,30,.16);
+  --card:rgba(250,251,248,.82); --card-line:rgba(27,34,30,.1); --pin:#C98A12; --pin-ink:#fff; color-scheme:light;
+}}
+:root[data-theme="light"]{
+  --bg:#E9EDE6; --ink:#1B221E; --ink-2:#55605A; --ink-3:#8A948D; --line:rgba(27,34,30,.16);
+  --card:rgba(250,251,248,.82); --card-line:rgba(27,34,30,.1); --pin:#C98A12; --pin-ink:#fff; color-scheme:light;
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0;overflow:hidden;background:var(--bg);color:var(--ink);font-family:var(--f-ui);-webkit-font-smoothing:antialiased;overscroll-behavior:none}
+#stage{position:fixed;inset:0;touch-action:none;cursor:grab}
+#stage.drag{cursor:grabbing}
+#gl{position:absolute;inset:0;width:100%;height:100%;display:block}
+#ov{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;overflow:visible}
+#ov text{font-family:var(--f-narrow);paint-order:stroke fill;stroke:var(--bg);stroke-width:3px;stroke-linejoin:round;user-select:none}
+#ov .state path{fill:none;stroke:var(--ink);stroke-opacity:.28;stroke-width:1;vector-effect:non-scaling-stroke}
+#ov .st{font-family:var(--f-ui);font-size:11px;font-weight:600;letter-spacing:.32em;fill:var(--ink);fill-opacity:.42;stroke-opacity:.5}
+#ov .city text{font-size:11.5px;letter-spacing:.06em;text-transform:uppercase;fill:var(--ink-2);font-weight:500}
+#ov .city circle{fill:var(--ink-2)}
+#ov .peak text{font-size:11px;fill:var(--ink-2);font-style:italic}
+#ov .peak path{fill:none;stroke:var(--ink-2);stroke-width:1.2}
+#ov .lake text{font-size:10.5px;fill:#8FB8DC;font-style:italic;letter-spacing:.02em}
+#ov .pin{pointer-events:auto;cursor:pointer}
+#ov .pin .halo{fill:var(--pin);opacity:.25;transform-box:fill-box;transform-origin:center;animation:pulse 2.6s ease-out infinite}
+#ov .pin .dot{fill:var(--pin);stroke:var(--pin-ink);stroke-width:1.5}
+#ov .pin text{font-family:var(--f-ui);font-size:13px;font-weight:600;fill:var(--ink);letter-spacing:-.005em}
+#ov .pin.sel .dot{stroke:var(--ink);stroke-width:2}
+#ov .pin.sel .halo{opacity:.4;animation-duration:1.6s}
+#ov .pin.sel text{fill:var(--pin)}
+#ov .pin.dim{opacity:.55}
+@keyframes pulse{0%{transform:scale(.6);opacity:.45}70%{transform:scale(1.6);opacity:0}100%{transform:scale(1.6);opacity:0}}
+@media (prefers-reduced-motion:reduce){#ov .pin .halo{animation:none;opacity:.2}}
+.hidden{display:none!important}
+
+/* chrome */
+.brand{position:fixed;left:18px;top:14px;display:flex;align-items:baseline;gap:10px;pointer-events:none}
+.brand h1{margin:0;font-size:15px;font-weight:600;letter-spacing:-.01em}
+.brand span{font-family:var(--f-narrow);font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3)}
+.hint{position:fixed;left:50%;bottom:calc(28px + var(--safe-b));transform:translateX(-50%);font-family:var(--f-narrow);font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-2);background:var(--card);border:1px solid var(--card-line);border-radius:999px;padding:6px 12px;backdrop-filter:blur(10px);transition:opacity .4s}
+.hint.hidden{display:block!important;opacity:0;pointer-events:none}
+.zoom{position:fixed;right:14px;top:14px;display:flex;flex-direction:column;gap:6px}
+.zoom button,.card button.x,.card .nav button{appearance:none;border:1px solid var(--card-line);background:var(--card);color:var(--ink);width:36px;height:36px;border-radius:10px;font:500 18px/1 var(--f-ui);cursor:pointer;backdrop-filter:blur(10px);display:grid;place-items:center}
+.zoom button:hover,.card .nav button:hover{border-color:var(--ink-3)}
+:focus-visible{outline:2px solid var(--pin);outline-offset:2px}
+
+.card{position:fixed;left:14px;right:14px;bottom:calc(14px + var(--safe-b));background:var(--card);border:1px solid var(--card-line);border-radius:18px;padding:16px 16px 14px;backdrop-filter:blur(18px) saturate(1.2);box-shadow:0 12px 40px rgba(0,0,0,.35);transform:translateY(0);transition:transform .35s cubic-bezier(.2,.8,.2,1),opacity .3s}
+.card.hidden{display:block!important;transform:translateY(120%);opacity:0;pointer-events:none}
+.card .top{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+.card h2{margin:0;font-size:20px;font-weight:600;letter-spacing:-.015em;line-height:1.15;text-wrap:balance}
+.card .sub{margin:4px 0 0;color:var(--ink-2);font-size:13.5px;font-variant-numeric:tabular-nums}
+.card button.x{width:32px;height:32px;border-radius:9px;font-size:16px;flex:none}
+.card .stats{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:14px 0 0}
+.card .stat{background:rgba(127,127,127,.09);border-radius:12px;padding:10px 12px}
+.card .stat b{display:block;font-size:22px;font-weight:600;letter-spacing:-.02em;font-variant-numeric:tabular-nums;line-height:1.1}
+.card .stat b small{font-size:13px;font-weight:500;color:var(--ink-2);margin-left:3px}
+.card .stat span{display:block;font-family:var(--f-narrow);font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);margin-top:3px}
+.card .row{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:14px}
+.card .open{flex:1;display:flex;align-items:center;justify-content:center;gap:8px;height:44px;border-radius:12px;background:var(--pin);color:var(--pin-ink);text-decoration:none;font-weight:600;font-size:15px;letter-spacing:-.005em}
+.card .open:hover{filter:brightness(1.06)}
+.card .nav{display:flex;gap:6px}
+.card .nav button{width:44px;height:44px;border-radius:12px}
+@media (min-width:760px){
+  .hint{bottom:auto;top:16px}
+  .card{left:auto;right:18px;bottom:18px;width:340px}
+  .brand h1{font-size:17px}
+  .zoom{right:18px;top:18px}
+}
+.fallback{position:fixed;inset:0;display:grid;place-content:center;gap:10px;padding:24px;text-align:center}
+.fallback a{color:var(--pin)}
+</style>
+</head>
+<body>
+<div id="stage">
+  <canvas id="gl"></canvas>
+  <svg id="ov" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><defs><clipPath id="mapClip"><rect id="clipRect" x="0" y="0" width="0" height="0"/></clipPath></defs><g clip-path="url(#mapClip)"><g id="gStates"></g><g id="gPlaces"></g></g><g id="gPins"></g></svg>
+</div>
+<div class="brand"><h1>Mountain land</h1><span id="count"></span></div>
+<div class="hint" id="hint">Tap a pin</div>
+<div class="zoom" aria-label="Zoom"><button type="button" id="zin" aria-label="Zoom in">+</button><button type="button" id="zout" aria-label="Zoom out">&minus;</button><button type="button" id="zfit" aria-label="Fit all" title="Fit all">&#8982;</button></div>
+<aside class="card hidden" id="card" aria-live="polite">
+  <div class="top"><div><h2 id="cName"></h2><p class="sub" id="cSub"></p></div><button type="button" class="x" id="cClose" aria-label="Close">&times;</button></div>
+  <div class="stats">
+    <div class="stat"><b id="cView"></b><span>ground in view</span></div>
+    <div class="stat"><b id="cSky"></b><span>horizon</span></div>
+  </div>
+  <div class="row"><a class="open" id="cOpen" href="#">Open the map &#8599;</a><div class="nav"><button type="button" id="cPrev" aria-label="Previous">&#8249;</button><button type="button" id="cNext" aria-label="Next">&#8250;</button></div></div>
+</aside>
+<script>/*__DATA__*/</script>
+<script>
+(async function(){
+'use strict';
+const R = window.REGION, bb = R.bbox, TW = R.w, TH = R.h;
+const $ = id => document.getElementById(id);
+const stage = $('stage'), canvas = $('gl'), ov = $('ov');
+const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const isLight = () => { const t=document.documentElement.getAttribute('data-theme'); if (t) return t==='light'; return matchMedia('(prefers-color-scheme: light)').matches; };
+$('count').textContent = R.props.length + ' tracts';
+
+// ---------- decode payload ----------
+async function inflate(b64){ const bin=atob(b64), u8=new Uint8Array(bin.length); for (let i=0;i<bin.length;i++) u8[i]=bin.charCodeAt(i);
+  const s = new Blob([u8]).stream().pipeThrough(new DecompressionStream('gzip')); return new Uint8Array(await new Response(s).arrayBuffer()); }
+const gl = canvas.getContext('webgl2', {antialias:false, alpha:false, powerPreference:'high-performance'});
+if (!gl || !('DecompressionStream' in window)){ fallback(); return; }
+const [demBytes, waterBytes] = await Promise.all([inflate(R.dem), inflate(R.water)]);
+const d16 = new Int16Array(demBytes.buffer); const elev = new Float32Array(TW*TH);
+for (let r=0;r<TH;r++){ let acc=0; const o=r*TW; for (let c=0;c<TW;c++){ acc+=d16[o+c]; elev[o+c]=acc; } }
+const water = new Uint8Array(TW*TH); for (let k=0;k<TW*TH;k++) water[k] = ((waterBytes[k>>3]>>(7-(k&7)))&1) ? 255 : 0;
+
+// ---------- WebGL ----------
+const floatLinear = !!gl.getExtension('OES_texture_float_linear');
+function tex(unit, internal, fmt, type, data, linear){ const t=gl.createTexture(); gl.activeTexture(gl.TEXTURE0+unit); gl.bindTexture(gl.TEXTURE_2D,t);
+  gl.pixelStorei(gl.UNPACK_ALIGNMENT,1); gl.texImage2D(gl.TEXTURE_2D,0,internal,TW,TH,0,fmt,type,data);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,linear?gl.LINEAR:gl.NEAREST); gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,linear?gl.LINEAR:gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE); return t; }
+tex(0, gl.R32F, gl.RED, gl.FLOAT, elev, floatLinear);
+tex(1, gl.R8, gl.RED, gl.UNSIGNED_BYTE, water, true);
+const VS = `#version 300 es
+in vec2 p; void main(){ gl_Position = vec4(p,0.,1.); }`;
+const FS = `#version 300 es
+precision highp float; precision highp sampler2D;
+uniform sampler2D uElev, uWater; uniform vec2 uRes, uTex, uPxM, uScale, uCenter, uZ; uniform float uTime, uTheme, uLinear, uDpr;
+out vec4 o;
+float ebi(vec2 uv){ vec2 p = uv*uTex - 0.5; vec2 i = floor(p), f = fract(p); vec2 t = 1.0/uTex;
+  float a = texture(uElev,(i+0.5)*t).r, b = texture(uElev,(i+vec2(1,0)+0.5)*t).r, c = texture(uElev,(i+vec2(0,1)+0.5)*t).r, d = texture(uElev,(i+1.0+0.5)*t).r;
+  return mix(mix(a,b,f.x), mix(c,d,f.x), f.y); }
+float E(vec2 uv){ return uLinear > 0.5 ? texture(uElev, uv).r : ebi(uv); }
+float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1,311.7)))*43758.5453); }
+float noise(vec2 p){ vec2 i=floor(p), f=fract(p); f=f*f*(3.-2.*f); return mix(mix(hash(i),hash(i+vec2(1,0)),f.x), mix(hash(i+vec2(0,1)),hash(i+vec2(1,1)),f.x), f.y); }
+vec3 rampD(float t){
+  vec3 c0=vec3(.10,.15,.18), c1=vec3(.15,.25,.22), c2=vec3(.27,.40,.27), c3=vec3(.47,.53,.34), c4=vec3(.69,.61,.44), c5=vec3(.86,.82,.75), c6=vec3(.96,.95,.92);
+  if (t<.13) return mix(c0,c1,t/.13); if (t<.30) return mix(c1,c2,(t-.13)/.17); if (t<.50) return mix(c2,c3,(t-.30)/.20);
+  if (t<.70) return mix(c3,c4,(t-.50)/.20); if (t<.88) return mix(c4,c5,(t-.70)/.18); return mix(c5,c6,(t-.88)/.12); }
+vec3 rampL(float t){
+  vec3 c0=vec3(.74,.82,.80), c1=vec3(.70,.78,.63), c2=vec3(.79,.80,.58), c3=vec3(.86,.78,.55), c4=vec3(.88,.75,.55), c5=vec3(.93,.88,.80), c6=vec3(.99,.98,.96);
+  if (t<.13) return mix(c0,c1,t/.13); if (t<.30) return mix(c1,c2,(t-.13)/.17); if (t<.50) return mix(c2,c3,(t-.30)/.20);
+  if (t<.70) return mix(c3,c4,(t-.50)/.20); if (t<.88) return mix(c4,c5,(t-.70)/.18); return mix(c5,c6,(t-.88)/.12); }
+void main(){
+  vec2 px = vec2(gl_FragCoord.x, uRes.y - gl_FragCoord.y);
+  vec2 uv = (px - uRes*0.5) / uScale + uCenter;
+  vec3 bgD = vec3(.055,.078,.094), bgL = vec3(.91,.93,.90); vec3 bg = mix(bgD, bgL, uTheme);
+  // backdrop with a soft radial glow so the map floats
+  float rad = length((px - uRes*0.5) / uRes.y);
+  vec3 back = bg * (1.0 + (0.10 - 0.16*rad) * (1.0-uTheme)) ;
+  vec2 e = 1.0/uTex;
+  vec2 cuv = clamp(uv, e, 1.0-e);
+  float z = E(cuv);
+  // normal (metres), vertical exaggeration for shading
+  float ve = 2.2;
+  float zW = E(cuv - vec2(e.x,0.)), zE = E(cuv + vec2(e.x,0.)), zN = E(cuv - vec2(0.,e.y)), zS = E(cuv + vec2(0.,e.y));
+  vec3 n = normalize(vec3(-(zE-zW)/(2.0*uPxM.x)*ve, -(zN-zS)/(2.0*uPxM.y)*ve, 1.0));
+  float az = radians(315.0 + 14.0*sin(uTime*0.11)), alt = radians(36.0 + 4.0*sin(uTime*0.07+1.0));
+  vec3 L = normalize(vec3(sin(az)*cos(alt), cos(az)*cos(alt), sin(alt)));
+  float diff = max(dot(n, L), 0.0);
+  float shade = mix(0.30, 1.0, diff) * mix(0.9, 1.0, n.z);
+  // valley occlusion
+  float occ = 0.0;
+  for (int i=0;i<6;i++){ float a = float(i)*1.0472; vec2 dv = vec2(cos(a), sin(a));
+    occ += max(0.0, (E(cuv + dv*e*3.0) - z)/(3.0*uPxM.x)) + 0.6*max(0.0, (E(cuv + dv*e*9.0) - z)/(9.0*uPxM.x)); }
+  float ao = 1.0 - clamp(occ/6.0*1.5*ve, 0.0, 0.5);
+  float t = clamp((z - uZ.x)/(uZ.y - uZ.x), 0.0, 1.0); t = pow(t, 0.72);
+  vec3 col = mix(rampD(t), rampL(t), uTheme);
+  col *= mix(shade*ao, mix(0.55,1.0,diff)*mix(0.75,1.0,ao), uTheme);
+  // haze in the low ground
+  float haze = pow(1.0 - t, 2.0) * mix(0.28, 0.18, uTheme);
+  col = mix(col, mix(vec3(.16,.22,.28), vec3(.86,.90,.93), uTheme), haze);
+  // contours: 100 m, softened where the slope is too steep for the pixel size, with a slow rising shimmer
+  float iv = 100.0; float fz = fract(z/iv); float dist = min(fz, 1.0-fz)*iv; float wz = fwidth(z) + 1e-3;
+  float line = 1.0 - smoothstep(0.35*wz, 1.3*wz, dist);
+  float fade = 1.0 - smoothstep(25.0, 70.0, wz);
+  float band = fract(z/900.0 - uTime*0.02); float shimmer = smoothstep(0.0, 0.12, band) * (1.0 - smoothstep(0.12, 0.5, band));
+  float major = 1.0 - step(0.5, abs(fract(z/500.0) - 0.5) * 2.0 - 0.02 * 500.0 / iv);
+  float cAmt = line * fade * (0.14 + 0.22*shimmer + 0.10*major);
+  vec3 cCol = mix(vec3(1.0,.95,.86), vec3(.40,.28,.14), uTheme);
+  col = mix(col, cCol, cAmt);
+  // water
+  float w = texture(uWater, cuv).r; w = smoothstep(0.35, 0.65, w);
+  vec2 wp = uv*uTex*0.9; float rip = noise(wp + uTime*0.35) * 0.6 + noise(wp*2.3 - uTime*0.5) * 0.4;
+  vec3 wn = normalize(vec3((rip-0.5)*0.18, (noise(wp*1.7+uTime*0.3)-0.5)*0.18, 1.0));
+  float glint = pow(max(dot(reflect(-L, wn), vec3(0.,0.,1.)), 0.0), 48.0);
+  vec3 wCol = mix(vec3(.10,.22,.33), vec3(.50,.70,.86), uTheme) * (0.85 + 0.3*rip) + glint*mix(0.35,0.5,uTheme);
+  col = mix(col, wCol, w);
+  // map edge feather + vignette
+  vec2 fe = smoothstep(0.0, 0.012, uv) * smoothstep(0.0, 0.012, 1.0-uv);
+  float inside = fe.x*fe.y * (uv.x>0.0 && uv.x<1.0 && uv.y>0.0 && uv.y<1.0 ? 1.0 : 0.0);
+  col = mix(back, col, inside);
+  col *= 1.0 - 0.18*(1.0-uTheme)*smoothstep(0.55, 1.05, rad);
+  o = vec4(col, 1.0);
+}`;
+function shader(type, src){ const s=gl.createShader(type); gl.shaderSource(s,src); gl.compileShader(s); if(!gl.getShaderParameter(s,gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s)); return s; }
+const prog = gl.createProgram(); gl.attachShader(prog, shader(gl.VERTEX_SHADER, VS)); gl.attachShader(prog, shader(gl.FRAGMENT_SHADER, FS)); gl.linkProgram(prog);
+if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(prog));
+gl.useProgram(prog);
+const buf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, buf); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 3,-1, -1,3]), gl.STATIC_DRAW);
+const loc = gl.getAttribLocation(prog,'p'); gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc,2,gl.FLOAT,false,0,0);
+const U = n => gl.getUniformLocation(prog, n);
+gl.uniform1i(U('uElev'),0); gl.uniform1i(U('uWater'),1);
+gl.uniform2f(U('uTex'), TW, TH); gl.uniform2f(U('uPxM'), R.mpp[0], R.mpp[1]); gl.uniform2f(U('uZ'), R.zmin, R.zmax); gl.uniform1f(U('uLinear'), floatLinear?1:0);
+
+// ---------- view (uv space: x 0..1 west->east, y 0..1 north->south) ----------
+const mapAspect = (TW*R.mpp[0])/(TH*R.mpp[1]);
+let vw=1, vh=1, dpr=1, base={w:1,h:1};             // base = size of the whole map at zoom 1, in CSS px (contain)
+const view = { cx:0.5, cy:0.5, k:1 };            // centre in uv, zoom factor
+let anim = null;
+function resize(){
+  vw = stage.clientWidth||1; vh = stage.clientHeight||1; dpr = Math.min(window.devicePixelRatio||1, 2);
+  canvas.width = Math.round(vw*dpr); canvas.height = Math.round(vh*dpr); gl.viewport(0,0,canvas.width,canvas.height);
+  if (vw/vh > mapAspect){ base.h = vh; base.w = vh*mapAspect; } else { base.w = vw; base.h = vw/mapAspect; }
+  ov.setAttribute('viewBox', `0 0 ${vw} ${vh}`); ov.setAttribute('width', vw); ov.setAttribute('height', vh);
+  dirty = true;
+}
+const scalePx = () => [base.w*view.k, base.h*view.k];
+function project(lon, lat){ const [sx,sy]=scalePx(); const u=(lon-bb.W)/(bb.E-bb.W), v=(bb.N-lat)/(bb.N-bb.S); return [ (u-view.cx)*sx + vw/2, (v-view.cy)*sy + vh/2 ]; }
+function unproject(x, y){ const [sx,sy]=scalePx(); return [ (x-vw/2)/sx + view.cx, (y-vh/2)/sy + view.cy ]; }
+const landscape = () => vw > vh;
+function kmin(){ return landscape() ? Math.max(vw/base.w, vh/base.h) : 0.9; }
+function clampView(){ view.k = Math.min(9, Math.max(kmin(), view.k)); const [sx,sy]=scalePx();
+  // map larger than the viewport: never show its edge. Smaller: keep it wholly on screen.
+  const hx = sx>=vw ? vw/(2*sx) : 1 - vw/(2*sx), hy = sy>=vh ? vh/(2*sy) : 1 - vh/(2*sy);
+  view.cx = Math.min(1-hx, Math.max(hx, view.cx)); view.cy = Math.min(1-hy, Math.max(hy, view.cy)); }
+function fitBounds(lons, lats, pad){ const u0=(Math.min(...lons)-bb.W)/(bb.E-bb.W), u1=(Math.max(...lons)-bb.W)/(bb.E-bb.W), v0=(bb.N-Math.max(...lats))/(bb.N-bb.S), v1=(bb.N-Math.min(...lats))/(bb.N-bb.S);
+  const kx = (vw*(1-2*pad.x))/((u1-u0)*base.w), ky = (vh*(1-2*pad.y))/((v1-v0)*base.h);
+  return { cx:(u0+u1)/2 + pad.dx*((u1-u0)), cy:(v0+v1)/2 + pad.dy*((v1-v0)), k: Math.min(kx, ky) }; }
+function animateTo(target, ms){ if (reduced){ Object.assign(view, target); clampView(); dirty=true; return; }
+  const from={...view}, t0=performance.now(); anim = ()=>{ const t=Math.min(1,(performance.now()-t0)/ms), s=1-Math.pow(1-t,3);
+    view.cx=from.cx+(target.cx-from.cx)*s; view.cy=from.cy+(target.cy-from.cy)*s; view.k=Math.exp(Math.log(from.k)+(Math.log(target.k)-Math.log(from.k))*s); clampView(); dirty=true; if (t>=1) anim=null; }; }
+function overviewTarget(){ const pad = landscape() ? {x:.12, y:.14, dx:.10, dy:0} : {x:.14, y:.16, dx:0, dy:.16}; // leave room for the card (right on desktop, bottom on phones)
+  const t = fitBounds(R.props.map(p=>p.lon), R.props.map(p=>p.lat), pad); t.k = Math.max(t.k, kmin()); return t; }
+
+// ---------- overlay ----------
+const NS = 'http://www.w3.org/2000/svg';
+const el = (tag, attrs, parent) => { const e=document.createElementNS(NS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); if (parent) parent.appendChild(e); return e; };
+const gStates=$('gStates'), gPlaces=$('gPlaces'), gPins=$('gPins');
+const statePaths = R.states.map(s => ({ s, path: el('path', {}, el('g', {class:'state'}, gStates)) }));
+const placeEls = R.places.map(p => {
+  const g = el('g', {class: p.k==='state' ? 'stname' : p.k}, gPlaces);
+  if (p.k==='city') el('circle', {r:2.2}, g);
+  if (p.k==='peak') el('path', {d:'M-4 3 L0 -4 L4 3 Z'}, g);
+  const t = el('text', {class: p.k==='state' ? 'st' : ''}, g); t.textContent = p.n;
+  if (p.k==='city'){ t.setAttribute('x', 6); t.setAttribute('dy', '0.35em'); }
+  else if (p.k==='peak'){ t.setAttribute('x', 7); t.setAttribute('dy', '0.35em'); }
+  else { t.setAttribute('text-anchor','middle'); t.setAttribute('dy','0.35em'); }
+  return {p, g};
+});
+const pinEls = R.props.map((p, i) => {
+  const g = el('g', {class:'pin', tabindex:0, role:'button', 'aria-label': p.name}, gPins);
+  el('circle', {class:'halo', r:14}, g); el('circle', {r:20, fill:'transparent'}, g); el('circle', {class:'dot', r:5.5}, g);
+  const t = el('text', {}, g); t.textContent = p.name;
+  g.addEventListener('click', e => { e.stopPropagation(); select(i, true); });
+  g.addEventListener('keydown', e => { if (e.key==='Enter'||e.key===' '){ e.preventDefault(); select(i, true); } });
+  return {p, g};
+});
+function pathFor(lines){ let d=''; for (const ln of lines){ for (let i=0;i<ln.length;i++){ const [x,y]=project(ln[i][0], ln[i][1]); d += (i?'L':'M')+x.toFixed(1)+' '+y.toFixed(1); } } return d; }
+function layout(){
+  const [sx] = scalePx(); const zoom = view.k; const small = vw < 760;
+  const [mx0,my0] = project(bb.W, bb.N), [mx1,my1] = project(bb.E, bb.S); const cr=$('clipRect'); cr.setAttribute('x',mx0); cr.setAttribute('y',my0); cr.setAttribute('width',mx1-mx0); cr.setAttribute('height',my1-my0);
+  statePaths.forEach(o => o.path.setAttribute('d', pathFor(o.s.lines)));
+  placeEls.forEach(({p,g}) => {
+    const [x,y] = project(p.lon, p.lat); const on = x>-40 && x<vw+40 && y>-20 && y<vh+20;
+    const need = p.k==='state' ? (small ? zoom>1.6 : (p.p===1 || zoom>1.3)) : p.p===1 ? (!small || zoom>1.2 || p.k!=='peak') : p.p===2 ? (zoom>1.6 || !small) : (zoom>2.4 || (!small && zoom>1.5));
+    g.style.display = (on && need) ? '' : 'none'; if (on && need) g.setAttribute('transform', `translate(${x.toFixed(1)} ${y.toFixed(1)})`);
+  });
+  pinEls.forEach(({p,g}, i) => { const [x,y] = project(p.lon, p.lat); g.setAttribute('transform', `translate(${x.toFixed(1)} ${y.toFixed(1)})`);
+    g.classList.toggle('sel', i===selected); g.classList.toggle('dim', selected!==null && i!==selected);
+    const t = g.querySelector('text'); const showLabel = !small || zoom > 1.9 || i===selected; t.style.display = showLabel ? '' : 'none';
+    if (showLabel){ // keep labels on screen: flip the anchor near the edges
+      let a = p.anchor||'e'; const room = 150; if (x < room) a = a.replace('w','e'); if (x > vw-room) a = a.replace('e','w'); if (x<room && !/e/.test(a)) a += 'e'; if (x>vw-room && !/w/.test(a)) a += 'w'; if (y < 40) a = a.replace('n','s');
+      const dx = a.includes('e') ? 11 : a.includes('w') ? -11 : 0; const dy = a.includes('n') ? -11 : a.includes('s') ? 15 : 0;
+      t.setAttribute('x', dx); t.setAttribute('y', dy); t.setAttribute('dy', dy===0 ? '0.35em' : (dy<0 ? '0' : '0.6em')); t.setAttribute('text-anchor', dx>0 ? 'start' : dx<0 ? 'end' : 'middle'); } });
+}
+
+// ---------- selection & card ----------
+let selected = null;
+const card=$('card'), hint=$('hint');
+function select(i, zoomTo){
+  selected = i; const p = R.props[i];
+  $('cName').textContent = p.name; $('cSub').textContent = `${p.town} · ${p.size} · ${p.price}`;
+  $('cView').innerHTML = p.view + '<small>mi²</small>'; $('cSky').innerHTML = p.sky + '<small>mi ' + p.dir + '</small>';
+  $('cOpen').href = p.slug + '.html';
+  card.classList.remove('hidden'); hint.classList.add('hidden'); layout();
+  if (zoomTo){ const u=(p.lon-bb.W)/(bb.E-bb.W), v=(bb.N-p.lat)/(bb.N-bb.S); const k = Math.max(view.k, landscape() ? Math.max(2.4, kmin()*1.6) : 2.6);
+    const [sx,sy] = [base.w*k, base.h*k]; const dy = landscape() ? 0 : (vh*0.20)/sy, dx = landscape() ? 170/sx : 0;   // keep the pin clear of the card
+    animateTo({cx:u+dx, cy:v+dy, k}, 700); }
+}
+function deselect(){ selected = null; card.classList.add('hidden'); layout(); animateTo(overviewTarget(), 700); }
+$('cClose').addEventListener('click', deselect);
+$('cPrev').addEventListener('click', ()=> select((selected+R.props.length-1)%R.props.length, true));
+$('cNext').addEventListener('click', ()=> select((selected+1)%R.props.length, true));
+document.addEventListener('keydown', e => { if (e.key==='Escape' && selected!==null) deselect(); if (selected!==null && e.key==='ArrowRight') $('cNext').click(); if (selected!==null && e.key==='ArrowLeft') $('cPrev').click(); });
+
+// ---------- pointer: pan, wheel zoom, pinch, tap ----------
+const ptrs = new Map(); let panStart=null, pinch=null, moved=false;
+stage.addEventListener('pointerdown', e => { if (e.target.closest && e.target.closest('.pin')) return; stage.setPointerCapture(e.pointerId); ptrs.set(e.pointerId, [e.clientX, e.clientY]); moved=false; anim=null;
+  if (ptrs.size===1){ panStart = {x:e.clientX, y:e.clientY, cx:view.cx, cy:view.cy}; stage.classList.add('drag'); }
+  else if (ptrs.size===2){ const [a,b]=[...ptrs.values()]; pinch = {d:Math.hypot(a[0]-b[0],a[1]-b[1]), k:view.k, mx:(a[0]+b[0])/2, my:(a[1]+b[1])/2, uv:unproject((a[0]+b[0])/2,(a[1]+b[1])/2)}; panStart=null; } });
+stage.addEventListener('pointermove', e => { if (!ptrs.has(e.pointerId)) return; ptrs.set(e.pointerId, [e.clientX, e.clientY]);
+  if (pinch && ptrs.size===2){ const [a,b]=[...ptrs.values()]; const d=Math.hypot(a[0]-b[0],a[1]-b[1]); view.k = pinch.k * d/pinch.d; clampView();
+    const mx=(a[0]+b[0])/2, my=(a[1]+b[1])/2; const [sx,sy]=scalePx(); view.cx = pinch.uv[0] - (mx-vw/2)/sx; view.cy = pinch.uv[1] - (my-vh/2)/sy; clampView(); moved=true; dirty=true; }
+  else if (panStart){ const dx=e.clientX-panStart.x, dy=e.clientY-panStart.y; if (Math.hypot(dx,dy)>3) moved=true; const [sx,sy]=scalePx(); view.cx = panStart.cx - dx/sx; view.cy = panStart.cy - dy/sy; clampView(); dirty=true; } });
+function endPtr(e){ ptrs.delete(e.pointerId); if (ptrs.size<2) pinch=null; if (ptrs.size===0){ stage.classList.remove('drag'); if (!moved && !(e.target.closest && e.target.closest('.pin')) && selected!==null && e.type==='pointerup') { /* tap on empty map keeps selection; double-tap zooms */ } panStart=null; } else if (ptrs.size===1){ const [x,y]=[...ptrs.values()][0]; panStart={x, y, cx:view.cx, cy:view.cy}; } }
+stage.addEventListener('pointerup', endPtr); stage.addEventListener('pointercancel', endPtr);
+let lastTap=0; stage.addEventListener('pointerup', e => { if (moved || (e.target.closest && e.target.closest('.pin'))) return; const now=performance.now(); if (now-lastTap<320){ zoomAt(e.clientX, e.clientY, 1.8); lastTap=0; } else lastTap=now; });
+stage.addEventListener('wheel', e => { e.preventDefault(); zoomAt(e.clientX, e.clientY, Math.exp(-e.deltaY*0.0016), true); }, {passive:false});
+function zoomAt(x, y, f, instant){ const uv = unproject(x, y); const k = Math.min(9, Math.max(0.9, view.k*f)); const target = {k, cx: uv[0] - (x-vw/2)/(base.w*k), cy: uv[1] - (y-vh/2)/(base.h*k)};
+  if (instant){ Object.assign(view, target); clampView(); dirty=true; } else animateTo(target, 380); }
+$('zin').addEventListener('click', ()=> zoomAt(vw/2, vh/2, 1.6)); $('zout').addEventListener('click', ()=> zoomAt(vw/2, vh/2, 1/1.6)); $('zfit').addEventListener('click', ()=> { selected===null ? animateTo(overviewTarget(), 600) : deselect(); });
+
+// ---------- loop ----------
+let dirty = true, t0 = performance.now();
+new ResizeObserver(()=>{ resize(); if (selected===null) Object.assign(view, overviewTarget()); clampView(); dirty=true; }).observe(stage);
+resize(); Object.assign(view, overviewTarget()); clampView();
+matchMedia('(prefers-color-scheme: light)').addEventListener('change', ()=> dirty=true);
+new MutationObserver(()=> dirty=true).observe(document.documentElement, {attributes:true, attributeFilter:['data-theme']});
+let hidden = false; document.addEventListener('visibilitychange', ()=> { hidden = document.hidden; });
+function frame(now){
+  requestAnimationFrame(frame); if (hidden) return;
+  if (anim) anim();
+  const time = reduced ? 0 : (now - t0)/1000;
+  gl.uniform2f(U('uRes'), canvas.width, canvas.height);
+  const [sx,sy] = scalePx(); gl.uniform2f(U('uScale'), sx*dpr, sy*dpr); gl.uniform2f(U('uCenter'), view.cx, view.cy);
+  gl.uniform1f(U('uTime'), time); gl.uniform1f(U('uTheme'), isLight()?1:0); gl.uniform1f(U('uDpr'), dpr);
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
+  if (dirty){ dirty=false; layout(); }
+}
+layout(); requestAnimationFrame(frame);
+window.__region = { view, select, deselect, project, props: R.props };
+
+function fallback(){ document.getElementById('stage').innerHTML=''; const f=document.createElement('div'); f.className='fallback'; f.innerHTML='<p>This browser cannot draw the relief map.</p>'+R.props.map(p=>`<a href="${p.slug}.html">${p.name}</a>`).join(''); document.body.appendChild(f); }
+})().catch(err => { console.error(err); const f=document.createElement('div'); f.className='fallback'; f.innerHTML='<p>Could not draw the map: '+err.message+'</p>'+window.REGION.props.map(p=>`<a href="${p.slug}.html">${p.name}</a>`).join('<br>'); document.body.appendChild(f); });
+</script>
+</body>
+</html>

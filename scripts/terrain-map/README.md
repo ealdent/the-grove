@@ -51,8 +51,7 @@ python3 scripts/terrain-map/make_terrain_map.py --slug culberson-lane --state tn
 
 Georgia counties (Gilmer, for one) publish parcels only through qPublic and paid vendors, so
 there is no `--state ga`. Build from the geocoded address instead; the page then marks an
-address point rather than a boundary and says so in its key. Add each new map to
-`utils/contours/index.html` by hand:
+address point rather than a boundary and says so in its key:
 
 ```bash
 python3 scripts/terrain-map/make_terrain_map.py --slug stone-road --county none --owner-tracts none \
@@ -75,3 +74,17 @@ python3 scripts/terrain-map/make_terrain_map.py --slug stone-road --county none 
   than in life; the page says so and exposes an eye-height slider.
 - Sightlines include earth curvature and standard refraction (k = 0.13).
 - The Overpass mirrors rate-limit and time out; the script retries both and moves on.
+
+## The contours index
+
+`utils/contours/index.html` is a WebGL relief map of the Southern Appalachians with one pin per
+property, built by `contours-index/build_index.py` from the same USGS elevation service, USGS
+National Hydrography lakes and a generalized US-states outline. To add a property, append it to
+`PROPS` in that script (name, town, coordinates, size, price, the two headline numbers from its
+map page) and rerun:
+
+```bash
+python3 scripts/terrain-map/contours-index/build_index.py
+```
+
+Downloads cache in `$TMPDIR/contours-index`, so a rebuild takes a few seconds.
