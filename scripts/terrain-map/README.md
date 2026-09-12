@@ -49,6 +49,15 @@ python3 scripts/terrain-map/make_terrain_map.py --slug culberson-lane --state tn
   --title "674 Culberson Lane" --subtitle "..." --out utils/culberson-lane.html
 ```
 
+Georgia counties (Gilmer, for one) publish parcels only through qPublic and paid vendors, so
+there is no `--state ga`. Build from the geocoded address instead; the page then marks an
+address point rather than a boundary and says so in its key:
+
+```bash
+python3 scripts/terrain-map/make_terrain_map.py --slug stone-road --county none --owner-tracts none \
+  --lat 34.658571 --lon -84.479264 --title "472 Stone Road" --subtitle "..." --out utils/stone-road.html
+```
+
 ## Data sources
 
 - Elevation: USGS 3DEP `exportImage` (bare earth, whole US). Two grids: ~12 m over 14.5 km
