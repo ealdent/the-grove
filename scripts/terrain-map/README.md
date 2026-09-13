@@ -77,8 +77,10 @@ python3 scripts/terrain-map/make_terrain_map.py --slug stone-road --county none 
 
 ## The contours index
 
-`utils/contours/index.html` is a WebGL relief map of the Southern Appalachians with one pin per
-property, built by `contours-index/build_index.py` from the same USGS elevation service, USGS
+`utils/contours/index.html` is an orbital view of the Southern Appalachians: the USGS elevation
+grid bent onto an exaggerated sphere, seen obliquely with atmosphere and stars above, run through a
+CRT-style post-process, with one floating tag per property. Scroll or swipe changes altitude. It is
+built by `contours-index/build_index.py` from the same USGS elevation service, USGS
 National Hydrography lakes and a generalized US-states outline. To add a property, append it to
 `PROPS` in that script (name, town, coordinates, size, price, the two headline numbers from its
 map page) and rerun:
