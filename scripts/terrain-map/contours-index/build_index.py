@@ -13,8 +13,8 @@ from PIL import Image, ImageDraw
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.abspath(os.path.join(HERE, "..", "..", ".."))
-W, S, E, N = -85.45, 34.15, -81.15, 36.95     # region shown
-TW, TH = 1500, 1200                             # elevation grid
+W, S, E, N = -86.20, 33.55, -81.00, 37.15     # region shown (wide enough that the camera's foreground is real terrain)
+TW, TH = 1700, 1440                             # elevation grid, about 275 m per cell
 
 # name, town, lat, lon, size, price, ground in view (mi2), horizon (mi), horizon direction, label anchor
 PROPS = [
@@ -44,7 +44,7 @@ PLACES = [
 
 ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
 ap.add_argument("--out", default=os.path.join(REPO, "utils", "contours", "index.html"))
-ap.add_argument("--workdir", default=os.path.join(os.environ.get("TMPDIR", "/tmp"), "contours-index"))
+ap.add_argument("--workdir", default=os.path.join(os.environ.get("TMPDIR", "/tmp"), "contours-index-v2"))
 ap.add_argument("--template", default=os.path.join(HERE, "index_template.html"))
 args = ap.parse_args()
 os.makedirs(args.workdir, exist_ok=True)
@@ -85,7 +85,7 @@ for f in json.load(open(P("nhd_waterbodies.json")))["features"]:
         if max(xs) < 0 or min(xs) > TW or max(ys) < 0 or min(ys) > TH: continue
         im = Image.new("L", (TW, TH), 0); ImageDraw.Draw(im).polygon(pts, fill=255); mask ^= (np.array(im) > 0); nr += 1
 water_b64 = base64.b64encode(gzip.compress(np.packbits(mask.ravel()).tobytes(), 9)).decode()
-log(f"water: {nr} rings, {mask.sum()*0.259*0.26:.0f} km2")
+log(f"water: {nr} rings, {mask.sum()*(E-W)/TW*111.32*math.cos(math.radians((N+S)/2))*(N-S)/TH*111.32:.0f} km2")
 
 # state borders: generalized US states GeoJSON, clipped to the region plus a margin
 fetch("https://raw.githubusercontent.com/PublicaMundi/MappingAPI/master/data/geojson/us-states.json", P("us-states.json"))
@@ -106,7 +106,7 @@ for f in json.load(open(P("us-states.json")))["features"]:
     if lines: states.append(dict(name=f["properties"]["name"], lines=lines))
 log("states:", [s["name"] for s in states])
 
-data = dict(bbox=dict(W=W, S=S, E=E, N=N), w=TW, h=TH, zmin=float(a.min()), zmax=float(a.max()),
+data = dict(bbox=dict(W=W, S=S, E=E, N=N), w=TW, h=TH, zmin=float(max(0.0, np.percentile(a, 0.5))), zmax=float(a.max()),
             mpp=[(E - W) / TW * 111320 * math.cos(math.radians((N + S) / 2)), (N - S) / TH * 111320],
             dem=dem_b64, water=water_b64, states=states,
             places=[dict(n=p[0], lat=p[1], lon=p[2], k=p[3], p=p[4]) for p in PLACES], props=PROPS)
