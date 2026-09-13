@@ -4,7 +4,7 @@ property. To add a property, append to PROPS below and rerun:
 
   python3 scripts/terrain-map/contours-index/build_index.py
 
-Data (cached in --workdir, default $TMPDIR/contours-index): USGS 3DEP elevation for the region,
+Data (cached in --workdir, default $TMPDIR/contours-index-v3): USGS 3DEP elevation for the region,
 USGS National Hydrography waterbodies over 2 km2, and a generalized US-states GeoJSON for borders.
 """
 import argparse, base64, gzip, json, math, os, re, subprocess, sys
@@ -13,8 +13,8 @@ from PIL import Image, ImageDraw
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.abspath(os.path.join(HERE, "..", "..", ".."))
-W, S, E, N = -86.20, 33.55, -81.00, 37.15     # region shown (wide enough that the camera's foreground is real terrain)
-TW, TH = 1700, 1440                             # elevation grid, about 275 m per cell
+W, S, E, N = -86.20, 33.55, -80.70, 37.50     # region shown: real terrain under the camera at the Ellijay end and beyond Whitetop at the top
+TW, TH = 1800, 1600                             # elevation grid, about 275 m per cell
 
 # name, town, lat, lon, size, price, ground in view (mi2), horizon (mi), horizon direction, label anchor
 PROPS = [
@@ -36,6 +36,7 @@ PLACES = [
     ("Mount Mitchell", 35.7650, -82.2652, "peak", 1), ("Kuwohi", 35.5629, -83.4985, "peak", 1), ("Brasstown Bald", 34.8740, -83.8107, "peak", 2),
     ("Roan High Knob", 36.1046, -82.1223, "peak", 2), ("Grandfather Mountain", 36.0969, -81.8320, "peak", 2), ("Mount Rogers", 36.6598, -81.5448, "peak", 3),
     ("Springer Mountain", 34.6269, -84.1939, "peak", 3), ("Big Frog Mountain", 35.0117, -84.4967, "peak", 3),
+    ("Whitetop Mountain", 36.6386, -81.6064, "peak", 1),
     ("Fontana Lake", 35.4300, -83.7500, "lake", 2), ("Lake Chatuge", 34.9800, -83.7800, "lake", 3), ("Hiwassee Lake", 35.1500, -84.1300, "lake", 3),
     ("Watauga Lake", 36.3100, -82.0800, "lake", 3), ("Douglas Lake", 35.9700, -83.3500, "lake", 3), ("Norris Lake", 36.2200, -84.0000, "lake", 3),
     ("TENNESSEE", 36.05, -84.55, "state", 1), ("NORTH CAROLINA", 35.60, -82.95, "state", 1), ("GEORGIA", 34.42, -83.75, "state", 1),
@@ -44,7 +45,7 @@ PLACES = [
 
 ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
 ap.add_argument("--out", default=os.path.join(REPO, "utils", "contours", "index.html"))
-ap.add_argument("--workdir", default=os.path.join(os.environ.get("TMPDIR", "/tmp"), "contours-index-v2"))
+ap.add_argument("--workdir", default=os.path.join(os.environ.get("TMPDIR", "/tmp"), "contours-index-v3"))
 ap.add_argument("--template", default=os.path.join(HERE, "index_template.html"))
 args = ap.parse_args()
 os.makedirs(args.workdir, exist_ok=True)

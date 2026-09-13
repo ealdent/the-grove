@@ -47,7 +47,7 @@ html,body{height:100%;margin:0;overflow:hidden;background:var(--bg);color:var(--
 .tele{right:18px;top:calc(14px + var(--safe-t));text-align:right;font-variant-numeric:tabular-nums}
 .hint{left:50%;bottom:calc(22px + var(--safe-b));transform:translateX(-50%);white-space:nowrap;transition:opacity .5s}
 .hint.hidden{opacity:0}
-/* travel rail: where you are between Mountain City and Ellijay */
+/* travel rail: where you are between Whitetop Mountain and Ellijay */
 .rail{position:fixed;right:14px;top:50%;transform:translateY(-50%);height:38vh;width:2px;background:rgba(233,238,230,.14);pointer-events:none}
 .rail i{position:absolute;left:-3px;width:8px;height:8px;border-radius:50%;background:var(--gold);box-shadow:0 0 8px var(--gold);transform:translateY(-50%)}
 .rail span{position:absolute;right:10px;font-family:var(--f-hud);font-size:13px;letter-spacing:.1em;color:var(--ink-3);text-transform:uppercase;white-space:nowrap}
@@ -82,7 +82,7 @@ html,body{height:100%;margin:0;overflow:hidden;background:var(--bg);color:var(--
 </div>
 <div class="hud brand"><span class="rec">&#9679;</span> <b>Mountain land</b> <span id="count"></span></div>
 <div class="hud tele"><span id="tPos"></span></div>
-<div class="rail" aria-hidden="true"><span class="a">Mountain City</span><i id="railDot"></i><span class="b">Ellijay</span></div>
+<div class="rail" aria-hidden="true"><span class="a">Whitetop Mtn</span><i id="railDot"></i><span class="b">Ellijay</span></div>
 <div class="hud hint" id="hint">scroll to travel &middot; tap a pin</div>
 <aside class="card hidden" id="card" aria-live="polite">
   <div class="top"><div><h2 id="cName"></h2><p class="sub" id="cSub"></p></div><button type="button" class="x" id="cClose" aria-label="Close">&times;</button></div>
@@ -279,17 +279,32 @@ function onSphere(mx, my, z){ const ax=mx/Rc, ay=my/Rc, cy=Math.cos(ay); const d
 const llToM = (lat, lon) => [ ((lon-bb.W)/(bb.E-bb.W) - 0.5)*Wm, (0.5 - (bb.N-lat)/(bb.N-bb.S))*Hm ];
 const surfLL = (lat, lon) => { const [mx,my]=llToM(lat,lon); const u=(lon-bb.W)/(bb.E-bb.W), v=(bb.N-lat)/(bb.N-bb.S); const z = (u>=0&&u<=1&&v>=0&&v<=1) ? elevAt(u,v)*VE : 0; return onSphere(mx, my, z); };
 
-// the route: Mountain City (top, s=0) down the range to Ellijay (bottom, s=1)
-const ROUTE = [[36.4745,-81.8046],[35.92,-82.35],[35.72,-82.90],[35.42,-83.55],[35.19,-84.05],[34.99,-84.32],[34.6948,-84.4822]];
-const segLen = []; let routeLen = 0;
-for (let i=1;i<ROUTE.length;i++){ const [a,b]=ROUTE[i-1], [c,d]=ROUTE[i]; const L=Math.hypot((c-a)*111.32, (d-b)*111.32*Math.cos((a+c)/2*Math.PI/180)); segLen.push(L); routeLen += L; }
-function routePoint(s){ let d = Math.min(1, Math.max(0, s)) * routeLen; for (let i=0;i<segLen.length;i++){ if (d <= segLen[i] || i===segLen.length-1){ const f = Math.min(1, d/segLen[i]); const [a,b]=ROUTE[i], [c,e]=ROUTE[i+1]; return [a+(c-a)*f, b+(e-b)*f]; } d -= segLen[i]; } return ROUTE[ROUTE.length-1]; }
-function routeParam(lat, lon){ let best=0, bd=1e9; for (let s=0; s<=1.0001; s+=0.002){ const [a,b]=routePoint(s); const d=Math.hypot((a-lat)*111.32, (b-lon)*111.32*Math.cos(lat*Math.PI/180)); if (d<bd){ bd=d; best=s; } } return best; }
+// the rail: Whitetop Mountain (top, s=0) down the range to Ellijay (bottom, s=1). A centripetal Catmull-Rom
+// spline through the waypoints, sampled densely and indexed by arc length, so the camera never turns a corner
+// and a constant scroll is a constant speed.
+const WAYPOINTS = [[36.6386,-81.6064],[36.4745,-81.8046],[35.92,-82.35],[35.72,-82.90],[35.42,-83.55],[35.19,-84.05],[34.99,-84.32],[34.6948,-84.4822]];
+const KX = 111.32*Math.cos(35.6*Math.PI/180), KY = 111.32;                 // km per degree, near the middle of the range
+const toKm = ([lat, lon]) => [lon*KX, lat*KY], fromKm = ([x, y]) => [y/KY, x/KX];
+function spline(pts, per){ const P = [[2*pts[0][0]-pts[1][0], 2*pts[0][1]-pts[1][1]], ...pts]; const n=pts.length; P.push([2*pts[n-1][0]-pts[n-2][0], 2*pts[n-1][1]-pts[n-2][1]]);
+  const mix = (a,b,wa,wb) => [a[0]*wa+b[0]*wb, a[1]*wa+b[1]*wb], knot = (a,b) => Math.sqrt(Math.hypot(b[0]-a[0], b[1]-a[1])); const out = [];
+  for (let i=1; i<P.length-2; i++){ const p0=P[i-1], p1=P[i], p2=P[i+1], p3=P[i+2]; const t1=knot(p0,p1), t2=t1+knot(p1,p2), t3=t2+knot(p2,p3);
+    for (let k=0; k<per; k++){ const t = t1 + (t2-t1)*k/per;
+      const A1=mix(p0,p1,(t1-t)/t1,t/t1), A2=mix(p1,p2,(t2-t)/(t2-t1),(t-t1)/(t2-t1)), A3=mix(p2,p3,(t3-t)/(t3-t2),(t-t2)/(t3-t2));
+      const B1=mix(A1,A2,(t2-t)/t2,t/t2), B2=mix(A2,A3,(t3-t)/(t3-t1),(t-t1)/(t3-t1)); out.push(mix(B1,B2,(t2-t)/(t2-t1),(t-t1)/(t2-t1))); } }
+  out.push(pts[n-1]); return out; }
+const RAIL = spline(WAYPOINTS.map(toKm), 48), RAIL_D = [0];
+for (let i=1; i<RAIL.length; i++) RAIL_D.push(RAIL_D[i-1] + Math.hypot(RAIL[i][0]-RAIL[i-1][0], RAIL[i][1]-RAIL[i-1][1]));
+const routeLen = RAIL_D[RAIL_D.length-1];                                    // km
+function routePoint(s){ const d = Math.min(1, Math.max(0, s)) * routeLen; let lo=0, hi=RAIL_D.length-1;
+  while (hi-lo > 1){ const mid=(lo+hi)>>1; if (RAIL_D[mid] <= d) lo=mid; else hi=mid; }
+  const f = (d-RAIL_D[lo]) / Math.max(1e-9, RAIL_D[hi]-RAIL_D[lo]); const a=RAIL[lo], b=RAIL[hi]; return fromKm([a[0]+(b[0]-a[0])*f, a[1]+(b[1]-a[1])*f]); }
+function routeParam(lat, lon){ const [x,y] = toKm([lat, lon]); let best=0, bd=1e9; for (let i=0; i<RAIL.length; i++){ const d=Math.hypot(RAIL[i][0]-x, RAIL[i][1]-y); if (d<bd){ bd=d; best=i; } } return RAIL_D[best]/routeLen; }
+const RAIL_Z = 2500;   // metres: the rail floats at one height above the sphere, so the camera never rides the terrain under it
 const START = routeParam(35.00, -84.26);           // the Georgia / Tennessee / North Carolina corner
 const view = { s: START }, goal = { s: START };
-let vw=1, vh=1, dpr=1, cam=null, tNow=0;
+let vw=1, vh=1, dpr=1, cam=null, tNow=0, dtNow=1/60;
 function camera(){
-  const [lat, lon] = routePoint(view.s); const T = surfLL(lat, lon);
+  const [lat, lon] = routePoint(view.s); const [mx, my] = llToM(lat, lon); const T = onSphere(mx, my, RAIL_Z);
   const yaw = CAM.yaw + (reduced ? 0 : Math.sin(tNow*0.05)*0.012), pitch = CAM.pitch, dist = CAM.dist;
   const eye = [ T[0] + dist*Math.cos(pitch)*Math.sin(yaw), T[1] - dist*Math.cos(pitch)*Math.cos(yaw), T[2] + dist*Math.sin(pitch) ];
   const aspect = vw/vh; const fov = (vw < vh ? 64 : 50) * Math.PI/180;
@@ -332,11 +347,12 @@ function layout(){
     const bob = reduced ? 0 : Math.sin(tNow*1.3 + i)*2.5;
     o.g.setAttribute('transform', `translate(${q[0].toFixed(1)} ${q[1].toFixed(1)})`);
     o.ring.setAttribute('rx', 7*s); o.ring.setAttribute('ry', 7*s*flat+0.8); o.ring2.setAttribute('rx', 10*s); o.ring2.setAttribute('ry', 10*s*flat+1);
-    let h = 52*s + bob; const tw = o.w*s, th = 30*s, margin = 10;
+    let h = 52*s; const tw = o.w*s, th = 30*s, margin = 10;
     const tx = Math.min(vw - margin - tw/2, Math.max(margin + tw/2, q[0])) - q[0];
     for (let tries=0; tries<9; tries++){ const top = q[1]-h-19*s-13*s, bottom = top+th, left = q[0]+tx-tw/2, right = q[0]+tx+tw/2;
       const hit = placed.some(r => !(right < r.l || left > r.r || bottom < r.t || top > r.b)); if (!hit) break; h += th + 6; }
     { const top = q[1]-h-19*s-13*s; placed.push({l:q[0]+tx-tw/2, r:q[0]+tx+tw/2, t:top, b:top+th}); }
+    o.h = (o.h == null) ? h : o.h + (h - o.h) * (1 - Math.exp(-dtNow/0.18)); h = o.h + bob;
     o.tether.setAttribute('x2', tx.toFixed(1)); o.tether.setAttribute('y2', -h);
     o.tag.setAttribute('transform', `translate(${tx.toFixed(1)} ${(-h-19*s).toFixed(1)}) scale(${s.toFixed(2)})`);
     o.rect.setAttribute('x', -o.w/2); o.rect.setAttribute('y', -13); o.rect.setAttribute('width', o.w); o.tri.setAttribute('transform', 'translate(0 13)');
@@ -357,14 +373,17 @@ $('cClose').addEventListener('click', deselect);
 $('cPrev').addEventListener('click', ()=> select((selected+R.props.length-1)%R.props.length, true));
 $('cNext').addEventListener('click', ()=> select((selected+1)%R.props.length, true));
 document.addEventListener('keydown', e => { if (e.key==='Escape' && selected!==null) deselect(); if (selected!==null && e.key==='ArrowRight') $('cNext').click(); if (selected!==null && e.key==='ArrowLeft') $('cPrev').click();
-  if (e.key==='ArrowUp'||e.key==='PageUp') goal.s = Math.max(0, goal.s-0.06); if (e.key==='ArrowDown'||e.key==='PageDown') goal.s = Math.min(1, goal.s+0.06); if (e.key==='Home') goal.s=0; if (e.key==='End') goal.s=1; });
+  if (e.key==='ArrowUp'||e.key==='PageUp') travel(-20); if (e.key==='ArrowDown'||e.key==='PageDown') travel(20); if (e.key==='Home') goal.s=0; if (e.key==='End') goal.s=1; });
 
 // ---------- input: scrolling travels the range; nothing else moves the camera ----------
-stage.addEventListener('wheel', e => { e.preventDefault(); goal.s = Math.min(1, Math.max(0, goal.s + e.deltaY*0.00045)); hint.classList.add('hidden'); }, {passive:false});
+const KM_PER_PX = 0.15;                                                     // one screen pixel of scroll or drag moves this far along the rail
+function travel(km){ goal.s = Math.min(1, Math.max(0, goal.s + km/routeLen)); }
+stage.addEventListener('wheel', e => { e.preventDefault(); const unit = e.deltaMode===1 ? 16 : e.deltaMode===2 ? vh : 1;
+  travel(Math.max(-120, Math.min(120, e.deltaY*unit)) * KM_PER_PX); hint.classList.add('hidden'); }, {passive:false});
 stage.addEventListener('contextmenu', e => e.preventDefault());
 let drag = null;
 stage.addEventListener('pointerdown', e => { if (e.target.closest && e.target.closest('.pin')) return; if (e.button!==0) return; stage.setPointerCapture(e.pointerId); drag = {y:e.clientY, s:goal.s}; });
-stage.addEventListener('pointermove', e => { if (!drag) return; const dy = e.clientY - drag.y; goal.s = Math.min(1, Math.max(0, drag.s - dy*0.0016)); if (Math.abs(dy)>4) hint.classList.add('hidden'); });
+stage.addEventListener('pointermove', e => { if (!drag) return; const dy = e.clientY - drag.y; goal.s = Math.min(1, Math.max(0, drag.s - dy*3.5*KM_PER_PX/routeLen)); if (Math.abs(dy)>4) hint.classList.add('hidden'); });
 const endDrag = ()=> { drag=null; }; stage.addEventListener('pointerup', endDrag); stage.addEventListener('pointercancel', endDrag);
 
 // ---------- frame ----------
@@ -372,12 +391,16 @@ function resize(){ vw=stage.clientWidth||1; vh=stage.clientHeight||1; dpr=Math.m
   ov.setAttribute('viewBox',`0 0 ${vw} ${vh}`); ov.setAttribute('width',vw); ov.setAttribute('height',vh); ensureFbo(canvas.width, canvas.height); }
 new ResizeObserver(resize).observe(stage); resize();
 let hidden=false; document.addEventListener('visibilitychange', ()=> hidden=document.hidden);
-const t0 = performance.now();
+const t0 = performance.now(); let tLast = 0; const rail = { v: 0 };
+// critically damped spring toward the goal: velocity stays continuous, so a wheel tick cannot jolt the camera
+function smoothDamp(cur, target, state, smoothTime, dt){ const w = 2/smoothTime, x = w*dt, ex = 1/(1 + x + 0.48*x*x + 0.235*x*x*x);
+  const change = cur - target, temp = (state.v + w*change)*dt; state.v = (state.v - w*temp)*ex; let out = target + (change + temp)*ex;
+  if ((target - cur > 0) === (out > target)){ out = target; state.v = 0; } return out; }
 const sunDir = (()=>{ const az=300*Math.PI/180, alt=34*Math.PI/180; return [Math.sin(az)*Math.cos(alt), Math.cos(az)*Math.cos(alt), Math.sin(alt)]; })();
 function frame(now){
   requestAnimationFrame(frame); if (hidden) return;
-  tNow = reduced ? 0 : (now-t0)/1000;
-  view.s += (goal.s - view.s) * 0.08;
+  tNow = reduced ? 0 : (now-t0)/1000; dtNow = Math.min(0.05, tLast ? (now-tLast)/1000 : 1/60); tLast = now;
+  view.s = smoothDamp(view.s, goal.s, rail, 0.45, dtNow);
   cam = camera();
   gl.bindFramebuffer(gl.FRAMEBUFFER, fbo); gl.viewport(0,0,fw,fh);
   gl.disable(gl.DEPTH_TEST); gl.useProgram(progSky); gl.bindVertexArray(quad);
@@ -396,7 +419,7 @@ function frame(now){
   layout();
 }
 requestAnimationFrame(frame);
-window.__region = { view, goal, select, deselect, props: R.props, cam: ()=>cam, routePoint };
+window.__region = { view, goal, select, deselect, props: R.props, cam: ()=>cam, routePoint, routeParam, routeLen };
 
 function fallback(msg){ document.getElementById('stage').innerHTML=''; const f=document.createElement('div'); f.className='fallback'; f.innerHTML='<p>'+msg+'</p>'+R.props.map(p=>`<a href="${p.slug}.html">${p.name}</a>`).join('<br>'); document.body.appendChild(f); }
 })().catch(err => { console.error(err); const f=document.createElement('div'); f.className='fallback'; f.innerHTML='<p>Could not draw the map: '+err.message+'</p>'+window.REGION.props.map(p=>`<a href="${p.slug}.html">${p.name}</a>`).join('<br>'); document.body.appendChild(f); });
