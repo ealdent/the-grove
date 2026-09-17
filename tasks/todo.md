@@ -1,3 +1,23 @@
+# The Weather Left Behind — Union Alpha / default effort
+
+Goal: single-file pure-SVG first-person exploration game for The Grove (personal project).
+Files: `svg-forest/union-alpha-default-svg-forest.html`, `svg-forest/index.html`.
+Constraints: no canvas, WebGL, external assets or dependencies; never inspect other games; bounded procedural world cache; simultaneous independent touch pointers. Effort not exposed by current run, so filename uses `default` rather than invented metadata.
+Lore before design: rain reversed and lifted a city away. Its abandoned weather bureau cultivates forecasts in copper umbrella trees. Barometer houses hold undelivered weather, paper skates carry fragments between them, and the last courier walks an ink-dark plain to recover five forecasts. Nothing attacks; discovering weather is the only obligation.
+Visual direction: pale apricot sky, enormous etched sun, deep petrol ink ground, vermilion/copper umbrella canopies, parchment paper skates, brass weather instruments. Restrained editorial field-guide UI rather than a sci-fi dashboard.
+Plan check-in: communicated concept and implementation plan; proceed under the user's build-and-push authorization.
+- [x] Build original SVG assets, projection, deterministic spatial generation, bounded node reuse and depth sorting.
+- [x] Add walking, turning, head bob, drag look, multitouch joysticks, discovery and accessible field guide/motion controls.
+- [x] Browser-test desktop, phone/tablet layouts, touch overlap/cancellation, traversal bounds, console/network and screenshots.
+- [x] Skeptical second pass and alphabetized gallery tile after completion; prepare scoped commit/push.
+
+Review/proof: fixed wrapped-yaw cloud/pollen jumps and reversed ground-band movement found in a read-only second pass. Chrome 152 headless on macOS, exact local URL `http://localhost:8048/svg-forest/union-alpha-default-svg-forest.html`: native CDP two-contact touch dispatch produced simultaneous walk/turn (5.00 m / 1.04 rad), independent release preserved the remaining contact, and touch cancellation cleared both. Real keyboard/mouse paths passed forward/back/turn/drag, modal pause, all five discoveries and reload persistence. Reduced-motion emulation disabled motion. Responsive screenshots at 390×844, 844×390, 1024×768 and 1440×960; inspected desktop/phone/landscape. Fixed title and mobile compass contrast. Traversed 410 m with 225 cached chunks, 91 active groups, 94 pooled groups. Sample of 180 frames: mean 16.666 ms, p95 16.7 ms, max 16.8 ms. No observed runtime exceptions or failed network requests. JS parse, prohibited-renderer assertions, alphabetical ordering of all 31 index tiles and `git diff --check` pass. Screenshots: `/tmp/union-svg-{desktop-final,phone,landscape,tablet}.png` (local, not committed).
+Limitations: Chrome touch emulation is not physical iOS/Android testing; OS-reserved edge gestures cannot universally be suppressed; sampled desktop timing is not a mobile FPS guarantee. Portrait stick visibility tested with touch emulation; landscape/tablet screenshots alone do not establish physical touch behavior. No other game files inspected.
+Proof required: syntax/static constraint assertions, browser interaction assertions, screenshot inspection and measured frame timing (not a hardware-wide guarantee).
+Risks: SVG billboard approximation, mobile browser-reserved system gestures, unverified physical device performance.
+
+---
+
 # Restore the secluded haunted forest — 2026-09-11
 
 Goal: a single greenhouse surrounded on every side by dense, believable forest. The user rejected the broad flat dirt clearing, sparse props and conspicuous photographic backdrop. Preserve solid foliage, task behavior and the 120-plant rapid-movement performance target.

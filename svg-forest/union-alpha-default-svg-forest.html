@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#153c40">
+<title>The Weather Left Behind — Union Alpha</title>
+<style>
+:root{color-scheme:dark;--paper:#f7e4bc;--ink:#153c40;--muted:#b9ccbf;--orange:#eaa169}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{width:100%;height:100%;margin:0;overflow:hidden;overscroll-behavior:none;touch-action:none}
+body{background:var(--ink);font-family:Georgia,'Times New Roman',serif;color:var(--paper);user-select:none;-webkit-user-select:none}
+button{font:inherit;color:inherit;cursor:pointer;touch-action:none}
+button:focus-visible,a:focus-visible{outline:2px solid var(--orange);outline-offset:5px}
+#world{position:absolute;inset:0;width:100%;height:100%;display:block;cursor:grab;touch-action:none}
+#world:active{cursor:grabbing}
+.hud{position:absolute;inset:0;pointer-events:none;padding:max(30px,env(safe-area-inset-top)) max(36px,env(safe-area-inset-right)) max(26px,env(safe-area-inset-bottom)) max(36px,env(safe-area-inset-left));display:flex;flex-direction:column;justify-content:space-between}
+.top{display:flex;justify-content:space-between;align-items:flex-start;gap:20px;color:var(--ink)}
+.eyebrow,.small,.key,.button,.stick-label{font:10px/1.5 ui-monospace,SFMono-Regular,Consolas,monospace;letter-spacing:2px;text-transform:uppercase}
+.brand .eyebrow{display:flex;align-items:center;gap:9px;margin-bottom:12px;letter-spacing:3px}
+.brand h1{font-weight:400;font-size:clamp(27px,3.2vw,48px);line-height:.99;letter-spacing:-1.5px;margin:0}
+.brand h1 em{font-weight:400}
+.edition{margin-top:13px;font-size:11px;font-style:italic;opacity:.75}
+.actions{pointer-events:auto;display:flex;gap:8px}
+.button{border:1px solid #153c4060;border-radius:0;padding:11px 15px;background:#fae8c980;min-height:42px;letter-spacing:1px;color:var(--ink)}
+.button:hover{background:#fff0d8}
+.compass{position:absolute;top:34px;left:50%;transform:translateX(-50%);width:180px;text-align:center;color:var(--ink)}
+.compass svg{width:180px;height:39px;display:block}
+.compass .small{font-size:9px;letter-spacing:3px}
+.bottom{display:flex;justify-content:space-between;align-items:flex-end;gap:20px}
+.destination{max-width:300px}
+.destination .small{color:var(--muted);font-size:9px;margin-bottom:9px}
+#destination{font-size:23px;line-height:1.2}
+.progress{display:flex;align-items:center;gap:7px;margin-top:12px}
+.progress svg{width:13px;height:17px}
+#count{font:10px ui-monospace,monospace;letter-spacing:1px;margin-left:8px;color:var(--muted)}
+.instructions{text-align:right;color:var(--muted);font:10px/2 ui-monospace,monospace;letter-spacing:.5px}
+.key{display:inline-block;min-width:20px;text-align:center;border:1px solid #b9ccbf55;padding:0 3px;line-height:20px;margin:0 2px;letter-spacing:0;color:var(--paper)}
+#distance{margin-top:13px;font-size:9px;letter-spacing:2px;color:var(--muted)}
+.reticle{position:absolute;left:50%;top:50%;width:18px;height:18px;transform:translate(-50%,-50%);pointer-events:none;opacity:.65}
+#cue{position:absolute;top:62%;left:50%;transform:translateX(-50%);text-align:center;width:min(360px,85vw);pointer-events:none;font-style:italic;font-size:16px;color:var(--paper);text-shadow:0 2px 7px #153c40}
+#notice{position:absolute;top:27%;left:50%;transform:translate(-50%,8px);width:min(420px,86vw);text-align:center;opacity:0;transition:opacity .7s,transform .7s;pointer-events:none;color:var(--ink)}
+#notice.show{opacity:1;transform:translate(-50%,0)}
+#notice .small{font-size:9px;letter-spacing:3px}
+#notice-title{font-size:32px;margin:8px 0}
+#notice-text{font-size:15px;line-height:1.5}
+.stick{display:none;position:absolute;bottom:max(26px,env(safe-area-inset-bottom));width:114px;height:114px;border-radius:50%;border:1px solid #f7e4bc65;background:#153c4040;touch-action:none;pointer-events:auto}
+.stick::before,.stick::after{content:'';position:absolute;background:#f7e4bc35;pointer-events:none}
+.stick::before{height:1px;left:14px;right:14px;top:50%}.stick::after{width:1px;top:14px;bottom:14px;left:50%}
+#walk-stick{left:max(26px,env(safe-area-inset-left))}#look-stick{right:max(26px,env(safe-area-inset-right))}
+.knob{position:absolute;left:37px;top:37px;width:38px;height:38px;border-radius:50%;border:1px solid var(--paper);background:#f7e4bc28;pointer-events:none}
+.stick-label{position:absolute;left:0;right:0;top:-26px;text-align:center;color:var(--muted);font-size:9px;letter-spacing:2px;pointer-events:none}
+#guide{border:1px solid #bca984;background:#f5e5c8;color:var(--ink);padding:32px 38px;width:min(570px,calc(100vw - 30px));max-height:calc(100dvh - 32px);overflow:auto;overscroll-behavior:contain;touch-action:pan-y}
+#guide::backdrop{background:#0b282bdd}
+#guide h2{font-size:38px;line-height:1.05;font-weight:400;letter-spacing:-1px;margin:15px 0 20px}
+#guide p{line-height:1.6;font-size:15px}
+#guide .button{width:100%;margin-top:16px}
+.guide-head{display:flex;align-items:center;justify-content:space-between}.guide-head svg{width:34px;height:38px}
+.specimens{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;border-block:1px solid #153c4030;padding:17px 0;margin:22px 0}
+.specimens svg{width:100%;height:76px}.specimens span{display:block;text-align:center;font-size:10px;font-style:italic;margin-top:8px}
+#journal{margin:16px 0 0;padding:0;list-style:none}#journal li{padding:9px 0;border-top:1px solid #153c4025;font-size:13px;line-height:1.4}
+#journal li span{opacity:.65}#guide footer{font:9px/1.6 ui-monospace,monospace;letter-spacing:.5px;margin-top:15px;opacity:.7}
+@media(pointer:coarse),(max-width:760px){.stick{display:block}.instructions{display:none}.hud{padding:22px}.brand h1{font-size:32px}.brand .eyebrow{font-size:8px;letter-spacing:1.6px;margin-bottom:10px}.edition{display:none}.actions{flex-direction:column;gap:6px}.button{font-size:9px;padding:10px 12px;min-height:40px}.compass{top:auto;bottom:48px;width:120px;color:var(--paper)}.compass svg{width:120px}.compass .small{font-size:8px;letter-spacing:1px}.bottom{padding-bottom:166px}.destination .small{font-size:8px}.destination #destination{font-size:19px}#distance{font-size:8px}#notice{top:26%}#notice-title{font-size:26px}.destination{max-width:220px}.progress{margin-top:8px}.reticle{opacity:.4}}
+@media(max-width:400px){.brand h1{font-size:28px}.hud{padding:18px}.brand .eyebrow{font-size:7px}.button{padding:9px}.stick{width:100px;height:100px}.knob{left:30px;top:30px}.compass{bottom:39px;width:86px}.compass svg{width:86px}.bottom{padding-bottom:153px}}
+@media(max-height:520px){.hud{padding:14px 23px}.brand h1{font-size:25px}.brand .eyebrow{margin-bottom:6px}.edition{display:none}.bottom{padding-bottom:0}.destination{margin-left:135px}.destination .small{display:none}.destination #destination{font-size:16px}.compass{top:15px;bottom:auto;color:var(--ink)}.stick{width:90px;height:90px;bottom:20px}.knob{left:25px;top:25px}.stick-label{top:-20px}.actions{flex-direction:row}.instructions{display:none}#notice{top:29%}#notice-text{font-size:13px}#notice-title{font-size:22px;margin:4px}#cue{top:65%}}
+@media(prefers-reduced-motion:reduce){#notice{transition:none}}
+</style>
+</head>
+<body>
+<svg id="world" xmlns="http://www.w3.org/2000/svg" aria-label="An endless field of copper umbrella trees beneath the sky's abandoned weather instruments" role="img">
+<defs>
+ <linearGradient id="sky" x2="0" y2="1"><stop stop-color="#b9c5b4"/><stop offset=".48" stop-color="#e8cfaa"/><stop offset="1" stop-color="#f8d7a9"/></linearGradient>
+ <linearGradient id="earth" x2="0" y2="1"><stop stop-color="#6f9991"/><stop offset=".15" stop-color="#35696a"/><stop offset=".65" stop-color="#19484d"/><stop offset="1" stop-color="#102f36"/></linearGradient>
+ <linearGradient id="copper" x1="0" y1="0" x2=".8" y2="1"><stop stop-color="#f4bc7e"/><stop offset=".45" stop-color="#d57e50"/><stop offset="1" stop-color="#974c3b"/></linearGradient>
+ <linearGradient id="underside" x2="0" y2="1"><stop stop-color="#674b3d"/><stop offset="1" stop-color="#302e2a"/></linearGradient>
+ <linearGradient id="brass" x2="1" y2="0"><stop stop-color="#715b3b"/><stop offset=".3" stop-color="#e5bd7d"/><stop offset=".5" stop-color="#f6d79e"/><stop offset="1" stop-color="#987b4e"/></linearGradient>
+ <linearGradient id="wall" x2="1" y2="0"><stop stop-color="#315353"/><stop offset=".48" stop-color="#57746b"/><stop offset="1" stop-color="#1b3e43"/></linearGradient>
+ <linearGradient id="paper" x2=".6" y2="1"><stop stop-color="#fff0cf"/><stop offset="1" stop-color="#c2aa83"/></linearGradient>
+ <radialGradient id="glow"><stop stop-color="#ffe4a4" stop-opacity=".6"/><stop offset="1" stop-color="#ffe4a4" stop-opacity="0"/></radialGradient>
+ <linearGradient id="header-wash" x2="0" y2="1"><stop stop-color="#ead7b7" stop-opacity=".92"/><stop offset="1" stop-color="#ead7b7" stop-opacity="0"/></linearGradient>
+ <radialGradient id="vignette"><stop offset=".48" stop-color="#092a30" stop-opacity="0"/><stop offset="1" stop-color="#092a30" stop-opacity=".24"/></radialGradient>
+ <g id="umbrella">
+  <ellipse cy="1" rx="89" ry="9" fill="#102f36" opacity=".3"/>
+  <path d="M-25 0Q-4-8-4-31L-3-239H5V-27Q5-12 31-1M-3-146Q-46-147-66-187M3-171Q34-165 65-209" fill="none" stroke="#183e40" stroke-width="9"/>
+  <path d="M-4-4V-235M1-142Q-36-148-62-184M2-170Q35-174 62-207" fill="none" stroke="url(#brass)" stroke-width="3"/>
+  <path d="M-112-219Q0-370 112-219Q86-202 58-211Q24-194 0-209Q-29-195-58-211Q-86-204-112-219Z" fill="url(#underside)" stroke="#4a4335" stroke-width="2"/>
+  <path d="M-112-219Q-86-307 0-330Q85-306 112-219Q84-242 58-211Q27-240 0-209Q-29-238-58-211Q-86-240-112-219Z" fill="url(#copper)" stroke="#744d38" stroke-width="2"/>
+  <g fill="none" stroke="#ffd59a" stroke-width="1.3" opacity=".7"><path d="M0-330Q-62-308-112-219M0-330Q-43-289-58-211M0-330V-209M0-330Q44-283 58-211M0-330Q64-308 112-219"/><path d="M-102-239Q-72-251-55-232Q-27-255 0-233Q29-255 55-232Q83-252 103-239" opacity=".45"/></g>
+  <path d="M0-330V-346" stroke="url(#brass)" stroke-width="4"/><circle cy="-350" r="4" fill="#edc68b"/>
+  <g stroke="#e5c18b" fill="none" stroke-width="1"><path d="M-58-212V-166M58-211V-151M-112-219V-188M112-219V-180"/><path d="M-64-167H-52M-62-162H-54M52-152H64M54-147H62"/></g>
+  <g fill="#f6d49c"><circle cx="-58" cy="-159" r="2.2"/><circle cx="58" cy="-144" r="2.2"/><circle cx="112" cy="-179" r="2"/><circle cx="-112" cy="-187" r="2"/></g>
+  <path d="M-18 0L-7-9H8L21 0Z" fill="#7d836a"/><path d="M-5-75H7M-5-79H7" stroke="#d1ac72" stroke-width="2"/>
+ </g>
+ <g id="house">
+  <ellipse cy="3" rx="85" ry="13" fill="#102f36" opacity=".4"/>
+  <path d="M-61 0L-54-12H54L64 0Z" fill="#b49b73"/><path d="M-51-13V-183Q-51-240 0-263Q51-240 51-183V-13Z" fill="url(#wall)" stroke="#213f3d" stroke-width="4"/>
+  <path d="M-53-179Q-54-241 0-269Q55-239 54-179L62-181Q60-250 0-281Q-61-251-63-182Z" fill="url(#brass)"/>
+  <path d="M-41-16V-179Q-41-226 0-249Q42-226 42-179V-16M-35-18V-182M35-18V-182" fill="none" stroke="#d6b580" stroke-width="2"/>
+  <circle cy="-187" r="33" fill="#142e32" stroke="url(#brass)" stroke-width="5"/><circle cy="-187" r="25" fill="#e8d5aa" stroke="#8a714e" stroke-width="2"/>
+  <g stroke="#4a5f53" stroke-width="1.5"><path d="M0-210V-204M-23-187H-17M23-187H17M0-164V-170M-17-203L-12-199M17-203L12-199M-17-170L-12-175M17-170L12-175"/><path d="M-12-174L10-200" stroke-width="2"/></g><circle cy="-187" r="3" fill="#b7794e"/>
+  <path d="M-23-29V-130Q0-155 23-130V-29Z" fill="#0e2c31" stroke="#a1875e" stroke-width="2"/>
+  <path d="M-13-116H13V-71H-13Z" fill="#eabd75"/><path d="M-8-111H8M-8-105H8M-8-99H4" stroke="#815d3f"/>
+  <path d="M-18-39H18M-18-46H18M-18-53H18" stroke="#8b8465" stroke-width="2"/>
+  <path d="M0-280V-319M-25-305H28L19-310M28-305L19-300M-23-310L-13-305-23-300Z" fill="none" stroke="url(#brass)" stroke-width="3"/>
+  <path d="M-49-18H49M-49-26H-39M39-26H49" stroke="#c1a677" stroke-width="3"/>
+ </g>
+ <g id="reed">
+  <ellipse cy="1" rx="35" ry="5" fill="#102f36" opacity=".25"/>
+  <g fill="none" stroke="#899d82" stroke-width="2"><path d="M0 0Q-6-40-24-69M2 0Q16-49 9-89M7 0Q26-19 29-47M-5 0Q-24-11-33-27"/><path d="M-10-18L-25-28M14-29L29-33"/></g>
+  <g fill="#e2b978" stroke="#a88f62"><path d="M-24-69Q-46-61-43-49Q-25-47-24-69ZM9-89Q-7-103-15-88Q-7-72 9-89ZM29-47Q47-56 47-41Q39-30 29-47Z"/></g><g fill="none" stroke="#f3d19b" stroke-width=".8"><path d="M-24-69L-41-51M9-89L-12-88M29-47L45-42"/></g>
+ </g>
+ <g id="skate">
+  <path d="M-74-10L-18-42 0-22 19-39 75-2 15 13 0 37-18 9Z" fill="url(#paper)" stroke="#876e54" stroke-width="1.2"/>
+  <path d="M-74-10L0-1-18-42M0-1L75-2 19-39M0-22V37M-18 9L0-1 15 13" fill="none" stroke="#a68f6d" stroke-width="1"/>
+  <path d="M0 37Q-17 72 3 91Q16 105 3 125" fill="none" stroke="#e5cfa6" stroke-width="1.5"/>
+  <path d="M-24-18L-46-11M-23-13L-36-9M25-17L42-8M23-12L33-7" stroke="#bc6e50" stroke-width="1.5"/>
+ </g>
+ <g id="stone"><path d="M-21 0L-16-14-3-23 16-17 26-2 6 4Z" fill="#739183"/><path d="M-16-14L0-6 16-17M0-6L6 4" fill="none" stroke="#91a28a"/></g>
+ <g id="ripple" fill="none" stroke="#aac4aa" stroke-width="1.4"><ellipse rx="58" ry="10" opacity=".2"/><path d="M-75 0A75 14 0 0 1 60-8M-39 17A95 20 0 0 0 89 7" opacity=".15"/></g>
+ <g id="ticket"><path d="M2 1H11V16H2V13L0 12 2 11V6L0 5 2 4Z" fill="currentColor"/><path d="M4 5H9M4 8H9M4 11H8" stroke="#153c40" stroke-width=".7"/></g>
+</defs>
+<rect id="sky-bg" fill="url(#sky)"/>
+<g id="heavens" pointer-events="none">
+ <g id="sun" fill="none" stroke="#f9e5be"><circle r="108" fill="#f8e2b8" stroke="none"/><circle r="119" stroke-width=".8"/><circle r="126" stroke-dasharray="1 8"/><circle r="143" stroke-opacity=".45" stroke-width=".7"/><path d="M-166 0H166M0-161V161" stroke-opacity=".5" stroke-width=".7"/><circle r="91" stroke="#d1b48b" stroke-opacity=".45" stroke-width=".8"/><path d="M-105-24H105M-100 36H100M-90 59H90M-77 77H77" stroke="#dec49b" stroke-width="1"/></g>
+ <g id="clouds" fill="none" stroke="#fcdfb3" stroke-width="2" opacity=".45"></g>
+ <g id="sky-city" fill="#7b9180" opacity=".24"></g>
+</g>
+<path id="far-ridge" fill="#8ba396"/>
+<rect id="ground-bg" fill="url(#earth)"/>
+<g id="ground-lines" fill="none" stroke="#a9bba0" stroke-width=".7" opacity=".2"></g>
+<g id="objects"></g>
+<g id="pollen" fill="#fce0a9" opacity=".65" pointer-events="none"></g>
+<rect id="edge" fill="url(#vignette)" pointer-events="none"/>
+<rect width="100%" height="220" fill="url(#header-wash)" pointer-events="none"/>
+</svg>
+<div class="hud">
+ <header class="top"><div class="brand"><div class="eyebrow"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="8" stroke="currentColor"/><path d="M12 0V7M12 17V24M0 12H7M17 12H24M8 16L16 8" stroke="currentColor"/></svg>Department of Unsent Weather</div><h1>The Weather<br><em>Left Behind</em></h1><div class="edition">A field expedition into the almost-rain.</div></div><div class="actions"><button class="button" id="guide-open">Field guide ↗</button><button class="button" id="motion" aria-pressed="true">Motion: on</button></div></header>
+ <div class="compass"><svg viewBox="0 0 180 39" fill="none" aria-hidden="true"><path d="M10 25H170M10 22V28M40 23V27M70 23V27M110 23V27M140 23V27M170 22V28" stroke="currentColor" opacity=".4"/><g id="needle"><path d="M90 4L85 17 90 14 95 17Z" fill="currentColor"/><path d="M90 14V33" stroke="currentColor" opacity=".6"/></g></svg><div class="small" id="bearing">N · 000°</div></div>
+ <div class="bottom"><div class="destination"><div class="small" id="mission-label">Follow the needle · recover a forecast</div><div id="destination">The first almost-rain</div><div class="progress" id="progress"></div><div id="distance">FIELD NOTES / 000 M WALKED</div></div><div class="instructions"><div><span class="key">W</span><span class="key">S</span> walk &nbsp; <span class="key">A</span><span class="key">D</span> turn</div><div>Arrow keys also work · drag the view to look</div><div>Approach a lit barometer house to collect its forecast</div></div></div>
+</div>
+<svg class="reticle" viewBox="0 0 18 18" fill="none" aria-hidden="true"><path d="M9 3V6M9 12V15M3 9H6M12 9H15" stroke="#f9e5be" stroke-width="1"/></svg>
+<div id="cue">The city is gone. Its weather is still waiting.</div>
+<div id="notice" role="status" aria-live="polite"><div class="small">Forecast recovered</div><div id="notice-title"></div><div id="notice-text"></div></div>
+<div id="walk-stick" class="stick" role="group" aria-label="Walk joystick: drag up to walk forward, down to walk backward"><span class="stick-label">Walk</span><span class="knob"></span></div>
+<div id="look-stick" class="stick" role="group" aria-label="Turn joystick: drag left or right"><span class="stick-label">Turn</span><span class="knob"></span></div>
+<dialog id="guide" aria-labelledby="guide-title">
+ <div class="guide-head"><span class="eyebrow">Field manual / no. 071</span><svg viewBox="0 0 34 38" fill="none" aria-hidden="true"><path d="M5 36V12Q17-7 29 12V36ZM1 36H33" stroke="currentColor"/><circle cx="17" cy="15" r="6" stroke="currentColor"/><path d="M17 15L20 11M13 26H21M13 30H21" stroke="currentColor"/></svg></div>
+ <h2>It rained upward.<br>Then the city followed.</h2>
+ <p>On a Tuesday nobody remembers, every raindrop changed its mind. The gutters rose first. Then the roofs. By evening, the city was a small dark shape beyond the sun.</p>
+ <p>Only the Department of Unsent Weather stayed behind. Its copper umbrellas still grow. Its paper skates still migrate. And inside its barometer houses, five forecasts wait for a day that never came.</p>
+ <div class="specimens"><div><svg viewBox="-130 -365 260 380" aria-hidden="true"><use href="#umbrella"/></svg><span>Copper umbrella</span></div><div><svg viewBox="-100 -330 200 345" aria-hidden="true"><use href="#house"/></svg><span>Barometer house</span></div><div><svg viewBox="-85 -50 170 185" aria-hidden="true"><use href="#skate"/></svg><span>Paper skate</span></div></div>
+ <p><strong>You are the last field courier.</strong> Follow the compass needle to a lit house. Walk close to recover its forecast. Find all five, or simply keep walking. The fields have no edge.</p>
+ <p><strong>Desktop:</strong> W/S or ↑/↓ to walk; A/D or ←/→ to turn. Click and drag to look. <strong>Touch:</strong> use the left stick to walk and the right to turn, together. Turn motion off to remove head bob and ambient drift.</p>
+ <div class="eyebrow">Your recovered forecasts</div><ul id="journal"></ul>
+ <button class="button" id="guide-close">Return to the field →</button>
+ <footer>All scenery is SVG. No images. No libraries.<br>Union Alpha · maker currently anonymous · progress is saved on this device when storage is available.</footer>
+</dialog>
+<script>
+(() => {
+ 'use strict';
+ // Lore, geometry and engine are self-contained. World units are metres; props use 25 SVG units/metre.
+ const NS='http://www.w3.org/2000/svg', $=id=>document.getElementById(id);
+ const make=(tag,attrs,parent)=>{const n=document.createElementNS(NS,tag);for(const k in attrs)n.setAttribute(k,attrs[k]);if(parent)parent.appendChild(n);return n;};
+ const clamp=(v,a,b)=>Math.max(a,Math.min(b,v)), TAU=Math.PI*2;
+ const wrap=a=>Math.atan2(Math.sin(a),Math.cos(a));
+ const hash=(x,z,s=0)=>{let n=Math.imul(x|0,374761393)^Math.imul(z|0,668265263)^Math.imul(s+1,1274126177);n=Math.imul(n^(n>>>13),1274126177);return ((n^(n>>>16))>>>0)/4294967296;};
+ const svg=$('world'), layer=$('objects'), guide=$('guide');
+ const state={x:0,z:0,yaw:0,distance:0,travel:0,time:0,bob:0,walk:0,turn:0,paused:false,motion:!matchMedia('(prefers-reduced-motion: reduce)').matches,frames:0};
+ const forecasts=[
+  {x:8,z:30,name:'The first almost-rain',short:'Rain, almost',text:'A light rain was expected at 4:12. Someone had already brought in the washing.'},
+  {x:-40,z:67,name:'A wind for the homeward',short:'A homeward wind',text:'A west wind, gentle enough to carry the smell of bread all the way to the station.'},
+  {x:53,z:105,name:'The afternoon in amber',short:'An amber afternoon',text:'Sun until evening. The girl in apartment nine would have learned to ride her bicycle.'},
+  {x:2,z:162,name:'Snow without a season',short:'Unseasonable snow',text:'Three inches of snow. Every footprint would have led to a door with a light behind it.'},
+  {x:-67,z:196,name:'Tomorrow, at last',short:'A possible tomorrow',text:'Clear skies. Nothing remarkable. A perfectly ordinary day. The rarest forecast of all.'}
+ ];
+ const SAVE='unsent-weather-v1';let found=new Set();
+ try{const a=JSON.parse(localStorage.getItem(SAVE)||'[]');if(Array.isArray(a))found=new Set(a.filter(n=>Number.isInteger(n)&&n>=0&&n<5));}catch{}
+ let W=0,H=0,F=0,horizon=0,cellX=NaN,cellZ=NaN,last=null,uiClock=0,noticeUntil=0;
+ const keys=new Set(), chunks=new Map(), nodes=new Map(), pool=[], MAX_POOL=160, RANGE=126, CELL=20;
+ const skies=[], clouds=[], lines=[], motes=[];
+ for(let i=0;i<14;i++){
+  clouds.push(make('path',{},$('clouds')));
+  const g=make('g',{},$('sky-city'));const w=10+hash(i,1)*25,h=8+hash(i,2)*40;
+  make('path',{d:`M${-w/2} 0V${h}H${w/2}V0L0 -9Z`},g);
+  make('path',{d:`M0 ${h}V${h+18}M-2 ${h+5}H2`,stroke:'#7b9180','stroke-width':1},g);skies.push(g);
+ }
+ for(let i=0;i<19;i++)lines.push(make('path',{},$('ground-lines')));
+ for(let i=0;i<23;i++)motes.push(make('path',{d:'M0 0l0 -3',stroke:'#f7dfa7','stroke-width':1},$('pollen')));
+ function resize(){W=innerWidth;H=innerHeight;F=Math.max(W*.73,H*.75);horizon=H*.47;svg.setAttribute('viewBox',`0 0 ${W} ${H}`);for(const id of ['sky-bg','edge']){const n=$(id);n.setAttribute('width',W);n.setAttribute('height',H);}resetInput();render();}
+ function entity(id,type,x,z,size=1,y=0){return{id,type,x,z,size,y,seed:hash(Math.round(x*7),Math.round(z*7)),forecast:-1};}
+ function generate(cx,cz){
+  const out=[];
+  for(let i=0;i<3;i++){
+   const x=(cx+hash(cx,cz,i*5))*CELL,z=(cz+hash(cx,cz,i*5+1))*CELL;
+   if(Math.hypot(x,z)<14||forecasts.some(f=>Math.hypot(x-f.x,z-f.z)<10))continue;
+   const r=hash(cx,cz,i*5+2),type=i===0?'umbrella':r<.4?'reed':r<.68?'stone':r<.91?'ripple':'skate';
+   out.push(entity(`${cx},${cz},${i}`,type,x,z,type==='umbrella'?.55+hash(cx,cz,25)*.75:.6+hash(cx,cz,26),type==='skate'?3+hash(cx,cz,27)*3:0));
+  }
+  return out;
+ }
+ const fixed=[entity('hero-left','umbrella',-11,24,1.22),entity('hero-right','umbrella',20,42,1.4),entity('hero-back','umbrella',-29,61,1.6),entity('hero-skate','skate',-3,20,.85,4.4)];
+ forecasts.forEach((f,i)=>{const e=entity(`forecast-${i}`,'house',f.x,f.z,1);e.forecast=i;fixed.push(e);});
+ function refreshChunks(){
+  const cx=Math.floor(state.x/CELL),cz=Math.floor(state.z/CELL);if(cx===cellX&&cz===cellZ)return;
+  cellX=cx;cellZ=cz;
+  for(const [key,c] of chunks)if(Math.abs(c.x-cx)>7||Math.abs(c.z-cz)>7)chunks.delete(key);
+  for(let x=cx-7;x<=cx+7;x++)for(let z=cz-7;z<=cz+7;z++){const key=`${x},${z}`;if(!chunks.has(key))chunks.set(key,{x,z,items:generate(x,z)});}
+ }
+ function getNode(e){
+  if(nodes.has(e.id))return nodes.get(e.id);
+  const n=pool.pop()||make('g',{});n.replaceChildren();
+  if(e.forecast>=0){make('ellipse',{cx:0,cy:-105,rx:90,ry:130,fill:'url(#glow)'},n);}
+  make('use',{href:'#'+e.type},n);
+  if(e.forecast>=0){const marker=make('g',{'data-beacon':''},n);make('path',{d:'M0-348L7-339 0-330-7-339Z',fill:'#ffe7a9'},marker);make('path',{d:'M-13-339H-8M8-339H13',stroke:'#ffe7a9','stroke-width':1},marker);}
+  n.dataset.entity=e.id;nodes.set(e.id,n);return n;
+ }
+ function project(e,sin,cos,bob){
+  const dx=e.x-state.x,dz=e.z-state.z,z=dx*sin+dz*cos,x=dx*cos-dz*sin;
+  if(z<.8||z>RANGE)return null;
+  const s=F/z/25*e.size,px=W*.5+x*F/z;
+  if(px+s*140<0||px-s*140>W)return null;
+  const float=e.type==='skate'&&state.motion?Math.sin(state.time*.6+e.seed*TAU)*.4:0;
+  return {e,z,s,x:px,y:horizon+(2.6+bob-e.y-float)*F/z};
+ }
+ function render(){
+  refreshChunks();const sin=Math.sin(state.yaw),cos=Math.cos(state.yaw),bob=state.motion?state.bob:0;
+  const hy=horizon+bob*6;
+  $('ground-bg').setAttribute('y',hy);$('ground-bg').setAttribute('width',W);$('ground-bg').setAttribute('height',H-hy);
+  const sunX=W*.5+Math.sin(1.02-state.yaw)*W*.49,sunY=H*.24;
+  $('sun').setAttribute('transform',`translate(${sunX.toFixed(2)} ${sunY.toFixed(2)}) scale(${Math.min(W/1150,H/730)*.94})`);
+  for(let i=0;i<clouds.length;i++){
+   const x=((i*217-Math.sin(state.yaw)*W*.44)%(W+550)+(W+550))%(W+550)-275,y=H*(.14+hash(i,6)*.22);
+   clouds[i].setAttribute('d',`M${x} ${y}q45 -9 80 -3t115 -2m-138 7q42 -3 106 0`);
+  }
+  for(let i=0;i<skies.length;i++)skies[i].setAttribute('transform',`translate(${sunX+(i-6.5)*13} ${H*.1+Math.sin(i*.8)*9}) scale(.6)`);
+  let ridge=`M0 ${hy+1}`;for(let x=0;x<=W+40;x+=40)ridge+=`L${x} ${hy-6-9*Math.sin(x/W*9+state.yaw*2)-5*Math.sin(x/W*23+state.yaw*5)}`;ridge+=`L${W} ${hy+2}Z`;$('far-ridge').setAttribute('d',ridge);
+  // Ground bands follow travelled distance; small projected world ripples supply directional parallax.
+  for(let i=0;i<lines.length;i++){
+   const z=3+((i*7.1-state.travel*.75)%126+126)%126,y=hy+2.6*F/z;
+   lines[i].setAttribute('d',`M0 ${y}Q${W*.25} ${y-4} ${W*.55} ${y+3}T${W} ${y-2}`);
+   lines[i].setAttribute('opacity',clamp((RANGE-z)/RANGE*.45,0,.45));
+  }
+  const visible=[];const consider=e=>{const p=project(e,sin,cos,bob);if(p)visible.push(p);};
+  for(const c of chunks.values())for(const e of c.items)consider(e);for(const e of fixed)consider(e);
+  visible.sort((a,b)=>b.z-a.z);
+  const live=new Set();let cursor=layer.firstChild;
+  for(const p of visible){
+   const e=p.e,n=getNode(e);live.add(e.id);
+   n.setAttribute('transform',`translate(${p.x.toFixed(2)} ${p.y.toFixed(2)}) scale(${p.s.toFixed(4)})`);
+   n.setAttribute('opacity',(clamp((RANGE-p.z)/30,0,1)*clamp((p.z-.8)/2,0,1)*(.55+.45*(1-p.z/RANGE))).toFixed(3));
+   if(e.forecast>=0){n.firstChild.setAttribute('opacity',found.has(e.forecast)?'0':'.8');n.lastChild.setAttribute('opacity',found.has(e.forecast)?'0':'1');}
+   if(n!==cursor)layer.insertBefore(n,cursor);else cursor=cursor.nextSibling;
+  }
+  for(const [id,n] of nodes)if(!live.has(id)){n.remove();nodes.delete(id);if(pool.length<MAX_POOL)pool.push(n);}
+  for(let i=0;i<motes.length;i++){
+   const t=state.motion?state.time:0,x=((hash(i,9)*W+t*(2+hash(i,12)*4)-Math.sin(state.yaw)*150) % W+W)%W,y=H*(.32+hash(i,10)*.65)-((t*(5+hash(i,13)*8))%(H*.7));
+   motes[i].setAttribute('transform',`translate(${x.toFixed(1)} ${((y+H)%H).toFixed(1)})`);
+  }
+  state.frames++;
+ }
+ function nearest(){let best=null,d=Infinity;forecasts.forEach((f,i)=>{const r=Math.hypot(f.x-state.x,f.z-state.z);if(!found.has(i)&&r<d){d=r;best={...f,i,d:r};}});return best;}
+ function updateJournal(){
+  $('progress').replaceChildren();for(let i=0;i<5;i++){const icon=make('svg',{viewBox:'0 0 13 17','aria-hidden':'true'},$('progress'));icon.style.color=found.has(i)?'#efbd7c':'#78978a';make('use',{href:'#ticket'},icon);}
+  const count=document.createElement('span');count.id='count';count.textContent=`${found.size} / 5 FORECASTS`;$('progress').append(count);
+  $('journal').replaceChildren();forecasts.forEach((f,i)=>{const li=document.createElement('li');li.textContent=found.has(i)?`${String(i+1).padStart(2,'0')} · ${f.short} — ${f.text}`:`${String(i+1).padStart(2,'0')} · Not yet recovered`;if(!found.has(i))li.style.opacity='.55';$('journal').append(li);});
+ }
+ function collect(i){
+  if(found.has(i))return;found.add(i);try{localStorage.setItem(SAVE,JSON.stringify([...found]));}catch{}
+  updateJournal();$('notice-title').textContent=forecasts[i].short;$('notice-text').textContent=forecasts[i].text;$('notice').classList.add('show');noticeUntil=state.time+9;
+  if(found.size===5){$('notice-title').textContent='Tomorrow is possible.';$('notice-text').textContent='Five forecasts delivered to an empty sky. Somewhere, a window opens. The fields remain yours to wander.';noticeUntil=state.time+14;}
+ }
+ function updateUI(){
+  const n=nearest(),deg=((state.yaw*180/Math.PI)%360+360)%360,dir=['N','NE','E','SE','S','SW','W','NW'][Math.round(deg/45)%8];
+  $('bearing').textContent=`${dir} · ${Math.round(deg)%360+'°'}`;
+  const angle=n?wrap(Math.atan2(n.x-state.x,n.z-state.z)-state.yaw)*180/Math.PI:0;
+  $('needle').setAttribute('transform',`rotate(${angle.toFixed(1)} 90 19)`);
+  $('destination').textContent=n?n.name:'All weather accounted for';
+  $('mission-label').textContent=n?`Follow the needle · ${Math.ceil(n.d)} m to forecast`:'Five ordinary miracles · keep wandering';
+  $('distance').textContent=`FIELD NOTES / ${String(Math.floor(state.distance)).padStart(3,'0')} M WALKED`;
+  $('cue').textContent=state.time<9?'The city is gone. Its weather is still waiting.':n&&n.d<15?'A forecast is waiting inside. Walk a little closer.':'';
+  if(state.time>noticeUntil)$('notice').classList.remove('show');
+ }
+ function update(dt){
+  if(state.paused)return;state.time+=dt;
+  const walk=clamp((keys.has('KeyW')||keys.has('ArrowUp')?1:0)-(keys.has('KeyS')||keys.has('ArrowDown')?1:0)+stickWalk,-1,1);
+  const turn=clamp((keys.has('KeyD')||keys.has('ArrowRight')?1:0)-(keys.has('KeyA')||keys.has('ArrowLeft')?1:0)+stickTurn,-1,1);
+  const ease=1-Math.exp(-dt*12);state.walk+=(walk-state.walk)*ease;state.turn+=(turn-state.turn)*ease;
+  state.yaw=wrap(state.yaw+state.turn*dt*1.25);
+  const step=state.walk*dt*6;state.x+=Math.sin(state.yaw)*step;state.z+=Math.cos(state.yaw)*step;state.distance+=Math.abs(step);state.travel+=step;
+  state.bob=Math.sin(state.distance*2.5)*.048*Math.abs(state.walk);
+  for(let i=0;i<forecasts.length;i++)if(!found.has(i)&&Math.hypot(forecasts[i].x-state.x,forecasts[i].z-state.z)<6)collect(i);
+  uiClock+=dt;if(uiClock>.1){uiClock=0;updateUI();}
+ }
+ let stickWalk=0,stickTurn=0,drag=null;const sticks=[];
+ function resetInput(){
+  keys.clear();stickWalk=stickTurn=0;state.walk=state.turn=0;state.bob=0;
+  for(const s of sticks){const id=s.id;s.id=null;s.el.querySelector('.knob').style.transform='';if(id!==null&&s.el.hasPointerCapture(id))s.el.releasePointerCapture(id);}
+  const old=drag;drag=null;if(old&&svg.hasPointerCapture(old.id))svg.releasePointerCapture(old.id);
+ }
+ function setupStick(id,axis){
+  const el=$(id),s={el,id:null};sticks.push(s);
+  const move=e=>{if(s.id!==e.pointerId)return;e.preventDefault();const b=el.getBoundingClientRect(),radius=b.width*.33;const dx=clamp((e.clientX-b.left-b.width/2)/radius,-1,1),dy=clamp((e.clientY-b.top-b.height/2)/radius,-1,1);const v=axis==='walk'?-dy:dx;const val=Math.abs(v)<.08?0:Math.sign(v)*(Math.abs(v)-.08)/.92;if(axis==='walk')stickWalk=val;else stickTurn=val;el.querySelector('.knob').style.transform=`translate(${axis==='turn'?dx*radius:0}px,${axis==='walk'?dy*radius:0}px)`;};
+  el.addEventListener('pointerdown',e=>{if(s.id!==null||state.paused)return;e.preventDefault();s.id=e.pointerId;el.setPointerCapture(e.pointerId);move(e);});
+  el.addEventListener('pointermove',move);
+  const end=e=>{if(e.pointerId!==s.id)return;s.id=null;if(axis==='walk')stickWalk=0;else stickTurn=0;el.querySelector('.knob').style.transform='';if(el.hasPointerCapture(e.pointerId))el.releasePointerCapture(e.pointerId);};
+  for(const ev of ['pointerup','pointercancel','lostpointercapture'])el.addEventListener(ev,end);
+ }
+ setupStick('walk-stick','walk');setupStick('look-stick','turn');
+ const codes=['KeyW','KeyS','KeyA','KeyD','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'];
+ addEventListener('keydown',e=>{if(state.paused||e.metaKey||e.ctrlKey||e.altKey)return;if(codes.includes(e.code)){e.preventDefault();keys.add(e.code);}if(e.code==='KeyG'&&!e.repeat)openGuide();});
+ addEventListener('keyup',e=>keys.delete(e.code));
+ svg.addEventListener('pointerdown',e=>{if(state.paused||drag||e.button!==0)return;e.preventDefault();drag={id:e.pointerId,x:e.clientX};svg.setPointerCapture(e.pointerId);});
+ svg.addEventListener('pointermove',e=>{if(!drag||e.pointerId!==drag.id)return;state.yaw=wrap(state.yaw+(e.clientX-drag.x)*.004);drag.x=e.clientX;});
+ const endDrag=e=>{if(drag&&drag.id===e.pointerId){drag=null;if(svg.hasPointerCapture(e.pointerId))svg.releasePointerCapture(e.pointerId);}};
+ for(const ev of ['pointerup','pointercancel','lostpointercapture'])svg.addEventListener(ev,endDrag);
+ function openGuide(){resetInput();state.paused=true;guide.showModal();$('guide-close').focus();}
+ $('guide-open').addEventListener('click',openGuide);$('guide-close').addEventListener('click',()=>guide.close());
+ guide.addEventListener('close',()=>{state.paused=false;resetInput();last=null;$('guide-open').focus();});
+ $('motion').addEventListener('click',()=>{state.motion=!state.motion;syncMotion();});
+ function syncMotion(){$('motion').textContent=`Motion: ${state.motion?'on':'off'}`;$('motion').setAttribute('aria-pressed',String(state.motion));}
+ addEventListener('blur',resetInput);document.addEventListener('visibilitychange',()=>{resetInput();last=null;});
+ addEventListener('resize',resize);addEventListener('contextmenu',e=>e.preventDefault());
+ document.addEventListener('touchmove',e=>{if(!e.target.closest('#guide'))e.preventDefault();},{passive:false});
+ for(const type of ['gesturestart','gesturechange','gestureend'])document.addEventListener(type,e=>e.preventDefault(),{passive:false});
+ document.addEventListener('wheel',e=>{if(!e.target.closest('#guide')||e.ctrlKey)e.preventDefault();},{passive:false});
+ function frame(now){const dt=last===null?0:Math.min(.05,(now-last)/1000);last=now;if(!document.hidden&&!state.paused){update(dt);render();}requestAnimationFrame(frame);}
+ updateJournal();syncMotion();resize();updateUI();requestAnimationFrame(frame);
+ // Read-only instrumentation keeps browser tests on real controls, not a parallel game simulation.
+ Object.defineProperty(window,'weatherField',{value:Object.freeze({snapshot:()=>({...state,found:[...found],chunks:chunks.size,nodes:nodes.size,pool:pool.length,stickWalk,stickTurn,activePointers:sticks.map(s=>s.id)}),worldSample:(x,z)=>generate(x,z).map(e=>({...e}))})});
+})();
+</script>
+</body>
+</html>
