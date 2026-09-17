@@ -516,6 +516,23 @@ Review:
 - Live proof: https://ealdent.github.io/the-grove/time-loop/gpt-6-astra-ultra-time-loop-puzzle.html returned HTTP 200. All three chambers were solved again with actual keyboard events on the public site; the ending appeared and the embedded self-test passed 28/28. The live gallery contains the sorted new tile and its model filter works. Report: /private/tmp/kiln-live-report.json; live screenshot: /private/tmp/kiln-live-ending.png.
 - Source integrity: the committed standalone HTML is 70,710 bytes, SHA-256 2b415753ead2b2af2b6a8e66eeac86ee3a4f504a7ffb054770e52887578e0bf0. The observed public response prepends one 615-byte external script tag; removing exactly that extra tag for comparison leaves the complete authored file byte-identical. The source of that response injection was not established. An isolated live probe saw no page/console errors or HTTP errors, but the added script generated extra requests including one aborted fetch. The authored file has no remote URLs, external scripts, external assets or network calls, and the file:// offline proof remains clean.
 
+## Brothbound — Union Alpha / Max
+
+Goal: a green-field, offline single-file tower defense in `tower-def/union-alpha-max-tower-def.html`; personal project. Read no existing game implementations. Gallery read only for integration conventions.
+
+Lore/design: after the Heat Death, a tiny soup kitchen reserves a chair for the final guest. Its chef once mistook absence for hunger; the cold now follows the scent of that promise. Defenders are kitchen rituals made sentient, not military weapons. Reclaimed warmth buys instruments. Twenty-four courses reveal that the final guest is the night itself, which needs feeding rather than defeating. Porcelain, indigo, saffron broth, coral labels; illustrated utensil creatures and a winding celestial soup channel.
+
+- [x] Implement randomized connected track, five mechanically distinct towers, four named upgrades per tower, varied enemies, 24 courses, preparation phases, victory/defeat and replay.
+- [x] Build responsive illustrated UI, integrated story/help, keyboard/touch controls and optional synthesized sound; no external dependencies.
+- [x] Verify browser flows at desktop/mobile, deterministic combat/economy/path checks, all upgrades and 24-wave progression; skeptical second pass.
+- [x] Add alphabetized model/effort gallery tile and review diff. Commit/push requested; execution follows final proof.
+
+Review/proof: `/tmp/test-brothbound.cjs` runs Playwright with installed Google Chrome against the file:// URL (anonymous local game). 335 assertions passed, including 150 deterministic route checks, all 20 upgrades, economy, placement exclusions, armor, splash, slow, brine, defeat/retry, actual pointer build/upgrade, pause/help, and focus preservation. Five legal-budget campaign simulations won all 24 courses on seeds 90210, 1, 17, 54, 321 (20 hearth remaining each; forgiving balance). No page errors, failed requests, or HTTP requests from the game. Separate touch test at 390px passed build, upgrade, reset confirmation/cancel, keyboard tile announcement; gallery badge/order/link passed. No overflow at 390/768/1024px; desktop 1440px also inspected. Screenshots: `/tmp/brothbound-active-desktop.png`, `/tmp/brothbound-390.png`, `/tmp/brothbound-768.png`, `/tmp/brothbound-1024.png`.
+
+Fresh reviewer found shortened strong brine after weaker hits and focus loss after inspector replacement; both fixed and regression-tested. Keyboard cursor now announces tile coordinates/availability and resets on replay. Remaining uncertainty: physical iOS/Safari, actual audio listening, and full nonvisual gameplay not verified. Game has no save persistence (not requested). No copied assets or external resources. Model Union Alpha, effort Max; maker anonymous.
+
+Constraints: preserve other games and unrelated work; never read previous implementations for ideas. Proof: offline browser screenshots, console/network checks, gameplay simulation and diff checks. Non-goals: server, multiplayer, packages, copied assets.
+
 ## Kiln effort correction
 
 The user confirmed this run used Max effort.

@@ -1,3 +1,4 @@
+- When a combat test reports no damage, inspect the selected target before changing either implementation or assertion. First-target and strongest-target towers deliberately select different enemies; verify actual HP changes on the chosen target. Keep final verification bounded and explain test-harness failures separately from gameplay defects.
 - SVG SMIL animations do not obey CSS `animation-play-state`; motion controls and reduced-motion handling must call `pauseAnimations()` / `unpauseAnimations()` on the owning SVG roots.
 - Canvas chart grid helpers must accept all four plot insets when the plotted axes use asymmetric padding; reusing one horizontal or vertical inset misaligns the outer gridlines.
 - Source-map links need real section anchors: verify every `href="#..."` target exists and points to the section that owns the cited content, especially when sections are intentionally unnumbered in markup.
