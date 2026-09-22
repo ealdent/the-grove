@@ -560,3 +560,18 @@ The user confirmed this run used Max effort.
 - [x] Correct the filename, gallery badge and metadata, and canonical task path; verify identical game bytes and preserved gallery ordering.
 
 Proof: the game is byte-identical to its previously tested version (SHA-256 2b415753ead2b2af2b6a8e66eeac86ee3a4f504a7ffb054770e52887578e0bf0). Only its filename and gallery effort metadata changed. The existing card remains in its original alphabetic position. Historical proof URLs above refer to the original filename; the corrected canonical path is `time-loop/gpt-6-astra-max-time-loop-puzzle.html`.
+
+## The Museum of Lost Sounds — GPT-6 / Ultra
+
+Goal: Ship an original offline tower defense game as one HTML file and add its alphabetical gallery tile.
+Project: Personal / the-grove. Files: `tower-def/gpt-6-ultra-tower-def.html`, `tower-def/index.html`.
+Constraints: no dependencies or copied game assets; random route; five distinct towers with four purchasable upgrades each; varied enemies and 20 authored waves; preparation between waves; responsive touch and mouse UI. Existing games are not design references.
+Lore: Curator Ada Vale preserves everyday sounds in glass jars. The Hush follows a newly formed record groove each night to erase the last playable archive. Each cleared wave restores one ordinary sound and reveals a little more of why Ada kept them.
+
+- [x] Build the self-contained game, procedural route and placement pads, combat/economy, 20 waves, and four upgrades per tower.
+- [x] Add responsive visual design, in-game help, wave pacing, and story notes.
+- [x] Add the GPT-6 / Ultra tile in alphabetical model order.
+- [x] Verify script structure, route/pad invariants, all upgrade paths, wave progression, offline dependencies, and gallery integration. Browser rendering/touch verification was blocked by browser URL policy.
+- [x] Review diff and commit/push to main.
+
+Review: JavaScript parses; there are no external asset or network references. Node checks swept all 900 route seeds in both desktop and mobile layouts (1,800 boards), verified five four-step restoration paths, and completed 20 waves with earned-copper purchase plans on desktop and mobile seeds. A separate reviewer found and rechecked fixes for narrow-screen touch spacing, swipe placement, keyboard announcements, and focus after DOM replacement. The browser tool rejected the local `file://` URL and prohibited alternate browser routes, so rendered layout, touch gestures, console, and network behavior remain unverified in an actual browser.
