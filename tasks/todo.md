@@ -577,3 +577,22 @@ Lore: Curator Ada Vale preserves everyday sounds in glass jars. The Hush follows
 Review: JavaScript parses; there are no external asset or network references. Node checks swept all 900 route seeds in both desktop and mobile layouts (1,800 boards), verified five four-step restoration paths, and completed 20 waves with earned-copper purchase plans on desktop and mobile seeds. A separate reviewer found and rechecked fixes for narrow-screen touch spacing, swipe placement, keyboard announcements, and focus after DOM replacement. The browser tool rejected the local `file://` URL and prohibited alternate browser routes, so rendered layout, touch gestures, console, and network behavior remain unverified in an actual browser.
 
 Model correction: Jason identified the run as GPT-6 Sol at Ultra effort. Renamed the artifact and updated the gallery link, model filter value, visible badge, and alphabetical placement. The game file's contents stayed byte-identical.
+
+## The Vellum Wild — GPT-6 Sol / Ultra SVG Forest
+
+Goal: Build an original, offline, single-file pure-SVG first-person exploration game and add its alphabetized gallery tile.
+Project: Personal / the-grove.
+Files: `svg-forest/gpt-6-sol-ultra-svg-forest.html`, then `svg-forest/index.html`.
+Constraints: no canvas, WebGL, Three.js, external assets, or inspection of any other game in `svg-forest` before the new file is finished; preserve the gallery's existing uncommitted changes.
+Lore: Cartographers tried to fix every border on the last map. Their maps germinated instead. The player walks an endless living atlas where atlas trees, compass flowers, and survey beacons remember routes that were never drawn.
+Design: cut-paper/ink-engraving SVG; indigo-lavender sky and saffron sun, petrol-green contour ground, ivory folded trunks, vermilion leaves, brass navigation details.
+Proof: JavaScript parse/static constraints, browser desktop and mobile interaction, independent multitouch joysticks, responsive visual screenshots, bounded SVG node count, console/network check, exact scoped diff and pushed-head check.
+Risks: responsive perspective at narrow widths, true concurrent pointer capture, and preservation of a concurrently dirty gallery file.
+
+- [x] Finish the lore-led scene, deterministic endless world, perspective SVG sprites, and efficient DOM reuse.
+- [x] Finish keyboard, mouse drag, true multitouch joysticks, head bob, and responsive help/HUD.
+- [x] Playtest visually and behaviorally in a browser; fix issues and get a skeptical review.
+- [x] Read the gallery index only after the game file is finished; add one alphabetically sorted tile while preserving existing edits.
+- [x] Review scoped changes, commit, push main, and verify remote state.
+
+Review: The game is one 29 KB self-contained HTML file with one SVG and one inline script. `node --check` passes; no canvas or external asset tags exist. In the local in-app browser, desktop mouse drag turned the camera; sustained W and W+D changed position/heading with head bob; mobile single-stick drags moved and turned. A synthetic two-pointer test observed both joystick IDs active simultaneously, then turning continued after the walking pointer was released. Browser visual checks covered 1280×720, 768×1024, 390×844, and 320×568; a narrow-phone header overlap was fixed. Steady rendering sampled 81 frames in about one second with 81 visible pooled sprites, no console warnings/errors, and no resource requests. The bounded sprite pool and fixed-size discovery signatures were reviewed independently. Current-session metadata verified GPT-6 Sol / Ultra; the filename and gallery badge were corrected without changing game content. The gallery has exactly one tile, ordered GPT-5.6 Terra → GPT-6 Astra → GPT-6 Sol → Grok 4.5; its link opened the game. Physical multitouch hardware, Safari, and Firefox remain untested. The scoped diff was rebased over concurrent main changes and passed `git diff --check`; pushed-head proof is recorded in the final task response.

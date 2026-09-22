@@ -1,0 +1,479 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, minimum-scale=1, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#102735">
+  <meta name="description" content="The Vellum Wild: an endless first-person walk through a forest grown from forgotten maps.">
+  <title>The Vellum Wild — an SVG exploration</title>
+  <style>
+    :root { color-scheme: dark; }
+    * { box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; overscroll-behavior: none; touch-action: none; }
+    body { background: #102735; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+    #scene { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+    .controls { position: fixed; inset: 0; z-index: 4; pointer-events: none; display: none; }
+    .stick {
+      --size: clamp(112px, 28vw, 148px);
+      position: absolute; bottom: max(20px, env(safe-area-inset-bottom));
+      width: var(--size); height: var(--size); border-radius: 50%;
+      border: 1px solid rgba(246, 218, 154, .53);
+      background: radial-gradient(circle, rgba(248, 220, 158, .08) 0 34%, transparent 35% 100%), rgba(13, 38, 47, .51);
+      box-shadow: inset 0 0 0 13px rgba(253, 237, 204, .035), 0 8px 26px rgba(5, 19, 25, .28);
+      pointer-events: auto; touch-action: none; cursor: pointer;
+    }
+    #walkStick { left: max(20px, env(safe-area-inset-left)); }
+    #turnStick { right: max(20px, env(safe-area-inset-right)); }
+    .stick::before, .stick::after { content: ""; position: absolute; pointer-events: none; }
+    .stick::before { inset: 23%; border: 1px solid rgba(250, 225, 180, .19); border-radius: 50%; }
+    .stick::after { left: 50%; top: 50%; width: 4px; height: 4px; margin: -2px; border-radius: 50%; background: rgba(253, 221, 151, .4); }
+    .knob {
+      position: absolute; left: 50%; top: 50%; width: 42%; height: 42%;
+      border-radius: 50%; transform: translate(-50%, -50%);
+      border: 1px solid rgba(255, 242, 204, .77);
+      background: radial-gradient(circle at 36% 30%, #f2d59d, #ac764f 66%, #5a4848 100%);
+      box-shadow: inset 0 0 0 5px rgba(255, 252, 235, .13), 0 5px 17px rgba(4, 22, 29, .42);
+      pointer-events: none;
+    }
+    .stick-label {
+      position: absolute; left: 0; right: 0; top: -27px; text-align: center;
+      color: #f3ddac; font: 700 10px/1.2 system-ui, sans-serif; letter-spacing: .26em;
+      opacity: .88; pointer-events: none;
+    }
+    .stick.active { border-color: rgba(255, 228, 166, .96); background-color: rgba(31, 69, 69, .68); }
+    @media (pointer: coarse), (max-width: 700px) { .controls { display: block; } }
+    @media (max-height: 540px) { .stick { --size: clamp(86px, 21vh, 116px); bottom: 10px; } .stick-label { top: -19px; font-size: 8px; } }
+  </style>
+</head>
+<body>
+  <svg id="scene" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" role="img" aria-label="First-person view of the Vellum Wild, a forest of living maps" viewBox="0 0 1200 800" preserveAspectRatio="none">
+    <defs>
+      <linearGradient id="skyPaint" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#0b1b35"/><stop offset=".5" stop-color="#393957"/><stop offset=".84" stop-color="#a06d75"/><stop offset="1" stop-color="#d3a276"/>
+      </linearGradient>
+      <linearGradient id="earthPaint" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#527a72"/><stop offset=".27" stop-color="#204d50"/><stop offset="1" stop-color="#071d2a"/>
+      </linearGradient>
+      <linearGradient id="paperPaint" x1="0" y1="0" x2="1" y2="0">
+        <stop offset="0" stop-color="#b5c0a8"/><stop offset=".35" stop-color="#f6e9c9"/><stop offset=".7" stop-color="#e2d1ad"/><stop offset="1" stop-color="#829e9d"/>
+      </linearGradient>
+      <linearGradient id="leafPaint" x1="0" y1="0" x2=".8" y2="1">
+        <stop offset="0" stop-color="#ffb179"/><stop offset=".4" stop-color="#e66758"/><stop offset="1" stop-color="#8c3d4f"/>
+      </linearGradient>
+      <radialGradient id="sunPaint"><stop offset="0" stop-color="#fff0af"/><stop offset=".63" stop-color="#f2be70"/><stop offset="1" stop-color="#da825d"/></radialGradient>
+      <radialGradient id="glowPaint"><stop offset="0" stop-color="#ffdb94" stop-opacity=".31"/><stop offset="1" stop-color="#ffdb94" stop-opacity="0"/></radialGradient>
+      <linearGradient id="hazePaint" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f3be8b" stop-opacity="0"/><stop offset=".55" stop-color="#f3be8b" stop-opacity=".16"/><stop offset="1" stop-color="#f3be8b" stop-opacity="0"/></linearGradient>
+      <radialGradient id="edgePaint"><stop offset=".48" stop-color="#071b2b" stop-opacity="0"/><stop offset="1" stop-color="#061622" stop-opacity=".43"/></radialGradient>
+
+      <!-- Every prop is authored once here; the renderer reuses a bounded pool of SVG <use> instances. -->
+      <g id="atlasTree">
+        <ellipse cx="0" cy=".02" rx="1.06" ry=".16" fill="#09282c" opacity=".36"/>
+        <path d="M-.23 0 L-.28-1.57 -.48-2.04 -.17-2.21 -.08-3.04 .17-3.15 .34-2.1 .26-1.42 .23 0Z" fill="url(#paperPaint)" stroke="#223f49" stroke-width=".038"/>
+        <path d="M-.24-.03 -.1-1.62 -.19-2.13 -.08-3.04 .04-2.2 .09-.1Z" fill="#fff2d7" opacity=".5"/>
+        <path d="M.09-.1 .13-1.53 .32-2.12 .2-2.8 .34-2.1 .26-1.42 .23 0Z" fill="#607b78" opacity=".5"/>
+        <path d="M-.16-2.34 -.86-2.75 -1.4-2.51 -.94-3.24 -.36-3.39 -.04-3.02Z" fill="url(#leafPaint)" stroke="#723c4c" stroke-width=".038"/>
+        <path d="M-.07-3.02 -.27-3.68 .02-4.09 .48-3.67 .56-3.15 .2-2.85Z" fill="url(#leafPaint)" stroke="#723c4c" stroke-width=".038"/>
+        <path d="M.18-2.72 .6-3.35 1.26-3.29 1.48-2.56 .79-2.48 .23-2.36Z" fill="url(#leafPaint)" stroke="#723c4c" stroke-width=".038"/>
+        <path d="M-.47-2.55 -1.01-2.82 M.02-3.05 .08-3.84 M.49-2.79 1.16-3.08" fill="none" stroke="#ffd4a0" stroke-width=".035" opacity=".67"/>
+        <path d="M-.83-2.75 -.55-2.85 M-.42-3.04 -.7-3.14 M.07-3.5 .3-3.65 M.53-3.04 .88-3.02 M.81-2.74 1.01-2.89" fill="none" stroke="#8f4950" stroke-width=".025" opacity=".85"/>
+        <circle cx="-.31" cy="-1.45" r=".045" fill="#b5624e"/><circle cx=".16" cy="-2.02" r=".045" fill="#b5624e"/>
+      </g>
+      <g id="compassBloom">
+        <ellipse cx="0" cy=".02" rx=".53" ry=".1" fill="#0b2a2d" opacity=".4"/>
+        <path d="M-.12 0 Q-.28-.26 -.12-.54 M.12 0 Q.32-.3 .1-.59" fill="none" stroke="#9bad82" stroke-width=".07"/>
+        <path d="M-.12-.31 Q-.44-.5 -.49-.32 Q-.37-.16 -.11-.18 M.11-.3 Q.38-.57 .49-.4 Q.43-.2 .12-.19" fill="#588f7e" stroke="#274f53" stroke-width=".025"/>
+        <g transform="translate(0 -.63)">
+          <path d="M0-.61 .14-.15 0 0 -.14-.15Z M.43-.43 .2-.12 0 0 .12-.2Z M.61 0 .15.14 0 0 .15-.14Z M.43.43 .12.2 0 0 .2.12Z M0 .61 -.14.15 0 0 .14.15Z M-.43.43 -.2.12 0 0 -.12.2Z M-.61 0 -.15-.14 0 0 -.15.14Z M-.43-.43 -.12-.2 0 0 -.2-.12Z" fill="#f7ddb0" stroke="#a7674e" stroke-width=".025"/>
+          <circle r=".19" fill="#253d49" stroke="#e8b574" stroke-width=".06"/>
+          <path d="M-.075 .12 0-.13 .075 .12Z" fill="#eb765a"/>
+          <circle r=".038" fill="#ffe6a7"/>
+        </g>
+      </g>
+      <g id="surveyorEye">
+        <ellipse cx="0" cy=".02" rx=".79" ry=".13" fill="#09282c" opacity=".45"/>
+        <path d="M0-2.47 -.64 0 M0-2.47 .62 0 M0-2.47 .04 0" fill="none" stroke="#d8d3b6" stroke-width=".09" stroke-linecap="round"/>
+        <path d="M-.53-.5 .49-.5 M-.3-1.46 .32-1.46" fill="none" stroke="#8b9991" stroke-width=".045"/>
+        <circle cx="0" cy="-2.45" r=".38" fill="#193641" stroke="#e4c489" stroke-width=".075"/>
+        <circle cx="0" cy="-2.45" r=".18" fill="#df9f68" stroke="#ffebbd" stroke-width=".035"/>
+        <circle cx="0" cy="-2.45" r=".065" fill="#243947"/>
+        <path d="M0-2.86 0-3.39 M0-3.33 .78-3.17 .27-2.98 0-3.03Z" fill="#ef835e" stroke="#b14f4a" stroke-width=".03"/>
+        <path d="M.12-3.24 .53-3.15" stroke="#ffe0ae" stroke-width=".025"/>
+        <path d="M-.75-.03 -.51-.03 M.5-.03 .75-.03" stroke="#e7c381" stroke-width=".045"/>
+      </g>
+    </defs>
+
+    <rect id="sky" fill="url(#skyPaint)"/>
+    <g id="skyMarks" aria-hidden="true"/>
+    <g id="sun" aria-hidden="true">
+      <circle id="sunGlow" fill="url(#glowPaint)"/>
+      <circle id="sunDisk" fill="url(#sunPaint)" stroke="#ffda9b" stroke-width="2"/>
+      <path id="sunEtch" fill="none" stroke="#fff1bd" stroke-opacity=".47" stroke-width="1"/>
+    </g>
+    <g id="cloudBands" fill="none" stroke-linecap="round" aria-hidden="true">
+      <path id="bandA" stroke="#e5aaa2" stroke-opacity=".21" stroke-width="1.3"/>
+      <path id="bandB" stroke="#ffe5bd" stroke-opacity=".18" stroke-width="1"/>
+      <path id="bandC" stroke="#d4b8c6" stroke-opacity=".16" stroke-width="1"/>
+    </g>
+    <g id="hills" aria-hidden="true"><path id="farHill" fill="#a28082" opacity=".35"/><path id="nearHill" fill="#244f58" opacity=".75"/></g>
+    <rect id="earth" fill="url(#earthPaint)"/>
+    <rect id="haze" fill="url(#hazePaint)" pointer-events="none"/>
+    <g id="contours" fill="none" aria-hidden="true"/>
+    <g id="world" aria-hidden="true"/>
+    <g id="drift" aria-hidden="true"/>
+    <rect id="edge" fill="url(#edgePaint)" pointer-events="none"/>
+
+    <g id="hud" pointer-events="none" fill="#f7ead1">
+      <path id="topRule" stroke="#f3d9a7" stroke-opacity=".63" stroke-width="1" fill="none"/>
+      <text id="title" font-family="Georgia, serif" font-size="25" letter-spacing="2.5">THE VELLUM WILD</text>
+      <text id="tagline" font-family="system-ui, sans-serif" font-size="10" letter-spacing="2.8" fill="#ffddad">WHERE UNDRAWN ROADS TAKE ROOT</text>
+      <text id="heading" text-anchor="end" font-family="system-ui, sans-serif" font-size="11" letter-spacing="2" fill="#f9ddac">N 000°</text>
+      <text id="position" text-anchor="end" font-family="system-ui, sans-serif" font-size="10" letter-spacing="1.5" fill="#d9d7be">0 E · 0 N</text>
+      <path id="reticle" fill="none" stroke="#f6d6a1" stroke-width="1.2" opacity=".76"/>
+      <circle id="reticleDot" r="2" fill="#ffe5b3" opacity=".86"/>
+      <text id="nearName" text-anchor="middle" font-family="Georgia, serif" font-size="17" letter-spacing="1.2" fill="#fff0cf"/>
+      <text id="nearLore" text-anchor="middle" font-family="system-ui, sans-serif" font-size="11" letter-spacing=".6" fill="#e7d9c4"/>
+      <text id="hint" text-anchor="middle" font-family="system-ui, sans-serif" font-size="10" letter-spacing="1.6" fill="#f1d6a7"/>
+      <text id="count" font-family="system-ui, sans-serif" font-size="10" letter-spacing="1.8" fill="#d6d6bb">BEARINGS FOUND 000</text>
+    </g>
+  </svg>
+
+  <div class="controls" aria-label="Touch movement controls">
+    <div id="walkStick" class="stick" aria-label="Walk forward or backward" role="group"><span class="stick-label">WALK</span><div class="knob"></div></div>
+    <div id="turnStick" class="stick" aria-label="Turn left or right" role="group"><span class="stick-label">TURN</span><div class="knob"></div></div>
+  </div>
+
+  <script>
+  (() => {
+    'use strict';
+    const NS = 'http://www.w3.org/2000/svg';
+    const $ = id => document.getElementById(id);
+    const svg = $('scene');
+    const sky = $('sky'), earth = $('earth'), haze = $('haze'), edge = $('edge');
+    const world = $('world'), contours = $('contours'), drift = $('drift'), marks = $('skyMarks');
+    const art = ['atlasTree', 'compassBloom', 'surveyorEye'];
+    const names = ['ATLAS TREE', 'COMPASS BLOOM', 'SURVEYOR’S EYE'];
+    const lore = [
+      'Its leaves remember roads that no longer exist.',
+      'Its needle leans toward a place with no name.',
+      'The last border-maker left this facing home.'
+    ];
+    const camera = { x: 0, z: 0, yaw: 0.46, distance: 0 };
+    const keys = new Set();
+    // Two signatures per landmark keep discovery memory fixed during an endless walk.
+    const discovered = new Uint8Array(131072);
+    const sprites = [], groundPaths = [], particles = [];
+    const CELL = 6.6, RANGE = 69, MAX_SPRITES = 112;
+    let w = 1200, h = 800, focal = 900, horizon = 400;
+    let lastTime = 0, bobPower = 0, bobPhase = 0, frame = 0, found = 0;
+    let mousePointer = null, mouseX = 0, nearest = null;
+
+    function make(tag, attrs = {}, parent) {
+      const el = document.createElementNS(NS, tag);
+      for (const [key, value] of Object.entries(attrs)) el.setAttribute(key, value);
+      if (parent) parent.appendChild(el);
+      return el;
+    }
+    function fract(value) { return value - Math.floor(value); }
+    function hash(x, z, salt = 0) {
+      let n = Math.imul(x, 374761393) ^ Math.imul(z, 668265263) ^ Math.imul(salt + 19, 1442695041);
+      n = Math.imul(n ^ (n >>> 13), 1274126177);
+      return ((n ^ (n >>> 16)) >>> 0) / 4294967296;
+    }
+    function roundCoord(value) { return Math.round(value); }
+    function wrapYaw() { camera.yaw = Math.atan2(Math.sin(camera.yaw), Math.cos(camera.yaw)); }
+    function camPoint(x, z) {
+      const dx = x - camera.x, dz = z - camera.z;
+      const cs = Math.cos(camera.yaw), sn = Math.sin(camera.yaw);
+      return { right: dx * cs - dz * sn, depth: dx * sn + dz * cs };
+    }
+    function screenPoint(x, z, y = 0) {
+      const p = camPoint(x, z);
+      if (p.depth <= 1.16) return null;
+      const s = focal / p.depth;
+      return { x: w * .5 + p.right * s, y: horizon + (1.63 - y) * s, depth: p.depth, scale: s };
+    }
+    function addSprite() {
+      const g = make('g', {}, world);
+      const use = make('use', {}, g);
+      sprites.push({ g, use });
+      return sprites[sprites.length - 1];
+    }
+    function addGroundPath(index) {
+      const path = make('path', {
+        fill: 'none', stroke: index < 25 ? '#c2d2af' : '#f7bd86',
+        'stroke-width': index % 4 === 0 ? 1.2 : .68,
+        'stroke-opacity': index < 25 ? (index % 4 === 0 ? .24 : .14) : .17,
+        'stroke-dasharray': index < 25 ? 'none' : '5 10'
+      }, contours);
+      groundPaths.push(path);
+    }
+    for (let i = 0; i < 31; i++) addGroundPath(i);
+    for (let i = 0; i < 17; i++) {
+      particles.push(make('path', { fill: 'none', stroke: '#ffe1a8', 'stroke-width': 1, 'stroke-opacity': .12 + hash(i, 7) * .26 }, drift));
+    }
+
+    const sticks = {
+      walk: { element: $('walkStick'), knob: $('walkStick').querySelector('.knob'), pointer: null, x: 0, y: 0 },
+      turn: { element: $('turnStick'), knob: $('turnStick').querySelector('.knob'), pointer: null, x: 0, y: 0 }
+    };
+    function updateStick(stick, event) {
+      const rect = stick.element.getBoundingClientRect();
+      const radius = rect.width * .34;
+      let dx = event.clientX - (rect.left + rect.width * .5);
+      let dy = event.clientY - (rect.top + rect.height * .5);
+      const length = Math.hypot(dx, dy);
+      if (length > radius) { dx *= radius / length; dy *= radius / length; }
+      stick.x = dx / radius;
+      stick.y = dy / radius;
+      stick.knob.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
+    }
+    function releaseStick(stick, event) {
+      if (event && stick.pointer !== event.pointerId) return;
+      stick.pointer = null; stick.x = 0; stick.y = 0;
+      stick.knob.style.transform = 'translate(-50%, -50%)';
+      stick.element.classList.remove('active');
+    }
+    for (const stick of Object.values(sticks)) {
+      stick.element.addEventListener('pointerdown', event => {
+        if (stick.pointer !== null) return;
+        event.preventDefault(); event.stopPropagation();
+        stick.pointer = event.pointerId;
+        stick.element.setPointerCapture(event.pointerId);
+        stick.element.classList.add('active');
+        updateStick(stick, event);
+      });
+      stick.element.addEventListener('pointermove', event => {
+        if (stick.pointer === event.pointerId) { event.preventDefault(); updateStick(stick, event); }
+      });
+      for (const type of ['pointerup', 'pointercancel', 'lostpointercapture']) {
+        stick.element.addEventListener(type, event => releaseStick(stick, event));
+      }
+    }
+
+    const controlKeys = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight']);
+    window.addEventListener('keydown', event => {
+      if (controlKeys.has(event.code)) { keys.add(event.code); event.preventDefault(); }
+    });
+    window.addEventListener('keyup', event => {
+      if (controlKeys.has(event.code)) { keys.delete(event.code); event.preventDefault(); }
+    });
+    window.addEventListener('blur', () => {
+      keys.clear(); mousePointer = null;
+      for (const stick of Object.values(sticks)) releaseStick(stick);
+    });
+    svg.addEventListener('pointerdown', event => {
+      if (event.pointerType !== 'mouse' && event.pointerType !== 'pen') return;
+      mousePointer = event.pointerId; mouseX = event.clientX;
+      svg.setPointerCapture(event.pointerId);
+      event.preventDefault();
+    });
+    svg.addEventListener('pointermove', event => {
+      if (event.pointerId !== mousePointer) return;
+      camera.yaw += (event.clientX - mouseX) * .0043;
+      wrapYaw();
+      mouseX = event.clientX;
+      event.preventDefault();
+    });
+    for (const type of ['pointerup', 'pointercancel', 'lostpointercapture']) {
+      svg.addEventListener(type, event => { if (event.pointerId === mousePointer) mousePointer = null; });
+    }
+    document.addEventListener('touchmove', event => event.preventDefault(), { passive: false });
+    document.addEventListener('gesturestart', event => event.preventDefault(), { passive: false });
+    document.addEventListener('gesturechange', event => event.preventDefault(), { passive: false });
+
+    function resize() {
+      w = Math.max(1, window.innerWidth); h = Math.max(1, window.innerHeight);
+      focal = Math.max(290, Math.min(w * .82, h * 1.13));
+      svg.setAttribute('viewBox', `0 0 ${w} ${h}`);
+      sky.setAttribute('width', w); sky.setAttribute('height', h);
+      edge.setAttribute('width', w); edge.setAttribute('height', h);
+      const margin = w < 600 ? 20 : 40;
+      $('topRule').setAttribute('d', `M${margin} 35 H${w - margin}`);
+      $('title').setAttribute('x', margin); $('title').setAttribute('y', w < 600 ? 65 : 75);
+      $('title').setAttribute('font-size', w < 600 ? 20 : 25);
+      $('tagline').setAttribute('x', margin); $('tagline').setAttribute('y', w < 600 ? 82 : 94);
+      $('tagline').setAttribute('font-size', w < 600 ? 8 : 10);
+      $('heading').setAttribute('x', w - margin); $('heading').setAttribute('y', w < 350 ? 111 : w < 600 ? 64 : 73);
+      $('position').setAttribute('x', w - margin); $('position').setAttribute('y', w < 350 ? 128 : w < 600 ? 80 : 91);
+      $('count').setAttribute('x', margin); $('count').setAttribute('y', w < 600 ? 113 : 122);
+      $('nearName').setAttribute('x', w * .5); $('nearName').setAttribute('y', h - (w < 700 ? 210 : 91));
+      $('nearLore').setAttribute('x', w * .5); $('nearLore').setAttribute('y', h - (w < 700 ? 188 : 69));
+      $('hint').setAttribute('x', w * .5); $('hint').setAttribute('y', h - (w < 700 ? 169 : 28));
+      $('hint').textContent = w < 700 || matchMedia('(pointer:coarse)').matches
+        ? 'LEFT: WALK  ·  RIGHT: TURN'
+        : 'W / S: WALK  ·  A / D: TURN  ·  DRAG TO LOOK';
+      $('reticle').setAttribute('d', `M${w / 2 - 14} ${h * .49} h8 m12 0 h8 M${w / 2} ${h * .49 - 14} v8 m0 12 v8`);
+      $('reticleDot').setAttribute('cx', w * .5); $('reticleDot').setAttribute('cy', h * .49);
+      buildSkyMarks();
+    }
+    function buildSkyMarks() {
+      marks.replaceChildren();
+      for (let i = 0; i < 43; i++) {
+        const x = hash(i, 13) * w, y = (hash(i, 29) * .36 + .06) * h;
+        if (i % 5 === 0) {
+          make('path', { d: `M${x - 3} ${y} h6 M${x} ${y - 3} v6`, stroke: '#f7d6b5', 'stroke-width': .7, opacity: .16 + hash(i, 37) * .24 }, marks);
+        } else {
+          make('circle', { cx: x, cy: y, r: .7 + hash(i, 31) * 1.1, fill: '#ffe6c5', opacity: .12 + hash(i, 33) * .3 }, marks);
+        }
+      }
+    }
+    window.addEventListener('resize', resize);
+    if (window.visualViewport) window.visualViewport.addEventListener('resize', resize);
+    resize();
+
+    function drawBackdrop(time) {
+      horizon = h * .505 + Math.sin(bobPhase) * bobPower * 2.4;
+      earth.setAttribute('y', horizon); earth.setAttribute('width', w); earth.setAttribute('height', h - horizon);
+      haze.setAttribute('y', horizon - 25); haze.setAttribute('width', w); haze.setAttribute('height', 65);
+      const parallax = Math.sin(camera.yaw * .55) * w * .06;
+      $('farHill').setAttribute('d', `M0 ${horizon + 4} L0 ${horizon - 30} Q${w * .12 + parallax} ${horizon - 59} ${w * .25 + parallax} ${horizon - 25} Q${w * .37 + parallax} ${horizon - 67} ${w * .51 + parallax} ${horizon - 24} Q${w * .72 + parallax} ${horizon - 62} ${w * .89 + parallax} ${horizon - 24} L${w} ${horizon - 37} L${w} ${horizon + 4}Z`);
+      $('nearHill').setAttribute('d', `M0 ${horizon + 5} L0 ${horizon - 12} Q${w * .16 - parallax} ${horizon - 38} ${w * .29 - parallax} ${horizon - 8} Q${w * .44 - parallax} ${horizon - 30} ${w * .58 - parallax} ${horizon - 10} Q${w * .8 - parallax} ${horizon - 37} ${w} ${horizon - 4} L${w} ${horizon + 5}Z`);
+      const sunBearing = .82, relative = Math.atan2(Math.sin(sunBearing - camera.yaw), Math.cos(sunBearing - camera.yaw));
+      const sunX = w * .5 + focal * Math.tan(relative), sunY = h * .258;
+      const sunR = Math.max(37, Math.min(w, h) * .079);
+      $('sun').style.display = Math.abs(relative) < 1.35 ? '' : 'none';
+      $('sunGlow').setAttribute('cx', sunX); $('sunGlow').setAttribute('cy', sunY); $('sunGlow').setAttribute('r', sunR * 3.5);
+      $('sunDisk').setAttribute('cx', sunX); $('sunDisk').setAttribute('cy', sunY); $('sunDisk').setAttribute('r', sunR);
+      $('sunEtch').setAttribute('d', `M${sunX - sunR * .8} ${sunY + sunR * .12} Q${sunX} ${sunY + sunR * .46} ${sunX + sunR * .8} ${sunY + sunR * .08} M${sunX - sunR * .65} ${sunY - sunR * .34} Q${sunX} ${sunY - sunR * .12} ${sunX + sunR * .67} ${sunY - sunR * .37}`);
+      const cloudShift = Math.sin(camera.yaw * .42) * w * .09;
+      $('bandA').setAttribute('d', `M${-w * .18 + cloudShift} ${h * .19} Q${w * .28 + cloudShift} ${h * .12} ${w * .65 + cloudShift} ${h * .19} T${w * 1.18 + cloudShift} ${h * .13}`);
+      $('bandB').setAttribute('d', `M${-w * .15 - cloudShift} ${h * .31} Q${w * .23 - cloudShift} ${h * .24} ${w * .62 - cloudShift} ${h * .29} T${w * 1.18 - cloudShift} ${h * .24}`);
+      $('bandC').setAttribute('d', `M${-w * .12 + cloudShift} ${h * .39} Q${w * .37 + cloudShift} ${h * .33} ${w * .82 + cloudShift} ${h * .38} T${w * 1.17 + cloudShift} ${h * .34}`);
+      for (let i = 0; i < particles.length; i++) {
+        const x = fract(hash(i, 41) + time * (.0016 + hash(i, 51) * .0012)) * w;
+        const y = (hash(i, 47) * .42 + .08) * h + Math.sin(time * .0013 + i) * 4;
+        particles[i].setAttribute('d', `M${x - 2} ${y} h4 M${x} ${y - 2} v4`);
+      }
+    }
+
+    function drawGround() {
+      const baseZ = Math.floor(camera.z / 3.5) * 3.5;
+      for (let row = 0; row < 25; row++) {
+        const z0 = baseZ + (row - 12) * 3.5;
+        let d = '', started = false;
+        for (let j = 0; j <= 32; j++) {
+          const x = camera.x - 82 + j * 5.125;
+          const z = z0 + Math.sin(x * .11 + z0 * .17) * .64 + Math.sin(x * .27 - z0 * .07) * .18;
+          const p = screenPoint(x, z);
+          if (!p || p.y < horizon || p.y > h + 10 || p.x < -w * .3 || p.x > w * 1.3) { started = false; continue; }
+          d += `${started ? 'L' : 'M'}${p.x.toFixed(1)} ${p.y.toFixed(1)}`;
+          started = true;
+        }
+        groundPaths[row].setAttribute('d', d);
+      }
+      const baseX = Math.floor(camera.x / 12) * 12;
+      for (let col = 0; col < 6; col++) {
+        const x0 = baseX + (col - 3) * 12 + 3;
+        let d = '', started = false;
+        for (let j = 0; j <= 32; j++) {
+          const z = camera.z - 75 + j * 4.7;
+          const x = x0 + Math.sin(z * .067 + x0) * .95;
+          const p = screenPoint(x, z);
+          if (!p || p.y < horizon || p.y > h + 10 || p.x < -w * .2 || p.x > w * 1.2) { started = false; continue; }
+          d += `${started ? 'L' : 'M'}${p.x.toFixed(1)} ${p.y.toFixed(1)}`;
+          started = true;
+        }
+        groundPaths[25 + col].setAttribute('d', d);
+      }
+    }
+
+    function worldObjects() {
+      const result = [];
+      const cx = Math.floor(camera.x / CELL), cz = Math.floor(camera.z / CELL);
+      const reach = Math.ceil(RANGE / CELL);
+      const far = RANGE * RANGE;
+      for (let ix = cx - reach; ix <= cx + reach; ix++) {
+        for (let iz = cz - reach; iz <= cz + reach; iz++) {
+          if (hash(ix, iz, 2) < .13) continue;
+          const count = hash(ix, iz, 3) > .79 ? 2 : 1;
+          for (let k = 0; k < count; k++) {
+            const x = (ix + .12 + hash(ix, iz, 10 + k * 4) * .76) * CELL;
+            const z = (iz + .12 + hash(ix, iz, 11 + k * 4) * .76) * CELL;
+            const distance2 = (x - camera.x) ** 2 + (z - camera.z) ** 2;
+            if (distance2 > far || x * x + z * z < 23) continue;
+            const r = hash(ix, iz, 12 + k * 4);
+            const type = r < .47 ? 0 : r < .82 ? 1 : 2;
+            const p = screenPoint(x, z);
+            if (!p || p.depth > RANGE || p.x < -p.scale * 2 || p.x > w + p.scale * 2) continue;
+            result.push({ ix, iz, k, x, z, type, p, distance2, variant: hash(ix, iz, 13 + k * 4) });
+          }
+        }
+      }
+      if (result.length > MAX_SPRITES) {
+        result.sort((a, b) => a.p.depth - b.p.depth);
+        result.length = MAX_SPRITES;
+      }
+      result.sort((a, b) => b.p.depth - a.p.depth);
+      return result;
+    }
+    function drawObjects() {
+      const objects = worldObjects();
+      nearest = null;
+      let nearScore = Infinity;
+      for (let i = 0; i < objects.length; i++) {
+        const object = objects[i];
+        const sprite = sprites[i] || addSprite();
+        const s = object.p.scale * (object.type === 1 ? .95 + object.variant * .32 : .86 + object.variant * .27);
+        sprite.g.style.display = '';
+        sprite.g.setAttribute('transform', `translate(${object.p.x.toFixed(2)} ${object.p.y.toFixed(2)}) scale(${s.toFixed(3)})`);
+        sprite.g.setAttribute('opacity', Math.max(.26, 1 - object.p.depth / 112).toFixed(2));
+        sprite.use.setAttribute('href', `#${art[object.type]}`);
+        const centered = Math.abs(object.p.x - w * .5) < Math.max(48, w * .18);
+        if (centered && object.distance2 < nearScore && object.distance2 < 34) { nearScore = object.distance2; nearest = object; }
+      }
+      for (let i = objects.length; i < sprites.length; i++) sprites[i].g.style.display = 'none';
+      if (nearest && nearScore < 10 && !hasSeen(nearest)) found++;
+    }
+    function hasSeen(object) {
+      const count = discovered.length * 8;
+      const first = Math.floor(hash(object.ix, object.iz, 91 + object.k) * count);
+      const second = Math.floor(hash(object.ix, object.iz, 127 + object.k) * count);
+      const a = first >>> 3, b = second >>> 3;
+      const maskA = 1 << (first & 7), maskB = 1 << (second & 7);
+      const alreadySeen = (discovered[a] & maskA) && (discovered[b] & maskB);
+      discovered[a] |= maskA; discovered[b] |= maskB;
+      return alreadySeen;
+    }
+    function drawHud() {
+      const heading = ((Math.round(camera.yaw * 180 / Math.PI) % 360) + 360) % 360;
+      $('heading').textContent = `N ${String(heading).padStart(3, '0')}°`;
+      $('position').textContent = `${roundCoord(camera.x)} E · ${roundCoord(camera.z)} N`;
+      $('count').textContent = `BEARINGS FOUND ${String(found).padStart(3, '0')}`;
+      $('nearName').textContent = nearest ? names[nearest.type] : 'THE MAP IS STILL GROWING';
+      $('nearLore').textContent = nearest ? lore[nearest.type] : 'Walk beyond the last known line.';
+    }
+    function tick(now) {
+      const dt = lastTime ? Math.min((now - lastTime) / 1000, .05) : 0;
+      lastTime = now;
+      const forward = (keys.has('KeyW') || keys.has('ArrowUp') ? 1 : 0) - (keys.has('KeyS') || keys.has('ArrowDown') ? 1 : 0) - sticks.walk.y;
+      const turn = (keys.has('KeyD') || keys.has('ArrowRight') ? 1 : 0) - (keys.has('KeyA') || keys.has('ArrowLeft') ? 1 : 0) + sticks.turn.x;
+      const walk = Math.max(-1, Math.min(1, forward));
+      const spin = Math.max(-1, Math.min(1, turn));
+      camera.yaw += spin * 1.86 * dt;
+      wrapYaw();
+      const move = walk * 4.25 * dt;
+      camera.x += Math.sin(camera.yaw) * move;
+      camera.z += Math.cos(camera.yaw) * move;
+      camera.distance += Math.abs(move);
+      bobPower += ((Math.abs(walk) > .06 ? 1 : 0) - bobPower) * Math.min(1, dt * 7);
+      if (Math.abs(walk) > .06) bobPhase += Math.abs(move) * 9.2;
+      drawBackdrop(now);
+      drawGround();
+      drawObjects();
+      drawHud();
+      frame++;
+      requestAnimationFrame(tick);
+    }
+    requestAnimationFrame(tick);
+
+    // Small, read-only hook for browser playtests; it does not alter the game.
+    window.__vellumDebug = () => ({
+      x: camera.x, z: camera.z, yaw: camera.yaw, distance: camera.distance,
+      bobPower, frame, visible: sprites.filter(sprite => sprite.g.style.display !== 'none').length,
+      pool: sprites.length, found,
+      pointers: { walk: sticks.walk.pointer, turn: sticks.turn.pointer }
+    });
+  })();
+  </script>
+</body>
+</html>
