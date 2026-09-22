@@ -77,11 +77,11 @@ The Shadow in the Wings (XXIV, summons, bows twice, dawn sends everything home).
       transposed in portrait whenever that gives bigger squares
 - [x] WebAudio sound (synthesised, mutable), keyboard shortcuts, reduced motion
 - [x] Verification (details below)
-- [ ] Gallery tile, commit, push
+- [x] Gallery tile, commit, push
 
 ## Review
 
-What shipped: a single 234 KB HTML file with no external requests (fonts are system stacks, the
+What shipped: a single 236 KB HTML file with no external requests (fonts are system stacks, the
 paper grain is an inline SVG data URI, and all sound is synthesised with WebAudio). The board is
 seeded (`?night=N`), so every visit cuts a new road unless one is asked for.
 
@@ -96,14 +96,28 @@ Verification, all headless Chromium (Playwright) against the built file:
   | The Long Night | 2/4 | 0/4 | 0/4 | 0/4 (gutters at VIII) |
   No scene ever stalled (every scene either cleared or ended the night). The Clock (VIII), the
   wardrobes (IX) and the oxen (XIII) are the deliberate walls.
-- UI flow with real clicks and keys (21 checks), phone touch flow (7), and save/resume (7) all pass,
-  with no console errors or warnings.
+- UI flow with real clicks and keys (21 checks), phone touch flow (7), save/resume (7) and the
+  code-review regressions (10) all pass, with no console errors or warnings. The UI flow ran six
+  times in a row without a failure once its own placement randomness was removed.
 - Layout at nine viewports (1920×1080 down to 360×640, phone landscape, iPad both ways, DPR 1 and 2):
   no page overflow, the Upgrade button is always reachable without scrolling, and the canvas backing
   store matches CSS size × DPR.
 - Performance: the simulation step costs about 0.06 ms. The renderer was profiled: puppets are baked
   to per-tier sprites with only their moving parts drawn live, and the canvas is capped near 3.6 MP.
   Headless (software raster, no GPU) a crowded late scene renders at about 13 ms at 1440×900.
+
+Independent code review (a subagent that read only the game file) found five real defects. All are fixed and
+covered by `fixes` checks:
+1. Closed dialogs were only transparent, so Tab could still reach and trigger their buttons (for
+   example "Cut a new road" mid-scene soft-locked the game). Closed overlays are now
+   `visibility: hidden`, and the game is `inert` while any dialog is open.
+2. A lost night could become a win if the final boss died later in the same simulation step that
+   guttered the lamp. Dawn can now only begin from a live scene.
+3. Key auto-repeat confirmed a press-twice sale and toggled pause at random. Repeats are ignored.
+4. Resuming a saved night forgot the full refund on puppets bought that intermission. The save
+   now keeps it. Starting a new night also clears the single save slot.
+5. Upgrades and sales still worked during the dawn and gutter sequences. Both are now refused
+   there, and the selection is dropped.
 
 Lessons applied from `tasks/lessons.md`: knockback is a capped impulse with a per-target cooldown;
 buffs are recomputed only when the company changes; static layers are cached offscreen; canvas

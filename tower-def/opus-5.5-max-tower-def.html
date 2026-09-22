@@ -339,11 +339,11 @@ svg.i { width: 18px; height: 18px; fill: currentColor; flex: none; }
   display: grid; place-items: center;
   padding: max(16px, env(safe-area-inset-top)) 16px max(16px, env(safe-area-inset-bottom));
   background: rgba(8,4,2,.64);
-  opacity: 0; pointer-events: none;
-  transition: opacity .35s ease;
+  opacity: 0; pointer-events: none; visibility: hidden;
+  transition: opacity .35s ease, visibility 0s linear .35s;
   overflow-y: auto;
 }
-.overlay.show { opacity: 1; pointer-events: auto; }
+.overlay.show { opacity: 1; pointer-events: auto; visibility: visible; transition: opacity .35s ease, visibility 0s linear 0s; }
 .overlay.title { background: radial-gradient(80% 70% at 50% 45%, rgba(10,5,3,.35), rgba(6,3,2,.86)); }
 .dialog { width: min(600px, 100%); max-height: calc(100dvh - 32px); overflow-y: auto; transform: translateY(8px); transition: transform .35s ease; }
 .overlay.show .dialog, .overlay.show .title-card { transform: none; }
@@ -1322,7 +1322,7 @@ function buildPuppet(type, cx, cy) {
 function upgradeCost(t) { return t.tier < 5 ? TOWERS[t.type].tiers[t.tier].cost : 0; }
 
 function upgradePuppet(t) {
-  if (!t || t.tier >= 5) return false;
+  if (!t || t.tier >= 5 || (G.phase !== 'intermission' && G.phase !== 'scene')) return false;
   const c = upgradeCost(t);
   if (G.coppers < c) return false;
   G.coppers -= c;
@@ -1342,7 +1342,7 @@ function sellValue(t) { return Math.round(t.fresh + (t.spent - t.fresh) * 0.7); 
 
 function sellPuppet(t) {
   const i = G.towers.indexOf(t);
-  if (i < 0) return 0;
+  if (i < 0 || (G.phase !== 'intermission' && G.phase !== 'scene')) return 0;
   const v = sellValue(t);
   G.coppers += v;
   G.towers.splice(i, 1);
@@ -1466,7 +1466,7 @@ function saveRun() {
     v: 1, seed: G.seed, diff: G.diff, scene: G.scene, encore: G.encore,
     lamp: G.lamp, lampMax: G.lampMax, coppers: G.coppers,
     stats: { home: G.stats.home, earned: G.stats.earned, lost: G.stats.lost, placed: G.stats.placed, upgrades: G.stats.upgrades, spent: G.stats.spent, elapsed: performance.now() - G.stats.start },
-    towers: G.towers.map(t => ({ type: t.type, tier: t.tier, cx: t.cx, cy: t.cy, spent: t.spent, targeting: t.targeting, kills: t.kills })),
+    towers: G.towers.map(t => ({ type: t.type, tier: t.tier, cx: t.cx, cy: t.cy, spent: t.spent, fresh: t.fresh, targeting: t.targeting, kills: t.kills })),
   });
 }
 function clearRun() { store.set('run', null); }
@@ -1491,6 +1491,7 @@ function resumeRun(r) {
     const t = createPuppet(s.type, s.cx, s.cy);
     t.tier = clamp(s.tier | 0, 1, 5);
     t.spent = Math.max(0, s.spent | 0);
+    t.fresh = clamp(s.fresh | 0, 0, t.spent);
     t.targeting = ['first', 'last', 'strong', 'near'].includes(s.targeting) ? s.targeting : 'first';
     t.kills = s.kills | 0;
     t.press = 1;
@@ -1529,11 +1530,11 @@ function endScene() {
 }
 
 function beginDawn() {
-  if (G.phase === 'dawn' || G.phase === 'over') return;
+  if (G.phase !== 'scene') return;   // a lamp that has already guttered can't be saved by a late kill
   G.phase = 'dawn';
   G.dawnT = 0;
   G.queue = [];
-  G.placing = G.moving = null;
+  G.placing = G.moving = G.selected = G.ghost = null;
   for (const e of G.enemies) if (e.alive) sendHome(e, null, true);
   UI.onDawn();
   sfx('dawn');
@@ -1543,7 +1544,7 @@ function beginGutter() {
   clearRun();
   G.phase = 'gutter';
   G.gutterT = 0;
-  G.placing = G.moving = null;
+  G.placing = G.moving = G.selected = G.ghost = null;
   UI.onGutter();
   sfx('gutter');
 }
@@ -4083,6 +4084,7 @@ const UI = {
   closeModal(id) {
     $(id).classList.remove('show');
     if (!this.anyModal() && this.resumeAfterModal) { G.paused = false; this.resumeAfterModal = false; }
+    if ($('titleScreen').classList.contains('show')) setTimeout(() => $('btnBegin').focus(), 30);
   },
   closeAll() { for (const id of ['menuModal', 'bookModal', 'endScreen']) $(id).classList.remove('show'); },
   anyModal() { return ['menuModal', 'bookModal', 'endScreen', 'titleScreen'].some(id => $(id).classList.contains('show')); },
@@ -4174,6 +4176,7 @@ const UI = {
       updateUrl();
     });
     $('btnReroll').addEventListener('click', () => {
+      if (G.phase !== 'title') return;
       prepareNight(randomSeed());
       $('nightNo').textContent = G.seed;
       AudioSys.init(); sfx('tick');
@@ -4218,6 +4221,11 @@ const UI = {
       else { prepareNight(randomSeed()); this.showTitle(); }
     });
 
+    const syncInert = () => { $('app').inert = this.anyModal(); };
+    const mo = new MutationObserver(syncInert);
+    for (const id of ['titleScreen', 'menuModal', 'bookModal', 'endScreen']) mo.observe($(id), { attributes: true, attributeFilter: ['class'] });
+    syncInert();
+
     canvas.addEventListener('pointermove', onPointerMove);
     canvas.addEventListener('pointerdown', onPointerDown);
     canvas.addEventListener('pointerleave', e => { if (e.pointerType === 'mouse' && !G.moving) G.ghost = null; });
@@ -4245,6 +4253,7 @@ function randomSeed() { return 1 + Math.floor(Math.random() * 99999); }
 function startPerformance(diff) {
   UI.closeAll();
   $('titleScreen').classList.remove('show');
+  clearRun();
   beginPerformance(diff || UI.titleDiff);
   setSpeed(1);
   UI.onPerformanceStart();
@@ -4291,14 +4300,14 @@ function deselect() {
 function cancelAll() { deselect(); }
 function doUpgrade() {
   const t = G.selected;
-  if (!t) return;
+  if (!t || (G.phase !== 'intermission' && G.phase !== 'scene')) return;
   if (t.tier >= 5) { UI.toast(TOWERS[t.type].name + ' is fully restored.'); return; }
   if (!upgradePuppet(t)) { UI.toast('Need ' + (upgradeCost(t) - G.coppers) + ' more coppers.', true); sfx('nope'); return; }
   UI.renderInspector();
 }
 function doSell() {
   const t = G.selected;
-  if (!t) return;
+  if (!t || (G.phase !== 'intermission' && G.phase !== 'scene')) return;
   sellPuppet(t);
   G.selected = null;
   UI.renderInspector(); UI.refreshCompany();
@@ -4367,6 +4376,7 @@ function onPointerDown(e) {
 
 function onKey(e) {
   if (e.ctrlKey || e.metaKey || e.altKey) return;
+  if (e.repeat) { if (e.key === ' ' || e.code === 'Space') e.preventDefault(); return; }
   const tag = e.target && e.target.tagName;
   if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (e.target && e.target.isContentEditable)) return;
   const k = e.key;
