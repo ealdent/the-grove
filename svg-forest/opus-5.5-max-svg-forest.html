@@ -1,0 +1,2429 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#1d6573">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="description" content="The Upturned Sea: a first-person walk across the dry floor of the world, beneath a sea that hangs overhead. Rendered entirely in SVG.">
+<title>The Upturned Sea</title>
+<style>
+  :root { color-scheme: light; }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden;
+    background: #1d6573;
+    overscroll-behavior: none; touch-action: none;
+    -webkit-user-select: none; user-select: none;
+    -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent;
+    -webkit-text-size-adjust: 100%; text-size-adjust: 100%;
+  }
+  body { position: fixed; inset: 0; }
+  #stage { position: fixed; inset: 0; overflow: hidden; touch-action: none; }
+  #stage > svg { position: absolute; left: 0; top: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+  #view { cursor: grab; }
+  #view.drag { cursor: grabbing; }
+  #veil, #hud, #overlay { pointer-events: none; }
+  #veil { will-change: transform; }
+  #overlay .hit { pointer-events: all; }
+  #overlay .btn { pointer-events: all; cursor: pointer; }
+  svg text { font-family: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, "Times New Roman", serif; }
+  svg text.hand { font-family: "Snell Roundhand", "Segoe Script", "Bradley Hand", "Apple Chancery", "URW Chancery L", cursive; }
+  svg text.ui { font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+
+  /* Twin virtual joysticks (HTML/CSS overlays, per the brief). Hidden until a touch device is seen. */
+  .stick { position: absolute; bottom: calc(14px + env(safe-area-inset-bottom, 0px)); width: 164px; height: 164px;
+           display: none; touch-action: none; z-index: 5; }
+  .stick.l { left: calc(8px + env(safe-area-inset-left, 0px)); }
+  .stick.r { right: calc(8px + env(safe-area-inset-right, 0px)); }
+  body.touch .stick { display: block; }
+  body.intro .stick, body.reading .stick { visibility: hidden; }
+  .stick .ring { position: absolute; left: 18px; top: 18px; width: 128px; height: 128px; border-radius: 50%;
+                 border: 2px solid rgba(234, 248, 243, .5);
+                 background: radial-gradient(circle at 50% 50%, rgba(12, 58, 68, .12), rgba(12, 58, 68, .34) 72%);
+                 box-shadow: inset 0 0 16px rgba(234, 248, 243, .16); transition: border-color .15s; }
+  .stick .knob { position: absolute; left: 50%; top: 50%; width: 58px; height: 58px; margin: -29px 0 0 -29px; border-radius: 50%;
+                 background: radial-gradient(circle at 38% 32%, rgba(255, 255, 255, .96), rgba(214, 238, 232, .86) 55%, rgba(140, 196, 192, .82));
+                 box-shadow: 0 3px 10px rgba(8, 40, 48, .35); will-change: transform; }
+  .stick .lab { position: absolute; left: 0; right: 0; top: 0; text-align: center;
+                font: 600 10px/1 system-ui, -apple-system, sans-serif; letter-spacing: .22em;
+                color: rgba(234, 248, 243, .82); text-shadow: 0 1px 2px rgba(8, 40, 48, .7); }
+  .stick.on .ring { border-color: rgba(255, 255, 255, .9); }
+</style>
+</head>
+<body class="intro">
+<div id="stage">
+  <svg id="view" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="none" role="img" aria-label="The Upturned Sea: first-person view">
+    <defs id="defs"></defs>
+    <g id="scene"></g>
+  </svg>
+  <svg id="veil" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="none" aria-hidden="true"></svg>
+  <svg id="hud" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="none" aria-hidden="true"></svg>
+  <div class="stick l" id="stickL"><div class="ring"></div><div class="knob"></div><div class="lab">WALK</div></div>
+  <div class="stick r" id="stickR"><div class="ring"></div><div class="knob"></div><div class="lab">TURN</div></div>
+  <svg id="overlay" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="none"></svg>
+</div>
+<script>
+'use strict';
+/* =====================================================================
+   THE UPTURNED SEA
+   Three hundred years ago the sea went up. It hangs twenty fathoms over
+   the old seabed, surface facing down, and its ships sail it upside down.
+   You walk the Floor beneath it.
+
+   Everything visible is SVG: gradients, paths and pooled <use> sprites.
+   Engine notes
+   - Camera: yaw + true pitch pinhole projection (not y-shearing), so you
+     can stand under a ship and look up at it.
+   - Floor and ceiling (the sea's underside) are planes. Their line work is
+     projected per frame into a handful of <path>s; distance fog for those
+     comes from screen-space gradients recomputed when pitch changes.
+   - Props are <use> sprites of procedurally drawn symbols. Fog, LOD and
+     outline width reach the symbol through inherited CSS custom
+     properties, so there is one copy of each symbol, not one per fog step.
+   - The world is chunked; chunks load ahead and unload behind, returning
+     their sprite elements to a pool. Painter's order is kept with a
+     minimal-move DOM reconcile each frame.
+   ===================================================================== */
+
+const QS = new URLSearchParams(location.search);
+const NS = 'http://www.w3.org/2000/svg';
+const TAU = Math.PI * 2;
+const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
+const lerp = (a, b, t) => a + (b - a) * t;
+const r1 = v => Math.round(v * 10) / 10;
+const r3 = v => Math.round(v * 1000) / 1000;
+const wrapAngle = a => { a = (a + Math.PI) % TAU; if (a < 0) a += TAU; return a - Math.PI; };
+
+const CFG = {
+  EYE: 1.7,            // eye height (m)
+  CEIL: 36,            // underside of the sea (m), "twenty fathoms"
+  NEAR: 0.3,
+  CHUNK: 32,
+  REGION: 300,
+  WALK: 5.5, RUN: 10.5, STICK_SPEED: 8,
+  TURN: 1.9, STICK_TURN: 2.5,
+  PITCH_MIN: -0.55, PITCH_MAX: 1.0,
+  FAR: 140,            // sprite fog-out distance, scaled by quality
+  CEIL_FAR: 360,
+  RADIUS: 0.42,        // walker collision radius
+  FATHOM: 1.8288,
+};
+
+const HAZE = '#b3ddd3';
+const PAL = {
+  ink: '#153a44', shadow: '#1b4a52', white: '#ffffff',
+  coral: '#f2845c', coralHi: '#ffb996', coralTip: '#ffe4cc',
+  coralP: '#e7738f', coralPHi: '#ffadc0', coralPTip: '#ffe0e8',
+  fan: '#b04a7f', fanDark: '#7a2c59', fanHi: '#e583b1',
+  fanO: '#dc6340', fanODark: '#94361f', fanOHi: '#f7a07a',
+  brain: '#d8b650', brainShade: '#aa8732', brainGroove: '#86661f',
+  brainG: '#9fb35a', brainGShade: '#768a3a', brainGGroove: '#56692a',
+  sponge: '#f2b53b', spongeShade: '#c98627', spongeIn: '#6e3f17',
+  spongeV: '#a86bc2', spongeVShade: '#7b4796', spongeVIn: '#3d1d4f',
+  anem: '#f59bb1', anemTip: '#fff0f3', anemBody: '#d4627d',
+  kelp: '#a9a53e', kelpShade: '#7c7b27', kelpStipe: '#6c6722', kelpFloat: '#cdb755', kelpDark: '#4f4d16',
+  rock: '#8f9d95', rockShade: '#67766f', rockLine: '#51605a', barn: '#e7e1d0', lichen: '#c9b25a',
+  bone: '#f1e9d3', boneShade: '#cabd9b', boneDark: '#5e533f',
+  wood: '#7b5b3e', woodShade: '#533b27', woodDark: '#2c1f15', woodHi: '#a57e55',
+  hull: '#5b3c28', hullHi: '#86613f', hullStripe: '#caa056', hullSub: '#2b6b74',
+  sail: '#f3ebd6', sailShade: '#cbbd9c', mast: '#6a4a2f', rope: '#3b2b1d', flag: '#c63f30', lamp: '#ffd76a',
+  iron: '#3f4f55', ironShade: '#28353b', rust: '#9b5631',
+  jelly: '#f9dbe6', jellyRim: '#d57d9c', jellyInner: '#e5739a', jellyArm: '#f5b7cc', jellyTent: '#f3bfd1',
+  jellyB: '#dcecf7', jellyBRim: '#7fa6c9', jellyBInner: '#8fb3dc', jellyBArm: '#bcd6ee', jellyBTent: '#c7ddf0',
+  glass: '#5fb493', glassHi: '#eafff6', cork: '#a3714a', paper: '#f5edd8',
+  glint: '#fff5c4',
+  pillar: '#7c8c88', pillarShade: '#5c6c6a', pillarLine: '#4c5b59', foam: '#ecf8f4', pillarSub: '#3d7d86',
+};
+
+/* ---------- colour ---------- */
+function hexRGB(h) { const n = parseInt(h.slice(1), 16); return [n >> 16 & 255, n >> 8 & 255, n & 255]; }
+function rgbHex(r, g, b) {
+  return '#' + ((1 << 24) | (clamp(Math.round(r), 0, 255) << 16) | (clamp(Math.round(g), 0, 255) << 8) | clamp(Math.round(b), 0, 255)).toString(16).slice(1);
+}
+function mix(a, b, t) {
+  const A = hexRGB(a), B = hexRGB(b);
+  return rgbHex(A[0] + (B[0] - A[0]) * t, A[1] + (B[1] - A[1]) * t, A[2] + (B[2] - A[2]) * t);
+}
+// Fog: clear up close, thickening toward the haze. Everything fades to HAZE.
+function fogAt(d, far) {
+  const t = (d - 10) / (far - 10);
+  return t <= 0 ? 0 : t >= 1 ? 1 : Math.pow(t, 1.25);
+}
+const FOG_STEPS = 40;
+const FOGTAB = {};
+for (const k in PAL) {
+  FOGTAB[k] = [];
+  for (let i = 0; i <= FOG_STEPS; i++) FOGTAB[k].push(mix(PAL[k], HAZE, i / FOG_STEPS));
+}
+
+/* ---------- hashing & noise ---------- */
+function hash2(x, z, s) {
+  let h = Math.imul(x | 0, 0x27d4eb2d) ^ Math.imul(z | 0, 0x165667b1) ^ Math.imul(s | 0, 0x9e3779b1);
+  h = Math.imul(h ^ (h >>> 15), 0x85ebca6b);
+  h = Math.imul(h ^ (h >>> 13), 0xc2b2ae35);
+  return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+}
+function hashInt(x, z, s) { return (hash2(x, z, s) * 4294967296) >>> 0; }
+function mulberry(seed) {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6D2B79F5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+function vnoise(x, z, s) {
+  const xi = Math.floor(x), zi = Math.floor(z), xf = x - xi, zf = z - zi;
+  const u = xf * xf * (3 - 2 * xf), v = zf * zf * (3 - 2 * zf);
+  const a = hash2(xi, zi, s), b = hash2(xi + 1, zi, s), c = hash2(xi, zi + 1, s), d = hash2(xi + 1, zi + 1, s);
+  return (a + (b - a) * u + (c - a) * v + (a - b - c + d) * u * v) * 2 - 1;
+}
+
+/* ---------- DOM ---------- */
+function mk(tag, attrs, parent) {
+  const e = document.createElementNS(NS, tag);
+  if (attrs) for (const k in attrs) e.setAttribute(k, attrs[k]);
+  if (parent) parent.appendChild(e);
+  return e;
+}
+const $ = id => document.getElementById(id);
+
+/* ---------- state ---------- */
+const SEED = (QS.has('seed') ? parseInt(QS.get('seed'), 10) : (Math.random() * 1e9) | 0) >>> 0;
+const S = {
+  x: 0, z: 0, yaw: 0, pitch: 0.07,
+  vFwd: 0, vYaw: 0, t: 0, frame: 0,
+  bobPhase: 0, bobAmp: 0,
+  walked: 0, letters: 0, taken: new Set(), letterIdx: 0,
+  started: false, reading: false, region: null, seen: new Set(),
+  Q: clamp(parseFloat(QS.get('q')) || 1, 0.5, 1), qLocked: QS.has('q'),
+  footAcc: 0, footSide: 1,
+};
+const IN = { keys: new Set(), sl: { x: 0, y: 0, id: null }, sr: { x: 0, y: 0, id: null }, look: null };
+
+/* =====================================================================
+   PROCEDURAL SYMBOLS
+   Every prop is drawn by a small generator in local units of 10 per metre,
+   base at (0,0), up is -y (hanging things grow toward +y). A generator
+   returns layers {d, f, s, w, ns, fo, so, lod}; f/s name palette keys that
+   become CSS custom properties, so one <g> serves every fog level.
+   lod 0 = close-up detail only, lod 1 = close + mid, undefined = always.
+   ===================================================================== */
+
+const P2 = (x, y) => r1(x) + ' ' + r1(y);
+function polyD(pts, close = true) {
+  let d = 'M' + P2(pts[0][0], pts[0][1]);
+  for (let i = 1; i < pts.length; i++) d += 'L' + P2(pts[i][0], pts[i][1]);
+  return close ? d + 'Z' : d;
+}
+// Catmull-Rom through points, emitted as cubic Beziers.
+function crD(pts, closed) {
+  const n = pts.length;
+  if (n < 3) return polyD(pts, closed);
+  const g = i => closed ? pts[(i + n) % n] : pts[clamp(i, 0, n - 1)];
+  let d = 'M' + P2(pts[0][0], pts[0][1]);
+  const segs = closed ? n : n - 1;
+  for (let i = 0; i < segs; i++) {
+    const p0 = g(i - 1), p1 = g(i), p2 = g(i + 1), p3 = g(i + 2);
+    d += 'C' + P2(p1[0] + (p2[0] - p0[0]) / 6, p1[1] + (p2[1] - p0[1]) / 6) + ' ' +
+         P2(p2[0] - (p3[0] - p1[0]) / 6, p2[1] - (p3[1] - p1[1]) / 6) + ' ' + P2(p2[0], p2[1]);
+  }
+  return closed ? d + 'Z' : d;
+}
+// Dense polyline of the same spline (used to cut shading regions that match the outline).
+function crSample(pts, closed, per = 6) {
+  const n = pts.length, out = [];
+  const g = i => closed ? pts[(i + n) % n] : pts[clamp(i, 0, n - 1)];
+  const segs = closed ? n : n - 1;
+  for (let i = 0; i < segs; i++) {
+    const p0 = g(i - 1), p1 = g(i), p2 = g(i + 1), p3 = g(i + 2);
+    for (let k = 0; k < per; k++) {
+      const t = k / per, t2 = t * t, t3 = t2 * t;
+      out.push([
+        0.5 * (2 * p1[0] + (-p0[0] + p2[0]) * t + (2 * p0[0] - 5 * p1[0] + 4 * p2[0] - p3[0]) * t2 + (-p0[0] + 3 * p1[0] - 3 * p2[0] + p3[0]) * t3),
+        0.5 * (2 * p1[1] + (-p0[1] + p2[1]) * t + (2 * p0[1] - 5 * p1[1] + 4 * p2[1] - p3[1]) * t2 + (-p0[1] + 3 * p1[1] - 3 * p2[1] + p3[1]) * t3)]);
+    }
+  }
+  if (!closed) out.push(pts[n - 1]);
+  return out;
+}
+function clipHalf(poly, a, b, c) { // keep a*x + b*y + c >= 0
+  const out = [];
+  for (let i = 0; i < poly.length; i++) {
+    const p = poly[i], q = poly[(i + 1) % poly.length];
+    const fp = a * p[0] + b * p[1] + c, fq = a * q[0] + b * q[1] + c;
+    if (fp >= 0) out.push(p);
+    if ((fp >= 0) !== (fq >= 0)) { const t = fp / (fp - fq); out.push([p[0] + (q[0] - p[0]) * t, p[1] + (q[1] - p[1]) * t]); }
+  }
+  return out;
+}
+// Shadow side of a shape: everything right of a slanted cut through (x0, 0) and (x1, yTop).
+function shadeRight(poly, x0, x1, yTop) {
+  const out = clipHalf(poly, 1, -(x1 - x0) / yTop, -x0);
+  return out.length > 2 ? polyD(out) : '';
+}
+function circD(x, y, r) { return `M${r1(x - r)} ${r1(y)}a${r1(r)} ${r1(r)} 0 1 0 ${r1(2 * r)} 0a${r1(r)} ${r1(r)} 0 1 0 ${r1(-2 * r)} 0Z`; }
+function ellD(x, y, rx, ry) { return `M${r1(x - rx)} ${r1(y)}a${r1(rx)} ${r1(ry)} 0 1 0 ${r1(2 * rx)} 0a${r1(rx)} ${r1(ry)} 0 1 0 ${r1(-2 * rx)} 0Z`; }
+const shadowL = (rx, ry) => ({ d: ellD(0, 0.6, rx, ry), f: 'shadow', fo: 0.2, lod: 1 });
+function convexHull(pts) {
+  const p = pts.slice().sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+  const cross = (o, a, b) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
+  const lo = [], hi = [];
+  for (const q of p) { while (lo.length >= 2 && cross(lo[lo.length - 2], lo[lo.length - 1], q) <= 0) lo.pop(); lo.push(q); }
+  for (let i = p.length - 1; i >= 0; i--) { const q = p[i]; while (hi.length >= 2 && cross(hi[hi.length - 2], hi[hi.length - 1], q) <= 0) hi.pop(); hi.push(q); }
+  hi.pop(); lo.pop();
+  return lo.concat(hi);
+}
+function bez(p0, p1, p2, p3, t) {
+  const u = 1 - t;
+  return [u * u * u * p0[0] + 3 * u * u * t * p1[0] + 3 * u * t * t * p2[0] + t * t * t * p3[0],
+          u * u * u * p0[1] + 3 * u * u * t * p1[1] + 3 * u * t * t * p2[1] + t * t * t * p3[1]];
+}
+function bezTan(p0, p1, p2, p3, t) {
+  const u = 1 - t;
+  return [3 * u * u * (p1[0] - p0[0]) + 6 * u * t * (p2[0] - p1[0]) + 3 * t * t * (p3[0] - p2[0]),
+          3 * u * u * (p1[1] - p0[1]) + 6 * u * t * (p2[1] - p1[1]) + 3 * t * t * (p3[1] - p2[1])];
+}
+// Variable-width band along a cubic: ribs, necks, masts that taper.
+function bandBez(p0, p1, p2, p3, w0, w1, n = 16) {
+  const L = [], R = [];
+  for (let i = 0; i <= n; i++) {
+    const t = i / n, p = bez(p0, p1, p2, p3, t), d = bezTan(p0, p1, p2, p3, t);
+    const m = Math.hypot(d[0], d[1]) || 1, nx = -d[1] / m, ny = d[0] / m, w = (w0 + (w1 - w0) * t) / 2;
+    L.push([p[0] + nx * w, p[1] + ny * w]);
+    R.push([p[0] - nx * w, p[1] - ny * w]);
+  }
+  return L.concat(R.reverse());
+}
+// Pointed leaf from a base point; ang is measured from straight up (+ = right).
+function leaf(bx, by, ang, len, wid, droop = 0) {
+  const ux = Math.sin(ang), uy = -Math.cos(ang), nx = -uy, ny = ux;
+  const tx = bx + ux * len, ty = by + uy * len + droop;
+  const a1 = [bx + ux * len * 0.28 + nx * wid, by + uy * len * 0.28 + ny * wid];
+  const a2 = [bx + ux * len * 0.78 + nx * wid * 0.7, by + uy * len * 0.78 + ny * wid * 0.7 + droop * 0.6];
+  const b2 = [bx + ux * len * 0.78 - nx * wid * 0.7, by + uy * len * 0.78 - ny * wid * 0.7 + droop * 0.6];
+  const b1 = [bx + ux * len * 0.28 - nx * wid, by + uy * len * 0.28 - ny * wid];
+  const lo = ang >= 0 ? [a1, a2] : [b1, b2];   // the underside takes the shade
+  const mid = [bx + ux * len * 0.5, by + uy * len * 0.5 + droop * 0.3];
+  return {
+    d: `M${P2(bx, by)}C${P2(a1[0], a1[1])} ${P2(a2[0], a2[1])} ${P2(tx, ty)}C${P2(b2[0], b2[1])} ${P2(b1[0], b1[1])} ${P2(bx, by)}Z`,
+    half: `M${P2(bx, by)}C${P2(lo[0][0], lo[0][1])} ${P2(lo[1][0], lo[1][1])} ${P2(tx, ty)}Q${P2(mid[0], mid[1])} ${P2(bx, by)}Z`,
+    rib: `M${P2(bx + ux * 2, by + uy * 2)}Q${P2(mid[0], mid[1])} ${P2(bx + ux * len * 0.82, by + uy * len * 0.82 + droop * 0.55)}`,
+    tip: [tx, ty],
+  };
+}
+// Branch segments [x0,y0,mx,my,x1,y1,thickness] drawn in three passes:
+// ink outline, flesh, and an offset highlight, each bucketed by thickness.
+function branchLayers(segs, fill, hi, lodOutline = 1) {
+  const classes = [[3.2, 99], [1.7, 3.2], [0, 1.7]];
+  const out = [];
+  const pick = ([lo, hi2]) => segs.filter(s => s[6] >= lo && s[6] < hi2);
+  const dOf = (list, ox) => list.map(s => `M${P2(s[0] + ox * s[6], s[1])}Q${P2(s[2] + ox * s[6], s[3])} ${P2(s[4] + ox * s[6], s[5])}`).join('');
+  const avg = list => list.reduce((t, s) => t + s[6], 0) / list.length;
+  const buckets = classes.map(pick).filter(l => l.length);
+  for (const l of buckets) out.push({ d: dOf(l, 0), s: 'ink', w: r1(avg(l) + 1.2), lod: lodOutline });
+  for (const l of buckets) out.push({ d: dOf(l, 0), s: fill, w: r1(avg(l)) });
+  if (hi) for (const l of buckets) out.push({ d: dOf(l, -0.22), s: hi, w: r1(avg(l) * 0.34), lod: 0 });
+  return out;
+}
+function segExtents(segs, pad) {
+  let minY = 0, hw = 0;
+  for (const s of segs) {
+    minY = Math.min(minY, s[1], s[3], s[5]);
+    hw = Math.max(hw, Math.abs(s[0]), Math.abs(s[2]), Math.abs(s[4]));
+  }
+  return { top: minY - pad, hw: hw + pad };
+}
+
+const GEN = {};
+
+/* ---- staghorn coral: antler branches with pale growing tips ---- */
+GEN.stag = (R, v) => {
+  const pal = v === 2 ? ['coralP', 'coralPHi', 'coralPTip'] : ['coral', 'coralHi', 'coralTip'];
+  const segs = [], tips = [];
+  function br(x, y, ang, len, th, dep) {
+    const bend = (R() - 0.5) * 0.6, a1 = ang + bend * 0.5, a2 = ang + bend;
+    const mx = x + Math.sin(a1) * len * 0.55, my = y - Math.cos(a1) * len * 0.55;
+    const ex = x + Math.sin(a2) * len, ey = y - Math.cos(a2) * len;
+    segs.push([x, y, mx, my, ex, ey, th]);
+    if (dep <= 0) { tips.push([ex, ey, th]); return; }
+    const n = R() < 0.3 ? 3 : 2;
+    for (let i = 0; i < n; i++) {
+      const a = (a2 + (i - (n - 1) / 2) * (0.5 + R() * 0.4) + (R() - 0.5) * 0.25) * 0.86;
+      br(ex, ey, a, len * (0.6 + R() * 0.22), th * 0.7, dep - 1);
+    }
+  }
+  const nt = 3 + (R() * 3 | 0);
+  for (let i = 0; i < nt; i++) {
+    const o = i - (nt - 1) / 2;
+    br(o * 3 + (R() - 0.5) * 3, 0, o * 0.42 + (R() - 0.5) * 0.3, 11 + R() * 6, 5, 3);
+  }
+  const ext = segExtents(segs, 3);
+  const layers = [shadowL(ext.hw * 0.7, 3), ...branchLayers(segs, pal[0], pal[1])];
+  layers.push({ d: tips.map(t => circD(t[0], t[1], t[2] * 0.62)).join(''), f: pal[2], lod: 1 });
+  return { layers, top: ext.top, hw: ext.hw, bot: 4 };
+};
+
+/* ---- sea fan: a flat lattice of fine branches ---- */
+GEN.fan = (R, v) => {
+  const pal = v === 1 ? ['fanO', 'fanODark', 'fanOHi'] : ['fan', 'fanDark', 'fanHi'];
+  const segs = [], nodes = [];
+  function br(x, y, ang, len, th, dep) {
+    ang = clamp(ang, -1.2, 1.2);
+    const ex = x + Math.sin(ang) * len, ey = y - Math.cos(ang) * len;
+    const mx = (x + ex) / 2 + (R() - 0.5) * len * 0.22, my = (y + ey) / 2 + (R() - 0.5) * len * 0.12;
+    segs.push([x, y, mx, my, ex, ey, th]);
+    nodes.push([ex, ey, dep]);
+    if (dep <= 0) return;
+    const sp = 0.24 + R() * 0.16;
+    br(ex, ey, ang - sp, len * (0.74 + R() * 0.14), th * 0.72, dep - 1);
+    br(ex, ey, ang + sp, len * (0.74 + R() * 0.14), th * 0.72, dep - 1);
+  }
+  segs.push([0, 0, 0.6, -4, 0, -8, 3.4]);
+  for (let i = 0; i < 3; i++) br(0, -8, (i - 1) * 0.6 + (R() - 0.5) * 0.14, 10 + R() * 3, 2.3, 4);
+  const outer = nodes.filter(n => n[2] <= 2);
+  let links = '';
+  for (let i = 0; i < outer.length; i++) for (let j = i + 1; j < outer.length; j++) {
+    const dx = outer[i][0] - outer[j][0], dy = outer[i][1] - outer[j][1];
+    if (dx * dx + dy * dy < 40 && R() < 0.6) links += `M${P2(outer[i][0], outer[i][1])}L${P2(outer[j][0], outer[j][1])}`;
+  }
+  const hull = convexHull(nodes.map(n => [n[0], n[1]]).concat([[-2.5, -8], [2.5, -8]]));
+  let cx = 0, cy = 0; for (const p of hull) { cx += p[0]; cy += p[1]; } cx /= hull.length; cy /= hull.length;
+  const sil = hull.map(p => [cx + (p[0] - cx) * 0.94, cy + (p[1] - cy) * 0.94]);
+  const ext = segExtents(segs, 3);
+  const layers = [shadowL(ext.hw * 0.45, 2.5),
+    { d: crD(sil, true), f: pal[0], fo: 0.3, lod: 1 },
+    { d: links, s: pal[1], w: 0.5, lod: 0 },
+    ...branchLayers(segs, pal[0], pal[2])];
+  return { layers, top: ext.top, hw: ext.hw, bot: 3 };
+};
+
+/* ---- brain coral: a dome with meandering grooves ---- */
+GEN.brain = (R, v) => {
+  const pal = v === 1 ? ['brainG', 'brainGShade', 'brainGGroove'] : ['brain', 'brainShade', 'brainGroove'];
+  const w = 17 + R() * 7, h = 12 + R() * 6;
+  const pts = [[-w, 0]];
+  for (let i = 1; i < 10; i++) {
+    const a = Math.PI - Math.PI * i / 10, rr = 0.94 + R() * 0.1;
+    pts.push([Math.cos(a) * w * rr, -Math.sin(a) * h * rr]);
+  }
+  pts.push([w, 0]);
+  const outline = crSample(pts, false, 6).concat([[w, 0], [-w, 0]]);
+  const d = crD(pts, false) + 'Z';
+  let grooves = '';
+  for (let k = 1; k <= 7; k++) {
+    const y0 = -h * k / 8.1, hw = w * Math.sqrt(Math.max(0, 1 - (y0 / h) * (y0 / h))) * 0.86, ph = R() * 6;
+    let first = true;
+    for (let x = -hw; x <= hw + 0.1; x += 1.6) {
+      const y = y0 + Math.sin(x * 0.8 + ph) * 0.9 + (R() - 0.5) * 0.45;
+      grooves += (first ? 'M' : 'L') + P2(x, y);
+      first = false;
+    }
+  }
+  return {
+    layers: [shadowL(w * 1.05, 3),
+      { d, f: pal[0] },
+      { d: shadeRight(outline, w * 0.3, w * 0.02, -h), f: pal[1], lod: 1 },
+      { d: grooves, s: pal[2], ns: 1, lod: 1 },
+      { d, s: 'ink', ns: 1 }],
+    top: -h - 2, hw: w + 2, bot: 4,
+  };
+};
+
+/* ---- tube sponges: a cluster of open tubes ---- */
+GEN.sponge = (R, v) => {
+  const pal = v === 1 ? ['spongeV', 'spongeVShade', 'spongeVIn'] : ['sponge', 'spongeShade', 'spongeIn'];
+  const n = 3 + (R() * 3 | 0), tubes = [];
+  for (let i = 0; i < n; i++) {
+    const hh = 18 + R() * 30;
+    tubes.push({ x: (i - (n - 1) / 2) * 7 + (R() - 0.5) * 4, hh, ww: 6 + R() * 4, lean: (R() - 0.5) * 8 });
+  }
+  tubes.sort((a, b) => b.hh - a.hh);
+  const layers = [shadowL(n * 5 + 6, 3)];
+  let top = 0, hw = 0;
+  for (const t of tubes) {
+    const bx = t.x, tx = t.x + t.lean, w0 = t.ww / 2, w1 = t.ww * 0.62;
+    const body = `M${P2(bx - w0, 0)}C${P2(bx - w0 * 1.1, -t.hh * 0.5)} ${P2(tx - w1 * 1.05, -t.hh * 0.8)} ${P2(tx - w1, -t.hh)}L${P2(tx + w1, -t.hh)}C${P2(tx + w1 * 1.05, -t.hh * 0.8)} ${P2(bx + w0 * 1.1, -t.hh * 0.5)} ${P2(bx + w0, 0)}Z`;
+    const shade = `M${P2(bx + w0 * 0.2, 0)}L${P2(tx + w1 * 0.25, -t.hh)}L${P2(tx + w1, -t.hh)}C${P2(tx + w1 * 1.05, -t.hh * 0.8)} ${P2(bx + w0 * 1.1, -t.hh * 0.5)} ${P2(bx + w0, 0)}Z`;
+    layers.push({ d: body, f: pal[0], s: 'ink', ns: 1 });
+    layers.push({ d: shade, f: pal[1], lod: 1 });
+    layers.push({ d: ellD(tx, -t.hh, w1, w1 * 0.36), f: pal[2], s: 'ink', ns: 1, lod: 1 });
+    top = Math.min(top, -t.hh - 3); hw = Math.max(hw, Math.abs(tx) + w1 + 2, Math.abs(bx) + w0 + 2);
+  }
+  let pores = '';
+  for (const t of tubes) for (let k = 0; k < 4; k++) {
+    const u = 0.2 + R() * 0.6, x = t.x + t.lean * u + (R() - 0.5) * t.ww * 0.5;
+    pores += circD(x, -t.hh * u, 0.55);
+  }
+  layers.push({ d: pores, f: pal[2], fo: 0.55, lod: 0 });
+  return { layers, top, hw, bot: 4 };
+};
+
+/* ---- anemone: a soft column with a crown of tentacles ---- */
+GEN.anem = (R) => {
+  const body = 'M-5 0C-6 -5 -4.5 -8 -7 -11L7 -11C4.5 -8 6 -5 5 0Z';
+  let tent = '', tips = '';
+  const n = 22;
+  for (let i = 0; i < n; i++) {
+    const sx = -6.5 + 13 * i / (n - 1), out = sx / 6.5;
+    const ex = sx * 2.4 + (R() - 0.5) * 3, ey = -13 - (1 - Math.abs(out)) * 9 - R() * 5;
+    tent += `M${P2(sx, -11)}Q${P2(sx * 1.6, -17 - R() * 4)} ${P2(ex, ey)}`;
+    tips += circD(ex, ey, 0.9);
+  }
+  return {
+    layers: [shadowL(9, 2.2), { d: body, f: 'anemBody', s: 'ink', ns: 1 },
+      { d: tent, s: 'ink', w: 2.6, lod: 1 }, { d: tent, s: 'anem', w: 1.6 }, { d: tips, f: 'anemTip', lod: 1 }],
+    top: -32, hw: 20, bot: 3,
+  };
+};
+
+/* ---- kelp: a wavering stipe, floats and blades. Tall kelp climbs to the sea. ---- */
+GEN.kelp = (R, v, tall) => {
+  const H = tall ? 294 + R() * 14 : 52 + R() * 78;
+  const A = tall ? 7 : 3, ph = R() * 6, ph2 = R() * 6, n = tall ? 22 : 8;
+  const sp = [];
+  for (let i = 0; i <= n; i++) {
+    const y = -H * i / n, k = Math.min(1, i / 2);
+    sp.push([k * (A * Math.sin(y * 0.018 + ph) + A * 0.5 * Math.sin(y * 0.047 + ph2)), y]);
+  }
+  const stipe = crD(sp, false);
+  let blades = '', shades = '', ribs = '', floats = '';
+  const L0 = tall ? 24 : 15, L1 = tall ? 12 : 8, wid = tall ? 6.5 : 4.5;
+  for (let i = 1; i < n; i++) {
+    const side = i % 2 ? 1 : -1, [bx, by] = sp[i];
+    const lf = leaf(bx, by, side * (0.5 + R() * 0.4), L0 + R() * L1, wid, tall ? 3 : 1.5);
+    blades += lf.d; shades += lf.half; ribs += lf.rib;
+    floats += circD(bx + side * 1.6, by - 2, tall ? 2.2 : 1.5);
+  }
+  const [txp, typ] = sp[n];
+  if (tall) {
+    for (let k = 0; k < 7; k++) {
+      const a = -1.25 + 2.5 * k / 6 + (R() - 0.5) * 0.15;
+      const lf = leaf(txp, typ, a, 30 + R() * 10, 7.5, 5);
+      blades += lf.d; shades += lf.half; ribs += lf.rib;
+    }
+    floats += circD(txp, typ - 3, 3.4);
+  } else {
+    const lf = leaf(txp, typ, (R() - 0.5) * 0.3, 16 + R() * 6, wid, 0);
+    blades += lf.d; shades += lf.half; ribs += lf.rib;
+  }
+  let roots = '';
+  for (let k = 0; k < 7; k++) {
+    const x = (k - 3) * (tall ? 3.4 : 2) + (R() - 0.5) * 2, y = 1 + R() * 1.6;
+    roots += `M0 -1Q${P2(x * 0.5, -2.5)} ${P2(x, y)}`;
+  }
+  const hw = (tall ? 48 : 26) + A;
+  return {
+    layers: [shadowL(tall ? 14 : 8, 2.2),
+      { d: roots, s: 'kelpStipe', w: tall ? 1.8 : 1.3, lod: 1 },
+      { d: stipe, s: 'ink', w: tall ? 3.6 : 2.6, lod: 1 },
+      { d: stipe, s: 'kelpStipe', w: tall ? 2.4 : 1.6 },
+      { d: blades, f: 'kelp', s: 'ink', ns: 1 },
+      { d: shades, f: 'kelpShade', lod: 1 },
+      { d: ribs, s: 'kelpDark', w: 0.6, lod: 0 },
+      { d: floats, f: 'kelpFloat', s: 'ink', ns: 1, lod: 1 }],
+    top: -H - (tall ? 44 : 26), hw, bot: 4, tip: -H,
+  };
+};
+
+/* ---- boulders crusted with barnacles and a tuft of weed ---- */
+GEN.rock = (R) => {
+  const w = 13 + R() * 16, h = 11 + R() * 24;
+  const pts = [[-w, 0]];
+  for (let i = 1; i < 9; i++) {
+    const a = Math.PI - Math.PI * i / 9, rr = 0.8 + R() * 0.32;
+    pts.push([Math.cos(a) * w * rr, -Math.sin(a) * h * rr]);
+  }
+  pts.push([w, 0]);
+  const outline = crSample(pts, false, 6).concat([[w, 0], [-w, 0]]);
+  const d = crD(pts, false) + 'Z';
+  let facets = '', barn = '', barnDot = '', weed = '';
+  for (let k = 0; k < 3; k++) {
+    const x = (R() - 0.3) * w * 0.9, y = -h * (0.3 + R() * 0.5);
+    facets += `M${P2(x, y)}Q${P2(x + 3, y + h * 0.2)} ${P2(x + (R() - 0.2) * 6, y + h * 0.35)}`;
+  }
+  // barnacles grow in clusters of little cones (a centred dot made them read as eyes)
+  const bx0 = (R() - 0.5) * w * 0.9, by0 = -h * (0.2 + R() * 0.4);
+  for (let k = 0; k < 8; k++) {
+    const x = bx0 + (R() - 0.5) * w * 0.7, y = by0 + (R() - 0.5) * h * 0.35, r = 0.7 + R() * 0.8;
+    barn += `M${P2(x - r, y + r * 0.4)}L${P2(x - r * 0.35, y - r * 0.7)}L${P2(x + r * 0.35, y - r * 0.7)}L${P2(x + r, y + r * 0.4)}Z`;
+    barnDot += ellD(x, y - r * 0.62, r * 0.3, r * 0.12);
+  }
+  const tx = pts[5][0];
+  for (let k = 0; k < 5; k++) {
+    const x = tx + (k - 2) * 1.6, y = pts[5][1] + 1;
+    weed += `M${P2(x, y)}Q${P2(x + (R() - 0.5) * 5, y - 5)} ${P2(x + (R() - 0.5) * 7, y - 8 - R() * 5)}`;
+  }
+  return {
+    layers: [shadowL(w * 1.1, 3), { d, f: 'rock' },
+      { d: shadeRight(outline, w * 0.25, -w * 0.05, -h), f: 'rockShade', lod: 1 },
+      { d: facets, s: 'rockLine', w: 0.7, lod: 0 },
+      { d: barn, f: 'barn', lod: 0 }, { d: barnDot, f: 'rockLine', lod: 0 },
+      { d, s: 'ink', ns: 1 },
+      { d: weed, s: 'kelp', w: 1.2, lod: 1 }],
+    top: -h * 1.15 - 16, hw: w * 1.15 + 3, bot: 4,
+  };
+};
+
+function bandPart(p0, p1, p2, p3, w0, w1, t0, t1, n = 14) {
+  const L = [], R = [];
+  for (let i = 0; i <= n; i++) {
+    const t = t0 + (t1 - t0) * i / n, p = bez(p0, p1, p2, p3, t), d = bezTan(p0, p1, p2, p3, t);
+    const m = Math.hypot(d[0], d[1]) || 1, nx = -d[1] / m, ny = d[0] / m, w = (w0 + (w1 - w0) * t) / 2;
+    L.push([p[0] + nx * w, p[1] + ny * w]);
+    R.push([p[0] - nx * w, p[1] - ny * w]);
+  }
+  return L.concat(R.reverse());
+}
+// Clip an open polyline to y <= 0 (above the sand) and emit its visible runs.
+function clipPolyUp(pts) {
+  let d = '', pen = false;
+  for (let i = 0; i < pts.length; i++) {
+    const p = pts[i];
+    if (i > 0) {
+      const q = pts[i - 1];
+      if ((q[1] <= 0) !== (p[1] <= 0)) {
+        const t = q[1] / (q[1] - p[1]), x = q[0] + (p[0] - q[0]) * t;
+        d += (pen ? 'L' : 'M') + P2(x, 0);
+        pen = !pen;
+      }
+    }
+    if (p[1] <= 0) { d += (pen ? 'L' : 'M') + P2(p[0], p[1]); pen = true; } else pen = false;
+  }
+  return d;
+}
+
+/* ---- whale-fall: ribs (arches you can walk through), skull, vertebrae ---- */
+GEN.rib = (R, v) => {
+  const P = sg => [[sg * 48, 0], [sg * 61, -44], [sg * 43, -84], [sg * 6, -92]];
+  const [a0, a1, a2, a3] = P(-1), [b0, b1, b2, b3] = P(1);
+  const left = bandPart(a0, a1, a2, a3, 2.4, 6.4, 0, 1, 18);
+  const right = v === 1 ? bandPart(b0, b1, b2, b3, 2.4, 6.4, 0.42, 1, 12) : bandPart(b0, b1, b2, b3, 2.4, 6.4, 0, 1, 18);
+  let inner = '';
+  for (const [sg, t0] of [[-1, 0.05], [1, v === 1 ? 0.45 : 0.05]]) {
+    const [p0, p1, p2, p3] = P(sg); const pts = [];
+    for (let i = 0; i <= 12; i++) { const t = t0 + (0.95 - t0) * i / 12, p = bez(p0, p1, p2, p3, t); pts.push([p[0] - sg * (1 + 1.6 * t), p[1] + 0.6]); }
+    inner += polyD(pts, false);
+  }
+  let d = polyD(left) + polyD(right);
+  const vert = 'M-9 -86Q-10.5 -97 -3 -99L3 -99Q10.5 -97 9 -86Q0 -83 -9 -86Z' +
+               'M-2.6 -98L-1.2 -114L2.6 -113L3 -98Z M-9 -93L-17 -96L-15.5 -91L-9 -89Z M9 -93L17 -96L15.5 -91L9 -89Z';
+  const layers = [{ d: ellD(-48, 0.5, 9, 1.8) + ellD(48, 0.5, 9, 1.8), f: 'shadow', fo: 0.2, lod: 1 }];
+  if (v === 1) {
+    const piece = bandPart([30, -0.5], [38, -2.5], [52, -2.5], [62, -0.5], 2.4, 3.4, 0, 1, 8);
+    d += polyD(piece);
+  }
+  layers.push({ d, f: 'bone', s: 'ink', ns: 1 }, { d: inner, s: 'boneShade', w: 1.4, lod: 1 },
+              { d: vert, f: 'bone', s: 'ink', ns: 1 }, { d: ellD(0, -92, 4, 2.4), f: 'boneShade', lod: 1 });
+  return { layers, top: -116, hw: 66, bot: 3 };
+};
+
+GEN.skull = () => {
+  const up = [[-68, -4], [-44, -11], [-12, -19], [14, -26], [30, -30], [43, -26], [49, -16], [46, -6], [33, -3], [14, -8], [-20, -5], [-50, -2], [-68, -1.5]];
+  const outline = crSample(up, true, 5);
+  const d = crD(up, true);
+  const jaw = polyD(bandPart([-66, -1], [-40, 1.6], [0, 1.8], [38, -2.2], 2.4, 4.6, 0, 1, 14));
+  const lowShade = clipHalf(outline, 0, 1, 11);
+  return {
+    layers: [shadowL(56, 3.2), { d: jaw, f: 'boneShade', s: 'ink', ns: 1 },
+      { d, f: 'bone' }, { d: lowShade.length > 2 ? polyD(lowShade) : '', f: 'boneShade', lod: 1 },
+      { d: 'M30 -28Q37 -19 45 -12M-10 -18Q-32 -11 -58 -5.5M20 -9Q8 -12 -6 -10', s: 'boneShade', w: 0.9, lod: 0 },
+      { d, s: 'ink', ns: 1 },
+      { d: ellD(22, -17, 4.6, 3.2), f: 'boneDark' }, { d: ellD(4, -21.5, 3, 1.3), f: 'boneDark', lod: 1 }],
+    top: -33, hw: 70, bot: 4,
+  };
+};
+
+GEN.vert = () => ({
+  layers: [shadowL(10, 2),
+    { d: 'M-7 0C-8 -6 -6 -9 0 -9C6 -9 8 -6 7 0Z M-2 -8.6L-1 -17L2 -16L2.2 -8.6Z M-7 -5L-13.5 -7L-12 -3L-7 -2Z M7 -5L13.5 -7L12 -3L7 -2Z', f: 'bone', s: 'ink', ns: 1 },
+    { d: ellD(0, -4.6, 2.6, 1.8), f: 'boneShade', lod: 1 }],
+  top: -19, hw: 16, bot: 3,
+});
+
+/* ---- a wreck that let go during the Turning, bow in the sand ---- */
+GEN.wreck = (R) => {
+  const th = -0.12, ct = Math.cos(th), st = Math.sin(th), sink = 12;
+  const T = p => [p[0] * ct - p[1] * st, p[0] * st + p[1] * ct + sink];
+  const hull0 = [[-114, -34], [-106, -22], [-99, -6], [-86, 8], [-60, 14], [60, 14], [92, 8], [102, -2], [106, -30], [104, -48], [76, -50], [70, -40], [30, -31], [-40, -31], [-70, -39], [-98, -41]];
+  const hullVis = clipHalf(crSample(hull0, true, 4).map(T), 0, -1, 0);
+  const hullD = polyD(hullVis);
+  const shadeP = clipHalf(hullVis, 0, 1, 16);
+  const sheer = x => { const k = [[-100, -40], [-70, -37], [-40, -31], [30, -31], [70, -36], [104, -44]];
+    for (let i = 0; i < k.length - 1; i++) if (x <= k[i + 1][0]) { const t = (x - k[i][0]) / (k[i + 1][0] - k[i][0]); return k[i][1] + (k[i + 1][1] - k[i][1]) * t; }
+    return k[k.length - 1][1]; };
+  let planks = '';
+  for (let k = 1; k <= 5; k++) {
+    const pts = [];
+    for (let x = -96 + k * 3; x <= 100 - k * 2; x += 12) pts.push(T([x, sheer(x) + 7.5 * k]));
+    planks += clipPolyUp(pts);
+  }
+  const hole = [];
+  for (let i = 0; i < 11; i++) { const a = TAU * i / 11, rr = 0.7 + R() * 0.45; hole.push(T([6 + Math.cos(a) * 21 * rr, -13 + Math.sin(a) * 10 * rr])); }
+  let frames = '';
+  for (let x = -8; x <= 22; x += 7.5) frames += clipPolyUp([T([x, -21]), T([x + 1, -4])]);
+  const mast = bandPart([0, -31], [6, -60], [14, -90], [22, -114], 5, 3.6, 0, 1, 6).map(T);
+  const jag = [T([19.8, -113]), T([21, -118]), T([22.5, -114.5]), T([24, -119]), T([24.4, -114])];
+  const yardA = T([-16, -80]), yardB = T([48, -93]);
+  const sailPts = [T([-12, -80.5]), T([44, -92]), T([40, -70]), T([33, -76]), T([28, -64]), T([18, -71]), T([10, -60]), T([2, -69]), T([-8, -62])];
+  const stump = bandPart([-72, -39], [-73, -46], [-75, -53], [-78, -60], 4.2, 3.4, 0, 1, 4).map(T);
+  const bow = [T([-112, -36]), T([-130, -45])];
+  const rudder = polyD([T([100, -6]), T([112, -6]), T([114, -30]), T([104, -30])]);
+  let growth = '', kelp = '', kelpLeaf = '';
+  for (let i = 0; i < 9; i++) { const x = -80 + i * 20 + (R() - 0.5) * 8; const p = T([x, sheer(x) - 1]); growth += circD(p[0], p[1], 1.6 + R() * 1.6); }
+  for (const x0 of [-30, 58]) {
+    const b = T([x0, sheer(x0)]); const pts = [];
+    for (let i = 0; i <= 6; i++) pts.push([b[0] + Math.sin(i * 0.9 + x0) * 2.2, b[1] - i * 6]);
+    kelp += crD(pts, false);
+    for (let i = 1; i <= 6; i++) kelpLeaf += leaf(pts[i][0], pts[i][1], (i % 2 ? 1 : -1) * 0.7, 8, 2.6).d;
+  }
+  const barrel = ellD(132, -6, 7, 6.5), bands = 'M126 -11L138 -11M125 -2L139 -2';
+  const planksLoose = polyD([[-150, -1], [-128, -3], [-127.5, 0], [-150, 0]]) + polyD([[-146, -4], [-132, -9], [-131, -7], [-145, -2]]);
+  return {
+    layers: [shadowL(118, 5),
+      { d: planksLoose + barrel, f: 'wood', s: 'ink', ns: 1 }, { d: bands, s: 'woodDark', w: 0.9, lod: 1 },
+      { d: polyD(mast) + polyD(stump), f: 'wood', s: 'ink', ns: 1 },
+      { d: polyD(jag, false), s: 'ink', w: 0.8, lod: 1 },
+      { d: `M${P2(yardA[0], yardA[1])}L${P2(yardB[0], yardB[1])}`, s: 'woodDark', w: 2.2 },
+      { d: polyD(sailPts), f: 'sail', fo: 0.88, s: 'ink', ns: 1 },
+      { d: polyD(bow, false), s: 'woodDark', w: 2 },
+      { d: rudder, f: 'woodShade', s: 'ink', ns: 1 },
+      { d: hullD, f: 'wood' },
+      { d: shadeP.length > 2 ? polyD(shadeP) : '', f: 'woodShade', lod: 1 },
+      { d: planks, s: 'woodShade', w: 0.9, lod: 1 },
+      { d: polyD(clipHalf(hole, 0, -1, 0)), f: 'woodDark' },
+      { d: frames, s: 'woodHi', w: 1.8, lod: 1 },
+      { d: hullD, s: 'ink', ns: 1 },
+      { d: growth, f: 'coral', lod: 0 },
+      { d: kelp, s: 'kelpStipe', w: 1.3, lod: 1 }, { d: kelpLeaf, f: 'kelp', lod: 1 }],
+    top: -132, hw: 152, bot: 6,
+  };
+};
+
+/* ---- a galleon of the Overwater, hanging keel-up from the surface ---- */
+GEN.shipU = () => {
+  const sub = 'M-104 0C-96 -18 -76 -27 -44 -29L64 -29C86 -27 97 -16 101 0Z M95 -2L106 -2L109 -25L100 -23Z';
+  const hull = polyD([[-104, 0], [101, 0], [104, 20], [107, 46], [70, 48], [64, 30], [18, 27], [-52, 26], [-68, 37], [-98, 36], [-108, 24], [-121, 27], [-112, 10]]);
+  const band = polyD([[-104, 0], [101, 0], [102.5, 8], [-106, 8]]);
+  const wale = polyD([[-107, 10], [103, 10], [103.4, 13.5], [-108, 13.5]]);
+  let ports = '';
+  for (let i = 0; i < 8; i++) { const x = -56 + i * 15; ports += polyD([[x, 16], [x + 5, 16], [x + 5, 21], [x, 21]]); }
+  const stern = polyD([[80, 33], [85, 33], [85, 39], [80, 39]]) + polyD([[89, 33], [94, 33], [94, 39], [89, 39]]) + polyD([[98, 33], [102, 33], [102, 39], [98, 39]]);
+  const masts = 'M-54 36L-54 190M6 27L6 234M62 46L62 170M-108 23L-157 61';
+  const yards = 'M-94 74L-14 74M-84 130L-24 130M-73 172L-35 172M-41 80L53 80M-29 148L41 148M-16 206L28 206M38 66L90 152';
+  const sail = (cx, yt, yb, wt, wb) => `M${P2(cx - wt, yt)}L${P2(cx + wt, yt)}Q${P2(cx + wb + 5, (yt + yb) / 2)} ${P2(cx + wb, yb)}Q${P2(cx, yb + 10)} ${P2(cx - wb, yb)}Q${P2(cx - wb - 5, (yt + yb) / 2)} ${P2(cx - wt, yt)}Z`;
+  const sshade = (cx, yt, yb, wt, wb) => `M${P2(cx + wt * 0.36, yt)}L${P2(cx + wt, yt)}Q${P2(cx + wb + 5, (yt + yb) / 2)} ${P2(cx + wb, yb)}Q${P2(cx + wb * 0.66, yb + 6)} ${P2(cx + wb * 0.36, yb + 4.5)}Z`;
+  const S5 = [[-54, 76, 128, 37, 29], [-54, 132, 170, 28, 17], [6, 82, 146, 44, 34], [6, 150, 204, 33, 21]];
+  let sails = S5.map(s => sail(...s)).join(''), shades = S5.map(s => sshade(...s)).join(''), seams = '';
+  for (const [cx, yt, yb, wt, wb] of S5) for (const f of [-1 / 3, 1 / 3]) seams += `M${P2(cx + wt * f, yt + 2)}Q${P2(cx + wb * f * 1.1, (yt + yb) / 2)} ${P2(cx + wb * f, yb + 3)}`;
+  sails += polyD([[40, 69], [88, 150], [60, 152]]) + polyD([[-150, 58], [-58, 126], [-57, 66]]);
+  const flags = 'M6 232C20 237 34 229 50 236L6 241Z M-54 188C-44 192 -36 187 -26 192L-54 194Z M113 62L131 59L129 71L111 73Z';
+  const rig = 'M6 234L-110 24M6 234L104 44M-54 190L-155 59M62 170L106 46M-40 26L-54 120M-68 36L-54 120M20 27L6 130M-8 26L6 130M72 47L62 120M52 29L62 120M106 46L114 66';
+  return {
+    layers: [{ d: sub, f: 'hullSub', fo: 0.55 },
+      { d: rig, s: 'rope', ns: 1, so: 0.75, lod: 1 },
+      { d: masts, s: 'ink', w: 3.8 }, { d: masts, s: 'mast', w: 2.6 },
+      { d: yards, s: 'mast', w: 1.9 },
+      { d: sails, f: 'sail', s: 'ink', ns: 1 }, { d: shades, f: 'sailShade', lod: 1 }, { d: seams, s: 'sailShade', w: 0.7, lod: 0 },
+      { d: flags, f: 'flag', s: 'ink', ns: 1 },
+      { d: hull, f: 'hull' }, { d: band, f: 'hullHi', lod: 1 }, { d: wale, f: 'hullStripe' },
+      { d: ports, f: 'woodDark', lod: 1 }, { d: stern, f: 'lamp', lod: 1 },
+      { d: hull, s: 'ink', ns: 1 },
+      { d: circD(104.5, 51, 6), f: 'lamp', fo: 0.3, lod: 0 }, { d: circD(104.5, 51, 2.4), f: 'lamp', lod: 1 }],
+    top: -32, hw: 164, bot: 244, tip: 240,
+  };
+};
+
+/* ---- an anchor on its chain, dangling over the sand ---- */
+GEN.anchor = () => {
+  const ring = circD(0, 3.4, 3.2);
+  const shank = 'M-1.8 6.5L1.8 6.5L2.3 30L-2.3 30Z';
+  const stock = 'M-11 8.4L11 8.4L11 11L-11 11Z' + circD(-11.6, 9.7, 1.9) + circD(11.6, 9.7, 1.9);
+  const arms = 'M-14 22Q-12 32.5 0 31.2Q12 32.5 14 22';
+  const flukes = 'M-14 22L-18.8 15.2L-10.2 17.6Z M14 22L18.8 15.2L10.2 17.6Z' + circD(0, 31, 2.5);
+  return {
+    layers: [{ d: ring, s: 'ink', w: 2.9 }, { d: ring, s: 'iron', w: 1.8 },
+      { d: arms, s: 'ink', w: 5 }, { d: arms, s: 'iron', w: 3.6 },
+      { d: shank + stock + flukes, f: 'iron', s: 'ink', ns: 1 },
+      { d: 'M0.2 6.5L1.8 6.5L2.3 30L0.2 30Z', f: 'ironShade', lod: 1 },
+      { d: circD(-0.6, 17, 1) + circD(1, 24, 0.8) + circD(-8, 9.6, 0.9) + circD(9, 26, 1.1), f: 'rust', lod: 0 }],
+    top: -1, hw: 22, bot: 36, tip: 34,
+  };
+};
+
+/* ---- jellyfish that learned to swim in air ---- */
+GEN.jelly = (R, v) => {
+  const k = v === 1 ? 'jellyB' : 'jelly';
+  let bell = 'M-9 0C-9.5 -7 -5.5 -12.5 0 -12.5C5.5 -12.5 9.5 -7 9 0';
+  for (let i = 0; i < 6; i++) bell += `Q${P2(9 - 3 * i - 1.5, 2.3)} ${P2(9 - 3 * (i + 1), 0)}`;
+  bell += 'Z';
+  const inner = ellD(-4.4, -4.6, 1.8, 2.3) + ellD(-1.4, -6, 1.6, 2.2) + ellD(1.4, -6, 1.6, 2.2) + ellD(4.4, -4.6, 1.8, 2.3);
+  let arms = '', tents = '';
+  for (let j = 0; j < 4; j++) {
+    const x0 = -3 + 2 * j, L = 22 + R() * 8, ph = R() * 6, l = [], r = [];
+    for (let y = 0; y <= L; y += 2) { const w = Math.sin(y * 0.38 + ph) * 1.4; l.push([x0 - 0.9 + w, y]); r.push([x0 + 0.9 + w + Math.sin(y * 0.9 + ph) * 0.5, y]); }
+    arms += polyD(l.concat(r.reverse()));
+  }
+  for (let i = 0; i < 9; i++) {
+    const x = -8 + 2 * i, L = 32 + R() * 8, s = (R() - 0.5) * 3;
+    tents += `M${P2(x, 0.5)}Q${P2(x + 2 + s, L * 0.3)} ${P2(x - 0.5, L * 0.55)}T${P2(x + s, L)}`;
+  }
+  return {
+    layers: [{ d: tents, s: k + 'Tent', w: 0.5, so: 0.9, lod: 1 },
+      { d: arms, f: k + 'Arm', fo: 0.72 },
+      { d: bell, f: k, fo: 0.8, s: k + 'Rim', ns: 1 },
+      { d: inner, s: k + 'Inner', w: 0.9, lod: 1 },
+      { d: 'M-6.2 -7Q-4.2 -11 0 -11.4', s: 'white', w: 1.1, so: 0.75, lod: 0 }],
+    top: -14, hw: 13, bot: 42, tip: 40,
+  };
+};
+
+/* ---- a letter in a bottle, fallen from the Overwater ---- */
+GEN.bottle = () => {
+  const rot = -0.24, c = Math.cos(rot), s = Math.sin(rot);
+  const T = p => [p[0] * c - p[1] * s, p[0] * s + p[1] * c - 2.4];
+  const body = [[-10, -2.6], [-9, -4], [3, -4], [5, -2.2], [10, -1.8], [11.2, -2.3], [11.2, 2.3], [10, 1.8], [5, 2.2], [3, 4], [-9, 4], [-10, 2.6]].map(T);
+  return {
+    layers: [{ d: ellD(0, 0.4, 15, 2.6), f: 'shadow', fo: 0.24, lod: 1 },
+      { d: polyD([[-7, -2], [2, -2], [2, 1.6], [-7, 1.6]].map(T)), f: 'paper' },
+      { d: crD(body, true), f: 'glass', fo: 0.78, s: 'ink', ns: 1 },
+      { d: polyD([[11.2, -1.5], [13.8, -1.5], [13.8, 1.5], [11.2, 1.5]].map(T)), f: 'cork', s: 'ink', ns: 1 },
+      { d: polyD([[-8, -2.9], [2.5, -2.9]].map(T), false), s: 'glassHi', w: 0.9, lod: 0 }],
+    top: -9, hw: 17, bot: 4,
+  };
+};
+
+GEN.glint = () => ({
+  layers: [{ d: 'M0 -13L2.4 -2.4L13 0L2.4 2.4L0 13L-2.4 2.4L-13 0L-2.4 -2.4Z', f: 'glint' },
+    { d: 'M-6 -6L-0.8 0L-6 6L0 0.8L6 6L0.8 0L6 -6L0 -0.8Z', f: 'white', fo: 0.8, lod: 0 },
+    { d: circD(0, 0, 2.2), f: 'white' }],
+  top: -14, hw: 14, bot: 14, tip: 13,
+});
+
+/* ---- the Stacks: old islands, now columns that hold up nothing and touch the sea ---- */
+GEN.pillar = (R) => {
+  const H = 360, pts = [];
+  for (let i = 0; i <= 12; i++) { const t = i / 12; pts.push([-(262 - 58 * t) + (R() - 0.5) * 26 + (i % 4 === 2 ? -12 : 0), -H * t]); }
+  const right = [];
+  for (let i = 12; i >= 0; i--) { const t = i / 12; right.push([(262 - 56 * t) + (R() - 0.5) * 26 + (i % 5 === 3 ? 14 : 0), -H * t]); }
+  const all = pts.concat(right);
+  const d = polyD(all);
+  const width = y => { const t = -y / H; return [-(262 - 58 * t) + 10, (262 - 56 * t) - 10]; };
+  let strata = '', cracks = '', ledges = '', kelp = '', coral = '';
+  for (let y = -26; y > -H + 12; y -= 26 + R() * 14) {
+    const [a, b] = width(y); let first = true;
+    for (let x = a; x <= b; x += 22) { strata += (first ? 'M' : 'L') + P2(x, y + Math.sin(x * 0.05 + y) * 3.5); first = false; }
+  }
+  for (let k = 0; k < 6; k++) {
+    let x = (R() - 0.5) * 360, y = -R() * 60; cracks += 'M' + P2(x, y);
+    for (let j = 0; j < 5; j++) { x += (R() - 0.5) * 16; y -= 18 + R() * 20; cracks += 'L' + P2(x, y); }
+  }
+  for (let k = 0; k < 5; k++) {
+    const y = -60 - R() * 260, [a, b] = width(y), x = a + 30 + R() * (b - a - 60);
+    ledges += `M${P2(x - 24, y)}L${P2(x + 24, y)}`;
+    for (let j = 0; j < 4; j++) kelp += leaf(x - 16 + j * 10, y, (R() - 0.5) * 0.9, 16 + R() * 12, 3.2).d;
+    for (let j = 0; j < 5; j++) coral += circD(x + (R() - 0.5) * 50, y - 2 - R() * 5, 2 + R() * 2.5);
+  }
+  const outline = all.slice();
+  let foam = `M${P2(-214, -H)}`;
+  for (let x = -214; x < 214; x += 16) foam += `Q${P2(x + 8, -H + 9)} ${P2(x + 16, -H)}`;
+  foam += `L${P2(214, -H - 6)}L${P2(-214, -H - 6)}Z`;
+  return {
+    layers: [{ d: 'M-196 -360L-182 -404L182 -404L198 -360Z', f: 'pillarSub', fo: 0.5 },
+      { d, f: 'pillar' },
+      { d: shadeRight(outline, 90, 70, -H), f: 'pillarShade', lod: 1 },
+      { d: strata, s: 'pillarLine', w: 1.4, lod: 1 },
+      { d: cracks, s: 'pillarLine', w: 1.1, lod: 0 },
+      { d: ledges, s: 'ink', w: 1.6, lod: 0 }, { d: kelp, f: 'kelp', lod: 0 }, { d: coral, f: 'coral', lod: 0 },
+      { d, s: 'ink', ns: 1 },
+      { d: foam, f: 'foam', fo: 0.9 }],
+    top: -410, hw: 280, bot: 6, tip: -H,
+  };
+};
+
+/* =====================================================================
+   SYMBOL REGISTRY — one <g> per variant; fog arrives via CSS variables
+   ===================================================================== */
+const SYM = {};
+const VARIANTS = [
+  ['stag', 3], ['fan', 2], ['brain', 2], ['sponge', 2], ['anem', 1],
+  ['kelpS', 3, (R, v) => GEN.kelp(R, v, false)], ['kelpT', 3, (R, v) => GEN.kelp(R, v, true)],
+  ['rock', 3], ['rib', 2], ['skull', 1], ['vert', 1], ['wreck', 1], ['shipU', 1], ['anchor', 1],
+  ['jelly', 2], ['bottle', 1], ['glint', 1], ['pillar', 2],
+];
+function layerMarkup(l) {
+  let st = l.f ? `fill:var(--${l.f})` : 'fill:none';
+  if (l.s) st += `;stroke:var(--${l.s});stroke-width:${l.ns ? 'var(--ow)' : l.w}`;
+  if (l.fo != null) st += `;fill-opacity:${l.fo}`;
+  if (l.so != null) st += `;stroke-opacity:${l.so}`;
+  if (l.lod === 0) st += ';display:var(--d0,inline)';
+  else if (l.lod === 1) st += ';display:var(--d1,inline)';
+  return `<path d="${l.d}" style="${st}"${l.ns ? ' vector-effect="non-scaling-stroke"' : ''}/>`;
+}
+function buildSymbols(defs) {
+  let html = '';
+  for (const [name, n, fn] of VARIANTS) for (let v = 0; v < n; v++) {
+    const R = mulberry(hashInt(v * 7 + 3, name.charCodeAt(0) * 131 + name.length, 9001 + name.charCodeAt(name.length - 1)));
+    const g = (fn || GEN[name])(R, v);
+    const id = name + v, keys = new Set();
+    let body = '';
+    for (const l of g.layers) {
+      if (!l.d) continue;
+      if (l.f) keys.add(l.f);
+      if (l.s) keys.add(l.s);
+      body += layerMarkup(l);
+    }
+    SYM[id] = { id, top: g.top, bot: g.bot, hw: g.hw, tip: g.tip != null ? g.tip : g.top, keys: [...keys], cache: [] };
+    html += `<g id="s_${id}" stroke-linecap="round" stroke-linejoin="round">${body}</g>`;
+  }
+  defs.insertAdjacentHTML('beforeend', html);
+}
+// Style string for a symbol at a fog step: palette colours pre-mixed toward the haze,
+// outline width, and the two LOD switches. Cached per (symbol, step).
+function styleFor(sym, lv) {
+  let s = sym.cache[lv];
+  if (s) return s;
+  const f = lv / FOG_STEPS;
+  s = '';
+  for (const k of sym.keys) s += `--${k}:${FOGTAB[k][lv]};`;
+  s += `--ow:${r1(1.3 - 0.5 * f)}px;--d0:${f < 0.09 ? 'inline' : 'none'};--d1:${f < 0.34 ? 'inline' : 'none'}`;
+  return (sym.cache[lv] = s);
+}
+
+/* =====================================================================
+   WORLD — warped Voronoi regions, chunked props, specials, landmarks
+   ===================================================================== */
+const NAMES = {
+  reef: { a: ['Staghorn', 'Vermilion', 'Candlefan', 'Saffron', 'Whispering', 'Lantern', 'Rosewater', 'Gilded', 'Tangerine', 'Brightwork', 'Pinkwater', 'Anemone', 'Blushing', 'Honeycomb', 'Marigold', 'Kingfisher'],
+          n: ['Reach', 'Gardens', 'Terraces', 'Cathedral', 'Hollow', 'Shelves', 'Maze', 'Orchard', 'Bazaar', 'Bank', 'Arcade', 'Galleries', 'Parterre'], sub: 'a coral garden' },
+  kelp: { a: ['Swaying', 'Drowned-Bell', 'Long', 'Gloaming', 'Hushed', "Rope-Maker's", 'Lanternless', 'Tall', 'Green Chapel', 'Knocking', 'Undertow', 'Brine-Green', 'Hanging', 'Old Rope', 'Lampblack'],
+          n: ['Kelpwood', 'Holt', 'Weald', 'Stipes', 'Tangle', 'Canopy', 'Colonnade', 'Nave', 'Aisles', 'Thicket'], sub: 'a kelpwood' },
+  flats: { a: ['White', 'Bone', 'Salt', 'Ripple', 'Glass', 'Anchorfall', 'Silent', 'Bleached', 'Pale', 'Keelshadow', 'Gull-less', 'Ashen', 'Moon-White', 'Tidemark', 'Wide'],
+           n: ['Barrens', 'Flats', 'Sands', 'Strand', 'Expanse', 'Reaches', 'Plain', 'Field', 'Levels', 'Shoals', 'Pans'], sub: 'salt barrens' },
+};
+const REGS = new Map();
+function regionCell(i, j) {
+  const k = i + ',' + j;
+  let r = REGS.get(k);
+  if (r) return r;
+  const R = CFG.REGION, h = hash2(i, j, SEED ^ 13);
+  r = { i, j, key: k, x: (i + 0.2 + 0.6 * hash2(i, j, SEED ^ 11)) * R, z: (j + 0.2 + 0.6 * hash2(i, j, SEED ^ 12)) * R,
+        type: h < 0.37 ? 'reef' : h < 0.7 ? 'kelp' : 'flats' };
+  if (i === 0 && j === 0) { r.x = 0; r.z = 20; r.type = 'flats'; }
+  if (i === 0 && j === 0) r.name = 'The Whalefall Flats';
+  else {
+    const N = NAMES[r.type];
+    r.name = (hash2(i, j, SEED ^ 33) < 0.7 ? 'The ' : '') + N.a[hash2(i, j, SEED ^ 31) * N.a.length | 0] + ' ' + N.n[hash2(i, j, SEED ^ 32) * N.n.length | 0];
+  }
+  r.sub = NAMES[r.type].sub;
+  REGS.set(k, r);
+  return r;
+}
+function regionAt(x, z) {
+  const damp = Math.min(1, Math.hypot(x, z) / 160);
+  const wx = x + 55 * damp * vnoise(x * 0.005, z * 0.005, SEED ^ 21);
+  const wz = z + 55 * damp * vnoise(x * 0.005 + 9.1, z * 0.005 - 4.7, SEED ^ 22);
+  const i0 = Math.floor(wx / CFG.REGION), j0 = Math.floor(wz / CFG.REGION);
+  let best = null, bd = Infinity;
+  for (let di = -1; di <= 1; di++) for (let dj = -1; dj <= 1; dj++) {
+    const r = regionCell(i0 + di, j0 + dj), dx = r.x - wx, dz = r.z - wz, d = dx * dx + dz * dz;
+    if (d < bd) { bd = d; best = r; }
+  }
+  return best;
+}
+
+function makeSprite(id, x, z, o = {}) {
+  return {
+    sym: SYM[id], x, z, y: o.y || 0, sc: o.sc || 1, fx: o.fx || 1,
+    kind: o.kind || 0,                 // 0 stands on the floor, 1 hangs from the sea, 2 floats
+    axis: o.axis || 0, axisMode: o.axisMode || 0, cmpMin: o.cmpMin || 0.3,
+    sway: o.sway || 0, ph: o.ph || 0, fogMul: o.fogMul || 1, minPx: o.minPx || 0,
+    anim: o.anim || null, bias: o.bias || 0, pulseX: 1, pulseY: 1,
+    hx: o.hx, hz: o.hz, hy: o.hy, len: o.len, top: o.top,
+    el: null, lv: -1, stamp: -1, key: 0, path: !!o.path, draw: o.draw || null,
+  };
+}
+
+// Handcrafted landing so the first view has a story in it.
+const SPECIALS = [
+  { kind: 'bottle', x: 2.2, z: 8.5, id: 'first' },
+  { kind: 'whale', x: -7.5, z: 31, ang: 0.16 },
+  { kind: 'ship', x: 13, z: 60, ang: 1.9 },
+  { kind: 'ship', x: -46, z: 118, ang: 0.4 },
+  { kind: 'wreck', x: 38, z: 96, ang: -0.9 },
+];
+
+const CH = new Map();
+const ckey = (i, j) => i + ',' + j;
+function genChunk(ci, cj) {
+  const C = CFG.CHUNK, x0 = ci * C, z0 = cj * C, R = mulberry(hashInt(ci, cj, SEED));
+  const ch = { ci, cj, key: ckey(ci, cj), cx: x0 + C / 2, cz: z0 + C / 2, sprites: [], solids: [], decals: [], bottles: [] };
+  const add = (id, x, z, o = {}) => {
+    const s = makeSprite(id, x, z, o);
+    ch.sprites.push(s);
+    if (o.solid) ch.solids.push({ x, z, r: o.solid * (o.sc || 1) });
+    return s;
+  };
+  const fxr = () => R() < 0.5 ? -1 : 1;
+  for (let gx = 0; gx < 8; gx++) for (let gz = 0; gz < 8; gz++) {
+    const x = x0 + (gx + 0.15 + 0.7 * R()) * 4, z = z0 + (gz + 0.15 + 0.7 * R()) * 4;
+    const roll = R(), r2 = R(), r3 = R(), r5 = R(), fx = fxr();
+    const type = regionAt(x, z).type;
+    // decals first so the landing still gets its sand texture
+    if (r5 < (type === 'flats' ? 0.62 : 0.24)) ch.decals.push({ t: 0, x, z, a: 0.5 + (r2 - 0.5) * 0.5, s: 0.8 + r3 * 0.6 });
+    else if (r5 > (type === 'reef' ? 0.7 : 0.9)) ch.decals.push({ t: 1 + (r3 * 3 | 0), x: x + 1.3, z: z - 1.1, a: r2 * TAU, s: 0.7 + r2 * 0.7 });
+    if (x * x + z * z < 110) continue;
+    const p = roll / (0.5 + 1.0 * (0.5 + 0.5 * vnoise(x * 0.045, z * 0.045, SEED ^ 41)));
+    const sw = { sway: 0.05, ph: r3 * TAU };
+    if (type === 'reef') {
+      if (p < 0.055) add('stag' + (r2 * 3 | 0), x, z, { sc: 0.8 + r3 * 0.6, fx, solid: 1.1 });
+      else if (p < 0.095) add('fan' + (r2 * 2 | 0), x, z, { sc: 0.8 + r3 * 0.5, fx, solid: 0.6, sway: 0.015, ph: r3 * TAU });
+      else if (p < 0.125) add('brain' + (r2 * 2 | 0), x, z, { sc: 0.8 + r3 * 0.6, fx, solid: 1.7 });
+      else if (p < 0.158) add('sponge' + (r2 * 2 | 0), x, z, { sc: 0.8 + r3 * 0.5, fx, solid: 0.8 });
+      else if (p < 0.184) add('anem0', x, z, { sc: 0.8 + r3 * 0.6, fx });
+      else if (p < 0.2) add('rock' + (r2 * 3 | 0), x, z, { sc: 0.7 + r3 * 0.6, fx, solid: 1.5 });
+      else if (p < 0.212) add('kelpS' + (r2 * 3 | 0), x, z, { sc: 0.8 + r3 * 0.4, fx, ...sw });
+    } else if (type === 'kelp') {
+      if (p < 0.058) add('kelpT' + (r2 * 3 | 0), x, z, { sc: 0.95 + r3 * 0.05, fx, sway: 0.028, ph: r3 * TAU, solid: 0.35 });
+      else if (p < 0.13) add('kelpS' + (r2 * 3 | 0), x, z, { sc: 0.8 + r3 * 0.5, fx, ...sw });
+      else if (p < 0.143) add('rock' + (r2 * 3 | 0), x, z, { sc: 0.6 + r3 * 0.6, fx, solid: 1.3 });
+      else if (p < 0.152) add('fan' + (r2 * 2 | 0), x, z, { sc: 0.7 + r3 * 0.4, fx, solid: 0.5 });
+      else if (p < 0.16) add('anem0', x, z, { sc: 0.7 + r3 * 0.5, fx });
+    } else {
+      if (p < 0.009) add('rock' + (r2 * 3 | 0), x, z, { sc: 0.5 + r3 * 0.8, fx, solid: 1.3 });
+      else if (p < 0.018) add('sponge' + (r2 * 2 | 0), x, z, { sc: 0.6 + r3 * 0.4, fx, solid: 0.6 });
+      else if (p < 0.025) add('kelpS' + (r2 * 3 | 0), x, z, { sc: 0.6 + r3 * 0.4, fx, ...sw });
+      else if (p < 0.03) add('anem0', x, z, { sc: 0.7 + r3 * 0.5, fx });
+    }
+  }
+  const home = regionAt(ch.cx, ch.cz).type;
+  const far = ch.cx * ch.cx + ch.cz * ch.cz > 200 * 200;   // the landing is hand-placed
+  const sx = x0 + 6 + R() * (C - 12), sz = z0 + 6 + R() * (C - 12), sa = R() * TAU;
+  const h1 = R(), h2 = R(), h3 = R(), h4 = R(), h5 = R();
+  if (far && h1 < (home === 'flats' ? 0.05 : 0.012)) addWhaleFall(ch, add, R, sx, sz, sa);
+  else if (far && h2 < (home === 'kelp' ? 0.008 : 0.028)) addWreck(ch, add, sx, sz, sa);
+  if (far && h3 < 0.055) addAnchoredShip(ch, add, R, x0 + R() * C, z0 + R() * C, R() * TAU);
+  if (h4 < (home === 'flats' ? 0.075 : 0.045)) addBottle(ch, add, R, x0 + 4 + R() * (C - 8), z0 + 4 + R() * (C - 8), 'b' + ch.key);
+  if (h5 < (home === 'kelp' ? 0.3 : 0.09)) addJellies(ch, add, R);
+  for (const sp of SPECIALS) {
+    if (Math.floor(sp.x / C) !== ci || Math.floor(sp.z / C) !== cj) continue;
+    if (sp.kind === 'bottle') addBottle(ch, add, R, sp.x, sp.z, sp.id);
+    else if (sp.kind === 'whale') addWhaleFall(ch, add, R, sp.x, sp.z, sp.ang);
+    else if (sp.kind === 'ship') addAnchoredShip(ch, add, R, sp.x, sp.z, sp.ang);
+    else if (sp.kind === 'wreck') addWreck(ch, add, sp.x, sp.z, sp.ang);
+  }
+  return ch;
+}
+
+function addWhaleFall(ch, add, R, x, z, ang) {
+  const dx = Math.sin(ang), dz = Math.cos(ang), n = 8 + (R() * 3 | 0);
+  for (let i = 0; i < n; i++) {
+    const u = i / (n - 1), t = (u - 0.45) * 16;
+    add('rib' + (R() < 0.22 ? 1 : 0), x + dx * t, z + dz * t, { sc: 0.55 + 0.45 * Math.sin(Math.PI * (0.12 + 0.8 * u)), axis: ang, axisMode: 2, cmpMin: 0.09 });
+  }
+  add('skull0', x + dx * 11.4, z + dz * 11.4, { sc: 1.12, axis: ang, axisMode: 1, cmpMin: 0.34, solid: 2.2 });
+  for (let i = 0; i < 6; i++) {
+    const t = -8.6 - i * 1.5;
+    add('vert0', x + dx * t + (R() - 0.5) * 0.7, z + dz * t + (R() - 0.5) * 0.7, { sc: 0.95 - i * 0.09, fx: R() < 0.5 ? -1 : 1 });
+  }
+  const life = ['stag0', 'stag2', 'sponge0', 'anem0', 'fan0', 'brain1', 'sponge1'];
+  for (let i = 0; i < 7; i++) {
+    const a = R() * TAU, r = 6 + R() * 7, id = life[R() * life.length | 0];
+    add(id, x + Math.cos(a) * r, z + Math.sin(a) * r, { sc: 0.55 + R() * 0.45, fx: R() < 0.5 ? -1 : 1, solid: 0.8 });
+  }
+}
+function addWreck(ch, add, x, z, ang) {
+  const dx = Math.sin(ang), dz = Math.cos(ang);
+  add('wreck0', x, z, { sc: 1, axis: ang, axisMode: 1, cmpMin: 0.32 });
+  for (const t of [-9, -4.5, 0, 4.5, 9]) ch.solids.push({ x: x + dx * t, z: z + dz * t, r: 2.6 });
+}
+function addAnchoredShip(ch, add, R, x, z, ang) {
+  const sc = 0.92 + R() * 0.2;
+  add('shipU0', x, z, { y: CFG.CEIL, kind: 1, sc, axis: ang, axisMode: 1, cmpMin: 0.3, fogMul: 0.8, sway: 0.01, ph: R() * TAU });
+  const bx = x + Math.sin(ang) * 11 * sc, bz = z + Math.cos(ang) * 11 * sc;
+  const ringY = 5.6 + R() * 2.6;
+  const anc = add('anchor0', bx, bz, { y: ringY, kind: 1, sc: 1.15, fogMul: 0.9, hx: bx, hz: bz, ph: R() * TAU, anim: anchorAnim });
+  const chain = makeSprite('anchor0', bx, bz, { path: true, draw: drawChain, top: CFG.CEIL - 0.4, bias: 0.02 });
+  chain.anc = anc;
+  ch.sprites.push(chain);
+}
+function anchorAnim(s, t) {
+  s.x = s.hx + Math.sin(t * 0.37 + s.ph) * 0.8;
+  s.z = s.hz + Math.cos(t * 0.29 + s.ph) * 0.6;
+}
+function addBottle(ch, add, R, x, z, id) {
+  // Consume the random numbers first: a taken bottle must not shift the rest of the chunk.
+  const fx = R() < 0.5 ? -1 : 1, ph1 = R() * TAU, ph2 = R() * TAU;
+  if (S.taken.has(id)) return;
+  const b = { id, x, z, sprites: [] };
+  // fogMul 0.75 keeps glint and beacon inside the streamed radius (CHUNK * R) at any quality.
+  b.sprites.push(add('bottle0', x, z, { sc: 0.44, fx }));
+  b.sprites.push(add('glint0', x, z, { y: 0.5, kind: 2, sc: 0.12, minPx: 7, fogMul: 0.75, anim: glintAnim, ph: ph1 }));
+  const sh = makeSprite('glint0', x, z, { path: true, draw: drawShaft, fogMul: 0.75 });
+  sh.w = 0.95; sh.alpha = 0.46; sh.beacon = true; sh.ph = ph2;
+  b.sprites.push(sh);
+  ch.sprites.push(sh);
+  ch.bottles.push(b);
+}
+function glintAnim(s, t) {
+  const p = Math.sin(t * 2.3 + s.ph);
+  s.pulseX = s.pulseY = 0.72 + 0.4 * p * p;
+  s.y = 0.5 + 0.1 * Math.sin(t * 1.1 + s.ph);
+}
+function addJellies(ch, add, R) {
+  const n = 2 + (R() * 3 | 0), hx = ch.cx + (R() - 0.5) * 18, hz = ch.cz + (R() - 0.5) * 18, v = R() < 0.6 ? 0 : 1;
+  for (let i = 0; i < n; i++) {
+    const hy = 3.5 + R() * 13;
+    add('jelly' + v, hx, hz, { kind: 2, sc: 0.75 + R() * 0.7, y: hy, hy, hx: hx + (R() - 0.5) * 16, hz: hz + (R() - 0.5) * 16, ph: R() * TAU, anim: jellyAnim, fogMul: 1.1 });
+  }
+}
+function jellyAnim(s, t) {
+  const p = Math.sin(t * 2.1 + s.ph);
+  s.x = s.hx + 5 * Math.sin(t * 0.05 + s.ph);
+  s.z = s.hz + 5 * Math.cos(t * 0.043 + s.ph * 1.3);
+  s.y = s.hy + 1.3 * Math.sin(t * 0.23 + s.ph) + 0.28 * p;
+  s.pulseX = 1 + 0.1 * p;
+  s.pulseY = 1 - 0.08 * p;
+}
+
+/* ---- the Stacks: rare landmark columns on a coarse grid, visible from far away ---- */
+const PILLARS = new Map();
+const PCELL = 560;
+function updatePillars() {
+  const ci = Math.floor(S.x / PCELL), cj = Math.floor(S.z / PCELL);
+  for (let di = -2; di <= 2; di++) for (let dj = -2; dj <= 2; dj++) {
+    const i = ci + di, j = cj + dj, k = i + ',' + j;
+    if (PILLARS.has(k)) continue;
+    let p = null;
+    if (i === 0 && j === 0) p = { x: 70, z: 430 };
+    else if (hash2(i, j, SEED ^ 51) < 0.5) p = { x: (i + 0.2 + 0.6 * hash2(i, j, SEED ^ 52)) * PCELL, z: (j + 0.2 + 0.6 * hash2(i, j, SEED ^ 53)) * PCELL };
+    if (p && Math.hypot(p.x, p.z) < 250 && !(i === 0 && j === 0)) p = null;
+    if (p) p.s = makeSprite('pillar' + (hash2(i, j, SEED ^ 54) < 0.5 ? 0 : 1), p.x, p.z, { fogMul: 0.3, fx: hash2(i, j, SEED ^ 55) < 0.5 ? -1 : 1 });
+    PILLARS.set(k, p);
+  }
+  for (const [k, p] of PILLARS) {
+    const [i, j] = k.split(',').map(Number);
+    if (Math.abs(i - ci) > 3 || Math.abs(j - cj) > 3) { if (p) releaseSprite(p.s); PILLARS.delete(k); }
+  }
+}
+
+/* ---- chunk streaming: generate ahead, release behind ---- */
+let chunkCenter = '';
+const genQueue = [];
+function streamChunks(all) {
+  const C = CFG.CHUNK, pci = Math.floor(S.x / C), pcj = Math.floor(S.z / C);
+  const R = Math.ceil((CFG.FAR * S.Q + 30) / C);
+  const k = pci + ',' + pcj + ',' + R;
+  if (k !== chunkCenter) {
+    chunkCenter = k;
+    genQueue.length = 0;
+    for (let di = -R; di <= R; di++) for (let dj = -R; dj <= R; dj++) {
+      const kk = ckey(pci + di, pcj + dj);
+      if (!CH.has(kk)) genQueue.push([pci + di, pcj + dj, di * di + dj * dj]);
+    }
+    genQueue.sort((a, b) => b[2] - a[2]);   // nearest last, popped first
+    for (const [kk, ch] of CH) if (Math.abs(ch.ci - pci) > R + 1 || Math.abs(ch.cj - pcj) > R + 1) {
+      for (const s of ch.sprites) releaseSprite(s);
+      CH.delete(kk);
+    }
+    updatePillars();
+  }
+  // Near chunks are generated at once; the far ring trickles in a few per frame.
+  let budget = all ? 1e9 : 3;
+  while (genQueue.length) {
+    const top = genQueue[genQueue.length - 1];
+    if (budget <= 0 && top[2] > 2) break;
+    genQueue.pop();
+    budget--;
+    const kk = ckey(top[0], top[1]);
+    if (!CH.has(kk)) CH.set(kk, genChunk(top[0], top[1]));
+  }
+}
+function solidsNear(x, z, out) {
+  out.length = 0;
+  const C = CFG.CHUNK, ci = Math.floor(x / C), cj = Math.floor(z / C);
+  for (let di = -1; di <= 1; di++) for (let dj = -1; dj <= 1; dj++) {
+    const ch = CH.get(ckey(ci + di, cj + dj));
+    if (ch) for (const s of ch.solids) out.push(s);
+  }
+  for (const p of PILLARS.values()) if (p) out.push({ x: p.x, z: p.z, r: 24 });
+  return out;
+}
+
+/* =====================================================================
+   CAMERA & PROJECTION
+   World: x east, z north, y up. yaw 0 looks north, + turns right.
+   Camera space: X right, Z forward (yaw only), then pitch gives zc/yc.
+   ===================================================================== */
+const cam = { x: 0, y: CFG.EYE, z: 0, cy: 1, sy: 0, cp: 1, sp: 0, F: 800, CX: 400, CY: 300, W: 800, H: 600, hy: 300, tanH: 1 };
+let PX = 0, PY = 0, PZC = 0, PZ = 0;
+function proj(x, y, z) {
+  const dx = x - cam.x, dz = z - cam.z, Y = y - cam.y;
+  const X = dx * cam.cy - dz * cam.sy;
+  const Z = dx * cam.sy + dz * cam.cy;
+  const zc = Z * cam.cp + Y * cam.sp;
+  PZ = Z; PZC = zc;
+  if (zc < CFG.NEAR) return false;
+  const k = cam.F / zc;
+  PX = cam.CX + X * k;
+  PY = cam.CY - (Y * cam.cp - Z * cam.sp) * k;
+  return true;
+}
+// A segment lying on a horizontal plane at height y, clipped to the near plane.
+function seg(ax, az, bx, bz, y) {
+  const Y = y - cam.y;
+  let dx = ax - cam.x, dz = az - cam.z;
+  let Xa = dx * cam.cy - dz * cam.sy, Za = dx * cam.sy + dz * cam.cy;
+  dx = bx - cam.x; dz = bz - cam.z;
+  let Xb = dx * cam.cy - dz * cam.sy, Zb = dx * cam.sy + dz * cam.cy;
+  const ys = Y * cam.sp, N = CFG.NEAR;
+  let za = Za * cam.cp + ys, zb = Zb * cam.cp + ys;
+  if (za < N && zb < N) return '';
+  if (za < N) { const t = (N - za) / (zb - za); Xa += (Xb - Xa) * t; Za += (Zb - Za) * t; za = N; }
+  else if (zb < N) { const t = (N - zb) / (za - zb); Xb += (Xa - Xb) * t; Zb += (Za - Zb) * t; zb = N; }
+  const yc = Y * cam.cp, ka = cam.F / za, kb = cam.F / zb;
+  const x1 = cam.CX + Xa * ka, y1 = cam.CY - (yc - Za * cam.sp) * ka;
+  const x2 = cam.CX + Xb * kb, y2 = cam.CY - (yc - Zb * cam.sp) * kb;
+  const W = cam.W + 40, H = cam.H + 40;
+  if ((x1 < -40 && x2 < -40) || (x1 > W && x2 > W) || (y1 < -40 && y2 < -40) || (y1 > H && y2 > H)) return '';
+  return 'M' + r1(x1) + ' ' + r1(y1) + 'L' + r1(x2) + ' ' + r1(y2);
+}
+// A 3D segment clipped to the near plane; results in SX1..SZ2 (zc of each end).
+let SX1 = 0, SY1 = 0, SX2 = 0, SY2 = 0, SZ1 = 0, SZ2 = 0;
+function seg3(ax, ay, az, bx, by, bz) {
+  const cam3 = (x, y, z) => {
+    const dx = x - cam.x, dz = z - cam.z, Y = y - cam.y, Z = dx * cam.sy + dz * cam.cy;
+    return [dx * cam.cy - dz * cam.sy, Y * cam.cp - Z * cam.sp, Z * cam.cp + Y * cam.sp];
+  };
+  let A = cam3(ax, ay, az), B = cam3(bx, by, bz);
+  const N = CFG.NEAR;
+  if (A[2] < N && B[2] < N) return false;
+  if (A[2] < N) { const t = (N - A[2]) / (B[2] - A[2]); A = [A[0] + (B[0] - A[0]) * t, A[1] + (B[1] - A[1]) * t, N]; }
+  else if (B[2] < N) { const t = (N - B[2]) / (A[2] - B[2]); B = [B[0] + (A[0] - B[0]) * t, B[1] + (A[1] - B[1]) * t, N]; }
+  SX1 = cam.CX + A[0] * cam.F / A[2]; SY1 = cam.CY - A[1] * cam.F / A[2]; SZ1 = A[2];
+  SX2 = cam.CX + B[0] * cam.F / B[2]; SY2 = cam.CY - B[1] * cam.F / B[2]; SZ2 = B[2];
+  return true;
+}
+
+// A world-space polygon clipped to the near plane and projected; '' when unseen.
+let PBX0 = 0, PBX1 = 0;
+function projPoly(pts) {
+  const N = CFG.NEAR, c = [];
+  for (const [x, y, z] of pts) {
+    const dx = x - cam.x, dz = z - cam.z, Y = y - cam.y, Z = dx * cam.sy + dz * cam.cy;
+    c.push([dx * cam.cy - dz * cam.sy, Y * cam.cp - Z * cam.sp, Z * cam.cp + Y * cam.sp]);
+  }
+  const out = [];
+  for (let i = 0; i < c.length; i++) {
+    const p = c[i], q = c[(i + 1) % c.length];
+    if (p[2] >= N) out.push(p);
+    if ((p[2] >= N) !== (q[2] >= N)) {
+      const t = (N - p[2]) / (q[2] - p[2]);
+      out.push([p[0] + (q[0] - p[0]) * t, p[1] + (q[1] - p[1]) * t, N]);
+    }
+  }
+  if (out.length < 3) return '';
+  let d = '', x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+  for (let i = 0; i < out.length; i++) {
+    const k = cam.F / out[i][2], sx = cam.CX + out[i][0] * k, sy = cam.CY - out[i][1] * k;
+    if (sx < x0) x0 = sx; if (sx > x1) x1 = sx; if (sy < y0) y0 = sy; if (sy > y1) y1 = sy;
+    d += (i ? 'L' : 'M') + r1(sx) + ' ' + r1(sy);
+  }
+  if (x1 < 0 || x0 > cam.W || y1 < 0 || y0 > cam.H) return '';
+  PBX0 = x0; PBX1 = x1;
+  return d + 'Z';
+}
+
+/* =====================================================================
+   SCENE GRAPH & FOG GRADIENTS
+   ===================================================================== */
+const V = {};
+const GRADS = [];
+const FLOOR_D = [1.2, 2.5, 4, 6, 9, 13, 18, 25, 34, 46, 62, 82, 106, 135, 170, 230];
+const CEIL_D = [0.5, 8, 16, 26, 38, 52, 70, 92, 120, 155, 200, 260, 340, 450];
+const SUN = { az: 2.3, el: 1.13 };
+const SHAFT_DX = Math.sin(SUN.az) * CFG.CEIL / Math.tan(SUN.el), SHAFT_DZ = Math.cos(SUN.az) * CFG.CEIL / Math.tan(SUN.el);
+
+function fogGradient(defs, id, plane, colorFn) {
+  const g = mk('linearGradient', { id, gradientUnits: 'userSpaceOnUse', x1: 0, x2: 0, y1: 0, y2: 1 }, defs);
+  const D = plane === 'floor' ? FLOOR_D : CEIL_D;
+  GRADS.push({ g, D, plane, colorFn, stops: D.map(() => mk('stop', null, g)) });
+}
+const sandAt = d => mix('#d4bd8a', '#e6d6aa', clamp((d - 2) / 24, 0, 1));
+const ceilAt = d => d < 70 ? mix('#175b6b', '#257485', d / 70) : mix('#257485', '#3a8e99', clamp((d - 70) / 130, 0, 1));
+const fadeTo = (d, d0, d1) => d <= d0 ? 1 : d >= d1 ? 0 : 1 - (d - d0) / (d1 - d0);
+function setupScene() {
+  const defs = $('defs'), sc = $('scene');
+  const far = () => CFG.FAR * S.Q;
+  const cf = d => fogAt(Math.hypot(d, CFG.CEIL - CFG.EYE), CFG.CEIL_FAR);
+  fogGradient(defs, 'gCeil', 'ceil', d => [mix(ceilAt(d), HAZE, cf(d)), 1]);
+  fogGradient(defs, 'gSwell', 'ceil', d => [mix('#5aaeb4', HAZE, cf(d)), 0.42 * fadeTo(d, 90, 230)]);
+  fogGradient(defs, 'gCap', 'ceil', d => [mix('#e4f6f1', HAZE, cf(d) * 0.8), 0.7 * fadeTo(d, 100, 240)]);
+  fogGradient(defs, 'gWhale', 'ceil', d => [mix('#0b3440', HAZE, cf(d)), 0.5 * fadeTo(d, 90, 280)]);
+  fogGradient(defs, 'gFloor', 'floor', d => [mix(sandAt(d), HAZE, fogAt(d, far())), 1]);
+  fogGradient(defs, 'gRipple', 'floor', d => [mix('#b49a66', HAZE, fogAt(d, far())), 0.85 * fadeTo(d, 30, 58)]);
+  fogGradient(defs, 'gRipHi', 'floor', d => [mix('#f6ecce', HAZE, fogAt(d, far())), 0.8 * fadeTo(d, 18, 40)]);
+  fogGradient(defs, 'gStar', 'floor', d => [mix('#e4703a', HAZE, fogAt(d, far())), fadeTo(d, 34, 56)]);
+  fogGradient(defs, 'gUrchin', 'floor', d => [mix('#3b2744', HAZE, fogAt(d, far())), fadeTo(d, 34, 56)]);
+  fogGradient(defs, 'gShell', 'floor', d => [mix('#fbf4e6', HAZE, fogAt(d, far())), fadeTo(d, 30, 50)]);
+  fogGradient(defs, 'gFoot', 'floor', d => [mix('#a28a58', HAZE, fogAt(d, far())), fadeTo(d, 26, 46)]);
+  fogGradient(defs, 'gCaus', 'floor', d => ['#fff8dc', 0.7 * fadeTo(d, 5, 17)]);
+  const band = mk('linearGradient', { id: 'gBand', gradientUnits: 'userSpaceOnUse', x1: 0, x2: 0 }, defs);
+  mk('stop', { offset: 0, 'stop-color': HAZE, 'stop-opacity': 0 }, band);
+  mk('stop', { offset: 0.5, 'stop-color': '#c9ebe2', 'stop-opacity': 0.85 }, band);
+  mk('stop', { offset: 1, 'stop-color': HAZE, 'stop-opacity': 0 }, band);
+  V.band = band;
+  const sun = mk('radialGradient', { id: 'gSun' }, defs);
+  mk('stop', { offset: 0, 'stop-color': '#fffbe4', 'stop-opacity': 0.75 }, sun);
+  mk('stop', { offset: 0.25, 'stop-color': '#e9fbf2', 'stop-opacity': 0.35 }, sun);
+  mk('stop', { offset: 1, 'stop-color': '#bfeee6', 'stop-opacity': 0 }, sun);
+  const shaft = mk('linearGradient', { id: 'gShaft', x1: 0, x2: 0, y1: 0, y2: 1 }, defs);
+  mk('stop', { offset: 0, 'stop-color': '#fffdf0', 'stop-opacity': 0.9 }, shaft);
+  mk('stop', { offset: 0.55, 'stop-color': '#fffbe6', 'stop-opacity': 0.45 }, shaft);
+  mk('stop', { offset: 1, 'stop-color': '#fff6d8', 'stop-opacity': 0.08 }, shaft);
+  // Beacon shafts (a letter lies at the foot) stay bright all the way down.
+  const beacon = mk('linearGradient', { id: 'gBeacon', x1: 0, x2: 0, y1: 0, y2: 1 }, defs);
+  mk('stop', { offset: 0, 'stop-color': '#fffdf2', 'stop-opacity': 0.75 }, beacon);
+  mk('stop', { offset: 1, 'stop-color': '#fff4c9', 'stop-opacity': 0.6 }, beacon);
+
+  V.scene = sc;
+  V.ceil = mk('rect', { x: -80, fill: 'url(#gCeil)' }, sc);
+  V.sunGlow = mk('circle', { fill: 'url(#gSun)' }, sc);
+  V.sunDisk = mk('path', { fill: '#fffcee', 'fill-opacity': 0.9 }, sc);
+  V.swells = mk('path', { fill: 'none', stroke: 'url(#gSwell)', 'stroke-width': 1.7, 'stroke-linecap': 'round' }, sc);
+  V.whales = mk('path', { fill: 'url(#gWhale)' }, sc);
+  V.caps = mk('path', { fill: 'none', stroke: 'url(#gCap)', 'stroke-width': 1.6, 'stroke-linecap': 'round' }, sc);
+  V.floor = mk('rect', { x: -80, fill: 'url(#gFloor)' }, sc);
+  V.hband = mk('rect', { x: -80, fill: 'url(#gBand)' }, sc);
+  V.ripples = mk('path', { fill: 'none', stroke: 'url(#gRipple)', 'stroke-width': 1.4, 'stroke-linecap': 'round' }, sc);
+  V.ripHi = mk('path', { fill: 'none', stroke: 'url(#gRipHi)', 'stroke-width': 1.1, 'stroke-linecap': 'round' }, sc);
+  V.dec = [mk('path', { fill: 'url(#gStar)' }, sc), mk('path', { fill: 'url(#gUrchin)' }, sc), mk('path', { fill: 'url(#gShell)' }, sc)];
+  V.feet = [0.5, 0.36, 0.23, 0.11].map(o => mk('path', { fill: 'url(#gFoot)', 'fill-opacity': o }, sc));
+  V.caustics = mk('path', { fill: 'none', stroke: 'url(#gCaus)', 'stroke-width': 1.5, 'stroke-linejoin': 'round' }, sc);
+  V.world = mk('g', null, sc);
+  V.motes = mk('path', { fill: '#f3fffb', 'fill-opacity': 0.55 }, sc);
+}
+function planeY(d, plane) {
+  const Y = (plane === 'floor' ? 0 : CFG.CEIL) - CFG.EYE;
+  const zc = d * cam.cp + Y * cam.sp;
+  if (zc < 0.05) return null;
+  return cam.CY - (Y * cam.cp - d * cam.sp) * cam.F / zc;
+}
+// Screen-space fog: stops placed where each sample distance lands on screen this frame.
+let gradColourKey = '';
+function updateGradients() {
+  const hy = cam.hy, colours = gradColourKey !== String(S.Q);
+  gradColourKey = String(S.Q);
+  for (const G of GRADS) {
+    const ys = G.D.map(d => planeY(d, G.plane));
+    let yEnd = null;
+    for (let i = 0; i < ys.length; i++) if (ys[i] != null) { yEnd = ys[i]; break; }
+    if (yEnd == null || Math.abs(yEnd - hy) < 1) yEnd = hy + (G.plane === 'floor' ? 1 : -1);
+    G.g.setAttribute('y1', r1(hy));
+    G.g.setAttribute('y2', r1(yEnd));
+    let j = 0;
+    for (let i = G.D.length - 1; i >= 0; i--) {
+      const st = G.stops[j++], y = ys[i];
+      st.setAttribute('offset', r3(y == null ? 1 : clamp((y - hy) / (yEnd - hy), 0, 1)));
+      if (colours) {
+        const [col, op] = G.colorFn(G.D[i]);
+        st.setAttribute('stop-color', col);
+        st.setAttribute('stop-opacity', r3(op));
+      }
+    }
+  }
+}
+
+/* =====================================================================
+   THE OVERWATER (ceiling) — swell lines, whitecaps, whales, the sun
+   ===================================================================== */
+function renderSun() {
+  const ce = Math.cos(SUN.el), dx = ce * Math.sin(SUN.az), dy = Math.sin(SUN.el), dz = ce * Math.cos(SUN.az);
+  const X = dx * cam.cy - dz * cam.sy, Z = dx * cam.sy + dz * cam.cy;
+  const zc = Z * cam.cp + dy * cam.sp, yc = dy * cam.cp - Z * cam.sp;
+  if (zc < 0.03) { V.sunGlow.setAttribute('r', 0); V.sunDisk.setAttribute('d', ''); return; }
+  const k = cam.F / zc, sx = cam.CX + X * k, sy = cam.CY - yc * k;
+  V.sunGlow.setAttribute('cx', r1(sx)); V.sunGlow.setAttribute('cy', r1(sy)); V.sunGlow.setAttribute('r', r1(cam.F * 1.05));
+  const r = cam.F * 0.05;
+  if (sx < -r * 2 || sx > cam.W + r * 2 || sy < -r * 2 || sy > cam.H + r * 2) { V.sunDisk.setAttribute('d', ''); return; }
+  let d = '';
+  for (let i = 0; i < 28; i++) {
+    const a = i / 28 * TAU, rr = r * (1 + 0.07 * Math.sin(5 * a + S.t * 1.7) + 0.04 * Math.sin(9 * a - S.t * 2.3));
+    d += (i ? 'L' : 'M') + r1(sx + Math.cos(a) * rr) + ' ' + r1(sy + Math.sin(a) * rr);
+  }
+  V.sunDisk.setAttribute('d', d + 'Z');
+}
+const SWELL_A = 0.62;
+function renderSwells() {
+  const ux = Math.cos(SWELL_A), uz = Math.sin(SWELL_A), vx = -uz, vz = ux;
+  // Broken, wavering crest lines: whole lines read as scratches, fragments read as water.
+  const spc = 13, drift = S.t * 1.3, R = 230 * S.Q, t = S.t, Y = CFG.CEIL, step = 9;
+  const cv = cam.x * vx + cam.z * vz, cu = cam.x * ux + cam.z * uz;
+  const k0 = Math.ceil((cv - R - drift) / spc), k1 = Math.floor((cv + R - drift) / spc);
+  const s0 = Math.floor((cu - R) / step), s1 = Math.ceil((cu + R) / step);
+  let d = '';
+  for (let k = k0; k <= k1; k++) {
+    const v = k * spc + drift;
+    const wv = u => v + 1.5 * Math.sin(u * 0.085 + k * 1.7 + t * 0.6) + 2.2 * Math.sin(u * 0.021 + k * 0.9);
+    for (let s = s0; s < s1; s++) {
+      const h = hash2(k, s, 91);
+      if (h < 0.42) continue;
+      const u0 = s * step, u1 = u0 + step * (0.55 + 0.45 * h), um = (u0 + u1) / 2;
+      const w0 = wv(u0), w1 = wv(u1), wm = wv(um) + 0.9;
+      const ax = ux * u0 + vx * w0, az = uz * u0 + vz * w0, bx = ux * u1 + vx * w1, bz = uz * u1 + vz * w1;
+      if (!proj(ax, Y, az)) { d += seg(ax, az, bx, bz, Y); continue; }
+      const x1 = PX, y1 = PY;
+      if (!proj(ux * um + vx * wm, Y, uz * um + vz * wm)) { d += seg(ax, az, bx, bz, Y); continue; }
+      const x2 = PX, y2 = PY;
+      if (!proj(bx, Y, bz)) { d += seg(ax, az, bx, bz, Y); continue; }
+      if ((x1 < -30 && PX < -30) || (x1 > cam.W + 30 && PX > cam.W + 30) || (y1 < -30 && PY < -30) || (y1 > cam.H + 30 && PY > cam.H + 30)) continue;
+      d += 'M' + r1(x1) + ' ' + r1(y1) + 'Q' + r1(x2) + ' ' + r1(y2) + ' ' + r1(PX) + ' ' + r1(PY);
+    }
+  }
+  V.swells.setAttribute('d', d);
+}
+function renderCaps() {
+  const WS = 11, R = 235 * S.Q, t = S.t, Yc = CFG.CEIL;
+  const i0 = Math.floor((cam.x - R) / WS), i1 = Math.floor((cam.x + R) / WS);
+  const j0 = Math.floor((cam.z - R) / WS), j1 = Math.floor((cam.z + R) / WS);
+  const Yrel = (Yc - cam.y) * cam.sp, W = cam.W, H = cam.H;
+  let d = '';
+  for (let i = i0; i <= i1; i++) for (let j = j0; j <= j1; j++) {
+    const h = hash2(i, j, 77);
+    if (h > 0.45) continue;
+    const x = (i + hash2(i, j, 78)) * WS, z = (j + hash2(i, j, 79)) * WS;
+    const dx = x - cam.x, dz = z - cam.z;
+    if ((dx * cam.sy + dz * cam.cy) * cam.cp + Yrel < 1) continue;
+    if (dx * dx + dz * dz > R * R) continue;
+    const v = Math.sin(t * 0.33 + h * 40);
+    if (v < 0.12) continue;
+    const sz = v * (1.4 + h * 3.4), a = SWELL_A + (h - 0.3) * 0.5, cx = Math.cos(a), cz = Math.sin(a);
+    if (!proj(x - cx * sz, Yc, z - cz * sz)) continue;
+    const x1 = PX, y1 = PY;
+    proj(x - cz * sz * 0.4, Yc, z + cx * sz * 0.4);
+    const x2 = PX, y2 = PY;
+    if (!proj(x + cx * sz, Yc, z + cz * sz)) continue;
+    if ((x1 < 0 && PX < 0) || (x1 > W && PX > W) || y1 < -5 || y1 > H + 5) continue;
+    d += 'M' + r1(x1) + ' ' + r1(y1) + 'Q' + r1(x2) + ' ' + r1(y2) + ' ' + r1(PX) + ' ' + r1(PY);
+  }
+  V.caps.setAttribute('d', d);
+}
+// Top-down whale silhouette (metres, nose at +x), mirrored across the spine.
+const WHALE_HALF = [[11, 0], [10.2, 1.3], [8, 2.3], [4, 3], [1.5, 3.1], [0.6, 3.4], [-1.6, 6.4], [-2.7, 6.5], [-2.4, 3], [-5, 2.5], [-8, 1.6], [-10.5, 0.8], [-11.4, 0.6], [-13.6, 3.8], [-14.7, 4], [-13.6, 1.2], [-13.2, 0]];
+const WHALES = [];
+function renderWhales() {
+  let d = '';
+  const N = CFG.NEAR, Y = CFG.CEIL + 1.2 - cam.y;
+  for (const w of WHALES) {
+    const c = Math.cos(w.h), s = Math.sin(w.h), wag = Math.sin(S.t * 1.4 + w.ph);
+    const pts = [];
+    const push = (lx, ly) => {
+      if (lx < -8) ly += wag * 0.16 * (-lx - 8);
+      const wx = w.x + s * lx + c * ly * w.sc, wz = w.z + c * lx - s * ly * w.sc;
+      const dx = wx - cam.x, dz = wz - cam.z, Z = dx * cam.sy + dz * cam.cy;
+      pts.push([dx * cam.cy - dz * cam.sy, Y * cam.cp - Z * cam.sp, Z * cam.cp + Y * cam.sp]);
+    };
+    for (const p of WHALE_HALF) push(p[0] * w.sc, p[1]);
+    for (let i = WHALE_HALF.length - 2; i > 0; i--) push(WHALE_HALF[i][0] * w.sc, -WHALE_HALF[i][1]);
+    const out = [];
+    for (let i = 0; i < pts.length; i++) {
+      const p = pts[i], q = pts[(i + 1) % pts.length];
+      if (p[2] >= N) out.push(p);
+      if ((p[2] >= N) !== (q[2] >= N)) {
+        const t = (N - p[2]) / (q[2] - p[2]);
+        out.push([p[0] + (q[0] - p[0]) * t, p[1] + (q[1] - p[1]) * t, N]);
+      }
+    }
+    if (out.length < 3) continue;
+    for (let i = 0; i < out.length; i++) {
+      const k = cam.F / out[i][2];
+      d += (i ? 'L' : 'M') + r1(cam.CX + out[i][0] * k) + ' ' + r1(cam.CY - out[i][1] * k);
+    }
+    d += 'Z';
+  }
+  V.whales.setAttribute('d', d);
+}
+
+/* =====================================================================
+   THE FLOOR — ripples, shells, footprints, caustics, motes
+   ===================================================================== */
+const STAR5 = []; for (let i = 0; i < 10; i++) { const a = i * Math.PI / 5 - Math.PI / 2, r = i % 2 ? 0.42 : 1; STAR5.push([Math.cos(a) * r, Math.sin(a) * r]); }
+const URCH = []; for (let i = 0; i < 16; i++) { const a = i * Math.PI / 8, r = i % 2 ? 0.62 : 1; URCH.push([Math.cos(a) * r, Math.sin(a) * r]); }
+function renderFloor() {
+  if (cam.hy > cam.H + 60) { V.ripples.setAttribute('d', ''); V.ripHi.setAttribute('d', ''); for (const p of V.dec) p.setAttribute('d', ''); return; }
+  const R = 58 * Math.min(1, S.Q + 0.1), R2 = R * R, W = cam.W, H = cam.H;
+  let rip = '', hi = '', ds = ['', '', ''];
+  for (const ch of CH.values()) {
+    const cdx = ch.cx - cam.x, cdz = ch.cz - cam.z;
+    if (cdx * cdx + cdz * cdz > (R + 24) * (R + 24)) continue;
+    if (cdx * cam.sy + cdz * cam.cy < -26) continue;
+    for (const dc of ch.decals) {
+      const dx = dc.x - cam.x, dz = dc.z - cam.z, dd = dx * dx + dz * dz;
+      if (dd > R2 || dx * cam.sy + dz * cam.cy < 0) continue;
+      if (dc.t === 0) {
+        const ca = Math.cos(dc.a), sa = Math.sin(dc.a), L = 2.3 * dc.s;
+        for (let k = -1; k <= 1; k++) {
+          const ox = -sa * 0.78 * k, oz = ca * 0.78 * k;
+          const ax = dc.x + ox - ca * L, az = dc.z + oz - sa * L, bx = dc.x + ox + ca * L, bz = dc.z + oz + sa * L;
+          const mx = dc.x + ox - sa * 0.28, mz = dc.z + oz + ca * 0.28;
+          if (!proj(ax, 0, az)) continue;
+          const x1 = PX, y1 = PY;
+          if (!proj(mx, 0, mz)) continue;
+          const x2 = PX, y2 = PY;
+          if (!proj(bx, 0, bz)) continue;
+          if ((x1 < 0 && PX < 0) || (x1 > W && PX > W) || y1 > H + 4) continue;
+          rip += 'M' + r1(x1) + ' ' + r1(y1) + 'Q' + r1(x2) + ' ' + r1(y2) + ' ' + r1(PX) + ' ' + r1(PY);
+          if (dd < 1600) hi += 'M' + r1(x1) + ' ' + r1(y1 - 1.2) + 'Q' + r1(x2) + ' ' + r1(y2 - 1.2) + ' ' + r1(PX) + ' ' + r1(PY - 1.2);
+        }
+      } else {
+        if (!proj(dc.x, 0, dc.z)) continue;
+        if (PX < -20 || PX > W + 20 || PY > H + 20 || PY < cam.hy) continue;
+        const k = cam.F / PZC * 0.34 * dc.s, q = clamp(cam.y / PZC, 0.05, 1), ca = Math.cos(dc.a), sa = Math.sin(dc.a);
+        if (k < 0.6) continue;
+        const shape = dc.t === 1 ? STAR5 : dc.t === 2 ? URCH : null;
+        if (shape) {
+          const kk = dc.t === 2 ? k * 0.7 : k;
+          for (let i = 0; i < shape.length; i++) {
+            const lx = shape[i][0] * ca - shape[i][1] * sa, ly = shape[i][0] * sa + shape[i][1] * ca;
+            ds[dc.t - 1] += (i ? 'L' : 'M') + r1(PX + lx * kk) + ' ' + r1(PY + ly * kk * q);
+          }
+          ds[dc.t - 1] += 'Z';
+        } else {
+          const rx = k * 0.8, ry = rx * q;
+          ds[2] += 'M' + r1(PX - rx) + ' ' + r1(PY) + 'Q' + r1(PX) + ' ' + r1(PY - ry * 2.4) + ' ' + r1(PX + rx) + ' ' + r1(PY) + 'Q' + r1(PX) + ' ' + r1(PY + ry * 0.8) + ' ' + r1(PX - rx) + ' ' + r1(PY) + 'Z';
+        }
+      }
+    }
+  }
+  V.ripples.setAttribute('d', rip);
+  V.ripHi.setAttribute('d', hi);
+  for (let i = 0; i < 3; i++) V.dec[i].setAttribute('d', ds[i]);
+}
+const FEET = [];            // ring of footprints {x, z, a}
+const FEET_MAX = 220;
+function addFootprint(x, z, a, side) {
+  FEET.push({ x: x + Math.cos(a) * 0.15 * side, z: z - Math.sin(a) * 0.15 * side, a });
+  if (FEET.length > FEET_MAX) FEET.shift();
+}
+function renderFeet() {
+  const out = ['', '', '', ''], n = FEET.length;
+  if (cam.hy < cam.H + 60) for (let i = 0; i < n; i++) {
+    const f = FEET[i], dx = f.x - cam.x, dz = f.z - cam.z;
+    if (dx * dx + dz * dz > 46 * 46) continue;
+    const sa = Math.sin(f.a), ca = Math.cos(f.a);
+    if (!proj(f.x + sa * 0.14, 0, f.z + ca * 0.14)) continue;
+    const tx = PX, ty = PY;
+    if (!proj(f.x - sa * 0.12, 0, f.z - ca * 0.12)) continue;
+    const hx = PX, hy = PY;
+    if (!proj(f.x + ca * 0.065, 0, f.z - sa * 0.065)) continue;
+    const mx = (tx + hx) / 2, my = (ty + hy) / 2, wx = (PX - mx) * 1.9, wy = (PY - my) * 1.9;
+    if (mx < -10 || mx > cam.W + 10 || my > cam.H + 10) continue;
+    const b = Math.min(3, ((n - 1 - i) / n * 4) | 0);
+    out[b] += 'M' + r1(tx) + ' ' + r1(ty) + 'Q' + r1(mx + wx) + ' ' + r1(my + wy) + ' ' + r1(hx) + ' ' + r1(hy) + 'Q' + r1(mx - wx) + ' ' + r1(my - wy) + ' ' + r1(tx) + ' ' + r1(ty) + 'Z';
+  }
+  for (let b = 0; b < 4; b++) V.feet[b].setAttribute('d', out[b]);
+}
+function renderCaustics() {
+  if (cam.hy > cam.H + 60) { V.caustics.setAttribute('d', ''); return; }
+  const S2 = 2.05, R = 17, t = S.t, h3 = S2 * 0.866, R2 = R * R;
+  const j0 = Math.floor((cam.z - R) / h3), j1 = Math.ceil((cam.z + R) / h3);
+  let d = '';
+  const pts = new Array(12);
+  for (let j = j0; j <= j1; j++) {
+    const off = (j & 1) * S2 * 0.5;
+    const i0 = Math.floor((cam.x - R - off) / S2), i1 = Math.ceil((cam.x + R - off) / S2);
+    for (let i = i0; i <= i1; i++) {
+      const cx = i * S2 + off, cz = j * h3, dx = cx - cam.x, dz = cz - cam.z;
+      if (dx * dx + dz * dz > R2 || dx * cam.sy + dz * cam.cy < -1.5) continue;
+      const hh = hash2(i, j, 5) * TAU, cs = 0.72 + 0.42 * hash2(i, j, 6);
+      const ox = cx + (hash2(i, j, 7) - 0.5) * S2 * 0.4 + Math.sin(t * 0.21 + hh) * 0.35;
+      const oz = cz + (hash2(i, j, 8) - 0.5) * S2 * 0.4 + Math.cos(t * 0.17 + hh) * 0.35;
+      let ok = true;
+      for (let k = 0; k < 6; k++) {
+        const a = k * 1.0472 + hh + 0.3 * Math.sin(t * 0.7 + hh + k);
+        const rr = S2 * 0.5 * cs * (0.72 + 0.5 * hash2(i * 7 + k, j, 9) + 0.2 * Math.sin(t * 1.25 + hh * 1.7 + k * 2.1));
+        if (!proj(ox + Math.cos(a) * rr, 0, oz + Math.sin(a) * rr)) { ok = false; break; }
+        pts[k * 2] = PX; pts[k * 2 + 1] = PY;
+      }
+      if (!ok || pts[1] > cam.H + 30) continue;
+      d += 'M' + r1((pts[10] + pts[0]) / 2) + ' ' + r1((pts[11] + pts[1]) / 2);
+      for (let k = 0; k < 6; k++) {
+        const nx = pts[(k * 2 + 2) % 12], ny = pts[(k * 2 + 3) % 12];
+        d += 'Q' + r1(pts[k * 2]) + ' ' + r1(pts[k * 2 + 1]) + ' ' + r1((pts[k * 2] + nx) / 2) + ' ' + r1((pts[k * 2 + 1] + ny) / 2);
+      }
+    }
+  }
+  V.caustics.setAttribute('d', d);
+}
+const MOTES = [];
+function renderMotes(dt) {
+  if (!MOTES.length) for (let i = 0; i < 64; i++) MOTES.push({ x: S.x + (Math.random() - 0.5) * 36, y: Math.random() * 13, z: S.z + (Math.random() - 0.5) * 36, ph: Math.random() * TAU });
+  let d = '';
+  for (const m of MOTES) {
+    m.y += dt * 0.16; if (m.y > 13) m.y -= 13;
+    m.x += Math.sin(S.t * 0.4 + m.ph) * dt * 0.25;
+    const rx = m.x - cam.x, rz = m.z - cam.z;
+    if (rx > 18) m.x -= 36; else if (rx < -18) m.x += 36;
+    if (rz > 18) m.z -= 36; else if (rz < -18) m.z += 36;
+    if (!proj(m.x, m.y, m.z)) continue;
+    if (PX < -5 || PX > cam.W + 5 || PY < -5 || PY > cam.H + 5) continue;
+    const r = clamp(0.045 * cam.F / PZC, 0.45, 3.2);
+    d += 'M' + r1(PX - r) + ' ' + r1(PY) + 'a' + r1(r) + ' ' + r1(r) + ' 0 1 0 ' + r1(2 * r) + ' 0a' + r1(r) + ' ' + r1(r) + ' 0 1 0 ' + r1(-2 * r) + ' 0';
+  }
+  V.motes.setAttribute('d', d);
+}
+
+/* =====================================================================
+   SPRITES — pooled elements, per-frame affine, fog via style cache
+   ===================================================================== */
+const POOL = { use: [], chain: [], shaft: [] };
+function acquireEl(type) {
+  const p = POOL[type];
+  if (p.length) return p.pop();
+  if (type === 'use') return mk('use');
+  if (type === 'chain') return mk('path', { fill: 'none', 'stroke-linecap': 'round' });
+  const g = mk('g');            // shaft: a faint wide halo and a brighter core
+  mk('path', null, g); mk('path', null, g);
+  return g;
+}
+function releaseSprite(s) {
+  if (!s || !s.el) return;
+  if (s.el.parentNode) s.el.remove();
+  POOL[s.ptype || 'use'].push(s.el);
+  s.el = null; s.lv = -1; s.stamp = -1;
+}
+let FRAME = 0;
+// Standing, hanging and floating sprites share one mapping: the symbol's local
+// origin goes to the projected base and its local "tip" to the projected tip,
+// so pitch produces the right vertical convergence; width uses the mid depth.
+function drawUse(s) {
+  const sym = s.sym, far = CFG.FAR * S.Q;
+  const dx = s.x - cam.x, dz = s.z - cam.z;
+  const Zf = dx * cam.sy + dz * cam.cy;
+  const margin = sym.hw * 0.1 * s.sc + 3;
+  if (Zf < -margin - Math.max(0, cam.sp) * 60) return false;
+  if (cam.sp < 0.34 && cam.sp > -0.34 && Math.abs(dx * cam.cy - dz * cam.sy) > Math.max(0, Zf) * cam.tanH + margin + 2) return false;
+  const hW = -sym.tip * 0.1 * s.sc * s.pulseY;
+  const dy = s.y + hW * 0.5 - cam.y;
+  const dist = Math.sqrt(dx * dx + dz * dz + dy * dy) * s.fogMul;
+  if (dist >= far) return false;
+  let swx = 0, swz = 0;
+  if (s.sway) { const a = s.sway * hW * Math.sin(S.t * 0.9 + s.ph); swx = cam.cy * a; swz = -cam.sy * a; }
+  const ok0 = proj(s.x, s.y, s.z);
+  let ax = PX, ay = PY, za = PZC;
+  const Z0 = PZ;
+  const ok1 = proj(s.x + swx, s.y + hW, s.z + swz);
+  let bx = PX, by = PY, zb = PZC, la = 0, lb = sym.tip;
+  // An end closer than ZN projects thousands of pixels away and would stretch the whole
+  // affine, so clip at the same depth we test against (testing at NEAR made it pop).
+  const ZN = CFG.NEAR * 3, n0 = !ok0 || za < ZN, n1 = !ok1 || zb < ZN;
+  if (n0 || n1) {
+    if (n0 && n1) return false;
+    const u = (ZN - za) / (zb - za);
+    if (!(u > 0 && u < 1)) return false;
+    proj(s.x + swx * u, s.y + hW * u, s.z + swz * u);
+    if (n0) { ax = PX; ay = PY; za = PZC; la = sym.tip * u; } else { bx = PX; by = PY; zb = PZC; lb = sym.tip * u; }
+  }
+  const dl = lb - la;
+  let c = (bx - ax) / dl, d = (by - ay) / dl;
+  const kx = cam.F / ((za + zb) * 0.5) * 0.1 * s.sc * s.pulseX;
+  let cmp = 1, fx = s.fx;
+  if (s.axisMode === 1) {       // side-on things (ships, skulls): show the flank, bow the right way
+    const r = Math.sin(s.axis) * cam.cy - Math.cos(s.axis) * cam.sy;
+    cmp = Math.max(s.cmpMin, Math.abs(r)); fx = r < 0 ? 1 : -1;
+  } else if (s.axisMode === 2) { // ribs: an arch faces you when you look down the spine
+    cmp = Math.max(s.cmpMin, Math.abs(Math.sin(s.axis) * cam.sy + Math.cos(s.axis) * cam.cy));
+  }
+  let a = fx * kx * cmp;
+  if (s.minPx) {
+    const px = Math.abs(a) * sym.hw;
+    if (px < s.minPx) { const m = s.minPx / Math.max(px, 0.01); a *= m; c *= m; d *= m; }
+  }
+  const e = ax - la * c, f = ay - la * d;
+  const ah = Math.abs(a) * sym.hw;
+  const x0 = e - ah + Math.min(c * sym.top, c * sym.bot), x1 = e + ah + Math.max(c * sym.top, c * sym.bot);
+  const y0 = f + Math.min(d * sym.top, d * sym.bot), y1 = f + Math.max(d * sym.top, d * sym.bot);
+  if (x1 < -8 || x0 > cam.W + 8 || y1 < -8 || y0 > cam.H + 8) return false;
+  const lv = Math.round(fogAt(dist, far) * FOG_STEPS);
+  if (lv >= FOG_STEPS) return false;
+  if (!s.el) { s.el = acquireEl('use'); s.el.setAttribute('href', '#s_' + sym.id); s.lv = -1; }
+  if (lv !== s.lv) { s.el.setAttribute('style', styleFor(sym, lv)); s.lv = lv; }
+  s.el.setAttribute('transform', 'matrix(' + r3(a) + ' 0 ' + r3(c) + ' ' + r3(d) + ' ' + r1(e) + ' ' + r1(f) + ')');
+  s.key = Z0 + s.bias;
+  return true;
+}
+// Anchor chain: a dashed iron line from the ship's bow down to the swinging ring.
+function drawChain(s) {
+  const a = s.anc, far = CFG.FAR * S.Q;
+  const dist = Math.hypot(a.x - cam.x, a.z - cam.z, (s.top + a.y) / 2 - cam.y) * 0.9;
+  if (dist >= far) return false;
+  if (!seg3(s.x, s.top, s.z, a.x, a.y + 0.05, a.z)) return false;
+  if ((SX1 < -20 && SX2 < -20) || (SX1 > cam.W + 20 && SX2 > cam.W + 20) || (SY1 > cam.H + 20 && SY2 > cam.H + 20) || (SY1 < -20 && SY2 < -20)) return false;
+  s.ptype = 'chain';
+  if (!s.el) { s.el = acquireEl('chain'); s.lv = -1; }
+  const lv = Math.round(fogAt(dist, far) * FOG_STEPS);
+  if (lv >= FOG_STEPS) return false;
+  const w = clamp(0.17 * cam.F / ((SZ1 + SZ2) / 2), 0.7, 10);
+  if (lv !== s.lv) { s.el.setAttribute('stroke', FOGTAB.iron[lv]); s.lv = lv; }
+  s.el.setAttribute('stroke-width', r1(w));
+  s.el.setAttribute('stroke-dasharray', r1(w * 1.7) + ' ' + r1(w * 0.8));
+  s.el.setAttribute('d', 'M' + r1(SX1) + ' ' + r1(SY1) + 'L' + r1(SX2) + ' ' + r1(SY2));
+  s.key = (a.x - cam.x) * cam.sy + (a.z - cam.z) * cam.cy + s.bias;
+  return true;
+}
+// Light shafts: slanted quads from the sea down to the sand, always facing you.
+function drawShaft(s) {
+  const alpha = s.alpha * (s.beacon ? 0.84 + 0.16 * Math.sin(S.t * 2.2 + s.ph) : s.fade);
+  if (alpha < 0.01) return false;
+  const far = CFG.FAR * S.Q, dx = s.x - cam.x, dz = s.z - cam.z;
+  const dist = Math.hypot(dx, dz) * s.fogMul;
+  if (dist >= far) return false;
+  const rx = cam.cy, rz = -cam.sy, tx = s.x + SHAFT_DX, tz = s.z + SHAFT_DZ, Y = CFG.CEIL;
+  // Shafts leaning toward you have their tops behind the camera: clip, don't drop.
+  const quad = k => {
+    const wt = s.w * 0.8 * k, wb = s.w * 0.5 * k;
+    return projPoly([[tx - rx * wt, Y, tz - rz * wt], [tx + rx * wt, Y, tz + rz * wt], [s.x + rx * wb, 0, s.z + rz * wb], [s.x - rx * wb, 0, s.z - rz * wb]]);
+  };
+  const outer = quad(1);
+  if (!outer) return false;
+  const inner = quad(0.42);
+  s.ptype = 'shaft';
+  if (!s.el) {
+    s.el = acquireEl('shaft');
+    const fill = s.beacon ? 'url(#gBeacon)' : 'url(#gShaft)';
+    s.el.firstChild.setAttribute('fill', fill); s.el.lastChild.setAttribute('fill', fill);
+  }
+  const o = alpha * (1 - fogAt(dist, far));
+  s.el.firstChild.setAttribute('d', outer); s.el.firstChild.setAttribute('fill-opacity', r3(o * 0.5));
+  s.el.lastChild.setAttribute('d', inner); s.el.lastChild.setAttribute('fill-opacity', r3(o * 0.8));
+  s.key = dx * cam.sy + dz * cam.cy + s.bias;
+  return true;
+}
+
+/* ---- things that move on their own: ambient shafts, voyaging ships, whales ---- */
+const SHAFTS = [];
+function respawnShaft(s, init) {
+  const a = S.yaw + (Math.random() - 0.5) * 2.6, r = 9 + Math.random() * 62;
+  s.x = S.x + Math.sin(a) * r; s.z = S.z + Math.cos(a) * r;
+  s.w = 1.2 + Math.random() * 3.6; s.alpha = 0.15 + Math.random() * 0.17;
+  s.life = 7 + Math.random() * 9; s.age = init ? Math.random() * s.life : 0; s.fade = 0;
+}
+function updateAmbient(dt) {
+  while (SHAFTS.length < 9) {
+    const s = makeSprite('glint0', 0, 0, { path: true, draw: drawShaft, bias: 0.5 });
+    s.ptype = 'shaft';
+    respawnShaft(s, true);
+    SHAFTS.push(s);
+  }
+  for (const s of SHAFTS) {
+    s.age += dt;
+    const u = s.age / s.life;
+    s.fade = u < 0.2 ? u / 0.2 : u > 0.72 ? Math.max(0, (1 - u) / 0.28) : 1;
+    const dx = s.x - S.x, dz = s.z - S.z;
+    if (s.age > s.life || dx * dx + dz * dz > 100 * 100) respawnShaft(s, false);
+  }
+}
+const VOY = [];
+let voyTimer = 0, whaleTimer = 14;
+function spawnVoyager(r, spread) {
+  const a = S.yaw + (Math.random() - 0.5) * spread, x = S.x + Math.sin(a) * r, z = S.z + Math.cos(a) * r;
+  const tx = S.x + (Math.random() - 0.5) * 70, tz = S.z + (Math.random() - 0.5) * 70;
+  const h = Math.atan2(tx - x, tz - z) + (Math.random() - 0.5) * 0.5, sp = 2.8 + Math.random() * 1.6;
+  const s = makeSprite('shipU0', x, z, { y: CFG.CEIL, kind: 1, sc: 0.85 + Math.random() * 0.3, axis: h, axisMode: 1, cmpMin: 0.3, fogMul: 0.72, sway: 0.012, ph: Math.random() * TAU });
+  VOY.push({ s, vx: Math.sin(h) * sp, vz: Math.cos(h) * sp });
+}
+function spawnWhale() {
+  const a = Math.random() * TAU, x = S.x + Math.sin(a) * 290, z = S.z + Math.cos(a) * 290;   // beyond gWhale's fade-out
+  const h = Math.atan2(S.x + (Math.random() - 0.5) * 90 - x, S.z + (Math.random() - 0.5) * 90 - z);
+  WHALES.push({ x, z, h, sc: 0.9 + Math.random() * 0.5, sp: 4 + Math.random() * 2, ph: Math.random() * TAU });
+}
+function updateTravellers(dt) {
+  voyTimer -= dt;
+  if (voyTimer <= 0 && VOY.length < 2) { spawnVoyager(235, TAU); voyTimer = 22 + Math.random() * 30; }
+  for (let i = VOY.length - 1; i >= 0; i--) {
+    const v = VOY[i];
+    v.s.x += v.vx * dt; v.s.z += v.vz * dt;
+    if (Math.hypot(v.s.x - S.x, v.s.z - S.z) > 290) { releaseSprite(v.s); VOY.splice(i, 1); }
+  }
+  whaleTimer -= dt;
+  if (whaleTimer <= 0 && WHALES.length < 2) { spawnWhale(); whaleTimer = 35 + Math.random() * 50; }
+  for (let i = WHALES.length - 1; i >= 0; i--) {
+    const w = WHALES[i];
+    w.h += Math.sin(S.t * 0.1 + w.ph) * 0.02 * dt;
+    w.x += Math.sin(w.h) * w.sp * dt; w.z += Math.cos(w.h) * w.sp * dt;
+    if (Math.hypot(w.x - S.x, w.z - S.z) > 300) WHALES.splice(i, 1);
+  }
+}
+
+/* ---- painter's order: sort by depth, then move only the elements that are out of place ---- */
+let VIS = [], LAST = [];
+function consider(s) {
+  if (s.anim) s.anim(s, S.t);
+  if (s.path ? s.draw(s) : drawUse(s)) { s.stamp = FRAME; VIS.push(s); }
+}
+function renderSprites() {
+  FRAME++;
+  const tmp = LAST; LAST = VIS; VIS = tmp; VIS.length = 0;
+  const reach = CFG.FAR * S.Q * 1.3 + 40;
+  for (const ch of CH.values()) {
+    const dx = ch.cx - cam.x, dz = ch.cz - cam.z;
+    if (dx * dx + dz * dz > reach * reach) continue;
+    const sp = ch.sprites;
+    for (let i = 0; i < sp.length; i++) consider(sp[i]);
+  }
+  for (const v of VOY) consider(v.s);
+  for (const p of PILLARS.values()) if (p) consider(p.s);
+  for (const s of SHAFTS) consider(s);
+  for (const s of LAST) if (s.stamp !== FRAME && s.el && s.el.parentNode) s.el.remove();
+  // Every couple of seconds, hand long-hidden sprites' elements back to the pool so the
+  // number of live <use> elements tracks what is on screen, not what was ever seen.
+  if (FRAME % 120 === 0) for (const ch of CH.values()) for (const s of ch.sprites) if (s.el && s.stamp < FRAME - 240) releaseSprite(s);
+  VIS.sort((a, b) => b.key - a.key);
+  const g = V.world;
+  let node = g.firstChild;
+  for (let i = 0; i < VIS.length; i++) {
+    const el = VIS[i].el;
+    if (el === node) node = node.nextSibling;
+    else g.insertBefore(el, node);
+  }
+}
+
+/* ---- one full frame of drawing ---- */
+let gradKey = '';
+const BOB_SCALE = matchMedia('(prefers-reduced-motion: reduce)').matches ? 0.3 : 1;
+function render(dt) {
+  const bobV = Math.sin(S.bobPhase * 2) * S.bobAmp * BOB_SCALE, bobL = Math.sin(S.bobPhase) * S.bobAmp * BOB_SCALE;
+  cam.cy = Math.cos(S.yaw); cam.sy = Math.sin(S.yaw);
+  cam.cp = Math.cos(S.pitch); cam.sp = Math.sin(S.pitch);
+  cam.x = S.x + cam.cy * bobL * 0.035; cam.z = S.z - cam.sy * bobL * 0.035;
+  cam.y = CFG.EYE + bobV * 0.05;
+  cam.hy = cam.CY + cam.F * Math.tan(S.pitch);
+  const gk = r3(S.pitch) + ',' + cam.W + ',' + cam.H + ',' + S.Q;
+  if (gk !== gradKey) { gradKey = gk; updateGradients(); }
+  V.scene.setAttribute('transform', 'translate(' + r1(bobL * cam.H * 0.0035) + ' ' + r1(bobV * cam.H * 0.006) + ')');
+  const hy = cam.hy, W = cam.W + 160, H = cam.H;
+  V.ceil.setAttribute('y', -80); V.ceil.setAttribute('width', W);
+  V.ceil.setAttribute('height', r1(clamp(hy + 81, 0, H + 160)));
+  const fy = clamp(hy, -80, H + 80);
+  V.floor.setAttribute('y', r1(fy)); V.floor.setAttribute('width', W); V.floor.setAttribute('height', r1(Math.max(0, H + 80 - fy)));
+  const bh = cam.H * 0.05;
+  V.band.setAttribute('y1', r1(hy - bh)); V.band.setAttribute('y2', r1(hy + bh));
+  V.hband.setAttribute('y', r1(hy - bh)); V.hband.setAttribute('width', W); V.hband.setAttribute('height', r1(bh * 2));
+  const ceilVisible = hy > -40;
+  renderSun();
+  if (ceilVisible) { renderSwells(); renderCaps(); renderWhales(); }
+  else { V.swells.setAttribute('d', ''); V.caps.setAttribute('d', ''); V.whales.setAttribute('d', ''); }
+  renderFloor();
+  renderFeet();
+  renderCaustics();
+  renderSprites();
+  renderMotes(dt);
+}
+
+/* =====================================================================
+   LETTERS FROM THE OVERWATER
+   ===================================================================== */
+const LETTERS = [
+  ['To whoever finds this first: hello from the Overwater. We have watched your little lights for years. Walk toward the thin shafts of light. That is where the rest of our letters fall.', 'the crew of the Quiet Gannet'],
+  ['Cook swears anything dropped over the rail falls up forever. Cook is a liar. I dropped his spoon and it fell to you. Keep it.', 'Tam, ship’s boy'],
+  ['My grandmother was born on the Floor, before the Turning. She said the sand sang when the tide went out. Does it still sing?', 'M. Orrin, bosun'],
+  ['We are becalmed above a kelpwood so tall its tips brush our keel. All night it knocks on the hull like someone asking to come in.', 'second watch, the Heron'],
+  ['The captain forbids us to look down. He says it gives men the vertigo of heaven. I look down every night. You are very beautiful from here.', 'unsigned'],
+  ['Is it true you have to walk everywhere? No wind, no current, nothing to carry you? That seems very brave, or very patient.', 'Lise, sailmaker'],
+  ['A whale went down past our bow this morning, deeper than any of us have seen one go. If it reaches your sky, tell it we are sorry about the harpoons.', 'the Merrow'],
+  ['We are anchored over the wreck of our sister ship, the Wren. Her masts reach up at us across the gap like a hand. Tell her we came back.', 'Captain J. Halloran'],
+  ['I dropped my ring. It was never going to fit. Keep it, sell it, or throw it back up at us, whichever makes the better story.', 'a bride, probably not'],
+  ['HELLO. HELLO. HELLO. Do you have dogs down there.', 'Pip, age seven'],
+  ['The rope-maker says we could braid a line long enough to reach you. The purser says it would cost more than the ship. The rope-maker has started anyway.', 'the Long Patience'],
+  ['When our dead are given to the sea, they fall to you now. Be gentle with them. Most of them were gentle with us.', 'Father Aubel, ship’s chaplain'],
+  ['Nineteen days out of Harrowmouth. The compass still points north, which is more than any of us can say.', 'the navigator'],
+  ['At night your coral glows faintly, like a town seen from a hill. Is anyone home?', 'a passenger'],
+  ['We lowered a lantern on sixty fathoms of line. It swung over a white field of bones and something waved. Was that you?', 'deckhand Ferro'],
+  ['The old charts show your Floor as blue. It is not blue at all. It is gold, and it moves when the light moves.', 'an apprentice mapmaker'],
+  ['I have a theory that somewhere the sea still touches the ground. The navigator says it is nonsense. The navigator has also never found anything.', 'R.'],
+  ['Enclosed: one pressed flower from the last island we passed. I do not know what it is called. Neither will you. Let us name it together.', 'Wen'],
+  ['Storm tonight. From below it must look like the whole sky is boiling. Do not worry. We have tied everything down, including the cat.', 'the Goodwife Marle'],
+  ['The fish up here remember the Floor. Sometimes whole schools turn and stare down at it, all at once, as if listening.', 'a fisher'],
+  ['If you are lonely, look up at the fourth bell of evening. We will be the ship with the green lamp at the stern.', 'the Lantern Wife'],
+  ['Every letter we send down is an apology for something. This one is for the anchors. We know they frighten you.', 'the anchor watch'],
+  ['I wrote you a song, but the bosun made me throw it overboard for being terrible. It is probably on its way down. Sorry in advance.', 'Dov, fiddler'],
+  ['Tell me something true about the ground. Anything. I have forgotten what it is like to stand on something that does not move.', 'Captain E. Saltonstall'],
+];
+
+/* =====================================================================
+   HUD — compass ribbon, tallies, region banner, hints
+   ===================================================================== */
+const HUD = {};
+const CREAM = '#f1f8f4', DEEP = '#0b3440';
+function outlined(attrs, parent) {
+  return mk('text', Object.assign({ fill: CREAM, stroke: DEEP, 'stroke-width': 3, 'stroke-linejoin': 'round', 'paint-order': 'stroke' }, attrs), parent);
+}
+function setupHUD() {
+  const hud = $('hud');
+  HUD.root = mk('g', { opacity: 0 }, hud);
+  const comp = HUD.comp = mk('g', null, HUD.root);
+  const defs = mk('defs', null, hud);
+  HUD.clipRect = mk('rect', { rx: 15 }, mk('clipPath', { id: 'compClip' }, defs));
+  HUD.compBg = mk('rect', { rx: 15, fill: '#0b3440', 'fill-opacity': 0.42, stroke: '#e6f6f1', 'stroke-opacity': 0.35 }, comp);
+  const clip = mk('g', { 'clip-path': 'url(#compClip)' }, comp);
+  HUD.strip = mk('g', null, clip);
+  HUD.compMark = mk('path', { fill: '#ffd98a', stroke: DEEP, 'stroke-width': 1 }, comp);
+  const tally = HUD.tally = mk('g', null, HUD.root);
+  mk('path', { d: 'M0 0H20V14H0Z M0 0L10 8L20 0', fill: 'none', stroke: CREAM, 'stroke-width': 1.6, 'stroke-linejoin': 'round' }, tally);
+  mk('path', { d: 'M0 0H20V14H0Z M0 0L10 8L20 0', fill: 'none', stroke: DEEP, 'stroke-width': 4, 'stroke-linejoin': 'round', opacity: 0.55 }, tally).parentNode.insertBefore(tally.lastChild, tally.firstChild);
+  HUD.letters = outlined({ x: 28, y: 12.5, 'font-size': 15, class: '' }, tally);
+  HUD.walked = outlined({ x: 0, y: 36, 'font-size': 13, 'font-style': 'italic' }, tally);
+  HUD.banner = mk('g', { opacity: 0 }, HUD.root);
+  HUD.bTitle = outlined({ 'text-anchor': 'middle', 'letter-spacing': '0.06em', 'stroke-width': 4 }, HUD.banner);
+  HUD.bSub = outlined({ 'text-anchor': 'middle', 'font-style': 'italic' }, HUD.banner);
+  HUD.bRule = mk('path', { stroke: CREAM, 'stroke-width': 1.2, fill: 'none', opacity: 0.85 }, HUD.banner);
+  HUD.hint = outlined({ 'text-anchor': 'middle', 'font-size': 13, class: 'ui', opacity: 0 }, HUD.root);
+  if (QS.has('stats')) HUD.stats = outlined({ 'font-size': 11, class: 'ui', 'text-anchor': 'end' }, hud);
+  HUD.bannerT = 99; HUD.hintT = 0;
+}
+// Notches and home indicators: read env(safe-area-inset-*) through an invisible probe.
+function safeInsets() {
+  let p = $('safeProbe');
+  if (!p) {
+    p = document.createElement('div');
+    p.id = 'safeProbe';
+    p.style.cssText = 'position:fixed;left:0;top:0;width:0;height:0;visibility:hidden;pointer-events:none;' +
+      'padding:env(safe-area-inset-top,0px) env(safe-area-inset-right,0px) env(safe-area-inset-bottom,0px) env(safe-area-inset-left,0px)';
+    document.body.appendChild(p);
+  }
+  const cs = getComputedStyle(p);
+  return { t: parseFloat(cs.paddingTop) || 0, r: parseFloat(cs.paddingRight) || 0, b: parseFloat(cs.paddingBottom) || 0, l: parseFloat(cs.paddingLeft) || 0 };
+}
+function layoutHUD() {
+  if (!HUD.root) return;
+  const ins = safeInsets();
+  const W = cam.W, H = cam.H, cw = Math.round(Math.min(380, (W - ins.l - ins.r) * 0.6)), ch = 30, top = 12 + ins.t;
+  HUD.cw = cw; HUD.ppd = cw / 150;
+  for (const r of [HUD.compBg, HUD.clipRect]) { r.setAttribute('x', 0); r.setAttribute('y', 0); r.setAttribute('width', cw); r.setAttribute('height', ch); }
+  HUD.comp.setAttribute('transform', `translate(${Math.round(ins.l + (W - ins.l - ins.r - cw) / 2)} ${top})`);
+  HUD.compMark.setAttribute('d', `M${cw / 2 - 6} 0L${cw / 2 + 6} 0L${cw / 2} 8Z`);
+  while (HUD.strip.firstChild) HUD.strip.firstChild.remove();
+  const ppd = HUD.ppd, names = { 0: 'N', 45: 'NE', 90: 'E', 135: 'SE', 180: 'S', 225: 'SW', 270: 'W', 315: 'NW' };
+  let ticks = '';
+  for (let deg = -180; deg <= 540; deg += 15) {
+    const x = deg * ppd, n = ((deg % 360) + 360) % 360;
+    if (names[n] !== undefined) {
+      const t = mk('text', { x: r1(x), y: 20.5, 'text-anchor': 'middle', 'font-size': n % 90 ? 11 : 14, fill: n === 0 ? '#ffd98a' : CREAM, 'font-weight': n % 90 ? 400 : 700 }, HUD.strip);
+      t.textContent = names[n];
+    } else ticks += `M${r1(x)} 9V${deg % 30 ? 13 : 16}`;
+  }
+  mk('path', { d: ticks, stroke: CREAM, 'stroke-width': 1.2, opacity: 0.75 }, HUD.strip);
+  const small = W < 520;
+  HUD.tally.setAttribute('transform', `translate(${(small ? 12 : 18) + ins.l} ${small ? top + ch + 16 : top + 8})`);
+  const fs = clamp(W / 22, 20, 36);
+  HUD.bTitle.setAttribute('font-size', r1(fs)); HUD.bTitle.setAttribute('x', W / 2); HUD.bTitle.setAttribute('y', r1(H * 0.2 + fs));
+  HUD.bSub.setAttribute('font-size', r1(fs * 0.46)); HUD.bSub.setAttribute('x', W / 2); HUD.bSub.setAttribute('y', r1(H * 0.2 + fs * 1.85));
+  const rw = Math.min(W * 0.36, fs * 7);
+  HUD.bRule.setAttribute('d', `M${r1(W / 2 - rw)} ${r1(H * 0.2 + fs * 1.3)}H${r1(W / 2 - 10)}M${r1(W / 2 + 10)} ${r1(H * 0.2 + fs * 1.3)}H${r1(W / 2 + rw)}M${r1(W / 2 - 4)} ${r1(H * 0.2 + fs * 1.3)}L${r1(W / 2)} ${r1(H * 0.2 + fs * 1.3 - 4)}L${r1(W / 2 + 4)} ${r1(H * 0.2 + fs * 1.3)}L${r1(W / 2)} ${r1(H * 0.2 + fs * 1.3 + 4)}Z`);
+  const touch = document.body.classList.contains('touch');
+  HUD.hint.setAttribute('x', W / 2);
+  HUD.hint.setAttribute('y', r1((touch ? H - 196 : H - 26) - ins.b));
+  HUD.hint.textContent = touch ? 'left stick walks · right stick turns · drag the view to look' : 'W S / ↑ ↓ walk · A D / ← → turn · drag to look · Shift to hurry';
+  if (HUD.stats) { HUD.stats.setAttribute('x', W - 10 - ins.r); HUD.stats.setAttribute('y', H - 10 - ins.b); }
+}
+let statAcc = 0, statN = 0, statT = 0;
+function updateHUD(dt) {
+  if (!HUD.root) return;
+  const on = S.started ? 1 : 0;
+  const cur = +HUD.root.getAttribute('opacity');
+  if (cur !== on) HUD.root.setAttribute('opacity', r3(clamp(cur + (on ? dt * 2 : -dt * 4), 0, 1)));
+  const deg = ((S.yaw * 180 / Math.PI) % 360 + 360) % 360;
+  HUD.strip.setAttribute('transform', `translate(${r1(HUD.cw / 2 - deg * HUD.ppd)} 0)`);
+  const lt = S.letters === 1 ? '1 letter' : S.letters + ' letters';
+  if (HUD.letters.textContent !== lt) HUD.letters.textContent = lt;
+  const fath = Math.floor(S.walked / CFG.FATHOM), wt = fath.toLocaleString('en-US') + (fath === 1 ? ' fathom walked' : ' fathoms walked');
+  if (HUD.walked.textContent !== wt) HUD.walked.textContent = wt;
+  HUD.bannerT += dt;
+  const b = HUD.bannerT, bo = b < 0.8 ? b / 0.8 : b < 4.6 ? 1 : Math.max(0, 1 - (b - 4.6) / 1.3);
+  HUD.banner.setAttribute('opacity', r3(S.reading ? 0 : bo));
+  if (S.started) {
+    HUD.hintT += dt;
+    const h = HUD.hintT, ho = h < 1.5 ? 0 : h < 2.5 ? h - 1.5 : h < 11 ? 1 : Math.max(0, 1 - (h - 11) / 1.5);
+    HUD.hint.setAttribute('opacity', r3(ho * 0.95));
+  }
+  if (HUD.stats) {
+    statAcc += dt; statN++; statT += dt;
+    if (statT > 0.5) {
+      HUD.stats.textContent = `${Math.round(statN / statAcc)} fps · ${VIS.length} sprites · ${CH.size} chunks · q ${S.Q.toFixed(2)}`;
+      statAcc = statN = statT = 0;
+    }
+  }
+}
+function showBanner(r, first) {
+  HUD.bTitle.textContent = r.name;
+  HUD.bSub.textContent = r.sub + (first ? ' · newly walked' : ' · walked before');
+  HUD.bannerT = 0;
+}
+
+/* =====================================================================
+   OVERLAY — the intro card and the letter reader (SVG text, wrapped)
+   ===================================================================== */
+const OV = {};
+function wrapText(textEl, str, x, maxW, lineH, fs) {
+  while (textEl.firstChild) textEl.firstChild.remove();
+  const probe = mk('tspan', { x }, textEl), lines = [];
+  let line = '';
+  for (const w of str.split(/\s+/)) {
+    const test = line ? line + ' ' + w : w;
+    probe.textContent = test;
+    const len = probe.getComputedTextLength() || test.length * fs * 0.5;
+    if (len > maxW && line) { lines.push(line); line = w; } else line = test;
+  }
+  if (line) lines.push(line);
+  probe.remove();
+  lines.forEach((l, i) => { mk('tspan', { x, dy: i ? lineH : 0 }, textEl).textContent = l; });
+  return lines.length;
+}
+function setupOverlay() {
+  const ov = $('overlay');
+  OV.intro = mk('g', null, ov);
+  OV.letter = mk('g', { display: 'none' }, ov);
+}
+const LORE = [
+  'Three hundred years ago, on the Night of the Turning, the sea went up. It lifted off the world like a cloth drawn from a table and hung itself twenty fathoms overhead, surface facing down. It has stayed there ever since.',
+  'Its ships still sail it, upside down to us, masts pointing at our heads. Its whales pass over like weather. The light comes down through it green and shifting, and the kelp still climbs toward water it can almost touch.',
+  'What was left below is the Floor: the old seabed, dry and bright, where the coral kept building out of habit. Sailors always threw letters into the sea. Now the sea drops them down to us.',
+  'You are a Floorwalker. Where a thin shaft of light reaches the sand, a letter has fallen.',
+];
+function layoutOverlay() {
+  if (!OV.intro) return;
+  if (!S.started) layoutIntro();
+  if (S.reading) layoutLetter();
+}
+function layoutIntro() {
+  const g = OV.intro, W = cam.W, H = cam.H;
+  while (g.firstChild) g.firstChild.remove();
+  mk('rect', { x: 0, y: 0, width: W, height: H, fill: '#04222a', 'fill-opacity': 0.42, class: 'hit' }, g);
+  const wide = W > H * 1.3 && H < 640;
+  const cardW = wide ? Math.min(W - 28, 960) : Math.min(W - 24, 600);
+  const pad = clamp(cardW * 0.06, 18, 38), fs = clamp(Math.min(W, H * 1.3) / 36, 13.5, 17), lh = fs * 1.42;
+  const card = mk('g', null, g), content = mk('g', null, card);
+  const bg = mk('rect', { rx: 18, fill: '#0a3440', 'fill-opacity': 0.9, stroke: '#cdeae2', 'stroke-opacity': 0.45, 'stroke-width': 1.2 }, content);
+  const frame = mk('rect', { rx: 13, fill: 'none', stroke: '#cdeae2', 'stroke-opacity': 0.18 }, content);
+  const colW = wide ? (cardW - pad * 3) / 2 : cardW - pad * 2;
+  const xL = pad, xR = wide ? pad * 2 + colW : pad;
+  let yL = pad, yR = pad;
+  const head = (x0, y0, w) => {
+    let tfs = clamp(w / 7.2, 26, 50);
+    const t = mk('text', { x: x0 + w / 2, y: y0 + tfs, 'text-anchor': 'middle', 'font-size': r1(tfs), fill: '#f6fbf8', 'letter-spacing': '0.04em' }, content);
+    t.textContent = 'The Upturned Sea';
+    const tl = t.getComputedTextLength();
+    if (tl > w * 0.96) { tfs *= w * 0.96 / tl; t.setAttribute('font-size', r1(tfs)); t.setAttribute('y', r1(y0 + tfs)); }
+    const st = mk('text', { x: x0 + w / 2, y: y0 + tfs + fs * 1.6, 'text-anchor': 'middle', 'font-size': r1(fs * 0.95), fill: '#9fd3c8', 'font-style': 'italic' }, content);
+    st.textContent = 'a walk across the floor of the world';
+    // ornament: a small galleon hanging from a wave line
+    const oy = y0 + tfs + fs * 2.9, cx = x0 + w / 2;
+    let wave = `M${r1(cx - 70)} ${r1(oy)}`;
+    for (let i = 0; i < 10; i++) wave += `q7 -4 14 0`;
+    mk('path', { d: wave, fill: 'none', stroke: '#9fd3c8', 'stroke-width': 1.3, 'stroke-linecap': 'round' }, content);
+    mk('path', { d: `M${cx - 16} ${oy + 1}h32l-4 5h-24z M${cx - 7} ${oy + 6}v14 M${cx + 5} ${oy + 6}v16 M${cx - 13} ${oy + 9}h12l-2 7h-8z M${cx - 1} ${oy + 9}h12l-2 9h-8z`,
+                 fill: '#f3ebd6', stroke: '#f3ebd6', 'stroke-width': 0.8, 'stroke-linejoin': 'round' }, content);
+    return oy + 28 - y0;
+  };
+  const para = (x0, y0, w) => {
+    let y = y0;
+    for (const p of LORE) {
+      const t = mk('text', { x: x0, y: y + fs, 'font-size': r1(fs), fill: '#e4f3ee' }, content);
+      const n = wrapText(t, p, x0, w, lh, fs);
+      y += n * lh + fs * 0.7;
+    }
+    return y - y0;
+  };
+  const controls = (x0, y0, w) => {
+    const touch = document.body.classList.contains('touch');
+    const lines = touch
+      ? ['Left stick: walk forward and back', 'Right stick: turn · drag the view to look up']
+      : ['W / S or ↑ ↓ walk · A / D or ← → turn', 'Drag to look around (look up!) · Shift to hurry'];
+    lines.forEach((l, i) => {
+      const t = mk('text', { x: x0 + w / 2, y: y0 + fs * 0.9 + i * lh * 0.95, 'text-anchor': 'middle', 'font-size': r1(fs * 0.84), fill: '#9fd3c8', class: 'ui' }, content);
+      t.textContent = l;
+    });
+    return lh * 0.95 * lines.length + fs * 0.4;
+  };
+  const button = (x0, y0, w) => {
+    const bw = Math.min(250, w), bh = 48, bx = x0 + (w - bw) / 2;
+    const b = mk('g', { class: 'btn', role: 'button', 'aria-label': 'Walk the Floor' }, content);
+    mk('rect', { x: bx, y: y0, width: bw, height: bh, rx: 24, fill: '#f2c46b', stroke: '#fff1c9', 'stroke-width': 1.5 }, b);
+    const t = mk('text', { x: bx + bw / 2, y: y0 + bh / 2 + 6, 'text-anchor': 'middle', 'font-size': 18, fill: '#153a44', 'letter-spacing': '0.05em' }, b);
+    t.textContent = 'Walk the Floor';
+    b.addEventListener('pointerup', e => { e.stopPropagation(); startGame(); });
+    OV.button = b;
+    return bh;
+  };
+  if (wide) {
+    yL += para(xL, yL, colW);
+    yR += head(xR, yR, colW) + fs * 0.4;
+    yR += controls(xR, yR, colW) + fs * 0.6;
+    yR += button(xR, yR, colW);
+  } else {
+    yL += head(xL, yL, colW) + fs * 0.3;
+    yL += para(xL, yL, colW);
+    yL += controls(xL, yL, colW) + fs * 0.6;
+    yL += button(xL, yL, colW);
+  }
+  const cardH = Math.max(yL, yR) + pad;
+  for (const [r, inset] of [[bg, 0], [frame, 6]]) {
+    r.setAttribute('x', inset); r.setAttribute('y', inset); r.setAttribute('width', cardW - inset * 2); r.setAttribute('height', cardH - inset * 2);
+  }
+  const s = Math.min(1, (H - 20) / cardH, (W - 12) / cardW);
+  card.setAttribute('transform', `translate(${r1((W - cardW * s) / 2)} ${r1((H - cardH * s) / 2)}) scale(${r3(s)})`);
+}
+function startGame() {
+  if (S.started) return;
+  S.started = true;
+  document.body.classList.remove('intro');
+  const g = OV.intro;
+  let o = 1;
+  const fade = () => { o -= 0.08; g.setAttribute('opacity', r3(Math.max(0, o))); if (o > 0) requestAnimationFrame(fade); else g.setAttribute('display', 'none'); };
+  fade();
+  setTimeout(() => { if (g.getAttribute('display') !== 'none') g.setAttribute('display', 'none'); }, 900);
+  S.region = regionAt(S.x, S.z);
+  S.seen.add(S.region.key);
+  showBanner(S.region, true);
+  HUD.hintT = 0;
+}
+function openLetter() {
+  S.reading = true;
+  document.body.classList.add('reading');
+  OV.letterIdx = S.letterIdx;
+  S.letterIdx = (S.letterIdx + 1) % LETTERS.length;
+  OV.letter.setAttribute('display', 'inline');
+  OV.letterT = 0;
+  layoutLetter();
+}
+function layoutLetter() {
+  const g = OV.letter, W = cam.W, H = cam.H, [body, sign] = LETTERS[OV.letterIdx];
+  while (g.firstChild) g.firstChild.remove();
+  const dim = mk('rect', { x: 0, y: 0, width: W, height: H, fill: '#04222a', 'fill-opacity': 0.35, class: 'hit' }, g);
+  dim.addEventListener('pointerup', e => { e.stopPropagation(); closeLetter(); });
+  const pw = Math.min(W - 32, 470), pad = clamp(pw * 0.08, 18, 34), fs = clamp(pw / 22, 16, 21), lh = fs * 1.38;
+  const card = mk('g', { class: 'hit' }, g);
+  card.addEventListener('pointerup', e => { e.stopPropagation(); closeLetter(); });
+  const paper = mk('path', { fill: '#f6eedb', stroke: '#b8a57a', 'stroke-width': 1.2 }, card);
+  const hd = mk('text', { x: pw / 2, y: pad + 12, 'text-anchor': 'middle', 'font-size': 12, 'letter-spacing': '0.22em', fill: '#8a7650' }, card);
+  hd.textContent = 'A LETTER FROM THE OVERWATER';
+  const t = mk('text', { x: pad, y: pad + 32 + fs, 'font-size': r1(fs), fill: '#2d2418', class: 'hand' }, card);
+  const n = wrapText(t, body, pad, pw - pad * 2, lh, fs);
+  let y = pad + 32 + fs + (n - 1) * lh + lh * 1.3;
+  const sg = mk('text', { x: pw - pad, y, 'text-anchor': 'end', 'font-size': r1(fs * 0.92), fill: '#5a4a30', class: 'hand' }, card);
+  sg.textContent = '— ' + sign;
+  y += lh * 1.1;
+  const ft = mk('text', { x: pw / 2, y: y + 6, 'text-anchor': 'middle', 'font-size': 11.5, fill: '#9c8a64', 'font-style': 'italic' }, card);
+  ft.textContent = S.letters + (S.letters === 1 ? ' letter' : ' letters') + ' gathered · tap or press a key to fold it away';
+  const ph = y + pad;
+  // paper with a gently deckled edge
+  let d = 'M4 2';
+  for (let x = 4; x < pw - 4; x += 14) d += `L${r1(x + 7)} ${r1(1 + Math.sin(x) * 1.2)}`;
+  d += `L${pw - 2} 4L${pw} ${r1(ph - 4)}`;
+  for (let x = pw - 4; x > 4; x -= 14) d += `L${r1(x - 7)} ${r1(ph - 1 + Math.cos(x) * 1.2)}`;
+  d += `L2 ${r1(ph - 3)}Z`;
+  paper.setAttribute('d', d);
+  mk('path', { d: `M${pad} ${pad + 20}H${pw - pad}`, stroke: '#cdbb91', 'stroke-width': 1 }, card).parentNode.insertBefore(card.lastChild, hd);
+  mk('circle', { cx: pw - pad * 0.9, cy: ph - pad * 0.9, r: 9, fill: '#9fd3c8', 'fill-opacity': 0.25 }, card);
+  const s = Math.min(1, (H - 24) / ph);
+  card.setAttribute('transform', `translate(${r1((W - pw * s) / 2)} ${r1((H - ph * s) / 2)}) scale(${r3(s)}) rotate(-1.2 ${r1(pw / 2)} ${r1(ph / 2)})`);
+}
+function closeLetter() {
+  if (!S.reading || OV.letterT < 0.35) return;
+  S.reading = false;
+  document.body.classList.remove('reading');
+  OV.letter.setAttribute('display', 'none');
+}
+
+/* =====================================================================
+   INPUT — keys, drag-to-look, twin multitouch sticks, gesture guards
+   ===================================================================== */
+const MOVE_KEYS = ['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'ShiftLeft', 'ShiftRight'];
+function markTouch() {
+  if (document.body.classList.contains('touch')) return;
+  document.body.classList.add('touch');
+  layoutHUD();
+  if (!S.started) layoutIntro();
+}
+const STICKS = {};
+function setupStick(el, st) {
+  const knob = el.querySelector('.knob');
+  let cx = 0, cy = 0, R = 1;
+  const recenter = () => {
+    const r = el.querySelector('.ring').getBoundingClientRect();
+    cx = r.left + r.width / 2; cy = r.top + r.height / 2; R = Math.max(1, r.width * 0.42);
+  };
+  const move = e => {
+    let dx = e.clientX - cx, dy = e.clientY - cy;
+    const m = Math.hypot(dx, dy);
+    if (m > R) { dx *= R / m; dy *= R / m; }
+    knob.style.transform = `translate(${dx}px, ${dy}px)`;
+    st.x = dx / R; st.y = dy / R;
+  };
+  const end = e => {
+    if (e.pointerId !== st.id) return;
+    st.id = null; st.x = 0; st.y = 0;
+    knob.style.transform = '';
+    el.classList.remove('on');
+  };
+  el.addEventListener('pointerdown', e => {
+    e.preventDefault(); e.stopPropagation();
+    markTouch();
+    if (st.id !== null) return;
+    st.id = e.pointerId;
+    try { el.setPointerCapture(e.pointerId); } catch (_) {}
+    recenter();
+    el.classList.add('on');
+    move(e);
+  });
+  el.addEventListener('pointermove', e => { if (e.pointerId === st.id) { e.preventDefault(); move(e); } });
+  el.addEventListener('pointerup', end);
+  el.addEventListener('pointercancel', end);
+  el.addEventListener('lostpointercapture', end);
+  STICKS[el.id] = { el, knob, st, recenter };
+}
+function resetSticks() {
+  for (const k in STICKS) { const s = STICKS[k]; s.st.id = null; s.st.x = s.st.y = 0; s.knob.style.transform = ''; s.el.classList.remove('on'); }
+  IN.look = null;
+  $('view').classList.remove('drag');
+}
+function setupInput() {
+  addEventListener('keydown', e => {
+    const k = e.code;
+    if (e.metaKey || e.ctrlKey || e.altKey) return;      // browser shortcuts, not steering
+    if (k.startsWith('Arrow') || k === 'Space') e.preventDefault();
+    if (!S.started) { if ((k === 'Enter' || k === 'Space') && !e.repeat) startGame(); return; }
+    if (S.reading) { if (!e.repeat) closeLetter(); if (MOVE_KEYS.includes(k)) IN.keys.add(k); return; }
+    if (MOVE_KEYS.includes(k)) IN.keys.add(k);
+  });
+  addEventListener('keyup', e => { if (e.key === 'Meta') IN.keys.clear(); else IN.keys.delete(e.code); });
+  addEventListener('blur', () => { IN.keys.clear(); resetSticks(); });
+  document.addEventListener('visibilitychange', () => { if (document.hidden) { IN.keys.clear(); resetSticks(); } });
+  const view = $('view');
+  view.addEventListener('pointerdown', e => {
+    if (e.pointerType === 'touch') markTouch();
+    if (IN.look || (e.pointerType === 'mouse' && e.button !== 0)) return;
+    IN.look = { id: e.pointerId, x: e.clientX, y: e.clientY };
+    try { view.setPointerCapture(e.pointerId); } catch (_) {}
+    view.classList.add('drag');
+    e.preventDefault();
+  });
+  view.addEventListener('pointermove', e => {
+    const L = IN.look;
+    if (!L || e.pointerId !== L.id) return;
+    const dx = e.clientX - L.x, dy = e.clientY - L.y;
+    L.x = e.clientX; L.y = e.clientY;
+    if (S.reading) return;
+    const k = e.pointerType === 'touch' ? 0.0055 : 0.0042;
+    S.yaw = wrapAngle(S.yaw + dx * k);
+    S.pitch = clamp(S.pitch - dy * k, CFG.PITCH_MIN, CFG.PITCH_MAX);
+  });
+  const endLook = e => { if (IN.look && e.pointerId === IN.look.id) { IN.look = null; view.classList.remove('drag'); } };
+  view.addEventListener('pointerup', endLook);
+  view.addEventListener('pointercancel', endLook);
+  view.addEventListener('lostpointercapture', endLook);
+  setupStick($('stickL'), IN.sl);
+  setupStick($('stickR'), IN.sr);
+  // No pull-to-refresh, pinch-zoom, double-tap zoom, swipe navigation or long-press menus.
+  const stop = e => { if (e.cancelable) e.preventDefault(); };
+  document.addEventListener('touchmove', stop, { passive: false });
+  document.addEventListener('touchstart', e => { if (e.touches.length > 1) stop(e); }, { passive: false });
+  document.addEventListener('touchend', e => { if (e.touches.length > 0) stop(e); }, { passive: false });
+  for (const ev of ['gesturestart', 'gesturechange', 'gestureend', 'dblclick', 'contextmenu', 'selectstart', 'dragstart']) document.addEventListener(ev, stop, { passive: false });
+  addEventListener('wheel', e => { if (e.ctrlKey) e.preventDefault(); }, { passive: false });
+  if (matchMedia('(pointer: coarse)').matches || matchMedia('(any-pointer: coarse)').matches && navigator.maxTouchPoints > 0) markTouch();
+}
+
+/* =====================================================================
+   SIMULATION — walking, collision, head-bob, footprints, letters
+   ===================================================================== */
+const NEAR_SOLIDS = [];
+function collide(x, z) {
+  solidsNear(x, z, NEAR_SOLIDS);
+  for (let it = 0; it < 2; it++) for (const o of NEAR_SOLIDS) {
+    const dx = x - o.x, dz = z - o.z, rr = o.r + CFG.RADIUS, d2 = dx * dx + dz * dz;
+    if (d2 < rr * rr && d2 > 1e-9) { const d = Math.sqrt(d2), push = (rr - d) / d; x += dx * push; z += dz * push; }
+  }
+  return [x, z];
+}
+function checkPickups() {
+  const C = CFG.CHUNK, ci = Math.floor(S.x / C), cj = Math.floor(S.z / C);
+  for (let di = -1; di <= 1; di++) for (let dj = -1; dj <= 1; dj++) {
+    const ch = CH.get(ckey(ci + di, cj + dj));
+    if (!ch) continue;
+    for (let i = ch.bottles.length - 1; i >= 0; i--) {
+      const b = ch.bottles[i];
+      if (Math.hypot(b.x - S.x, b.z - S.z) > 2.3) continue;
+      S.taken.add(b.id);
+      ch.bottles.splice(i, 1);
+      for (const s of b.sprites) { releaseSprite(s); const k = ch.sprites.indexOf(s); if (k >= 0) ch.sprites.splice(k, 1); }
+      S.letters++;
+      openLetter();
+      return;
+    }
+  }
+}
+let regionTimer = 0;
+function update(dt) {
+  S.t += dt;
+  updateAmbient(dt);
+  updateTravellers(dt);
+  if (OV.letterT !== undefined) OV.letterT += dt;
+  if (!S.started) {          // attract mode behind the intro card: a slow look around
+    S.yaw = wrapAngle(S.yaw + dt * 0.05);
+    S.bobAmp *= 0.9;
+    return;
+  }
+  let fwd = 0, turn = 0, run = false;
+  if (!S.reading) {
+    const K = IN.keys;
+    if (K.has('KeyW') || K.has('ArrowUp')) fwd += 1;
+    if (K.has('KeyS') || K.has('ArrowDown')) fwd -= 1;
+    if (K.has('KeyA') || K.has('ArrowLeft')) turn -= 1;
+    if (K.has('KeyD') || K.has('ArrowRight')) turn += 1;
+    run = K.has('ShiftLeft') || K.has('ShiftRight');
+  }
+  let target = fwd * (run ? CFG.RUN : CFG.WALK), turnRate = turn * CFG.TURN;
+  if (!S.reading && IN.sl.id !== null) {
+    const y = -IN.sl.y, m = Math.abs(y) < 0.12 ? 0 : Math.sign(y) * (Math.abs(y) - 0.12) / 0.88;
+    target = m * CFG.STICK_SPEED;
+  }
+  if (!S.reading && IN.sr.id !== null) {
+    const x = IN.sr.x, m = Math.abs(x) < 0.1 ? 0 : Math.sign(x) * (Math.abs(x) - 0.1) / 0.9;
+    turnRate = m * Math.abs(m) * 0.65 * CFG.STICK_TURN + m * 0.35 * CFG.STICK_TURN;
+  }
+  S.vFwd += (target - S.vFwd) * Math.min(1, dt * 6);
+  S.vYaw += (turnRate - S.vYaw) * Math.min(1, dt * 9);
+  if (Math.abs(S.vFwd) < 1e-3 && target === 0) S.vFwd = 0;
+  S.yaw = wrapAngle(S.yaw + S.vYaw * dt);
+  const nx = S.x + Math.sin(S.yaw) * S.vFwd * dt, nz = S.z + Math.cos(S.yaw) * S.vFwd * dt;
+  const [cx, cz] = collide(nx, nz);
+  const moved = Math.hypot(cx - S.x, cz - S.z);
+  S.x = cx; S.z = cz;
+  S.walked += moved;
+  const speed = dt > 0 ? moved / dt : 0;
+  S.bobAmp += (clamp(speed / CFG.WALK, 0, 1.25) - S.bobAmp) * Math.min(1, dt * 5);
+  S.bobPhase += moved * 1.3;
+  S.footAcc += moved;
+  if (S.footAcc > 1.05) { S.footAcc = 0; S.footSide = -S.footSide; addFootprint(S.x, S.z, S.yaw, S.footSide); }
+  if (!S.reading) checkPickups();
+  regionTimer -= dt;
+  if (regionTimer <= 0) {
+    regionTimer = 0.35;
+    const r = regionAt(S.x, S.z);
+    if (r !== S.region) {
+      const first = !S.seen.has(r.key);
+      S.seen.add(r.key);
+      S.region = r;
+      showBanner(r, first);
+    }
+  }
+}
+
+/* =====================================================================
+   FRAME LOOP, SIZING, QUALITY
+   ===================================================================== */
+function resize() {
+  const W = Math.max(1, innerWidth || document.documentElement.clientWidth || 1);
+  const H = Math.max(1, innerHeight || document.documentElement.clientHeight || 1);
+  cam.W = W; cam.H = H; cam.CX = W / 2; cam.CY = H / 2;
+  cam.F = Math.max(W * 0.62, H * 0.56);
+  cam.tanH = (W / 2) / cam.F * 1.08;
+  for (const id of ['view', 'veil', 'hud', 'overlay']) $(id).setAttribute('viewBox', `0 0 ${W} ${H}`);
+  layoutVeil();
+  layoutHUD();
+  layoutOverlay();
+  for (const k in STICKS) STICKS[k].recenter();
+  gradKey = '';
+}
+function checkSize() {
+  const w = innerWidth, h = innerHeight;
+  if ((w && w !== cam.W) || (h && h !== cam.H)) resize();
+}
+// A static vignette in its own layer: the edges of vision darken like looking through water.
+function layoutVeil() {
+  const v = $('veil');
+  while (v.firstChild) v.firstChild.remove();
+  const g = mk('radialGradient', { id: 'gVeil', cx: '50%', cy: '46%', r: '75%' }, mk('defs', null, v));
+  mk('stop', { offset: 0.55, 'stop-color': '#0a3a44', 'stop-opacity': 0 }, g);
+  mk('stop', { offset: 1, 'stop-color': '#062a33', 'stop-opacity': 0.3 }, g);
+  mk('rect', { x: 0, y: 0, width: cam.W, height: cam.H, fill: 'url(#gVeil)' }, v);
+}
+// Frame pacing is judged against the best 2.5 s average this device has managed, not a
+// fixed 60 Hz budget: a display capped at 30 Hz (low-power mode, throttled iframe) is
+// steady at 33 ms and should keep full quality; a 60 Hz device sagging to 30 should not.
+let perfAcc = 0, perfN = 0, perfBest = Infinity;
+function adaptQuality(dtMs) {
+  if (S.qLocked || document.hidden || !(dtMs > 0) || dtMs > 250) return;
+  perfAcc += dtMs; perfN++;
+  if (perfAcc < 2500) return;
+  const avg = perfAcc / perfN;
+  perfAcc = perfN = 0;
+  perfBest = Math.min(perfBest, avg);
+  if (!S.started) return;
+  if (avg > Math.max(perfBest * 1.45, 22) && S.Q > 0.6) S.Q = Math.max(0.6, r3(S.Q - 0.1));
+  else if (avg < perfBest * 1.18 && S.Q < 1) S.Q = Math.min(1, r3(S.Q + 0.05));
+}
+let lastT = null;
+function frame(now) {
+  requestAnimationFrame(frame);
+  if (lastT === null) lastT = now;
+  const dtMs = now - lastT;
+  lastT = now;
+  const dt = Math.min(0.05, Math.max(0, dtMs / 1000));
+  checkSize();
+  update(dt);
+  streamChunks(false);
+  render(dt);
+  updateHUD(dt);
+  adaptQuality(dtMs);
+}
+
+/* =====================================================================
+   BOOT
+   ===================================================================== */
+function boot() {
+  buildSymbols($('defs'));
+  setupScene();
+  setupHUD();
+  setupOverlay();
+  setupInput();
+  if (!S.qLocked && document.body.classList.contains('touch')) S.Q = 0.85;   // phones start a little lighter
+  resize();
+  streamChunks(true);
+  spawnVoyager(120, 0.9);
+  voyTimer = 30;
+  S.region = regionAt(S.x, S.z);
+  if (QS.has('nointro')) startGame();
+  render(0);
+  updateHUD(0);
+  requestAnimationFrame(frame);
+}
+
+// Debug handle for deterministic headless checks (step the sim without rAF).
+window.__upturned = {
+  S, cam, CFG, CH, IN, SYM,
+  step(dt = 1 / 60, n = 1) {
+    for (let i = 0; i < n; i++) { update(dt); streamChunks(true); }
+    render(dt); updateHUD(dt);
+    return this.stats();
+  },
+  teleport(x, z, yaw, pitch) {
+    S.x = x; S.z = z;
+    if (yaw != null) S.yaw = yaw;
+    if (pitch != null) S.pitch = pitch;
+    streamChunks(true); render(0); updateHUD(0);
+    return this.stats();
+  },
+  start: () => startGame(),
+  stats: () => ({ x: r1(S.x), z: r1(S.z), yaw: r3(S.yaw), pitch: r3(S.pitch), sprites: VIS.length, dom: V.world.childNodes.length,
+                  chunks: CH.size, pool: POOL.use.length, letters: S.letters, region: S.region && S.region.name, q: S.Q, bob: r3(S.bobAmp) }),
+};
+boot();
+</script>
+</body>
+</html>
