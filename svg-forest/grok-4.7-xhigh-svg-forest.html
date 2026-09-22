@@ -1,0 +1,1213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#070814">
+<title>The Saltglass Choir</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect fill='%23070814' width='32' height='32'/%3E%3Cpath d='M16 3 L19 16 L17 28 L15 28 L13 16 Z' fill='%23d5ecff'/%3E%3Ccircle cx='16' cy='4.5' r='2' fill='%237af0ff'/%3E%3C/svg%3E">
+<style>
+  :root {
+    --ink: #f6efe2;
+    --gold: #f0d78c;
+    --dim: rgba(246, 239, 226, 0.72);
+  }
+  * { box-sizing: border-box; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+  html, body {
+    margin: 0;
+    height: 100%;
+    background: #070814;
+    color: var(--ink);
+    overflow: hidden;
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    touch-action: none;
+    overscroll-behavior: none;
+    font-family: Palatino, "Palatino Linotype", "Iowan Old Style", Georgia, serif;
+  }
+  #world {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+    cursor: grab;
+    touch-action: none;
+  }
+  #world.dragging { cursor: grabbing; }
+  .pulse { animation: glow 2.8s ease-in-out infinite; }
+  @keyframes glow { 50% { opacity: 0.45; } }
+  @media (prefers-reduced-motion: reduce) {
+    .pulse { animation: none; }
+  }
+
+  #veil {
+    position: fixed;
+    inset: 0;
+    z-index: 20;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: max(16px, env(safe-area-inset-top)) 16px max(16px, env(safe-area-inset-bottom));
+    background: rgba(7, 8, 20, 0.62);
+  }
+  #veil[hidden] { display: none; }
+  .card {
+    width: min(40rem, 100%);
+    max-height: min(88dvh, 820px);
+    overflow: auto;
+    overscroll-behavior: contain;
+    touch-action: pan-y;
+    padding: clamp(22px, 4vw, 40px) clamp(20px, 4vw, 42px) clamp(18px, 3vw, 32px);
+    border: 1px solid rgba(240, 215, 140, 0.45);
+    border-radius: 18px;
+    background:
+      radial-gradient(120% 80% at 10% 0%, rgba(122, 240, 255, 0.08), transparent 46%),
+      linear-gradient(180deg, rgba(22, 16, 42, 0.94), rgba(10, 10, 24, 0.94));
+    box-shadow: 0 24px 80px rgba(0, 0, 0, 0.45);
+  }
+  .kicker {
+    margin: 0 0 8px;
+    letter-spacing: 0.28em;
+    text-transform: uppercase;
+    font-size: 0.72rem;
+    color: var(--gold);
+  }
+  h1 {
+    margin: 0 0 14px;
+    font-weight: 500;
+    font-size: clamp(2rem, 6vw, 3.3rem);
+    letter-spacing: 0.02em;
+    line-height: 0.95;
+  }
+  .lede { margin: 0 0 12px; line-height: 1.45; color: var(--dim); font-size: clamp(0.98rem, 2.4vw, 1.08rem); }
+  .card button {
+    margin-top: 8px;
+    appearance: none;
+    border: 1px solid rgba(240, 215, 140, 0.8);
+    background: radial-gradient(circle at 40% 30%, #fff6d2, #e0b15a 60%, #8a6230);
+    color: #2a1c10;
+    font: inherit;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    padding: 12px 22px;
+    border-radius: 999px;
+    cursor: pointer;
+  }
+  .card button:focus-visible { outline: 2px solid #7af0ff; outline-offset: 3px; }
+  .controls {
+    margin: 14px 0 0;
+    color: rgba(246, 239, 226, 0.62);
+    font-size: 0.92rem;
+    line-height: 1.4;
+  }
+
+  #whisper, #hint {
+    position: fixed;
+    z-index: 8;
+    left: 50%;
+    transform: translateX(-50%);
+    pointer-events: none;
+    text-align: center;
+    width: min(92vw, 680px);
+    text-shadow: 0 2px 16px rgba(0, 0, 0, 0.65);
+  }
+  #whisper {
+    top: max(18px, calc(env(safe-area-inset-top) + 12px));
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    font-size: clamp(11px, 1.7vw, 15px);
+    color: var(--gold);
+    opacity: 0;
+    transition: opacity 1s ease;
+  }
+  #whisper.show { opacity: 0.92; }
+  #hint {
+    bottom: max(22px, calc(env(safe-area-inset-bottom) + 16px));
+    color: rgba(246, 239, 226, 0.8);
+    font-size: clamp(13px, 2vw, 16px);
+    opacity: 0;
+    transition: opacity 0.8s ease;
+  }
+  #hint.show { opacity: 1; }
+  body.touch #hint.show { bottom: calc(env(safe-area-inset-bottom) + 148px); }
+
+  .joy {
+    display: none;
+    position: fixed;
+    z-index: 10;
+    width: min(30vw, 128px);
+    height: min(30vw, 128px);
+    border-radius: 50%;
+    touch-action: none;
+    background:
+      radial-gradient(circle at 40% 35%, rgba(255, 255, 255, 0.16), rgba(20, 16, 40, 0.28) 58%, rgba(8, 10, 24, 0.42));
+    border: 1px solid rgba(240, 215, 160, 0.5);
+    box-shadow: inset 0 0 24px rgba(122, 240, 255, 0.12), 0 10px 28px rgba(0, 0, 0, 0.35);
+  }
+  body.touch .joy { display: block; }
+  @media (pointer: coarse), (hover: none), (max-width: 820px) {
+    .joy { display: block; }
+    #hint.show { bottom: calc(env(safe-area-inset-bottom) + 148px); }
+  }
+  #joy-left { left: max(16px, env(safe-area-inset-left)); bottom: max(18px, env(safe-area-inset-bottom)); }
+  #joy-right { right: max(16px, env(safe-area-inset-right)); bottom: max(18px, env(safe-area-inset-bottom)); }
+  .knob {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 42%;
+    height: 42%;
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+    background: radial-gradient(circle at 35% 30%, #fff6d2, #e0b15a 55%, #8a6230);
+    box-shadow: 0 0 16px rgba(255, 210, 120, 0.45);
+    pointer-events: none;
+  }
+  .joy span {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: -1.4em;
+    text-align: center;
+    font-size: 10px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: rgba(240, 215, 140, 0.8);
+    pointer-events: none;
+  }
+</style>
+</head>
+<body>
+<svg id="world" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="First-person view of the Saltglass Choir, the shed sea of Orryx"></svg>
+
+<div id="whisper" aria-live="polite"></div>
+<div id="hint"></div>
+
+<div id="joy-left" class="joy" role="slider" aria-label="Walk forward or back" aria-valuemin="-1" aria-valuemax="1" aria-valuenow="0">
+  <span>Walk</span>
+  <div class="knob"></div>
+</div>
+<div id="joy-right" class="joy" role="slider" aria-label="Turn and tilt" aria-valuemin="-1" aria-valuemax="1" aria-valuenow="0">
+  <span>Turn</span>
+  <div class="knob"></div>
+</div>
+
+<div id="veil" role="dialog" aria-modal="true" aria-labelledby="title">
+  <div class="card">
+    <p class="kicker">Shed sea of Orryx</p>
+    <h1 id="title">The Saltglass Choir</h1>
+    <p class="lede">The moon Orryx cracked on a windless night and shed its inner sea as salt. The salt remembered every song it had ever been, and where it settled the ground became glass that can hold a chord.</p>
+    <p class="lede">Choir-Keepers planted resonator spires to turn weather into harmony. When a Keeper was finished, their lantern stayed behind and kept walking. Those are the motes. Haloferns grow in the rings a song leaves on the salt. The arches are places someone stopped to listen, and the salt rose around them.</p>
+    <p class="lede">You were never written into a spire. The plain does not know your name, so it cannot keep your feet. There is no rim. There are only measures. Walk, and let distance change the chord.</p>
+    <button id="begin" type="button">Begin walking</button>
+    <p class="controls" id="how"></p>
+  </div>
+</div>
+
+<script>
+"use strict";
+/**
+ * The Saltglass Choir
+ * A first-person walk across the shed sea of Orryx.
+ * Everything drawn is SVG. The floor is a true perspective projection;
+ * spires, haloferns, motes, and arches are depth-scaled billboards.
+ * The plain is endless: chunks are seeded, mounted, and released as you walk.
+ */
+(function () {
+  const NS = "http://www.w3.org/2000/svg";
+  const PX = 80;
+  const CAM_H = 1.62;
+  const SPEED = 8.4;
+  const TURN = 1.72;
+  const CHUNK = 34;
+  const LOAD = 2;
+  const GROVE_R = 24;
+
+  const ADJ = ["Pale", "Hollow", "Quiet", "Split", "Golden", "Low", "Bright", "Salted", "Last", "Thin", "Glass", "Third", "Wandering", "Unkept"];
+  const WHO = ["Vire", "Orryx", "Sai", "Luneth", "Keth", "Mira", "Thol", "Aen", "Quel", "Ion", "Sylva", "Drae", "Nym", "Ash", "Cind", "Hale"];
+
+  const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const coarse = matchMedia("(pointer: coarse)").matches || matchMedia("(hover: none)").matches || innerWidth < 820;
+  if (coarse) document.body.classList.add("touch");
+
+  const svg = document.getElementById("world");
+  const veil = document.getElementById("veil");
+  const whisperEl = document.getElementById("whisper");
+  const hintEl = document.getElementById("hint");
+  const howEl = document.getElementById("how");
+
+  howEl.textContent = coarse
+    ? "Left stick walks forward and back. Right stick turns, and slides up or down to tilt your gaze. Both sticks work at once."
+    : "WASD or the arrow keys walk and turn. Click and drag to look around.";
+  hintEl.textContent = coarse
+    ? "Left stick walks · right stick turns"
+    : "WASD or arrows to walk and turn · drag to look";
+
+  const player = { x: 0, z: 0, yaw: 0.04, pitch: -0.08 };
+  const held = new Set();
+  let playing = false;
+  let W = 1, H = 1, focal = 1, horizon = 1;
+  let FAR = 68;
+  let MAX_DRAW = 70;
+  let time = 0;
+  let t0 = null;
+  let lastNow = 0;
+  let bobPhase = 0;
+  let bobY = 0;
+  let swayX = 0;
+  let roll = 0;
+  let moveVel = 0;
+  let turnVel = 0;
+  let mouseYaw = 0;
+  let mousePitch = 0;
+  let dragging = false;
+  let lastPX = 0;
+  let lastPY = 0;
+  let dragId = null;
+  let whisperUntil = 0;
+  let lastRegion = "";
+  let regionReadyAt = 0;
+
+  const chunks = new Map();
+  const mounted = new Map();
+  const pools = new Map();
+  let chunkCX = null;
+  let chunkCZ = null;
+
+  function S(name, attrs, parent) {
+    const n = document.createElementNS(NS, name);
+    if (attrs) {
+      for (const k in attrs) n.setAttribute(k, attrs[k]);
+    }
+    if (parent) parent.appendChild(n);
+    return n;
+  }
+
+  const defs = S("defs", null, svg);
+  S("linearGradient", { id: "skyGrad", x1: "0", y1: "0", x2: "0", y2: "1" }, defs);
+  const skyGrad = document.getElementById("skyGrad");
+  [["0%", "#070814"], ["38%", "#161033"], ["62%", "#3a2158"], ["82%", "#a85a62"], ["100%", "#f0b48a"]].forEach(([o, c]) => {
+    S("stop", { offset: o, "stop-color": c }, skyGrad);
+  });
+
+  const gndGrad = S("linearGradient", { id: "gndGrad", gradientUnits: "userSpaceOnUse", x1: "0", x2: "0", y1: "0", y2: "1" }, defs);
+  [["0%", "#e7b39a"], ["16%", "#cbb4d4"], ["48%", "#e4d4f2"], ["100%", "#f7f2fb"]].forEach(([o, c]) => {
+    S("stop", { offset: o, "stop-color": c }, gndGrad);
+  });
+
+  const glass = S("linearGradient", { id: "glass", x1: "0", y1: "1", x2: "0.3", y2: "0" }, defs);
+  [["0%", "#8d79a8"], ["42%", "#d7ecff"], ["100%", "#f8fbff"]].forEach(([o, c]) => {
+    S("stop", { offset: o, "stop-color": c }, glass);
+  });
+  const stone = S("linearGradient", { id: "stone", x1: "0", y1: "0", x2: "0", y2: "1" }, defs);
+  [["0%", "#f4e7d6"], ["100%", "#8a7396"]].forEach(([o, c]) => {
+    S("stop", { offset: o, "stop-color": c }, stone);
+  });
+  const mound = S("radialGradient", { id: "mound", cx: "50%", cy: "40%", r: "60%" }, defs);
+  [["0%", "#f4ecfb"], ["50%", "#d9c6ea"], ["100%", "#a894bc"]].forEach(([o, c]) => {
+    S("stop", { offset: o, "stop-color": c }, mound);
+  });
+  const moteGlow = S("radialGradient", { id: "moteGlow", cx: "40%", cy: "35%", r: "65%" }, defs);
+  [["0%", "#fff8e4"], ["42%", "#ffd56a"], ["100%", "#e08a32"]].forEach(([o, c]) => {
+    S("stop", { offset: o, "stop-color": c }, moteGlow);
+  });
+  const beam = S("linearGradient", { id: "beam", x1: "0", y1: "1", x2: "0", y2: "0" }, defs);
+  S("stop", { offset: "0%", "stop-color": "#bff7ff", "stop-opacity": "0.0" }, beam);
+  S("stop", { offset: "55%", "stop-color": "#7af0ff", "stop-opacity": "0.28" }, beam);
+  S("stop", { offset: "100%", "stop-color": "#e8fbff", "stop-opacity": "0.0" }, beam);
+  const vig = S("radialGradient", { id: "vig", cx: "50%", cy: "42%", r: "72%" }, defs);
+  S("stop", { offset: "58%", "stop-color": "#000", "stop-opacity": "0" }, vig);
+  S("stop", { offset: "100%", "stop-color": "#07060f", "stop-opacity": "0.78" }, vig);
+  const moonGlow = S("radialGradient", { id: "moonGlow", cx: "50%", cy: "50%", r: "50%" }, defs);
+  S("stop", { offset: "0%", "stop-color": "#ffe7c2", "stop-opacity": "0.85" }, moonGlow);
+  S("stop", { offset: "100%", "stop-color": "#ffe7c2", "stop-opacity": "0" }, moonGlow);
+
+  const stage = S("g", { id: "stage" }, svg);
+  const skyRect = S("rect", { fill: "url(#skyGrad)" }, stage);
+  const starLayer = S("g", null, stage);
+  const aurora = [0, 1, 2].map(() => S("path", { fill: "none", "stroke-linecap": "round" }, stage));
+  aurora[0].setAttribute("stroke", "rgba(155,255,214,0.28)");
+  aurora[1].setAttribute("stroke", "rgba(255,170,206,0.22)");
+  aurora[2].setAttribute("stroke", "rgba(180,220,255,0.18)");
+  const moonG = S("g", null, stage);
+  const moonHalo = S("circle", { fill: "url(#moonGlow)" }, moonG);
+  const moonDisc = S("circle", { fill: "#f6e6cf" }, moonG);
+  const moonShade = S("circle", { fill: "#e4c89a", opacity: "0.45" }, moonG);
+  const moonBite = S("circle", { fill: "#1a1030" }, moonG);
+  const moonCrack = S("path", { fill: "none", stroke: "#2a1428", "stroke-width": "2", "stroke-linejoin": "round" }, moonG);
+  const shardG = S("g", null, stage);
+  const shard = S("circle", { fill: "#f3ddc0" }, shardG);
+  const duneFar = S("path", { fill: "#241433" }, stage);
+  const duneNear = S("path", { fill: "#3c245c" }, stage);
+  const ground = S("path", { fill: "url(#gndGrad)" }, stage);
+  const horizonLine = S("line", { stroke: "rgba(255,244,224,0.75)", "stroke-width": "1.4" }, stage);
+  const gridThin = S("path", { fill: "none", stroke: "rgba(214,255,244,0.28)", "stroke-width": "1" }, stage);
+  const gridBar = S("path", { fill: "none", stroke: "rgba(240,215,140,0.55)", "stroke-width": "1.35" }, stage);
+  const notePath = S("path", { fill: "rgba(255,214,120,0.92)", stroke: "rgba(255,248,220,0.95)", "stroke-width": "1.25" }, stage);
+  const reflect = S("path", { fill: "rgba(255,236,210,0.13)" }, stage);
+  const entities = S("g", { id: "entities" }, stage);
+  const vignette = S("rect", { fill: "url(#vig)" }, svg);
+
+  const stars = [];
+  const starRng = mulberry32(11);
+  for (let i = 0; i < 86; i++) {
+    const c = S("circle", {
+      r: starRng() < 0.12 ? 1.7 : 0.55 + starRng() * 0.7,
+      fill: "#fff"
+    }, starLayer);
+    stars.push({
+      el: c,
+      angle: starRng() * Math.PI * 2,
+      elev: 0.08 + starRng() * 0.92,
+      tw: starRng() * Math.PI * 2,
+      base: 0.35 + starRng() * 0.6
+    });
+  }
+
+  const MOON_A = 0.42;
+  const SHARD_A = 0.78;
+
+  function hash2(x, z) {
+    x = x | 0;
+    z = z | 0;
+    let h = Math.imul(x, 374761393) + Math.imul(z, 668265263);
+    h = Math.imul(h ^ (h >>> 13), 1274126177);
+    return (h ^ (h >>> 16)) >>> 0;
+  }
+  function mulberry32(a) {
+    return function () {
+      a |= 0;
+      a = (a + 0x6D2B79F5) | 0;
+      let t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+  function clamp(v, a, b) { return v < a ? a : v > b ? b : v; }
+  function approach(cur, target, dt, rate) {
+    const k = 1 - Math.exp(-rate * dt);
+    return cur + (target - cur) * k;
+  }
+
+  function resize() {
+    W = Math.max(1, innerWidth);
+    H = Math.max(1, innerHeight);
+    svg.setAttribute("viewBox", "0 0 " + W + " " + H);
+    svg.setAttribute("width", String(W));
+    svg.setAttribute("height", String(H));
+    FAR = Math.min(W, H) < 700 ? 52 : 70;
+    MAX_DRAW = Math.min(W, H) < 700 ? 42 : 68;
+    layoutCamera();
+  }
+
+  function layoutCamera() {
+    let f = H * 1.02;
+    const maxHalf = Math.tan(0.70);
+    const minHalf = Math.tan(0.46);
+    let half = (W * 0.5) / f;
+    if (half > maxHalf) f = (W * 0.5) / maxHalf;
+    if (half < minHalf) f = (W * 0.5) / minHalf;
+    focal = f;
+    horizon = H * (0.46 + player.pitch * 0.62);
+  }
+
+  function projectWorld(x, z) {
+    const dx = x - player.x;
+    const dz = z - player.z;
+    const yaw = player.yaw;
+    const cos = Math.cos(yaw);
+    const sin = Math.sin(yaw);
+    const camX = dx * cos - dz * sin;
+    const camZ = dx * sin + dz * cos;
+    if (camZ < 0.45) return null;
+    const inv = focal / camZ;
+    return {
+      x: W * 0.5 + camX * inv,
+      y: horizon + CAM_H * inv,
+      camX: camX,
+      camZ: camZ,
+      inv: inv
+    };
+  }
+
+  function selfCheck() {
+    const saved = { x: player.x, z: player.z, yaw: player.yaw, pitch: player.pitch };
+    player.x = 0;
+    player.z = 0;
+    player.yaw = 0;
+    player.pitch = -0.08;
+    resize();
+    const ahead = projectWorld(0, 10);
+    const right = projectWorld(4, 10);
+    const behind = projectWorld(0, -6);
+    player.x = saved.x;
+    player.z = saved.z;
+    player.yaw = saved.yaw;
+    player.pitch = saved.pitch;
+    layoutCamera();
+    if (!ahead || Math.abs(ahead.x - W / 2) > 0.02) throw new Error("ahead is not centered");
+    if (!(ahead.y > horizon + 1)) throw new Error("ground point should fall below the horizon");
+    if (!right || !(right.x > ahead.x)) throw new Error("positive x should project to the right");
+    if (behind) throw new Error("points behind the camera must be clipped");
+  }
+
+  const GROVE = [
+    { type: "spire", variant: 0, x: 0.4, z: 15.5, mul: 1.18, phase: 0.2 },
+    { type: "spire", variant: 1, x: -11.5, z: 27, mul: 0.96, phase: 1.1 },
+    { type: "spire", variant: 2, x: 13.2, z: 32, mul: 1.05, phase: 2.0 },
+    { type: "arch", variant: 0, x: -6.2, z: 13.4, mul: 1.02, phase: 0.4 },
+    { type: "arch", variant: 1, x: 8.4, z: 21.5, mul: 0.9, phase: 1.5 },
+    { type: "arch", variant: 2, x: -13, z: 20, mul: 0.86, phase: 2.2 },
+    { type: "fern", variant: 0, x: 3.6, z: 9.2, mul: 1.12, phase: 0.3 },
+    { type: "fern", variant: 1, x: -3.8, z: 10.4, mul: 1.0, phase: 1.2 },
+    { type: "fern", variant: 2, x: 5.5, z: 18.6, mul: 1.15, phase: 2.1 },
+    { type: "fern", variant: 0, x: -8.2, z: 17.2, mul: 0.82, phase: 0.7 },
+    { type: "fern", variant: 1, x: 11, z: 14.5, mul: 0.9, phase: 1.8 },
+    { type: "mote", variant: 0, x: 1.6, z: 12.2, mul: 1.05, phase: 0.5 },
+    { type: "mote", variant: 1, x: -2.4, z: 18.4, mul: 1.12, phase: 1.7 },
+    { type: "mote", variant: 2, x: 7.2, z: 25.5, mul: 0.95, phase: 2.5 },
+    { type: "mote", variant: 0, x: -9, z: 23, mul: 0.8, phase: 0.9 }
+  ];
+  GROVE.forEach((e, i) => { e.id = "grove-" + i; });
+
+  const GROVE_NOTES = [
+    { x: 2.2, z: 8.4, mul: 1 },
+    { x: -1.4, z: 11.6, mul: 0.8 },
+    { x: 6.1, z: 16.2, mul: 1.1 },
+    { x: -5.5, z: 15, mul: 0.9 }
+  ];
+
+  function makeChunk(cx, cz) {
+    const rng = mulberry32(hash2(cx, cz));
+    const props = [];
+    const notes = [];
+    const n = 6 + (rng() * 4 | 0);
+    let guard = 0;
+    while (props.length < n && guard < 40) {
+      guard++;
+      const x = (cx + 0.08 + rng() * 0.84) * CHUNK;
+      const z = (cz + 0.08 + rng() * 0.84) * CHUNK;
+      if (x * x + z * z < GROVE_R * GROVE_R) continue;
+      let ok = true;
+      for (let i = 0; i < props.length; i++) {
+        const dx = props[i].x - x;
+        const dz = props[i].z - z;
+        if (dx * dx + dz * dz < 3.1 * 3.1) { ok = false; break; }
+      }
+      if (!ok) continue;
+      const t = rng();
+      const type = t < 0.2 ? "spire" : t < 0.52 ? "fern" : t < 0.74 ? "mote" : "arch";
+      props.push({
+        id: cx + "," + cz + ":" + props.length,
+        type: type,
+        variant: rng() * 3 | 0,
+        x: x,
+        z: z,
+        mul: 0.78 + rng() * 0.5,
+        phase: rng() * Math.PI * 2
+      });
+    }
+    const nn = 2 + (rng() * 3 | 0);
+    for (let i = 0; i < nn; i++) {
+      const x = (cx + rng()) * CHUNK;
+      const z = (cz + rng()) * CHUNK;
+      if (x * x + z * z < GROVE_R * GROVE_R) continue;
+      notes.push({ x: x, z: z, mul: 0.7 + rng() * 0.7 });
+    }
+    return { props: props, notes: notes };
+  }
+
+  function syncChunks() {
+    const cx = Math.floor(player.x / CHUNK);
+    const cz = Math.floor(player.z / CHUNK);
+    if (cx === chunkCX && cz === chunkCZ) return;
+    chunkCX = cx;
+    chunkCZ = cz;
+    const need = new Set();
+    for (let dz = -LOAD; dz <= LOAD; dz++) {
+      for (let dx = -LOAD; dx <= LOAD; dx++) need.add((cx + dx) + "," + (cz + dz));
+    }
+    for (const key of chunks.keys()) {
+      if (!need.has(key)) chunks.delete(key);
+    }
+    for (const key of need) {
+      if (!chunks.has(key)) {
+        const parts = key.split(",");
+        chunks.set(key, makeChunk(+parts[0], +parts[1]));
+      }
+    }
+  }
+
+  function shadow(g, rx, ry) {
+    S("ellipse", { cx: "0", cy: "7", rx: String(rx), ry: String(ry), fill: "rgba(28,14,40,0.28)" }, g);
+  }
+
+  function buildSpire(variant) {
+    const g = S("g");
+    const accent = ["#7af0ff", "#ffd56a", "#ff9ec8"][variant];
+    shadow(g, 36, 12);
+    S("ellipse", { cx: "0", cy: "1", rx: "30", ry: "10", fill: "url(#mound)" }, g);
+    if (variant === 0) {
+      S("rect", { x: "-3", y: "-640", width: "6", height: "360", fill: "url(#beam)" }, g);
+      S("path", {
+        d: "M-18,0 L-9,-130 L-5,-210 L0,-292 L7,-210 L12,-130 L17,0 Z",
+        fill: "url(#glass)", stroke: "rgba(255,255,255,0.75)", "stroke-width": "1.3"
+      }, g);
+      S("path", { d: "M-3,-30 L0,-270", stroke: "rgba(255,255,255,0.55)", "stroke-width": "2", fill: "none", "stroke-linecap": "round" }, g);
+      [-90, -165, -230].forEach((y) => {
+        S("ellipse", { cx: "0", cy: String(y), rx: "16", ry: "5.5", fill: "none", stroke: accent, "stroke-width": "1.7" }, g);
+      });
+      S("circle", { class: "pulse", cx: "0", cy: "-298", r: "8", fill: accent }, g);
+      S("circle", { cx: "0", cy: "-298", r: "3", fill: "#fff" }, g);
+    } else if (variant === 1) {
+      S("rect", { x: "-2", y: "-560", width: "5", height: "280", fill: "url(#beam)" }, g);
+      S("path", { d: "M-22,0 L-16,-80 L-8,-200 L-2,-250 L4,-180 L-6,0 Z", fill: "url(#glass)", stroke: "rgba(255,255,255,0.65)", "stroke-width": "1.1" }, g);
+      S("path", { d: "M20,0 L12,-90 L4,-190 L-2,-248 L-8,-170 L8,0 Z", fill: "url(#glass)", stroke: "rgba(255,255,255,0.65)", "stroke-width": "1.1" }, g);
+      S("ellipse", { cx: "0", cy: "-150", rx: "22", ry: "7", fill: "none", stroke: accent, "stroke-width": "1.8" }, g);
+      S("circle", { class: "pulse", cx: "0", cy: "-256", r: "7", fill: accent }, g);
+      S("circle", { cx: "0", cy: "-256", r: "2.6", fill: "#fff" }, g);
+    } else {
+      S("path", { d: "M-14,0 L-10,-70 L-8,-140 L8,-140 L10,-70 L14,0 Z", fill: "url(#glass)", stroke: "rgba(255,255,255,0.7)", "stroke-width": "1.2" }, g);
+      S("circle", { cx: "0", cy: "-186", r: "34", fill: "url(#glass)", stroke: accent, "stroke-width": "2" }, g);
+      S("circle", { class: "pulse", cx: "0", cy: "-186", r: "16", fill: accent, opacity: "0.9" }, g);
+      S("circle", { cx: "0", cy: "-194", r: "6", fill: "#fff", opacity: "0.85" }, g);
+      [-1, 0, 1].forEach((i) => {
+        const x = i * 16;
+        S("line", { x1: String(x), y1: "-214", x2: String(x), y2: "-158", stroke: "rgba(255,255,255,0.7)", "stroke-width": "1.2" }, g);
+      });
+      S("rect", { x: "-2.5", y: "-520", width: "5", height: "300", fill: "url(#beam)" }, g);
+    }
+    return g;
+  }
+
+  function buildFern(variant) {
+    const g = S("g");
+    shadow(g, 26, 8);
+    if (variant === 2) {
+      S("ellipse", { cx: "0", cy: "0", rx: "34", ry: "12", fill: "none", stroke: "#9dffc8", "stroke-width": "2", opacity: "0.85" }, g);
+      S("ellipse", { cx: "2", cy: "-8", rx: "22", ry: "8", fill: "none", stroke: "#ffb0d4", "stroke-width": "1.7" }, g);
+      S("ellipse", { cx: "-2", cy: "-16", rx: "12", ry: "4.5", fill: "none", stroke: "#fff6c8", "stroke-width": "1.5" }, g);
+      S("circle", { cx: "0", cy: "-16", r: "3.2", fill: "#fff6c8" }, g);
+      return g;
+    }
+    const stems = variant === 1 ? [-10, 8] : [0];
+    stems.forEach((x, i) => {
+      const top = -108 - i * 16;
+      S("path", {
+        d: "M" + x + ",0 C" + (x + 6) + ",-36 " + (x - 8) + ",-70 " + x + "," + top,
+        fill: "none", stroke: "#e7fff3", "stroke-width": "2.2", "stroke-linecap": "round"
+      }, g);
+      S("ellipse", { cx: String(x), cy: String(top + 48), rx: "26", ry: "9", fill: "none", stroke: "#9dffc8", "stroke-width": "2" }, g);
+      S("ellipse", { cx: String(x + 1), cy: String(top + 22), rx: "16", ry: "6", fill: "none", stroke: "#ffb0d4", "stroke-width": "1.8" }, g);
+      S("circle", { class: "pulse", cx: String(x), cy: String(top + 8), r: "4.2", fill: "#fff6c8" }, g);
+    });
+    return g;
+  }
+
+  function moteBody(parent, ox, oy, s) {
+    const b = S("g", { transform: "translate(" + ox + " " + oy + ") scale(" + s + ")" }, parent);
+    S("path", { class: "wing-l", d: "M0,-8 C-34,2 -48,22 -22,30 C-12,16 0,6 0,-8 Z", fill: "#ffd0ea", opacity: "0.78" }, b);
+    S("path", { class: "wing-r", d: "M0,-8 C34,2 48,22 22,30 C12,16 0,6 0,-8 Z", fill: "#d4f4ff", opacity: "0.78" }, b);
+    S("path", { d: "M0,-46 C16,-30 14,-4 0,6 C-14,-4 -16,-30 0,-46 Z", fill: "url(#moteGlow)" }, b);
+    S("ellipse", { cx: "-2", cy: "-24", rx: "5", ry: "8", fill: "#fff", opacity: "0.75" }, b);
+    S("path", { d: "M-6,-22 L-1,-18", stroke: "#3a2410", "stroke-width": "1.5", "stroke-linecap": "round" }, b);
+    S("path", { d: "M6,-22 L1,-18", stroke: "#3a2410", "stroke-width": "1.5", "stroke-linecap": "round" }, b);
+    S("path", { d: "M0,6 Q5,22 0,36", fill: "none", stroke: "#ffe7a8", "stroke-width": "1.3" }, b);
+    return b;
+  }
+
+  function buildMote(variant) {
+    const g = S("g");
+    shadow(g, 18, 6);
+    const body = S("g", { class: "body" }, g);
+    if (variant === 2) {
+      moteBody(body, 0, -78, 0.72);
+      moteBody(body, -26, -58, 0.48);
+      moteBody(body, 24, -64, 0.5);
+    } else if (variant === 1) {
+      const b = moteBody(body, 0, -96, 1.15);
+      b.querySelector(".wing-l").setAttribute("d", "M0,-8 C-52,-6 -70,18 -28,34 C-14,14 0,4 0,-8 Z");
+      b.querySelector(".wing-r").setAttribute("d", "M0,-8 C52,-6 70,18 28,34 C14,14 0,4 0,-8 Z");
+    } else {
+      moteBody(body, 0, -100, 1);
+    }
+    return g;
+  }
+
+  function buildArch(variant) {
+    const g = S("g");
+    shadow(g, 42, 12);
+    S("ellipse", { cx: "0", cy: "2", rx: "36", ry: "11", fill: "url(#mound)" }, g);
+    if (variant === 2) {
+      S("rect", { x: "-30", y: "-78", width: "12", height: "78", rx: "2", fill: "url(#stone)" }, g);
+      S("path", { d: "M-24,-70 Q-4,-120 18,-48", fill: "none", stroke: "url(#stone)", "stroke-width": "11", "stroke-linecap": "round" }, g);
+      S("ellipse", { cx: "16", cy: "-4", rx: "16", ry: "6", fill: "none", stroke: "#f0d78c", "stroke-width": "2" }, g);
+      S("circle", { class: "pulse", cx: "-24", cy: "-86", r: "4", fill: "#7af0ff" }, g);
+      return g;
+    }
+    const h = variant === 1 ? 132 : 96;
+    const half = variant === 1 ? 18 : 28;
+    S("rect", { x: String(-half - 6), y: String(-h + 16), width: "12", height: String(h - 16), rx: "2", fill: "url(#stone)" }, g);
+    S("rect", { x: String(half - 6), y: String(-h + 16), width: "12", height: String(h - 16), rx: "2", fill: "url(#stone)" }, g);
+    S("path", {
+      d: "M" + (-half) + "," + (-h + 20) + " Q0," + (-h - 36) + " " + half + "," + (-h + 20),
+      fill: "none", stroke: "url(#stone)", "stroke-width": "12", "stroke-linecap": "round"
+    }, g);
+    const cy = variant === 1 ? -h + 8 : -h + 18;
+    S("circle", { cx: "0", cy: String(cy), r: variant === 1 ? "12" : "16", fill: "none", stroke: "#f0d78c", "stroke-width": "2" }, g);
+    S("circle", { class: "pulse", cx: "0", cy: String(cy), r: "4", fill: "#7af0ff" }, g);
+    return g;
+  }
+
+  function buildProp(type, variant) {
+    if (type === "spire") return buildSpire(variant);
+    if (type === "fern") return buildFern(variant);
+    if (type === "mote") return buildMote(variant);
+    return buildArch(variant);
+  }
+
+  function acquire(ent) {
+    const key = ent.type + ent.variant;
+    let pool = pools.get(key);
+    if (!pool) { pool = []; pools.set(key, pool); }
+    const el = pool.pop() || buildProp(ent.type, ent.variant);
+    el.style.display = "";
+    return {
+      el: el,
+      key: key,
+      body: el.querySelector(".body"),
+      wings: el.querySelectorAll(".wing-l, .wing-r")
+    };
+  }
+
+  function release(m) {
+    m.el.remove();
+    pools.get(m.key).push(m.el);
+  }
+
+  function regionName(x, z) {
+    const rx = Math.floor(x / 74);
+    const rz = Math.floor(z / 74);
+    const h = hash2(rx + 19, rz - 7);
+    return "The " + ADJ[h % ADJ.length] + " Measure of " + WHO[(h >>> 8) % WHO.length];
+  }
+
+  function updateWhisper() {
+    if (!playing || time < regionReadyAt) return;
+    const name = regionName(player.x, player.z);
+    if (name !== lastRegion) {
+      lastRegion = name;
+      whisperEl.textContent = name;
+      whisperEl.classList.add("show");
+      whisperUntil = time + 4.4;
+    } else if (time > whisperUntil) {
+      whisperEl.classList.remove("show");
+    }
+  }
+
+  function inputAxes() {
+    let move = 0;
+    let turn = 0;
+    if (held.has("KeyW") || held.has("ArrowUp")) move += 1;
+    if (held.has("KeyS") || held.has("ArrowDown")) move -= 1;
+    if (held.has("KeyA") || held.has("ArrowLeft")) turn -= 1;
+    if (held.has("KeyD") || held.has("ArrowRight")) turn += 1;
+    move += -sticks.left.y;
+    turn += sticks.right.x;
+    return { move: clamp(move, -1, 1), turn: clamp(turn, -1, 1), look: sticks.right.y };
+  }
+
+  function update(dt) {
+    const axes = inputAxes();
+    moveVel = approach(moveVel, axes.move, dt, 6);
+    turnVel = approach(turnVel, axes.turn, dt, 8);
+    const mouseRate = dt > 0 ? mouseYaw / dt : 0;
+    player.yaw += turnVel * TURN * dt + mouseYaw;
+    player.pitch = clamp(player.pitch + (-axes.look) * dt * 0.62 + mousePitch, -0.22, 0.28);
+    mouseYaw = 0;
+    mousePitch = 0;
+    const sp = moveVel * SPEED * dt;
+    player.x += Math.sin(player.yaw) * sp;
+    player.z += Math.cos(player.yaw) * sp;
+    const moving = Math.abs(moveVel) > 0.06;
+    if (moving && !reduceMotion) bobPhase += dt * 9.2 * (0.5 + Math.abs(moveVel));
+    const amp = reduceMotion ? 0 : H * 0.011 * Math.abs(moveVel);
+    bobY = approach(bobY, Math.sin(bobPhase) * amp, dt, 10);
+    swayX = approach(swayX, Math.cos(bobPhase * 0.5) * W * 0.0026 * Math.abs(moveVel), dt, 10);
+    const turnRate = turnVel * TURN + mouseRate;
+    roll = approach(roll, clamp(-turnRate * 0.02, -0.035, 0.035), dt, 6);
+    syncChunks();
+    updateWhisper();
+  }
+
+  function clipSegment(x1, z1, x2, z2) {
+    const yaw = player.yaw;
+    const cos = Math.cos(yaw);
+    const sin = Math.sin(yaw);
+    function cam(x, z) {
+      const dx = x - player.x;
+      const dz = z - player.z;
+      return { camX: dx * cos - dz * sin, camZ: dx * sin + dz * cos };
+    }
+    let a = cam(x1, z1);
+    let b = cam(x2, z2);
+    const near = 0.7;
+    if (a.camZ < near && b.camZ < near) return null;
+    if (a.camZ > FAR && b.camZ > FAR) return null;
+    if ((a.camZ < near) !== (b.camZ < near)) {
+      const t = (near - a.camZ) / (b.camZ - a.camZ);
+      const ix = a.camX + (b.camX - a.camX) * t;
+      if (a.camZ < near) a = { camX: ix, camZ: near };
+      else b = { camX: ix, camZ: near };
+    }
+    function scr(p) {
+      const inv = focal / p.camZ;
+      return { x: W * 0.5 + p.camX * inv, y: horizon + CAM_H * inv, camZ: p.camZ };
+    }
+    const sa = scr(a);
+    const sb = scr(b);
+    if (sa.x < -40 && sb.x < -40) return null;
+    if (sa.x > W + 40 && sb.x > W + 40) return null;
+    if (sa.y > H + 40 && sb.y > H + 40) return null;
+    return [sa, sb];
+  }
+
+  function renderSky() {
+    skyRect.setAttribute("x", "0");
+    skyRect.setAttribute("y", "0");
+    skyRect.setAttribute("width", String(W));
+    skyRect.setAttribute("height", String(H));
+    for (let i = 0; i < stars.length; i++) {
+      const s = stars[i];
+      let a = s.angle - player.yaw;
+      a = Math.atan2(Math.sin(a), Math.cos(a));
+      if (Math.abs(a) > 1.15) {
+        s.el.setAttribute("display", "none");
+        continue;
+      }
+      const x = W * 0.5 + Math.tan(a) * focal;
+      const y = horizon - s.elev * H * 0.58;
+      if (y > horizon - 8 || y < -20) {
+        s.el.setAttribute("display", "none");
+        continue;
+      }
+      s.el.setAttribute("display", "");
+      s.el.setAttribute("cx", x.toFixed(1));
+      s.el.setAttribute("cy", y.toFixed(1));
+      const tw = reduceMotion ? s.base : s.base * (0.75 + 0.25 * Math.sin(time * 1.7 + s.tw));
+      s.el.setAttribute("opacity", tw.toFixed(2));
+    }
+    const ribbons = [
+      { amp: H * 0.03, lift: 0.18, seed: 0.4, width: 8 },
+      { amp: H * 0.022, lift: 0.26, seed: 1.7, width: 5 },
+      { amp: H * 0.016, lift: 0.13, seed: 2.6, width: 4 }
+    ];
+    for (let r = 0; r < 3; r++) {
+      const rb = ribbons[r];
+      let d = "";
+      const steps = 22;
+      for (let i = 0; i <= steps; i++) {
+        const x = (W * i) / steps;
+        const ang = player.yaw + (x - W / 2) / focal;
+        const y = horizon - H * rb.lift
+          + Math.sin(ang * 2.4 + rb.seed + time * 0.12) * rb.amp
+          + Math.sin(ang * 6.5 + rb.seed * 2) * rb.amp * 0.4;
+        d += (i === 0 ? "M" : "L") + x.toFixed(1) + " " + y.toFixed(1);
+      }
+      aurora[r].setAttribute("d", d);
+      aurora[r].setAttribute("stroke-width", String(rb.width));
+    }
+    placeMoon(moonG, moonDisc, MOON_A, Math.min(W, H) * 0.085, true);
+    placeMoon(shardG, shard, SHARD_A, Math.min(W, H) * 0.028, false);
+    duneFar.setAttribute("d", dunePath(0.9, H * 0.055, 1.3));
+    duneNear.setAttribute("d", dunePath(1.7, H * 0.034, 2.4));
+  }
+
+  function placeMoon(group, disc, angle, radius, detailed) {
+    let a = angle - player.yaw;
+    a = Math.atan2(Math.sin(a), Math.cos(a));
+    if (Math.abs(a) > 1.2) {
+      group.setAttribute("display", "none");
+      return null;
+    }
+    const x = W * 0.5 + Math.tan(a) * focal;
+    const y = horizon - H * 0.30;
+    if (y > horizon - radius) {
+      group.setAttribute("display", "none");
+      return null;
+    }
+    group.setAttribute("display", "");
+    group.setAttribute("transform", "translate(" + x.toFixed(1) + " " + y.toFixed(1) + ")");
+    disc.setAttribute("r", radius.toFixed(1));
+    if (detailed) {
+      moonHalo.setAttribute("r", (radius * 2.4).toFixed(1));
+      moonShade.setAttribute("cx", (radius * 0.18).toFixed(1));
+      moonShade.setAttribute("cy", (radius * 0.12).toFixed(1));
+      moonShade.setAttribute("r", (radius * 0.72).toFixed(1));
+      moonBite.setAttribute("cx", (radius * 0.72).toFixed(1));
+      moonBite.setAttribute("cy", (-radius * 0.15).toFixed(1));
+      moonBite.setAttribute("r", (radius * 0.34).toFixed(1));
+      const c = radius;
+      moonCrack.setAttribute("d", "M" + (-c * 0.1) + "," + (-c * 0.85)
+        + " L" + (c * 0.05) + "," + (-c * 0.2)
+        + " L" + (-c * 0.18) + "," + (c * 0.15)
+        + " L" + (c * 0.12) + "," + (c * 0.7));
+      moonCrack.setAttribute("stroke-width", Math.max(1.5, radius * 0.045).toFixed(2));
+    }
+    return { x: x, y: y, r: radius };
+  }
+
+  function dunePath(seed, amp, freq) {
+    let d = "M 0 " + H;
+    const step = Math.max(16, W / 28 | 0);
+    for (let x = 0; x <= W; x += step) {
+      const ang = player.yaw + (x - W / 2) / focal;
+      const n = Math.sin(ang * freq + seed) * 0.62
+        + Math.sin(ang * freq * 2.3 + seed * 1.7) * 0.28
+        + Math.sin(ang * freq * 4.1) * 0.12;
+      const y = horizon - amp * 0.35 - n * amp;
+      d += " L " + x + " " + y.toFixed(1);
+    }
+    d += " L " + W + " " + (horizon + 8) + " L 0 " + (horizon + 8) + " Z";
+    return d;
+  }
+
+  function renderGround() {
+    gndGrad.setAttribute("y1", String(horizon));
+    gndGrad.setAttribute("y2", String(H));
+    ground.setAttribute("d", "M0 " + horizon + " L" + W + " " + horizon + " L" + W + " " + (H + 8) + " L0 " + (H + 8) + " Z");
+    horizonLine.setAttribute("x1", "0");
+    horizonLine.setAttribute("x2", String(W));
+    horizonLine.setAttribute("y1", String(horizon));
+    horizonLine.setAttribute("y2", String(horizon));
+
+    const thin = [];
+    const bars = [];
+    const span = 96;
+    const zStart = Math.floor((player.z - 6) / 4) * 4;
+    const zEnd = player.z + FAR;
+    for (let gz = zStart; gz <= zEnd; gz += 4) {
+      const seg = clipSegment(player.x - span, gz, player.x + span, gz);
+      if (!seg) continue;
+      const bucket = ((gz / 4) | 0) % 5 === 0 ? bars : thin;
+      bucket.push("M" + seg[0].x.toFixed(1) + " " + seg[0].y.toFixed(1) + "L" + seg[1].x.toFixed(1) + " " + seg[1].y.toFixed(1));
+    }
+    const xStart = Math.floor((player.x - span) / 4) * 4;
+    const xEnd = player.x + span;
+    for (let gx = xStart; gx <= xEnd; gx += 4) {
+      const seg = clipSegment(gx, player.z - 4, gx, player.z + FAR);
+      if (!seg) continue;
+      const bucket = ((gx / 4) | 0) % 5 === 0 ? bars : thin;
+      bucket.push("M" + seg[0].x.toFixed(1) + " " + seg[0].y.toFixed(1) + "L" + seg[1].x.toFixed(1) + " " + seg[1].y.toFixed(1));
+    }
+    gridThin.setAttribute("d", thin.join(""));
+    gridBar.setAttribute("d", bars.join(""));
+
+    const notes = [];
+    for (let i = 0; i < GROVE_NOTES.length; i++) notes.push(GROVE_NOTES[i]);
+    for (const chunk of chunks.values()) {
+      for (let i = 0; i < chunk.notes.length; i++) notes.push(chunk.notes[i]);
+    }
+    let nd = "";
+    for (let i = 0; i < notes.length; i++) {
+      const n = notes[i];
+      const s = 0.62 * n.mul;
+      const corners = [[n.x, n.z - s], [n.x + s, n.z], [n.x, n.z + s], [n.x - s, n.z]];
+      const pts = [];
+      let ok = true;
+      for (let c = 0; c < 4; c++) {
+        const p = projectWorld(corners[c][0], corners[c][1]);
+        if (!p || p.camZ > FAR) { ok = false; break; }
+        pts.push(p);
+      }
+      if (!ok) continue;
+      nd += "M" + pts[0].x.toFixed(1) + " " + pts[0].y.toFixed(1);
+      for (let c = 1; c < 4; c++) nd += "L" + pts[c].x.toFixed(1) + " " + pts[c].y.toFixed(1);
+      nd += "Z";
+    }
+    notePath.setAttribute("d", nd);
+
+    let a = MOON_A - player.yaw;
+    a = Math.atan2(Math.sin(a), Math.cos(a));
+    if (Math.abs(a) < 1.05) {
+      const mx = W * 0.5 + Math.tan(a) * focal;
+      reflect.setAttribute("display", "");
+      reflect.setAttribute("d", "M" + (mx - 16) + " " + horizon + " L" + (mx + 16) + " " + horizon + " L" + (mx + W * 0.08) + " " + H + " L" + (mx - W * 0.08) + " " + H + " Z");
+    } else {
+      reflect.setAttribute("display", "none");
+    }
+  }
+
+  function consider(list, ent) {
+    let x = ent.x;
+    let z = ent.z;
+    if (ent.type === "mote" && !reduceMotion) {
+      x += Math.cos(time * 0.32 + ent.phase) * 0.85;
+      z += Math.sin(time * 0.27 + ent.phase) * 0.85;
+    }
+    const p = projectWorld(x, z);
+    if (!p || p.camZ > FAR) return;
+    const halfTan = (W * 0.5) / focal;
+    if (Math.abs(p.camX) > p.camZ * (halfTan + 0.85) + 1.2) return;
+    list.push({ ent: ent, p: p });
+  }
+
+  function renderEntities() {
+    const vis = [];
+    for (let i = 0; i < GROVE.length; i++) consider(vis, GROVE[i]);
+    for (const chunk of chunks.values()) {
+      for (let i = 0; i < chunk.props.length; i++) consider(vis, chunk.props[i]);
+    }
+    vis.sort((a, b) => a.p.camZ - b.p.camZ);
+    if (vis.length > MAX_DRAW) vis.length = MAX_DRAW;
+    const seen = new Set();
+    const draw = [];
+    for (let i = 0; i < vis.length; i++) {
+      const item = vis[i];
+      const ent = item.ent;
+      const p = item.p;
+      seen.add(ent.id);
+      let m = mounted.get(ent.id);
+      if (!m) {
+        m = acquire(ent);
+        m.id = ent.id;
+        mounted.set(ent.id, m);
+      }
+      const scale = (p.inv / PX) * ent.mul;
+      let rot = 0;
+      if (!reduceMotion && (ent.type === "fern" || ent.type === "mote")) {
+        rot = Math.sin(time * 0.85 + ent.phase) * (ent.type === "fern" ? 3.2 : 1.4);
+      }
+      let fade = 1;
+      if (p.camZ > FAR * 0.62) fade = 1 - (p.camZ - FAR * 0.62) / (FAR * 0.38);
+      if (p.camZ < 2.4) fade = Math.min(fade, (p.camZ - 0.7) / 1.7);
+      fade = clamp(fade, 0, 1);
+      m.el.setAttribute("transform", "translate(" + p.x.toFixed(2) + " " + p.y.toFixed(2) + ") rotate(" + rot.toFixed(2) + ") scale(" + scale.toFixed(4) + ")");
+      m.el.setAttribute("opacity", fade.toFixed(3));
+      if (m.body && !reduceMotion) {
+        const lift = Math.sin(time * 1.6 + ent.phase) * 8;
+        m.body.setAttribute("transform", "translate(0 " + lift.toFixed(2) + ")");
+      }
+      if (m.wings && m.wings.length && !reduceMotion) {
+        const flap = Math.sin(time * 3.1 + ent.phase);
+        for (let w = 0; w < m.wings.length; w++) {
+          const sign = m.wings[w].getAttribute("class") === "wing-l" ? -1 : 1;
+          m.wings[w].setAttribute("transform", "rotate(" + ((sign * 10 + sign * flap * 8).toFixed(2)) + ")");
+        }
+      }
+      m.z = p.camZ;
+      draw.push(m);
+    }
+    for (const [id, m] of mounted) {
+      if (!seen.has(id)) {
+        release(m);
+        mounted.delete(id);
+      }
+    }
+    draw.sort((a, b) => b.z - a.z);
+    const kids = entities.childNodes;
+    let dirty = kids.length !== draw.length;
+    if (!dirty) {
+      for (let i = 0; i < draw.length; i++) {
+        if (kids[i] !== draw[i].el) { dirty = true; break; }
+      }
+    }
+    if (dirty) {
+      const frag = document.createDocumentFragment();
+      for (let i = 0; i < draw.length; i++) frag.appendChild(draw[i].el);
+      entities.appendChild(frag);
+    }
+  }
+
+  function render() {
+    layoutCamera();
+    const breath = reduceMotion ? 0 : Math.sin(time * 1.15) * H * 0.0024;
+    const rollDeg = roll * (180 / Math.PI);
+    stage.setAttribute("transform",
+      "translate(" + swayX.toFixed(2) + " " + (bobY + breath).toFixed(2) + ") rotate(" + rollDeg.toFixed(3) + " " + (W / 2).toFixed(1) + " " + (H * 0.48).toFixed(1) + ")");
+    renderSky();
+    renderGround();
+    renderEntities();
+    vignette.setAttribute("x", "0");
+    vignette.setAttribute("y", "0");
+    vignette.setAttribute("width", String(W));
+    vignette.setAttribute("height", String(H));
+  }
+
+  const sticks = {
+    left: { el: document.getElementById("joy-left"), knob: document.querySelector("#joy-left .knob"), pid: null, x: 0, y: 0 },
+    right: { el: document.getElementById("joy-right"), knob: document.querySelector("#joy-right .knob"), pid: null, x: 0, y: 0 }
+  };
+
+  function moveStick(stick, clientX, clientY) {
+    const rect = stick.el.getBoundingClientRect();
+    if (rect.width < 2) return;
+    const cx = rect.left + rect.width / 2;
+    const cy = rect.top + rect.height / 2;
+    let dx = clientX - cx;
+    let dy = clientY - cy;
+    const max = rect.width * 0.34;
+    const mag = Math.hypot(dx, dy) || 1;
+    if (mag > max) {
+      dx = dx / mag * max;
+      dy = dy / mag * max;
+    }
+    stick.knob.style.transform = "translate(calc(-50% + " + dx.toFixed(1) + "px), calc(-50% + " + dy.toFixed(1) + "px))";
+    const nx = dx / max;
+    const ny = dy / max;
+    const dead = 0.16;
+    stick.x = Math.abs(nx) < dead ? 0 : nx;
+    stick.y = Math.abs(ny) < dead ? 0 : ny;
+    stick.el.setAttribute("aria-valuenow", (-stick.y).toFixed(2));
+  }
+  function resetStick(stick) {
+    stick.pid = null;
+    stick.x = 0;
+    stick.y = 0;
+    stick.knob.style.transform = "translate(-50%, -50%)";
+    stick.el.setAttribute("aria-valuenow", "0");
+  }
+  function bindStick(stick) {
+    stick.el.addEventListener("pointerdown", function (e) {
+      if (stick.pid !== null) return;
+      stick.pid = e.pointerId;
+      moveStick(stick, e.clientX, e.clientY);
+      try { stick.el.setPointerCapture(e.pointerId); } catch (err) { /* synthetic events have no active pointer */ }
+      e.preventDefault();
+      e.stopPropagation();
+    });
+    stick.el.addEventListener("pointermove", function (e) {
+      if (e.pointerId !== stick.pid) return;
+      moveStick(stick, e.clientX, e.clientY);
+      e.preventDefault();
+    });
+    function end(e) {
+      if (e.pointerId !== stick.pid) return;
+      resetStick(stick);
+    }
+    stick.el.addEventListener("pointerup", end);
+    stick.el.addEventListener("pointercancel", end);
+  }
+  bindStick(sticks.left);
+  bindStick(sticks.right);
+
+  function isMoveCode(code) {
+    return code === "KeyW" || code === "KeyA" || code === "KeyS" || code === "KeyD"
+      || code === "ArrowUp" || code === "ArrowDown" || code === "ArrowLeft" || code === "ArrowRight";
+  }
+
+  function begin() {
+    if (playing) return;
+    playing = true;
+    veil.hidden = true;
+    held.clear();
+    regionReadyAt = time + 0.8;
+    hintEl.classList.add("show");
+    setTimeout(function () { hintEl.classList.remove("show"); }, 6500);
+  }
+
+  document.getElementById("begin").addEventListener("click", begin);
+  veil.addEventListener("pointerdown", function (e) {
+    if (e.target === veil) begin();
+  });
+
+  addEventListener("keydown", function (e) {
+    if (e.target && (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA")) return;
+    if (!playing) {
+      if (isMoveCode(e.code) || e.code === "Enter" || e.code === "Space") {
+        e.preventDefault();
+        begin();
+      }
+      return;
+    }
+    if (isMoveCode(e.code)) {
+      e.preventDefault();
+      held.add(e.code);
+    }
+  });
+  addEventListener("keyup", function (e) {
+    held.delete(e.code);
+  });
+  addEventListener("blur", function () { held.clear(); });
+
+  svg.addEventListener("pointerdown", function (e) {
+    if (!playing || e.pointerType !== "mouse" || e.button !== 0) return;
+    dragging = true;
+    dragId = e.pointerId;
+    lastPX = e.clientX;
+    lastPY = e.clientY;
+    svg.classList.add("dragging");
+    svg.setPointerCapture(e.pointerId);
+  });
+  svg.addEventListener("pointermove", function (e) {
+    if (!dragging || e.pointerId !== dragId) return;
+    const dx = e.clientX - lastPX;
+    const dy = e.clientY - lastPY;
+    lastPX = e.clientX;
+    lastPY = e.clientY;
+    mouseYaw += dx * 0.0044;
+    mousePitch += -dy * 0.0026;
+  });
+  function endDrag(e) {
+    if (e.pointerId !== dragId) return;
+    dragging = false;
+    dragId = null;
+    svg.classList.remove("dragging");
+  }
+  svg.addEventListener("pointerup", endDrag);
+  svg.addEventListener("pointercancel", endDrag);
+
+  addEventListener("touchmove", function (e) {
+    if (e.touches.length > 1) e.preventDefault();
+  }, { passive: false });
+  ["gesturestart", "gesturechange", "gestureend"].forEach(function (name) {
+    document.addEventListener(name, function (e) { e.preventDefault(); }, { passive: false });
+  });
+  addEventListener("contextmenu", function (e) { e.preventDefault(); });
+  addEventListener("resize", resize);
+  if (window.visualViewport) visualViewport.addEventListener("resize", resize);
+
+  resize();
+  selfCheck();
+  syncChunks();
+  render();
+
+  function frame(now) {
+    if (t0 === null) {
+      t0 = now;
+      lastNow = now;
+    }
+    const dt = Math.min(0.05, (now - lastNow) / 1000);
+    lastNow = now;
+    time = (now - t0) / 1000;
+    if (playing) update(dt);
+    render();
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+
+  window.__choir = {
+    player: player,
+    sticks: sticks,
+    held: held,
+    get playing() { return playing; },
+    get mounted() { return mounted.size; },
+    get chunks() { return chunks.size; },
+    project: projectWorld,
+    step: function (dt) {
+      const was = playing;
+      playing = true;
+      time += dt;
+      update(dt);
+      render();
+      playing = was;
+    },
+    begin: begin,
+    resize: resize
+  };
+})();
+</script>
+</body>
+</html>
