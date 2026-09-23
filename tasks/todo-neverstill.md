@@ -179,3 +179,46 @@ Proof: same autopilot in both builds, 45 s per boss with HP pinned.
 - Soak: all six boss configs cleared with no errors, including `?art=0`.
 
 Not verified: how it feels with a human at the controls, and real gamepad hardware.
+
+## Follow-up: demo trailer
+
+Goal: a 55-70 s 1080p60 trailer cut from at least 4 recorded gameplay clips, to get people to try Neverstill.
+
+Plan (done):
+- [x] Capture copy of the game (seeded RNG, stepped frames, `__nvcap`, SFX log) plus a Node CDP driver
+  (headless Chrome, GPU, 1920x1080).
+- [x] 14 clips:
+  - flight and a side-tracking skim (MERIDIAN);
+  - ring chain placed on a dry-run flight path (CIRRUS);
+  - close-range combat (EMBERFALL, NOCTILUCA);
+  - WARNING into the WYRM fight, with a telephoto boss camera and an open-sky death (SAFFRON);
+  - low ground camera of the WYRM bursting out;
+  - HALO fight and death (NOCTILUCA);
+  - stage-clear tally and warp;
+  - the five stage intros.
+- [x] Offline audio: the game's own graph on an OfflineAudioContext, with frame-exact SFX and engine beds per
+  clip, the main, boss and clear themes, stingers, and `say` announcer lines.
+- [x] Title and end cards in the game's font and logo style.
+- [x] Beat-grid edit, 29 segments, loudnorm -14 LUFS.
+
+Result: `tmp/neverstill-trailer/` (gitignored):
+
+| File | Size |
+|---|---|
+| `neverstill_trailer_1080p60.mp4` | 88 MB (CRF 23) |
+| `neverstill_trailer_540p60.mp4` | 38 MB |
+| master (CRF 16) | 269 MB |
+
+52.45 s long, 3147 frames. The pipeline is in `arcade/neverstill-art/trailer/`.
+
+Proof:
+- Contact sheets of every take and of the cut (`out/review.jpg`).
+- Flash frames land exactly on the planned cut frames (195, 1740, 2751), so there is no A/V drift.
+- Loudness: -14 LUFS integrated, -1.0 dBFS peak, LRA 5.6.
+- A per-second loudness profile shows the WARNING dip and the climax.
+- SFX loudness spikes line up with the logged explosions.
+
+Incident: an unbounded `apad` in the first mix graph wrote a 281 GB WAV and briefly filled the disk. I deleted
+it within minutes. Every ffmpeg output now carries `-t`/`-frames:v` and `-fs` limits.
+
+Not verified: I can't listen to audio, so the mix balance was judged from levels only.

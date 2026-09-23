@@ -13,3 +13,7 @@ Raw generations, GLBs and intermediate files are not committed. Rebuild in a scr
 5. `./convert_all.sh` runs `glb2nvm.py` with `models_cfg.json`: it reorients, normalizes and quantizes each model
    into an NVM1 record, and writes QC renders to `qc/`.
 6. `python3 build_blob.py` injects everything into the page's JSON asset blob.
+
+## Trailer
+
+`trailer/` rebuilds the 52 s in-engine demo trailer. It covers frame-stepped capture over CDP, audio replayed offline through the game's own synth, and a beat-grid edit. See `trailer/README.md`.
