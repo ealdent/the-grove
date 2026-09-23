@@ -8,6 +8,7 @@ A collection of games, tools, and experiments built with AI — hosted on GitHub
 
 *Interactive games & simulations*
 
+- **[Neverstill](arcade/neverstill.html)** — Space Harrier with no rail. Ride a rocket that never stops over endless checkerboard hills, mesas and neon night — turn, climb, circle, but never stop. (*Opus 5.5*)
 - **[Blightspore](arcade/gemini-3.6-flash-high-blightspore.html)** — Steer a multi-species cellular automaton on a 24x24 grid. Plant moss, dig firebreaks, and ignite controlled burns to clear the blight. (*Gemini 3.6 Flash High*)
 - **[Mother OS Defense](arcade/mother-os-defense/index.html)** — A green-screen tactical tower defense with unlimited waves, upgrades, and enemy intel. (*tower defense*)
 - **[Neon Ascent](arcade/neon-ascent.html)** — Bounce up an endless cyberpunk tower. Steer with mouse, arrows, or touch — collect shards, dodge drones. (*arcade*)
