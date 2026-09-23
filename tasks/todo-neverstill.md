@@ -86,3 +86,35 @@ viewport only), and actual feel/difficulty with a human at the controls (tuned f
 - Measured, same seed, 90 s autopilot, before → after: enemies spawned 53 → 103, lock-on time
   27% → 48%, median enemy lifetime before being shot 1.8 s → 5.0 s, median closing speed 60 → 25 u/s
   (p90 186 → ~100). Non-god autopilot took 4 hits in 2 min over stages 1–2. WYRM fight ~30 s.
+
+## Follow-up: Invert Y + Higgsfield art upgrade
+
+Invert Y: I couldn't reproduce a failure. Real CDP key events, touch drags, a mocked gamepad and
+the full click flow (SETTINGS -> INVERT Y -> BACK -> START) all invert correctly, pitch +0.61 -> -0.60.
+Made it robust and visible anyway:
+- Inversion now happens once in `pollInput` for every human input.
+- An `INV Y` HUD tag shows while it's on.
+- A banner confirms each change.
+- `I` toggles it in flight, and HOW TO PLAY lists it.
+
+Art pipeline (the scratchpad `assets/` scripts: manifest.py, gen_one.sh, gen3d.sh, poll3d.sh, glb2nvm.py,
+build_blob.py):
+- One fixed style formula in every prompt: retro 90s texture-mapped arcade, chunky low-poly,
+  hand-painted pixel textures, palette by role.
+- 15 terrain tiles (ground/high/rock per zone) and 3 prop material tiles via nano_banana_2. Seams
+  fixed with the Higgsfield pipeline.py, then 128 px, 48 colours.
+- 5 keyed horizon panoramas via gpt_image_2_5 (21:9), 1024 px wide, mirrored 4x around the horizon.
+- A 16-frame explosion flipbook (gpt_image_2_5), drawn premultiplied.
+- 17 image_to_3d models from nano_banana_2 concept art: 4 enemies, 4 boss parts, the rocket rider,
+  8 props. Packed as quantized NVM1 binary plus a 128/256 px texture.
+- Everything lives in a JSON blob in the page, so it's still one file. `?art=0` falls back to the
+  flat-shaded original.
+
+Proof (Browser pane, fresh tab):
+- All 5 zones render with textured terrain, triplanar cliffs and painted skylines.
+- Generated models appear in game: mask, skate, rider, trees, crystals, WYRM, HALO.
+- A 5-stage forced soak with all art loaded threw no exceptions and left a clean console.
+- Frame timing: median 1.2 ms, p99 2.5 ms, max 8.1 ms (update + render + readPixels sync).
+- `?art=0` fallback still works.
+- Credits: about 89 for the 2D set and about 510 for 17 models (1025 -> ~425 remaining).
+- Page grew from 276 KB to 3.3 MB (24 textures + 17 models + key art, base64 in a JSON blob).
