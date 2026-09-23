@@ -118,3 +118,64 @@ Proof (Browser pane, fresh tab):
 - `?art=0` fallback still works.
 - Credits: about 89 for the 2D set and about 510 for 17 models (1025 -> ~425 remaining).
 - Page grew from 276 KB to 3.3 MB (24 textures + 17 models + key art, base64 in a JSON blob).
+
+## Follow-up: settings audit + no more hugging AI
+
+User: can't turn off the music or change its volume; check all settings. Then: no AI should hug the player
+or loop behind; the WYRM just flies in circles.
+
+Audio root cause: lead, bell, arp and snare (and some SFX) sent to the reverb before the fader, so MUSIC 0
+still played reverb at -42 dB and the wet part never changed. Fixed:
+- Per-bus reverb sends that track their fader.
+- Bus levels are a pure function of the settings and the pause state, re-applied every frame. This also
+  fixes music staying ducked after QUIT TO TITLE from pause.
+- Squared taper.
+- A click on a volume bar sets the level under it (before, clicking the bar could only raise it).
+- Held arrows repeat in menus.
+
+Settings proof (Browser pane, output metered at the compressor feeding the destination):
+
+| Setting | Measured |
+|---|---|
+| MUSIC, levels 0/1/3/5/7/10 | -180 (silence) / -53 / -34 / -25 / -19.8 / -14 dB; 7 matches the old mix |
+| MUSIC, pause | -18.8 -> -29.5 dB, back to -18.8 after quitting |
+| SOUND FX, while firing | silent at 0; -33 dB at 8, raised from the pause menu |
+| Volume bar clicks | levels 3/10/0/6/1 land exactly; a real mouse click set 4 and it saved |
+| Held arrow | steps 0 -> 10 |
+| INVERT Y | pitch -0.54 on vs +0.54 off |
+| SCREEN SHAKE | camera offset 0 off vs 1.07 on |
+| MOUSE STEER | 1 pointer-lock request on vs 0 off |
+| VOICE | boss warning spoken only when on |
+| CRT | corner pixel 128 -> 74 |
+| PIXELS | 270P -> 360P gives 293x461 -> 390x615 |
+| All settings | persist across reload |
+
+AI rework:
+- WYRM (1.5x larger, HP 150 -> 195):
+  - Surfaces ahead along the pilot's predicted heading, with a rumble and dirt.
+  - Weaves in front, then makes a head-on run and dives into the ground before reaching you.
+  - Burrows if out of view for 0.5 s.
+- HALO: holds 130-210 ahead in a lagged heading frame. If out of view for 0.8 s it blinks out and re-forms
+  ahead.
+- Skates: break outward and climb at close range instead of sliding past.
+- Masks: rise away instead of drifting back past you.
+- Any enemy out of view for 0.6 s flies off on its own heading and frees its spawn slot.
+- Autopilot (demo + test pilot): prefers targets in front, skips fleeing ones, and does not orbit targets
+  inside its turn circle.
+
+Proof: same autopilot in both builds, 45 s per boss with HP pinned.
+
+| Boss | In front, before -> after | Hugging (<250 u, >60 deg off nose), before -> after |
+|---|---|---|
+| WYRM | 45 -> 85% | 44 -> 2.5% |
+| HALO | 37 -> 93% | 43 -> 1.6% |
+| 2x WYRM | 40 -> 88% | 43 -> 0.6% |
+| Any boss, circling pilot | | 46-57 -> 0-1.4% |
+
+- Wave enemies with a circling pilot: close beside or behind 15.2 -> 0%.
+- Time to quota: median 19.1 -> 20.8 s, max 28.8 -> 23.7 s over 12 runs.
+- Real fights (no god): WYRM 26-36 s -> about 36 s after the HP bump; HALO 111+ s -> 54-77 s; 2x WYRM 80-91 ->
+  60-69 s, with fewer hits taken.
+- Soak: all six boss configs cleared with no errors, including `?art=0`.
+
+Not verified: how it feels with a human at the controls, and real gamepad hardware.

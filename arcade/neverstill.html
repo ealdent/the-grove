@@ -1722,6 +1722,9 @@ function audioUnlock() {
     for (let ch = 0; ch < 2; ch++) { const d = ir.getChannelData(ch); for (let i = 0; i < len; i++) d[i] = (rnd() * 2 - 1) * pow(1 - i / len, 3.2); }
     AU.rev = ctx.createConvolver(); AU.rev.buffer = ir;
     const revOut = ctx.createGain(); revOut.gain.value = 0.32; AU.rev.connect(revOut); revOut.connect(AU.master);
+    /* Voices never feed AU.rev directly: each bus has its own send, scaled with its fader in applyVolumes. */
+    AU.musicRev = ctx.createGain(); AU.musicRev.connect(AU.rev);
+    AU.sfxRev = ctx.createGain(); AU.sfxRev.connect(AU.rev);
     AU.dly = ctx.createDelay(1); AU.dly.delayTime.value = 0.3;
     const fb = ctx.createGain(); fb.gain.value = 0.3; AU.dly.connect(fb); fb.connect(AU.dly);
     const dOut = ctx.createGain(); dOut.gain.value = 0.28; AU.dly.connect(dOut); dOut.connect(AU.music);
@@ -1732,10 +1735,21 @@ function audioUnlock() {
     if (MUS.pending) { const p = MUS.pending; MUS.pending = null; playSong(p); }
   } catch (e) { AU.ctx = null; }
 }
+/* Bus levels are a pure function of the settings and the pause state. frame() calls this every tick and
+   it only touches the params when the result changes. The reverb sends follow their bus, so MUSIC 0 and
+   SOUND FX 0 are truly silent. The squared taper makes each bar step a similar loudness change (10 -> 5 is
+   -12 dB), and the constants keep the original mix at the defaults (music 7, sfx 8). */
+let volKey = '';
+const taper = v => v * v / 100;
 function applyVolumes() {
   if (!AU.ctx) return;
-  AU.music.gain.value = settings.music / 10 * 0.42;
-  AU.sfx.gain.value = settings.sfx / 10 * 0.62;
+  const m = taper(settings.music) * (G.paused ? 0.3 : 1), s = taper(settings.sfx), key = m + ',' + s;
+  if (key === volKey) return;
+  const t = AU.ctx.currentTime, first = !volKey;
+  volKey = key;
+  const set = (p, v) => { p.cancelScheduledValues(t); if (first) p.setValueAtTime(v, t); else p.setTargetAtTime(v, t, 0.04); };
+  set(AU.music.gain, m * 0.6); set(AU.musicRev.gain, m / 0.49);
+  set(AU.sfx.gain, s * 0.775); set(AU.sfxRev.gain, s / 0.64);
 }
 const mtof = m => 440 * pow(2, (m - 69) / 12);
 function noiseSrc(t, dur) {
@@ -1775,19 +1789,19 @@ const INST = {
   },
   lead(t, m, d, v) {
     const f = mtof(m);
-    fmVoice(t, f, d, 0.17 * v, { ratio: 1, index: 2.4, idxEnd: 1.0, idxTime: 0.35, a: 0.012, d: 0.35, s: 0.72, r: 0.07, vib: 0.011, out: AU.music, send: AU.dly, send2: AU.rev });
+    fmVoice(t, f, d, 0.17 * v, { ratio: 1, index: 2.4, idxEnd: 1.0, idxTime: 0.35, a: 0.012, d: 0.35, s: 0.72, r: 0.07, vib: 0.011, out: AU.music, send: AU.dly, send2: AU.musicRev });
     const ctx = AU.ctx, o = ctx.createOscillator(); o.type = 'square'; o.frequency.value = f * 1.004;
     const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 2600;
     const g = envG(t, 0.035 * v, 0.01, d, 0.06, AU.music);
     o.connect(lp); lp.connect(g); o.start(t); o.stop(t + d + 0.5);
   },
   bell(t, m, d, v) {
-    fmVoice(t, mtof(m), 0.05, 0.12 * v, { ratio: 3.5, index: 2.5, idxEnd: 0.2, idxTime: 0.6, a: 0.002, d: 0.3, s: 0.3, r: 0.35, out: AU.music, send: AU.rev });
+    fmVoice(t, mtof(m), 0.05, 0.12 * v, { ratio: 3.5, index: 2.5, idxEnd: 0.2, idxTime: 0.6, a: 0.002, d: 0.3, s: 0.3, r: 0.35, out: AU.music, send: AU.musicRev });
   },
   arp(t, m, d, v) {
     const ctx = AU.ctx, o = ctx.createOscillator(); o.type = 'square'; o.frequency.value = mtof(m);
     const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 1900;
-    const g = envG(t, 0.045 * v, 0.003, 0.05, 0.03, AU.music); g.connect(AU.rev);
+    const g = envG(t, 0.045 * v, 0.003, 0.05, 0.03, AU.music); g.connect(AU.musicRev);
     o.connect(lp); lp.connect(g); o.start(t); o.stop(t + 0.3);
   },
   kick(t, m, d, v) {
@@ -1798,7 +1812,7 @@ const INST = {
   snare(t, m, d, v) {
     const ctx = AU.ctx, s = noiseSrc(t, 0.25), bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 1900; bp.Q.value = 0.7;
     const g = ctx.createGain(); g.gain.setValueAtTime(0.55 * v, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.17);
-    s.connect(bp); bp.connect(g); g.connect(AU.music); g.connect(AU.rev);
+    s.connect(bp); bp.connect(g); g.connect(AU.music); g.connect(AU.musicRev);
     const o = ctx.createOscillator(); o.type = 'triangle'; o.frequency.setValueAtTime(200, t); o.frequency.exponentialRampToValueAtTime(140, t + 0.08);
     const g2 = ctx.createGain(); g2.gain.setValueAtTime(0.35 * v, t); g2.gain.exponentialRampToValueAtTime(0.001, t + 0.09);
     o.connect(g2); g2.connect(AU.music); o.start(t); o.stop(t + 0.1);
@@ -1986,7 +2000,7 @@ function noiseHit(freq0, freq1, dur, vol, type = 'lowpass', q = 0.8, t = AU.ctx.
   const ctx = AU.ctx, s = noiseSrc(t, dur), f = ctx.createBiquadFilter(); f.type = type; f.Q.value = q;
   f.frequency.setValueAtTime(freq0, t); f.frequency.exponentialRampToValueAtTime(max(20, freq1), t + dur);
   const g = ctx.createGain(); g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.0008, t + dur);
-  s.connect(f); f.connect(g); g.connect(AU.sfx); if (send) g.connect(AU.rev);
+  s.connect(f); f.connect(g); g.connect(AU.sfx); if (send) g.connect(AU.sfxRev);
 }
 const SFX = {
   shot() { if (!AU.ctx || !sfxOk('shot', 60)) return; tone('square', 1320, 260, 0.08, 0.09); noiseHit(9000, 3000, 0.03, 0.05, 'highpass'); },
@@ -2005,10 +2019,12 @@ const SFX = {
     for (let i = 0; i < 5; i++) { noiseHit(3000, 60, 1.4, 0.3, 'lowpass', 0.6, t + i * 0.18, true); tone('sine', 110, 25, 0.9, 0.45, AU.sfx, t + i * 0.18); }
   },
   hurt() { if (!AU.ctx) return; tone('sawtooth', 380, 55, 0.42, 0.16); noiseHit(2400, 200, 0.4, 0.2, 'lowpass'); },
+  rumble() { if (!AU.ctx) return; const t = AU.ctx.currentTime; noiseHit(420, 60, 1.1, 0.3, 'lowpass', 0.8, t, true); tone('sine', 55, 36, 1.0, 0.32, AU.sfx, t); },
+  blink() { if (!AU.ctx) return; const t = AU.ctx.currentTime; tone('triangle', 1500, 240, 0.35, 0.09, AU.sfx, t); tone('triangle', 240, 1500, 0.4, 0.09, AU.sfx, t + 0.45); },
   scrape() { if (!AU.ctx || !sfxOk('scrape', 90)) return; noiseHit(2800, 900, 0.12, 0.08, 'bandpass', 3); },
   ring(i) {
     if (!AU.ctx) return; const ctx = AU.ctx, t = ctx.currentTime, f = 880 * pow(2, (i * 2) / 12);
-    fmVoice(t, f, 0.05, 0.12, { ratio: 3.5, index: 2, idxEnd: 0.2, idxTime: 0.5, a: 0.002, d: 0.25, s: 0.3, r: 0.3, out: AU.sfx, send: AU.rev });
+    fmVoice(t, f, 0.05, 0.12, { ratio: 3.5, index: 2, idxEnd: 0.2, idxTime: 0.5, a: 0.002, d: 0.25, s: 0.3, r: 0.3, out: AU.sfx, send: AU.sfxRev });
   },
   chain() { if (!AU.ctx) return; const t = AU.ctx.currentTime; [0, 4, 7, 12, 16].forEach((s, i) => tone('square', 660 * pow(2, s / 12), 660 * pow(2, s / 12), 0.12, 0.05, AU.sfx, t + i * 0.06, 'lin')); },
   pickup() { if (!AU.ctx) return; const t = AU.ctx.currentTime; [0, 7, 12, 19].forEach((s, i) => tone('triangle', 520 * pow(2, s / 12), 520 * pow(2, s / 12) * 1.01, 0.1, 0.1, AU.sfx, t + i * 0.05, 'lin')); },
@@ -2059,7 +2075,7 @@ function say(text) {
   try {
     speechSynthesis.cancel();
     const u = new SpeechSynthesisUtterance(text);
-    u.rate = 0.92; u.pitch = 0.5; u.volume = clamp(settings.sfx / 10, 0, 1);
+    u.rate = 0.92; u.pitch = 0.5; u.volume = clamp(taper(settings.sfx) * 1.25, 0, 1);   // same curve as the SOUND FX bus
     const v = voices.find(v => /^en[-_](US|GB)/i.test(v.lang) && /male|daniel|fred|alex|google uk english male/i.test(v.name)) || voices.find(v => /^en/i.test(v.lang));
     if (v) u.voice = v;
     speechSynthesis.speak(u);
@@ -2072,9 +2088,10 @@ const IN = { x: 0, y: 0, fire: false, boost: false, brake: false, up: false, dow
 let lastDevice = 'key', touchMode = false, pointerLocked = false;
 const mouseStick = { x: 0, y: 0, fire: false, boost: false };
 const GAMEKEYS = new Set(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space', 'Tab']);
+const MENU_REPEAT = new Set(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'KeyW', 'KeyS', 'KeyA', 'KeyD']);
 window.addEventListener('keydown', e => {
   if (GAMEKEYS.has(e.code)) e.preventDefault();
-  if (!e.repeat) keyEdge.add(e.code);
+  if (!e.repeat || (G.menu.length && MENU_REPEAT.has(e.code))) keyEdge.add(e.code);   // held arrows step through menus
   keys.add(e.code); lastDevice = 'key';
   if (touchMode && !e.repeat) touchMode = false;
   audioUnlock();
@@ -2294,8 +2311,15 @@ function snapCamera() { cam.yaw = PL.yaw; updateCamera(1, true); }
 function autopilot() {
   const o = { x: 0, y: 0, fire: false, boost: false, brake: false, rollL: false, rollR: false };
   const P = PL.p;
-  let tgt = null, best = 1e12;
-  for (const t of TGT) { const d = vdist2(t.p, P); if (d < best) { best = d; tgt = t.p; } }
+  /* nearest target, but anything off your nose counts as farther away: a pilot works what is in front */
+  let tgt = null, best = 1e12, bestS = 1e12;
+  for (const t of TGT) {
+    if (t.o.lost) continue;   // not worth turning round for something already leaving
+    const dx = t.p[0] - P[0], dz = t.p[2] - P[2], d = vdist2(t.p, P);
+    const c = (dx * PL.Fh[0] + dz * PL.Fh[2]) / (hypot(dx, dz) + 1e-6), sc = d * (1 + 3 * (1 - c));
+    if (d < 150 * 150 && c < 0.85) continue;   // inside the turning circle: fly on and come round, don't orbit it
+    if (sc < bestS) { bestS = sc; best = d; tgt = t.p; }
+  }
   if (!tgt) for (const r of rings) if (!r.got && !r.missed) { tgt = r.p; break; }
   let tyaw = PL.yaw + sin(G.t * 0.21) * 0.9, desY = floorAt(P[0], P[2]) + 26;
   if (tgt) { const f0 = floorAt(P[0], P[2]); tyaw = atan2(tgt[0] - P[0], tgt[2] - P[2]); desY = clamp(tgt[1], f0 + 8, f0 + 70); }
@@ -2598,6 +2622,8 @@ function stationPos(rx, ry, rz, yaw = PL.yaw) {
   const x = PL.p[0] + sin(yaw) * rz - cos(yaw) * rx, z = PL.p[2] + cos(yaw) * rz + sin(yaw) * rx;
   return [x, max(PL.p[1] + ry, floorAt(x, z) + 10), z];
 }
+/* Where you will be facing in about a second: bosses that re-enter do so there, not where you face right now. */
+const aimYaw = () => PL.yaw + clamp(PL.yawVel * 0.9, -1.2, 1.2);
 function killEnemy(e) {
   e.alive = false;
   const c = e.type === 'skate' ? COL.purple : e.type === 'mask' ? COL.orange : e.type === 'spinner' ? COL.red : COL.yellow;
@@ -2655,20 +2681,32 @@ function updateEnemies(dt) {
     e.t += dt; e.flash = max(0, e.flash - dt);
     const dist = vdist(e.p, P);
     const ahead = (e.p[0] - P[0]) * PL.Fh[0] + (e.p[2] - P[2]) * PL.Fh[2];
-    if (e.type === 'skate') {
-      /* formations slide toward you at a readable relative speed, weave, then pass beside you */
-      e.rz -= (e.rz < 70 ? 24 : e.close) * dt;
-      if (e.dx) e.rx += e.dx * dt;
-      let rx = e.rx + sin(e.t * 0.9 + e.ph) * 9;
-      if (e.rz < 60) { const clear = 26 + (60 - max(e.rz, -40)) * 0.35; if (abs(rx) < clear) rx = (sign(rx) || 1) * clear; }
-      station(e, rx, e.ry + sin(e.t * 1.3 + e.ph) * 4, e.rz, dt, 9);
+    if (e.type !== 'turret' && !e.lost) {
+      /* out of your view for a moment (you turned away): stop holding a station and fly off on its own heading
+         instead of following you round. Turning toward an enemy never does this. */
+      const off = abs(atan2((e.p[0] - P[0]) * PL.Rh[0] + (e.p[2] - P[2]) * PL.Rh[2], ahead));
+      e.outT = off > 1.25 ? (e.outT || 0) + dt : 0;
+      if (e.outT > 0.6) { const h = hypot(e.v[0], e.v[2]) || 1; e.lost = true; e.lostT = 0; e.lv = [e.v[0] / h * 70, e.v[2] / h * 70]; }
+    }
+    if (e.lost) {
+      e.lostT += dt;
+      steerVel(e, e.lv[0], 18, e.lv[1], EN.accel, dt);
+      rotToward(e.f, e.f, vnorm([0, 0, 0], e.v), 1.5 * dt);
+      if (e.lostT > 3 || (e.lostT > 0.5 && ahead < -40)) { e.alive = false; continue; }
+    } else if (e.type === 'skate') {
+      /* formations slide toward you at a readable relative speed and weave. At close range (or when the boss
+         arrives) they break outward and climb off-screen rather than sliding past beside you. */
+      if (!e.brk && (e.phase === 'out' || (!e.dx && e.rz < 95))) e.brk = e.side || sign(e.rx) || 1;
+      if (e.brk) { e.rx += e.brk * 62 * dt; e.ry += 24 * dt; e.rz -= 8 * dt; }
+      else { e.rz -= e.close * dt; if (e.dx) e.rx += e.dx * dt; }
+      station(e, e.rx + sin(e.t * 0.9 + e.ph) * 9, e.ry + sin(e.t * 1.3 + e.ph) * 4, e.rz, dt, 9);
       faceRel(e, dt);
       e.fireCd -= dt;
       if (e.fireCd <= 0 && e.rz > 140 && e.rz < 300 && ahead > 100 && PL.alive) { eShoot(e.p, bulletSpeed()); SFX.eshot(); e.fireCd = rr(3.6, 5.6) / df; }
-      if (e.rz < -70 || (e.dx && sign(e.rx) === sign(e.dx) && abs(e.rx) > 280)) { e.alive = false; continue; }
+      if (e.rz < -30 || e.ry > 110 || (e.dx ? sign(e.rx) === sign(e.dx) && abs(e.rx) > 280 : abs(e.rx) > 230)) { e.alive = false; continue; }
     } else if (e.type === 'mask') {
-      /* drift in from the haze, hover ahead, sway, and leave after a while */
-      if (e.t > e.stay) { e.hold = -90; e.ry = min(e.ry + dt * 12, 90); }
+      /* drift in from the haze, hover ahead, sway, and after a while rise away ahead (never drift back past you) */
+      if (e.t > e.stay) { e.hold = 240; e.ry += dt * 28; }
       e.rz = damp(e.rz, e.hold, 0.45, dt);
       station(e, e.rx + sin(e.t * 0.45 + e.ph) * 42, e.ry + sin(e.t * 0.7 + e.ph) * 7, e.rz, dt, 12, SPEED_CRUISE + 26);
       vnorm(e.f, vsub(T0, P, e.p));
@@ -2679,7 +2717,7 @@ function updateEnemies(dt) {
         for (let k = 0; k < n; k++) eShoot(vmad(T3, e.p, e.f, 5.5), sp, (k - (n - 1) / 2) * 0.13, 0.55, 'big');
         SFX.eshot(); e.fireCd = rr(3.8, 5.2) / df;
       }
-      if (e.rz < -60 || (dist > 700 && e.t > 6)) { e.alive = false; continue; }
+      if (e.ry > 110 || (dist > 700 && e.t > 6)) { e.alive = false; continue; }
     } else if (e.type === 'spinner') {
       /* hover, telegraph (fast spin + glow), then a slow lunge that barely tracks */
       e.ang += dt * (e.phase === 'tell' ? 26 : e.phase === 'lunge' ? 14 : 6);
@@ -2820,7 +2858,7 @@ function spawnGroup(kind) {
     for (let k = 0; k < n; k++) {
       const side = k % 2 ? 1 : -1, rank = floor(k / 2);
       const rx = cx + side * (8 + rank * 11), ry = cy + rank * 2.5, rz = rz0 + rank * 12;
-      spawnEnemy('skate', stationPos(rx, ry, rz, PL.yaw + off), { rx, ry, rz, close, fy: PL.yaw + off, fireCd: rr(1.5, 4) });
+      spawnEnemy('skate', stationPos(rx, ry, rz, PL.yaw + off), { rx, ry, rz, close, side, fy: PL.yaw + off, fireCd: rr(1.5, 4) });
     }
   } else if (kind === 'cross') {
     const side = rnd() < 0.5 ? -1 : 1, n = 5 + (s >= 2 ? 1 : 0), rz0 = rr(120, 190), ry = rr(4, 22);
@@ -2855,7 +2893,7 @@ function director(dt) {
   if (!active || !PL.alive) return;
   if (G.phase === 'boss' && bosses.length && !bosses.some(b => !b.dying)) return;
   D.spawnT -= dt; D.ringT -= dt;
-  let alive = 0; for (const e of enemies) if (e.counts) alive++;
+  let alive = 0; for (const e of enemies) if (e.counts && !e.lost && !e.brk) alive++;   // leaving enemies free a slot
   const cap = G.phase === 'boss' ? 6 : G.attract ? 12 : min(26, 14 + G.stage * 1.5);
   if (D.spawnT <= 0 && alive < cap) {
     spawnGroup();
@@ -2866,22 +2904,40 @@ function director(dt) {
 
 /* ---------------------------------------------------------------- bosses -- */
 const BOSS_PLAN = [['wyrm'], ['halo'], ['wyrm', 'wyrm'], ['halo'], ['halo', 'wyrm']];
+const WS = 1.5;   // WYRM size: big enough to read as a boss even seen end-on
+/* Dirt, spray or embers thrown up where the WYRM breaks the surface. */
+function groundBurst(x, z, n) {
+  const g = floorAt(x, z), water = groundAt(x, z) <= WL + 0.2;
+  const dust = mixc(mixc(ZC.gB, ZC.rock, 0.5), [1, 1, 1], 0.12);
+  const c0 = water ? (Z.lava ? COL.orange : [0.95, 0.98, 1]) : dust, c1 = water ? (Z.lava ? COL.red : ZC.w1) : mixc(dust, ZC.fog, 0.55);
+  for (let i = 0; i < n; i++) {
+    const a = rr(0, TAU), s = rr(4, 20);
+    emit(x + cos(a) * rr(0, 5), g + 0.5, z + sin(a) * rr(0, 5), cos(a) * s, rr(12, 36), sin(a) * s, rr(0.8, 1.6), rr(1.5, 3), rr(5, 10), c0, c1, 1.1, 14, 0, 0.85);
+  }
+}
 function makeWyrm(k, total) {
   const hpMul = (1 + G.stage * 0.35) / (total > 1 ? 1.45 : 1);
-  const a = PL.yaw + (total > 1 ? (k ? 0.55 : -0.55) : 0);
-  const x = PL.p[0] + sin(a) * 390, z = PL.p[2] + cos(a) * 390;
   const nSeg = total > 1 ? 12 : 16;
   const b = {
-    type: 'wyrm', name: 'WYRM', p: [x, floorAt(x, z) + 55, z], f: [-sin(a), 0, -cos(a)], hp: 150 * hpMul, maxHp: 150 * hpMul, segs: [], nSeg, t: 0,
-    orbitA: 0, dir: k ? -1 : 1, mode: 'orbit', modeT: rr(0, 3) + k * 5, fireCd: 3, v: [PL.vel[0], 0, PL.vel[2]], fy: PL.yaw, ph: k * PI, side: 1, jaw: 0, flash: 0, tint: k ? [1, 0.55, 0.5] : [1, 1, 1], alive: true, dying: 0, dieT: 0, mineT: 3,
-    head: { weak: true, alive: true }
+    type: 'wyrm', name: 'WYRM', p: [0, 0, 0], f: [PL.Fh[0], 0, PL.Fh[2]], hp: 195 * hpMul, maxHp: 195 * hpMul, segs: [], nSeg, t: 0,
+    mode: 'under', modeT: 0, underT: 0.8 + k * 2.4, ex: total > 1 ? (k ? 75 : -75) : rr(-40, 40), ez: 230, side: 1, sz: 200, weaveT: 7,
+    fireCd: 3, v: [0, 0, 0], fy: PL.yaw, ph: k * PI, jaw: 0, flash: 0, tint: k ? [1, 0.55, 0.5] : [1, 1, 1], alive: true, dying: 0, dieT: 0, mineT: 3,
+    head: { weak: true, alive: true }, hid: true
   };
-  for (let i = 0; i < nSeg; i++) b.segs.push({ p: [x - b.f[0] * (i + 1) * 5, b.p[1], z - b.f[2] * (i + 1) * 5], f: [b.f[0], b.f[1], b.f[2]], r: 3.7 * (1 - i / nSeg * 0.5), alive: true, flash: 0 });
+  for (let i = 0; i < nSeg; i++) b.segs.push({ p: [0, 0, 0], f: [b.f[0], 0, b.f[2]], r: 3.7 * WS * (1 - i / nSeg * 0.5), alive: true, flash: 0, hid: true });
+  /* While hidden, the exit point rides ahead of you, so the WYRM always surfaces in front of your current heading. */
+  const placeUnder = () => {
+    const y = b.fy = aimYaw(), x = PL.p[0] + sin(y) * b.ez - cos(y) * b.ex, z = PL.p[2] + cos(y) * b.ez + sin(y) * b.ex, g = floorAt(x, z);
+    vset(b.p, x, g - 12, z);
+    b.segs.forEach((s, i) => vset(s.p, x, g - 12 - (i + 1) * 4.5 * WS, z));
+    vset(b.v, PL.vel[0], 0, PL.vel[2]);
+  };
+  placeUnder();
   b.bar = () => [max(0, b.hp), b.maxHp];
   b.targets = list => {
-    if (b.dying) return;
-    list.push({ p: b.p, r: 5.5, o: b, part: b.head });
-    for (const s of b.segs) if (s.alive) list.push({ p: s.p, r: s.r, o: b, part: s });
+    if (b.dying || b.mode === 'under') return;
+    if (!b.hid) list.push({ p: b.p, r: 5.5 * WS, o: b, part: b.head });
+    for (const s of b.segs) if (s.alive && !s.hid) list.push({ p: s.p, r: s.r, o: b, part: s });
   };
   b.hit = (part, dmg) => {
     if (b.dying) return 'pass';
@@ -2897,82 +2953,124 @@ function makeWyrm(k, total) {
     if (b.dying) {
       b.dieT -= dt; b.p[1] -= dt * 6;
       if (b.dieT <= 0) {
-        const s = [...b.segs].reverse().find(s => s.alive);
+        let s = [...b.segs].reverse().find(s => s.alive);
+        while (s && s.hid) { s.alive = false; s = [...b.segs].reverse().find(s => s.alive); }   // buried segments go quietly
         if (s) { s.alive = false; explode(s.p, 2, COL.green, { shardCol: [0.2, 0.8, 0.5] }); SFX.boom(1.5); G.shake = max(G.shake, 0.6); b.dieT = 0.11; }
         else { explode(b.p, 3.4, COL.yellow, { shards: 24, shardCol: [0.2, 0.8, 0.5] }); SFX.bigboom(); G.shake = 1.8; b.alive = false; }
       }
       return;
     }
-    /* Weave in S-curves in front of you (in a lagged copy of your heading), then every so often swing past
-       beside you and overtake to get back in front. Speed is capped a little over yours; turning is limited. */
+    /* The WYRM never chases you around. It bursts out of the ground ahead, weaves across your nose, makes a
+       head-on run, and dives back into the ground before it reaches you, then resurfaces ahead. If you turn
+       away, it burrows where it is and comes back up in front of your new heading. */
     const enraged = b.hp < b.maxHp * 0.5;
-    b.fy += clamp(wrapA(PL.yaw - b.fy), -0.5 * dt, 0.5 * dt);
-    let rx, ry, rz;
-    if (b.mode === 'orbit') {
-      rx = sin(b.t * 0.42 + b.ph) * 130; ry = 30 + sin(b.t * 0.7 + b.ph) * 16; rz = 190 + sin(b.t * 0.3 + b.ph) * 35;
-      if (b.modeT > 10) { b.mode = 'charge'; b.modeT = 0; b.side = sign(sin(b.t * 0.42 + b.ph)) || 1; }
-    } else {
-      rx = b.side * 26; ry = 8; rz = 180 - b.modeT * 90;
-      if (b.modeT > 4) { b.mode = 'orbit'; b.modeT = 0; }
+    if (b.mode === 'under') {
+      placeUnder(); b.hid = true;
+      if (b.modeT > b.underT - 0.9) {
+        if (!b.rumbled) { b.rumbled = true; SFX.rumble(); }
+        if (frameNo % 2 === 0) groundBurst(b.p[0], b.p[2], 2);   // the ground heaves where it will break out
+      }
+      if (b.modeT >= b.underT) {
+        b.mode = 'rise'; b.modeT = 0; b.rumbled = false; b.side = b.ex > 0 ? -1 : 1;
+        b.v[1] = 60; vnorm(b.f, [PL.Fh[0] * 0.4, 1, PL.Fh[2] * 0.4]);
+        groundBurst(b.p[0], b.p[2], 28); SFX.boom(1.4);
+      }
+      return;
     }
-    const fx = sin(b.fy), fz = cos(b.fy);
-    const tx = P[0] + fx * rz - fz * rx, tz = P[2] + fz * rz + fx * rx, fgt = floorAt(tx, tz);
-    const ty = clamp(P[1] + ry, fgt + 10, fgt + 110);
-    let vx = PL.vel[0] + (tx - b.p[0]) * 0.8, vy = (ty - b.p[1]) * 0.8, vz = PL.vel[2] + (tz - b.p[2]) * 0.8;
-    const cap = PL.speed + (enraged ? 52 : 44), vl = hypot(vx, vy, vz);
-    if (vl > cap) { vx *= cap / vl; vy *= cap / vl; vz *= cap / vl; }
-    const dvx = vx - b.v[0], dvy = vy - b.v[1], dvz = vz - b.v[2], dl = hypot(dvx, dvy, dvz), m = 70 * dt;
-    const k = dl > m ? m / dl : 1;
-    b.v[0] += dvx * k; b.v[1] += dvy * k; b.v[2] += dvz * k;
+    if (b.mode !== 'rise') b.fy += clamp(wrapA(PL.yaw - b.fy), -0.5 * dt, 0.5 * dt);   // it rises along a fixed line
+    const relx = b.p[0] - P[0], relz = b.p[2] - P[2], ahead = relx * PL.Fh[0] + relz * PL.Fh[2];
+    const offNose = abs(atan2(relx * PL.Rh[0] + relz * PL.Rh[2], ahead));
+    b.outT = b.mode !== 'dive' && offNose > 1.2 ? (b.outT || 0) + dt : 0;
+    let rx = 0, rz = 0, ry = 0;
+    if (b.mode === 'rise') {
+      rx = b.ex + b.side * b.modeT * 30; rz = b.ez;
+      if (b.modeT > 1.8) { b.mode = 'weave'; b.modeT = 0; b.weaveT = rr(6, 8) * (enraged ? 0.75 : 1); }
+    } else if (b.mode === 'weave') {
+      rx = sin(b.t * 0.5 + b.ph) * 95; rz = 160 + sin(b.t * 0.33 + b.ph) * 35; ry = 24 + sin(b.t * 0.7 + b.ph) * 14;
+      if (b.modeT > b.weaveT) { b.mode = 'strafe'; b.modeT = 0; b.sz = max(180, ahead); b.side = sign(rx) || 1; b.fireCd = min(b.fireCd, 0.5); }
+    } else if (b.mode === 'strafe') {
+      b.sz -= (enraged ? 75 : 60) * dt;
+      rx = b.side * 14; rz = b.sz; ry = 5;
+      if (b.sz < 150) { b.mode = 'dive'; b.modeT = 0; }
+    }
+    /* out of your view for half a second (or about to pass you): burrow now and resurface ahead */
+    if (b.mode !== 'dive' && (b.outT > 0.5 || (b.mode !== 'rise' && ahead < 40))) { b.mode = 'dive'; b.modeT = 0; }
+    let vx, vy, vz, acc = 70;
+    if (b.mode === 'dive') { vx = b.v[0]; vy = -120; vz = b.v[2]; acc = 220; }   // nose down where it is; the body follows it in
+    else {
+      const fx = sin(b.fy), fz = cos(b.fy);
+      const tx = P[0] + fx * rz - fz * rx, tz = P[2] + fz * rz + fx * rx, fgt = floorAt(tx, tz);
+      const ty = b.mode === 'rise' ? fgt + 42 : clamp(P[1] + ry, fgt + 10, fgt + 110);
+      vx = PL.vel[0] + (tx - b.p[0]) * 0.8; vy = (ty - b.p[1]) * (b.mode === 'rise' ? 1.4 : 0.8); vz = PL.vel[2] + (tz - b.p[2]) * 0.8;
+      const cap = PL.speed + (enraged ? 52 : 44), vl = hypot(vx, vy, vz);
+      if (vl > cap) { vx *= cap / vl; vy *= cap / vl; vz *= cap / vl; }
+    }
+    const dvx = vx - b.v[0], dvy = vy - b.v[1], dvz = vz - b.v[2], dl = hypot(dvx, dvy, dvz), m = acc * dt;
+    const kk = dl > m ? m / dl : 1;
+    b.v[0] += dvx * kk; b.v[1] += dvy * kk; b.v[2] += dvz * kk;
     vmad(b.p, b.p, b.v, dt);
-    const spd = vlen(b.v); if (spd > 1) rotToward(b.f, b.f, vsc(T1, b.v, 1 / spd), 1.6 * dt);
-    const g = floorAt(b.p[0], b.p[2]) + 8;
-    if (b.p[1] < g) { b.p[1] = g; if (b.v[1] < 0) b.v[1] = 0; }
-    let lead = b.p;
+    const spd = vlen(b.v); if (spd > 1) rotToward(b.f, b.f, vsc(T1, b.v, 1 / spd), (b.mode === 'dive' ? 3 : 1.6) * dt);
+    const surfaced = b.mode === 'weave' || b.mode === 'strafe';
+    const gh = floorAt(b.p[0], b.p[2]);
+    if (surfaced && b.p[1] < gh + 8) { b.p[1] = gh + 8; if (b.v[1] < 0) b.v[1] = 0; }
+    const wasHid = b.hid; b.hid = b.p[1] < gh - 2;
+    if (b.hid && !wasHid) { groundBurst(b.p[0], b.p[2], 22); SFX.boom(1.2); }
+    let lead = b.p, buried = b.hid;
     const alive = ceil(b.nSeg * b.hp / b.maxHp);
     for (let i = 0; i < b.segs.length; i++) {
       const s = b.segs[i];
       s.flash = max(0, s.flash - dt);
-      if (i >= alive && s.alive) { s.alive = false; explode(s.p, 1.7, COL.green, { shardCol: [0.2, 0.8, 0.5] }); SFX.boom(1.3); addScore(300, s.p); }
+      if (i >= alive && s.alive) { s.alive = false; if (!s.hid) { explode(s.p, 1.7, COL.green, { shardCol: [0.2, 0.8, 0.5] }); SFX.boom(1.3); } addScore(300, s.p); }
       if (!s.alive) continue;
-      const spc = 5.1 * (1 - i / b.nSeg * 0.3);
+      const spc = 5.1 * WS * (1 - i / b.nSeg * 0.3);
       const d = vsub(T0, lead, s.p), l = vlen(d);
       if (l > spc) vmad(s.p, s.p, d, (l - spc) / l);
       if (l > 1e-3) vsc(s.f, d, 1 / l);
-      const gg = floorAt(s.p[0], s.p[2]) + 3; if (s.p[1] < gg) s.p[1] = gg;
+      const gg = floorAt(s.p[0], s.p[2]);
+      if (surfaced && s.p[1] < gg + s.r) s.p[1] = gg + s.r;
+      const was = s.hid; s.hid = s.p[1] < gg - s.r;
+      if (was !== s.hid && (i & 1)) groundBurst(s.p[0], s.p[2], 4);   // dirt sprays as the body passes through the surface
+      buried = buried && s.hid;
       lead = s.p;
+    }
+    if (b.mode === 'dive' && (buried || b.modeT > 3.5)) {
+      b.mode = 'under'; b.modeT = 0; b.underT = rr(1.1, 1.8) * (enraged ? 0.7 : 1);
+      b.ex = (total > 1 ? (k ? 1 : -1) : rnd() < 0.5 ? -1 : 1) * rr(30, 90); b.ez = rr(200, 250);
+      return;
     }
     b.fireCd -= dt;
     b.jaw = damp(b.jaw, b.fireCd < 0.6 ? 1 : 0.08, 8, dt);
-    const inFront = (b.p[0] - P[0]) * PL.Fh[0] + (b.p[2] - P[2]) * PL.Fh[2] > 60;
-    if (b.fireCd <= 0 && PL.alive && inFront) {
-      const n = enraged ? 7 : 5, mouth = vmad(T3, b.p, b.f, 6);
+    if (b.fireCd <= 0 && PL.alive && surfaced && ahead > 60) {
+      const n = enraged ? 7 : 5, mouth = vmad(T3, b.p, b.f, 6 * WS);
       for (let k = 0; k < n; k++) eShoot(mouth, bulletSpeed() * 1.05, (k - (n - 1) / 2) * 0.1, 0.5, 'big');
       SFX.eshot(); b.fireCd = rr(2.0, 2.7) / DF() * (enraged ? 0.75 : 1);
     }
-    if (enraged) {
+    if (enraged && b.mode === 'weave') {
       b.mineT -= dt;
       if (b.mineT <= 0) {
         b.mineT = rr(0.9, 1.5);
         const s = b.segs[floor(rnd() * max(1, alive))];
-        if (s && s.alive) ebullets.push({ p: [s.p[0], s.p[1], s.p[2]], v: [rr(-8, 8), rr(3, 9), rr(-8, 8)], life: 6, r: 1.8, kind: 'mine', grazed: false });
+        if (s && s.alive && !s.hid) ebullets.push({ p: [s.p[0], s.p[1], s.p[2]], v: [rr(-8, 8), rr(3, 9), rr(-8, 8)], life: 6, r: 1.8, kind: 'mine', grazed: false });
       }
     }
     if (PL.alive) {
-      if (vdist2(b.p, P) < 40) damagePlayer('boss');
-      else for (const s of b.segs) if (s.alive && vdist2(s.p, P) < (s.r + 1) * (s.r + 1)) { damagePlayer('boss'); break; }
+      if (!b.hid && vdist2(b.p, P) < 40 * WS * WS) damagePlayer('boss');
+      else for (const s of b.segs) if (s.alive && !s.hid && vdist2(s.p, P) < (s.r + 1) * (s.r + 1)) { damagePlayer('boss'); break; }
     }
   };
-  b.shadows = add => { add(b.p, 6); for (let i = 0; i < b.segs.length; i += 2) if (b.segs[i].alive) add(b.segs[i].p, b.segs[i].r * 1.2); };
+  b.shadows = add => { if (!b.hid) add(b.p, 6 * WS); for (let i = 0; i < b.segs.length; i += 2) if (b.segs[i].alive && !b.segs[i].hid) add(b.segs[i].p, b.segs[i].r * 1.2); };
   b.render = () => {
     const fl = b.flash > 0 ? 0.8 : 0, t = b.tint;
     const R = vnorm(T0, vcross(T0, b.f, UP)), U = vcross(T1, R, b.f);
-    const m = M4.basis(MT, R, U, b.f, b.p, 1.25, 1.25, 1.25);
-    inst(MD('wyrmhead') || MS.wyrmHead, m, t[0], t[1], t[2], fl);
-    if (!MD('wyrmhead')) { M4.translate(MT2, m, 0, -1.4, -0.6); M4.rotX(MT2, MT2, b.jaw * 0.6); inst(MS.wyrmJaw, MT2, t[0], t[1], t[2], fl); }
-    else if (b.jaw > 0.4) glow(vmad(T3, b.p, b.f, 6.5), 5 * b.jaw, COL.orange, 0.9);
+    const m = M4.basis(MT, R, U, b.f, b.p, 1.25 * WS, 1.25 * WS, 1.25 * WS);
+    if (b.mode === 'under') return;
+    if (!b.hid) {
+      inst(MD('wyrmhead') || MS.wyrmHead, m, t[0], t[1], t[2], fl);
+      if (!MD('wyrmhead')) { M4.translate(MT2, m, 0, -1.4, -0.6); M4.rotX(MT2, MT2, b.jaw * 0.6); inst(MS.wyrmJaw, MT2, t[0], t[1], t[2], fl); }
+      else if (b.jaw > 0.4) glow(vmad(T3, b.p, b.f, 6.5 * WS), 5 * WS * b.jaw, COL.orange, 0.9);
+    }
     for (let i = 0; i < b.segs.length; i++) {
-      const s = b.segs[i]; if (!s.alive) continue;
+      const s = b.segs[i]; if (!s.alive || s.hid) continue;
       const r = vnorm(T2, vcross(T2, s.f, UP)), u = vcross(T3, r, s.f), k = s.r / 3.7;
       const rot = sin(b.t * 3 - i * 0.5) * 0.25;
       const cr = cos(rot), sr = sin(rot);
@@ -2987,7 +3085,8 @@ function makeHalo(big) {
   const a = PL.yaw, x = PL.p[0] + sin(a) * 420, z = PL.p[2] + cos(a) * 420;
   const b = {
     type: 'halo', name: 'HALO', p: [x, floorAt(x, z) + 60, z], hp: 64 * hpMul, maxHp: 64 * hpMul, pods: [], t: 0, spin: 0, open: 0, fireCd: 3,
-    spiralA: 0, spiralT: 0, burstT: 4, regrown: false, flash: 0, shieldFlash: 0, alive: true, dying: 0, dieT: 0, core: { weak: true, alive: true }
+    spiralA: 0, spiralT: 0, burstT: 4, regrown: false, flash: 0, shieldFlash: 0, alive: true, dying: 0, dieT: 0, core: { weak: true, alive: true },
+    v: [PL.vel[0], 0, PL.vel[2]], fy: PL.yaw, outT: 0, blink: 0, moved: false, sc: 1
   };
   const n = big ? 10 : 8, podHp = 6 * sqrt(hpMul);
   for (let i = 0; i < n; i++) b.pods.push({ a: i / n * TAU, hp: podHp, max: podHp, alive: true, flash: 0, p: [x, b.p[1], z], fireCd: rr(1.2, 3.6) });
@@ -2995,7 +3094,7 @@ function makeHalo(big) {
   b.bar = () => { let c = max(0, b.hp); for (const p of b.pods) if (p.alive) c += p.hp; return [c, b.maxHp + b.podTotal + (b.regrown ? 0 : 4 * podHp)]; };
   const podsAlive = () => { let k = 0; for (const p of b.pods) if (p.alive) k++; return k; };
   b.targets = list => {
-    if (b.dying) return;
+    if (b.dying || b.blink) return;
     for (const p of b.pods) if (p.alive) list.push({ p: p.p, r: 3.3, o: b, part: p });
     list.push({ p: b.p, r: 7.5, o: b, part: b.core });
   };
@@ -3026,28 +3125,49 @@ function makeHalo(big) {
       if (b.dying > 2.2) { explode(b.p, 4, COL.magenta, { shards: 26, shardCol: [0.8, 0.4, 1] }); SFX.bigboom(); G.shake = 2; b.alive = false; }
       return;
     }
-    const dh = hypot(P[0] - b.p[0], P[2] - b.p[2]);
-    if (dh > 250) { b.p[0] += (P[0] - b.p[0]) / dh * 36 * dt; b.p[2] += (P[2] - b.p[2]) / dh * 36 * dt; }
-    b.p[1] = damp(b.p[1], floorAt(b.p[0], b.p[2]) + 58 + sin(b.t * 0.5) * 10, 1.5, dt);
-    const alive = podsAlive();
+    /* HALO holds a station ahead of you (in a lagged copy of your heading) and backs off as you close, so you
+       keep attacking it from the front instead of circling it. Turn away and it blinks out and re-forms ahead. */
+    b.fy += clamp(wrapA(PL.yaw - b.fy), -0.45 * dt, 0.45 * dt);
+    const relx = b.p[0] - P[0], relz = b.p[2] - P[2], ahead = relx * PL.Fh[0] + relz * PL.Fh[2];
+    const offNose = abs(atan2(relx * PL.Rh[0] + relz * PL.Rh[2], ahead));
+    if (b.blink) {
+      b.blink += dt;
+      if (b.blink > 0.45 && !b.moved) {
+        b.moved = true; b.fy = aimYaw();
+        const q = stationPos(0, 0, 330, b.fy); vset(b.p, q[0], floorAt(q[0], q[2]) + 58, q[2]); vcopy(b.v, PL.vel); b.v[1] = 0;
+        sparks(b.p, 24, COL.cyan, 40);
+      }
+      if (b.blink > 1) { b.blink = 0; b.moved = false; }
+      b.sc = b.blink === 0 ? 1 : b.blink < 0.45 ? 1 - b.blink / 0.45 : (b.blink - 0.45) / 0.55;
+    } else {
+      b.outT = offNose > 1.15 || ahead < 50 ? b.outT + dt : 0;
+      if (b.outT > 0.8) { b.blink = 1e-3; b.outT = 0; sparks(b.p, 24, COL.cyan, 40); SFX.blink(); }
+      const fx = sin(b.fy), fz = cos(b.fy), rz = 170 + sin(b.t * 0.33) * 40, rx = sin(b.t * 0.26) * 60;
+      const tx = P[0] + fx * rz - fz * rx, tz = P[2] + fz * rz + fx * rx, ty = floorAt(tx, tz) + 58 + sin(b.t * 0.5) * 10;
+      let vx = PL.vel[0] + (tx - b.p[0]) * 0.7, vy = (ty - b.p[1]) * 0.9, vz = PL.vel[2] + (tz - b.p[2]) * 0.7;
+      const cap = PL.speed + 30, vl = hypot(vx, vy, vz);
+      if (vl > cap) { vx *= cap / vl; vy *= cap / vl; vz *= cap / vl; }
+      steerVel(b, vx, vy, vz, 45, dt);
+    }
+    const alive = podsAlive(), live = !b.blink;
     b.open = damp(b.open, alive ? 0 : 1, 2.2, dt);
     b.spin += dt * (0.55 + b.open * 0.6);
-    const R = 30 + b.open * 5;
+    const R = (30 + b.open * 5) * b.sc;
     for (const p of b.pods) {
       const ang = p.a + b.spin;
       vset(p.p, b.p[0] + cos(ang) * R, b.p[1] + sin(ang * 2 + b.t) * 5, b.p[2] + sin(ang) * R);
       p.flash = max(0, p.flash - dt);
       if (!p.alive) continue;
       p.fireCd -= dt;
-      if (p.fireCd <= 0 && PL.alive && vdist2(p.p, P) < 500 * 500) { eShoot(p.p, bulletSpeed(), 0, 0.8); SFX.eshot(); p.fireCd = rr(2.6, 4.0) / DF(); }
+      if (p.fireCd <= 0 && PL.alive && live && vdist2(p.p, P) < 500 * 500) { eShoot(p.p, bulletSpeed(), 0, 0.8); SFX.eshot(); p.fireCd = rr(2.6, 4.0) / DF(); }
     }
     b.fireCd -= dt;
-    if (b.fireCd <= 0 && PL.alive) {
+    if (b.fireCd <= 0 && PL.alive && live) {
       const n = b.open > 0.5 ? 9 : 5;
       for (let k = 0; k < n; k++) eShoot(b.p, bulletSpeed() * 0.9, (k - (n - 1) / 2) * 0.09, 0.4, 'big');
       SFX.eshot(); b.fireCd = (b.open > 0.5 ? 2.4 : 3.2) / DF();
     }
-    if (b.open > 0.6 && PL.alive) {
+    if (b.open > 0.6 && PL.alive && live) {
       b.spiralT -= dt;
       if (b.spiralT <= 0) {
         b.spiralT = 0.14 / sqrt(DF()); b.spiralA += 0.5;
@@ -3066,28 +3186,30 @@ function makeHalo(big) {
       for (let i = 0; i < b.pods.length; i += 2) { const p = b.pods[i]; p.alive = true; p.hp = p.max; p.fireCd = rr(1, 2); }
       banner(['PODS REGROWN'], 1.4, '#7ff7ff'); SFX.warn();
     }
-    if (PL.alive && vdist2(b.p, P) < 100) damagePlayer('boss');
+    if (PL.alive && live && vdist2(b.p, P) < 100) damagePlayer('boss');
   };
-  b.shadows = add => { add(b.p, 11); };
+  b.shadows = add => { if (b.sc > 0.3) add(b.p, 11 * b.sc); };
   b.render = () => {
     const fl = b.flash > 0 ? 0.8 : 0;
     const R = [cos(b.spin), 0, -sin(b.spin)], F = [sin(b.spin), 0, cos(b.spin)];
-    inst(MD('halocore') || MS.haloCore, M4.basis(MT, R, UP, F, b.p, 1, 1, 1), 1, 1, 1, fl);
+    const k = b.sc;
+    if (k < 0.02) return;
+    inst(MD('halocore') || MS.haloCore, M4.basis(MT, R, UP, F, b.p, k, k, k), 1, 1, 1, b.blink ? 0.8 : fl);
     for (let i = 0; i < (MD('halocore') ? 0 : 6); i++) {
       const a = i / 6 * TAU + b.spin * 0.35, dir = [cos(a), 0, sin(a)];
       const r = vcross([0, 0, 0], dir, UP);
       const tilt = b.open * 1.05, ct = cos(tilt), st = sin(tilt);
       const Uu = [dir[0] * st, ct, dir[2] * st], Ff = [dir[0] * ct, -st, dir[2] * ct];
-      const p = [b.p[0] + dir[0] * (6.4 + b.open * 6), b.p[1] + b.open * 2, b.p[2] + dir[2] * (6.4 + b.open * 6)];
-      inst(MS.haloPetal, M4.basis(MT, r, Uu, Ff, p, 1, 1, 1), 1, 1, 1, fl);
+      const p = [b.p[0] + dir[0] * (6.4 + b.open * 6) * k, b.p[1] + b.open * 2 * k, b.p[2] + dir[2] * (6.4 + b.open * 6) * k];
+      inst(MS.haloPetal, M4.basis(MT, r, Uu, Ff, p, k, k, k), 1, 1, 1, fl);
     }
     for (const p of b.pods) {
       if (!p.alive) continue;
       const a = b.t * 2 + p.a;
-      inst(MD('halopod') || MS.haloPod, M4.basis(MT, [cos(a), 0, -sin(a)], UP, [sin(a), 0, cos(a)], p.p, 1, 1, 1), 1, 1, 1, p.flash > 0 ? 0.8 : 0);
+      inst(MD('halopod') || MS.haloPod, M4.basis(MT, [cos(a), 0, -sin(a)], UP, [sin(a), 0, cos(a)], p.p, k, k, k), 1, 1, 1, p.flash > 0 || b.blink ? 0.8 : 0);
     }
     if (podsAlive()) {
-      const s = 10.5 + sin(b.t * 5) * 0.3;
+      const s = (10.5 + sin(b.t * 5) * 0.3) * k;
       inst(MS.bubble, M4.basis(MT, [1, 0, 0], UP, [0, 0, 1], b.p, s, s, s), 0.5, 0.8, 1, 0.35 + b.shieldFlash * 3);
     }
   };
@@ -3187,7 +3309,7 @@ function setPaused(v) {
   G.paused = v;
   if (v) { G.menu = ['pause']; G.sel = 0; try { if (document.pointerLockElement) document.exitPointerLock(); } catch (e) { } }
   else G.menu = [];
-  if (AU.ctx) AU.music.gain.setTargetAtTime(v ? settings.music / 10 * 0.12 : settings.music / 10 * 0.42, AU.ctx.currentTime, 0.1);
+  applyVolumes();
 }
 function quitToTitle() { stopSong(); enterTitle(); }
 function gameOver() {
@@ -3236,8 +3358,8 @@ const MENU = {
   settings: () => [
     ['PIXELS', null, () => settings.res + 'P', d => { const i = RES_OPTS.indexOf(settings.res); settings.res = RES_OPTS[(max(0, i) + d + RES_OPTS.length) % RES_OPTS.length]; resize(); }],
     ['CRT FILTER', null, () => onoff(settings.crt), () => { settings.crt = !settings.crt; }],
-    ['MUSIC', null, () => barv(settings.music), d => { settings.music = clamp(settings.music + d, 0, 10); applyVolumes(); }],
-    ['SOUND FX', null, () => barv(settings.sfx), d => { settings.sfx = clamp(settings.sfx + d, 0, 10); applyVolumes(); SFX.shot(); }],
+    ['MUSIC', null, () => barv(settings.music), d => setVol('music', d), () => settings.music],
+    ['SOUND FX', null, () => barv(settings.sfx), d => setVol('sfx', d), () => settings.sfx],
     ['VOICE', null, () => onoff(settings.voice), () => { settings.voice = !settings.voice; }],
     ['INVERT Y', null, () => onoff(settings.invertY), () => { settings.invertY = !settings.invertY; banner(['INVERT Y ' + onoff(settings.invertY)], 1.4, '#7ff7ff', settings.invertY ? 'UP DIVES, DOWN CLIMBS' : 'UP CLIMBS, DOWN DIVES'); }],
     ['SCREEN SHAKE', null, () => onoff(settings.shake), () => { settings.shake = !settings.shake; }],
@@ -3247,6 +3369,7 @@ const MENU = {
   help: () => [['BACK', () => popMenu()]],
   scores: () => [['BACK', () => popMenu()]]
 };
+function setVol(k, d) { settings[k] = clamp(settings[k] + d, 0, 10); applyVolumes(); if (k === 'sfx') SFX.shot(); }
 function pushMenu(n) { G.menu.push(n); G.sel = 0; }
 function popMenu() { G.menu.pop(); G.sel = 0; saveStore(); if (!G.menu.length && G.paused) setPaused(false); }
 function menuInput() {
@@ -3265,7 +3388,11 @@ function menuInput() {
   let act = IN.confirm ? { idx: G.sel, dir: 1 } : null;
   for (const tp of IN.taps) for (const r of G.regions) {
     if (r.idx == null || tp.x < r.x || tp.x > r.x + r.w || tp.y < r.y || tp.y > r.y + r.h) continue;
-    G.sel = r.idx; act = { idx: r.idx, dir: tp.x < r.x + r.w * 0.5 && items[r.idx][3] ? -1 : 1 };
+    /* A tap on a volume bar sets the level under it (item[4] reads the current level). Elsewhere on an
+       adjustable row, the left half steps down and the right half steps up. */
+    const a = items[r.idx];
+    G.sel = r.idx;
+    act = { idx: r.idx, dir: r.bar && tp.x >= r.bar[0] - r.bar[1] ? clamp(round((tp.x - r.bar[0]) / r.bar[1]), 0, 10) - a[4]() : tp.x < r.x + r.w * 0.5 && a[3] ? -1 : 1 };
   }
   if (act) {
     const a = items[act.idx];
@@ -3985,10 +4112,14 @@ function menuPanel(name, cy, title, maxW = 250) {
   if (title) { txt(title, HW / 2, yy, '#ff5ad8', { a: 'c' }); yy += 13; }
   items.forEach((it, i) => {
     const sel = i === G.sel, col = sel ? (floor(G.t * 6) % 2 ? '#ffe14a' : '#ffffff') : '#b8b8d8';
-    if (it[2]) { txt(it[0], x + 14, yy, col); txt(it[2](), x + w - 10, yy, sel ? '#7ff7ff' : '#8a8ab0', { a: 'r' }); }
-    else txt(it[0], HW / 2, yy, col, { a: 'c' });
+    let bar = null;   // [left x, cell width] of a 10-cell volume bar, for tap-to-set
+    if (it[2]) {
+      txt(it[0], x + 14, yy, col);
+      const vw = txt(it[2](), x + w - 10, yy, sel ? '#7ff7ff' : '#8a8ab0', { a: 'r' });
+      if (it[4]) bar = [x + w - 10 - vw, 6];
+    } else txt(it[0], HW / 2, yy, col, { a: 'c' });
     if (sel) txt('▶', x + 5, yy, '#ffe14a');
-    G.regions.push({ x, y: yy - 2, w, h: rowH, idx: i });
+    G.regions.push({ x, y: yy - 2, w, h: rowH, idx: i, bar });
     yy += rowH;
   });
   return y + h;
@@ -4120,6 +4251,7 @@ function frame(now) {
   fpsAcc += dt; fpsN++; if (fpsAcc > 0.5) { fps = fpsN / fpsAcc; fpsAcc = 0; fpsN = 0; }
   dt = min(dt, 0.05);
   if (!G.freeze) update(dt);
+  applyVolumes();
   render();
 }
 G.buildBudget = 1e9;
