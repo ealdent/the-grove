@@ -70,3 +70,19 @@ gamepad Start confirming while paused, a double initials commit. Plus boss-bonus
 
 Not verified: real gamepad hardware, speechSynthesis voice quality, a physical phone (emulated
 viewport only), and actual feel/difficulty with a human at the controls (tuned from autopilot runs).
+
+## Follow-up: enemy AI rework (user: enemies too fast, too agile, too few)
+
+- Enemies now hold stations in a lagged copy of the player's heading (turns at most 0.6 rad/s).
+  Steering is acceleration-capped (55 u/s², cruise + 34 u/s max), and models face their motion
+  relative to the player.
+- Skate vees slide in at 30–38 u/s relative and pass beside you. Crossing flights drift across your
+  view. Masks hover 130–180 ahead and leave after about 20 s. Spinners hover, telegraph for 0.7 s,
+  then lunge slowly. The WYRM weaves in front and makes periodic side passes instead of orbiting.
+- HP: mask 6→3, spinner 2→1, turret 4→3. Enemy bullets 105→72 u/s. Models scaled ×1.35–1.7 with an
+  emissive floor so they read against bright skies.
+- Numbers: groups of 6–8 skates, 3–4 masks, 4–5 spinners, 3–4 turrets; cap 14 + 1.5/stage (max 26);
+  spawns every 1.7–2.9 s; quota 30 + 4/stage. WYRM HP 96→150.
+- Measured, same seed, 90 s autopilot, before → after: enemies spawned 53 → 103, lock-on time
+  27% → 48%, median enemy lifetime before being shot 1.8 s → 5.0 s, median closing speed 60 → 25 u/s
+  (p90 186 → ~100). Non-god autopilot took 4 hits in 2 min over stages 1–2. WYRM fight ~30 s.
