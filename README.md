@@ -114,6 +114,7 @@ A collection of games, tools, and experiments built with AI — hosted on GitHub
 
 *Type, infographics, visualizers & data tools*
 
+- **[Degauss](utils/degauss.html)** — Original mixed-space typeface in four tape-length widths (C30, C45, C60, C90): squircle picture-tube letterforms, bloom traps, a power-off zero, 60 coding ligatures, Latin, Greek and Cyrillic in Regular and Bold, a CRT specimen with a working degauss button, and downloadable TTF/OTF/WOFF2/WOFF fonts with editable source. (*typeface*)
 - **[Pixiecast](utils/pixiecast.html)** — A modern WeatherPixie: five kinds of pixie (meadow, hedge, moth, hearth, river), each with their own anatomy, wardrobe and voice, dressed by your live local weather from browser location or any town you type. Share a link, a PNG, or embed the live widget on your own page. Single file, Open-Meteo data, no install. (*weather · toy*)
 - **[Phosphor Wake](utils/phosphor-wake.html)** — Original pixel monospace with clean Regular and fuller Burn cuts, broad coding and terminal character coverage, a CRT specimen with raw-pixel inspection up to 240px, and downloadable TTF/WOFF2 fonts with editable source. (*typeface*)
 
