@@ -1,0 +1,1825 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#12152f">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23151733'/%3E%3Cpath d='M43 12a21 21 0 1 0 7 33A23 23 0 0 1 43 12Z' fill='%23dff4cf'/%3E%3C/svg%3E">
+  <title>Lumenroot — The Garden Beneath the Broken Moon</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --ink: #111326;
+      --night: #171a3b;
+      --petrol: #123d43;
+      --moss: #8fbf83;
+      --opal: #dff4cf;
+      --coral: #ef8f79;
+      --copper: #bd7956;
+      --brass: #d9b978;
+      --paper: #efe4c7;
+      --paper-dim: #cfc4aa;
+      --glass: rgba(16, 18, 40, 0.78);
+      --line: rgba(239, 228, 199, 0.26);
+      --safe-top: max(18px, env(safe-area-inset-top));
+      --safe-right: max(18px, env(safe-area-inset-right));
+      --safe-bottom: max(18px, env(safe-area-inset-bottom));
+      --safe-left: max(18px, env(safe-area-inset-left));
+      --joystick-size: clamp(106px, 28vw, 138px);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+
+    html,
+    body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      overflow: hidden;
+      overscroll-behavior: none;
+      background: var(--night);
+    }
+
+    body {
+      position: fixed;
+      inset: 0;
+      color: var(--paper);
+      -webkit-user-select: none;
+      user-select: none;
+      -webkit-tap-highlight-color: transparent;
+      touch-action: none;
+    }
+
+    button { font: inherit; }
+
+    #game {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      height: 100dvh;
+      overflow: hidden;
+      isolation: isolate;
+      background: var(--night);
+    }
+
+    #world {
+      position: absolute;
+      inset: 0;
+      display: block;
+      width: 100%;
+      height: 100%;
+      outline: none;
+      touch-action: none;
+      cursor: grab;
+    }
+
+    #world.is-dragging { cursor: grabbing; }
+    #world text { user-select: none; }
+
+    #hud {
+      position: absolute;
+      inset: 0;
+      z-index: 4;
+      pointer-events: none;
+    }
+
+    .hud-cluster {
+      position: absolute;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    #place-cluster {
+      top: var(--safe-top);
+      left: var(--safe-left);
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 5px;
+    }
+
+    #compass-cluster {
+      top: var(--safe-top);
+      left: 50%;
+      transform: translateX(-50%);
+      min-width: 168px;
+      height: 48px;
+      justify-content: center;
+      overflow: hidden;
+      border: 1px solid rgba(239, 228, 199, 0.18);
+      border-radius: 999px;
+      background: rgba(16, 18, 40, 0.42);
+      box-shadow: inset 0 0 0 1px rgba(9, 12, 30, 0.2);
+      backdrop-filter: none;
+    }
+
+    .compass-rule {
+      position: absolute;
+      top: 15px;
+      left: 50%;
+      width: 116px;
+      height: 18px;
+      transform: translateX(-50%);
+      background: repeating-linear-gradient(90deg, rgba(239, 228, 199, 0.55) 0 1px, transparent 1px 23px);
+      opacity: 0.52;
+      mask-image: linear-gradient(90deg, transparent, #000 22%, #000 78%, transparent);
+    }
+
+    #compass-needle {
+      position: relative;
+      width: 0;
+      height: 0;
+      border-left: 6px solid transparent;
+      border-right: 6px solid transparent;
+      border-top: 10px solid var(--coral);
+      transform-origin: 50% 18px;
+      filter: none;
+    }
+
+    #compass-letter {
+      position: absolute;
+      top: 27px;
+      left: 50%;
+      transform: translateX(-50%);
+      color: var(--paper);
+      font: 700 9px/1 ui-sans-serif, system-ui, sans-serif;
+      letter-spacing: 0.2em;
+    }
+
+    #actions-cluster {
+      top: var(--safe-top);
+      right: var(--safe-right);
+      pointer-events: auto;
+    }
+
+    .hud-button,
+    .modal-button {
+      border: 1px solid rgba(239, 228, 199, 0.35);
+      color: var(--paper);
+      background: rgba(17, 19, 38, 0.78);
+      box-shadow: inset 0 0 0 1px rgba(9, 11, 28, 0.28), 0 8px 24px rgba(7, 8, 20, 0.18);
+    }
+
+    .hud-button {
+      min-width: 42px;
+      height: 42px;
+      padding: 0 13px;
+      border-radius: 999px;
+      cursor: pointer;
+      font: 700 10px/1 ui-sans-serif, system-ui, sans-serif;
+      letter-spacing: 0.13em;
+      text-transform: uppercase;
+    }
+
+    .hud-button:hover { border-color: rgba(239, 228, 199, 0.68); }
+    .hud-button:active { transform: translateY(1px); }
+
+    .eyebrow,
+    .hud-kicker,
+    .fragment-count,
+    .joystick-label {
+      font: 700 10px/1.2 ui-sans-serif, system-ui, sans-serif;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+    }
+
+    #place-name {
+      max-width: min(52vw, 390px);
+      overflow: hidden;
+      color: var(--paper);
+      font: 600 clamp(15px, 1.6vw, 21px)/1.1 Georgia, "Times New Roman", serif;
+      letter-spacing: 0.02em;
+      text-overflow: ellipsis;
+      text-shadow: 0 2px 14px rgba(7, 8, 23, 0.75);
+      white-space: nowrap;
+    }
+
+    .hud-kicker {
+      color: rgba(239, 228, 199, 0.68);
+      text-shadow: 0 2px 10px rgba(7, 8, 23, 0.85);
+    }
+
+    #reticle {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: 18px;
+      height: 18px;
+      transform: translate(-50%, -50%);
+      opacity: 0.58;
+      transition: opacity 180ms ease, transform 180ms ease;
+    }
+
+    #reticle::before,
+    #reticle::after {
+      content: "";
+      position: absolute;
+      background: var(--paper);
+      box-shadow: 0 0 8px rgba(223, 244, 207, 0.5);
+    }
+
+    #reticle::before { top: 8px; left: 3px; width: 12px; height: 1px; }
+    #reticle::after { top: 3px; left: 8px; width: 1px; height: 12px; }
+    body.is-moving #reticle { opacity: 0.9; transform: translate(-50%, -50%) scale(0.88); }
+
+    #coordinates {
+      position: absolute;
+      right: var(--safe-right);
+      bottom: var(--safe-bottom);
+      color: rgba(239, 228, 199, 0.62);
+      font: 600 10px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      letter-spacing: 0.08em;
+      text-align: right;
+      text-shadow: 0 2px 10px rgba(7, 8, 23, 0.9);
+    }
+
+    #coordinates strong {
+      display: block;
+      color: var(--paper);
+      font-size: 12px;
+      letter-spacing: 0.12em;
+    }
+
+    #seed-chip {
+      position: absolute;
+      left: var(--safe-left);
+      bottom: var(--safe-bottom);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-height: 38px;
+      padding: 0 14px 0 11px;
+      border: 1px solid rgba(239, 228, 199, 0.2);
+      border-radius: 999px;
+      background: rgba(16, 18, 40, 0.55);
+      color: var(--paper);
+    }
+
+    .seed-mark {
+      position: relative;
+      width: 18px;
+      height: 18px;
+      border: 1px solid var(--brass);
+      border-radius: 50%;
+    }
+
+    .seed-mark::before,
+    .seed-mark::after {
+      content: "";
+      position: absolute;
+      inset: 3px;
+      border: 1px solid var(--coral);
+      border-radius: 50%;
+    }
+
+    .seed-mark::after {
+      inset: 7px;
+      border: 0;
+      background: var(--opal);
+      box-shadow: 0 0 9px rgba(223, 244, 207, 0.8);
+    }
+
+    #toast {
+      position: absolute;
+      top: 19%;
+      left: 50%;
+      width: min(520px, calc(100vw - 42px));
+      padding: 14px 18px 15px;
+      border-top: 1px solid rgba(217, 185, 120, 0.7);
+      border-bottom: 1px solid rgba(217, 185, 120, 0.32);
+      background: linear-gradient(90deg, transparent, rgba(15, 18, 39, 0.9) 12%, rgba(15, 18, 39, 0.9) 88%, transparent);
+      opacity: 0;
+      transform: translate(-50%, -10px);
+      transition: opacity 320ms ease, transform 320ms ease;
+      text-align: center;
+    }
+
+    #toast.is-visible { opacity: 1; transform: translate(-50%, 0); }
+    #toast strong {
+      display: block;
+      margin-bottom: 4px;
+      color: var(--opal);
+      font: 600 16px/1.2 Georgia, "Times New Roman", serif;
+    }
+    #toast span {
+      color: rgba(239, 228, 199, 0.74);
+      font: 500 11px/1.45 ui-sans-serif, system-ui, sans-serif;
+      letter-spacing: 0.04em;
+    }
+
+    .modal {
+      position: absolute;
+      touch-action: pan-y;
+      overscroll-behavior: contain;
+      inset: 0;
+      z-index: 10;
+      display: grid;
+      place-items: center;
+      overflow: auto;
+      padding: calc(var(--safe-top) + 10px) calc(var(--safe-right) + 12px) calc(var(--safe-bottom) + 10px) calc(var(--safe-left) + 12px);
+      background: radial-gradient(circle at 50% 45%, rgba(21, 23, 54, 0.34), rgba(8, 9, 25, 0.78));
+    }
+
+    .modal[hidden] { display: none !important; }
+
+    .folio {
+      position: relative;
+      width: min(690px, 96vw);
+      min-width: 0;
+      max-height: calc(100dvh - var(--safe-top) - var(--safe-bottom) - 20px);
+      overflow: auto;
+      padding: clamp(24px, 4.5vw, 48px);
+      border: 1px solid rgba(239, 228, 199, 0.34);
+      border-radius: 3px;
+      background:
+        linear-gradient(135deg, rgba(255, 255, 255, 0.035), transparent 38%),
+        rgba(15, 17, 37, 0.94);
+      box-shadow: 0 28px 90px rgba(3, 4, 15, 0.52), inset 0 0 0 5px rgba(239, 228, 199, 0.035);
+      scrollbar-width: thin;
+      scrollbar-color: rgba(217, 185, 120, 0.45) transparent;
+    }
+
+    .folio::before,
+    .folio::after {
+      content: "";
+      position: absolute;
+      top: 12px;
+      bottom: 12px;
+      width: 1px;
+      background: linear-gradient(transparent, rgba(217, 185, 120, 0.28), transparent);
+      pointer-events: none;
+    }
+
+    .folio::before { left: 12px; }
+    .folio::after { right: 12px; }
+
+    .folio .eyebrow { color: var(--brass); }
+
+    h1,
+    h2,
+    p { margin-top: 0; }
+
+    h1 {
+      margin: 12px 0 4px;
+      color: var(--opal);
+      font: 500 clamp(42px, 8vw, 78px)/0.88 Georgia, "Times New Roman", serif;
+      letter-spacing: 0.055em;
+    }
+
+    .subtitle {
+      margin-bottom: 25px;
+      color: var(--coral);
+      font: italic 400 clamp(15px, 2vw, 20px)/1.2 Georgia, "Times New Roman", serif;
+    }
+
+    .lede {
+      max-width: 58ch;
+      margin-bottom: 18px;
+      color: rgba(239, 228, 199, 0.82);
+      font: 400 clamp(14px, 1.6vw, 16px)/1.62 Georgia, "Times New Roman", serif;
+    }
+
+    .folio-rule {
+      width: 100%;
+      height: 1px;
+      margin: 23px 0;
+      background: linear-gradient(90deg, var(--brass), rgba(217, 185, 120, 0.08));
+    }
+
+    .control-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 11px 20px;
+      margin: 0 0 26px;
+    }
+
+    .control-grid div {
+      display: flex;
+      align-items: baseline;
+      gap: 10px;
+      color: rgba(239, 228, 199, 0.68);
+      font: 500 12px/1.35 ui-sans-serif, system-ui, sans-serif;
+    }
+
+    kbd {
+      display: inline-grid;
+      min-width: 25px;
+      min-height: 24px;
+      place-items: center;
+      padding: 3px 7px;
+      border: 1px solid rgba(239, 228, 199, 0.3);
+      border-bottom-color: rgba(239, 228, 199, 0.14);
+      border-radius: 3px;
+      background: rgba(239, 228, 199, 0.06);
+      color: var(--paper);
+      font: 700 10px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+      box-shadow: inset 0 -2px rgba(0, 0, 0, 0.18);
+    }
+
+    .button-row {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .modal-button {
+      min-height: 46px;
+      padding: 0 20px;
+      border-radius: 2px;
+      cursor: pointer;
+      font: 700 10px/1 ui-sans-serif, system-ui, sans-serif;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+    }
+
+    .modal-button.primary {
+      border-color: var(--brass);
+      background: var(--brass);
+      color: var(--ink);
+      box-shadow: 0 8px 28px rgba(217, 185, 120, 0.16);
+    }
+
+    .modal-button:hover { filter: brightness(1.08); }
+    .modal-button:active { transform: translateY(1px); }
+    .modal-button:focus-visible,
+    .hud-button:focus-visible {
+      outline: 2px solid var(--opal);
+      outline-offset: 3px;
+    }
+
+    .fine-print {
+      margin: 16px 0 0;
+      color: rgba(239, 228, 199, 0.43);
+      font: 500 10px/1.45 ui-sans-serif, system-ui, sans-serif;
+    }
+
+    .panel-title {
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 20px;
+    }
+
+    .panel-title h2 {
+      margin-bottom: 0;
+      color: var(--opal);
+      font: 500 clamp(30px, 5vw, 48px)/1 Georgia, "Times New Roman", serif;
+      letter-spacing: 0.035em;
+    }
+
+    .fragment-count {
+      flex: 0 0 auto;
+      color: var(--brass);
+    }
+
+    #journal {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+      margin: 22px 0 25px;
+    }
+
+    .journal-entry {
+      min-height: 90px;
+      padding: 12px 13px;
+      border: 1px solid rgba(239, 228, 199, 0.14);
+      background: rgba(239, 228, 199, 0.035);
+    }
+
+    .journal-entry .index {
+      display: block;
+      margin-bottom: 5px;
+      color: rgba(217, 185, 120, 0.68);
+      font: 700 9px/1 ui-sans-serif, system-ui, sans-serif;
+      letter-spacing: 0.14em;
+    }
+
+    .journal-entry strong {
+      display: block;
+      margin-bottom: 4px;
+      color: rgba(239, 228, 199, 0.85);
+      font: 600 13px/1.2 Georgia, "Times New Roman", serif;
+    }
+
+    .journal-entry p,
+    .journal-entry .sealed {
+      margin: 0;
+      color: rgba(239, 228, 199, 0.5);
+      font: 400 11px/1.4 Georgia, "Times New Roman", serif;
+    }
+
+    .journal-entry.found {
+      border-color: rgba(217, 185, 120, 0.42);
+      background: linear-gradient(135deg, rgba(217, 185, 120, 0.09), rgba(223, 244, 207, 0.025));
+    }
+
+    .journal-entry.found p { color: rgba(239, 228, 199, 0.7); }
+
+    .text-button {
+      padding: 7px 2px;
+      border: 0;
+      border-bottom: 1px solid rgba(239, 228, 199, 0.25);
+      background: transparent;
+      color: rgba(239, 228, 199, 0.55);
+      cursor: pointer;
+      font: 600 10px/1.2 ui-sans-serif, system-ui, sans-serif;
+      letter-spacing: 0.08em;
+    }
+
+    #touch-controls {
+      position: absolute;
+      inset: 0;
+      z-index: 7;
+      display: none;
+      pointer-events: none;
+    }
+
+    body.is-playing #touch-controls { display: block; }
+
+    .joystick {
+      position: absolute;
+      bottom: var(--safe-bottom);
+      width: var(--joystick-size);
+      aspect-ratio: 1;
+      border: 1px solid rgba(239, 228, 199, 0.26);
+      border-radius: 50%;
+      background:
+        radial-gradient(circle, rgba(239, 228, 199, 0.07) 0 17%, transparent 18%),
+        radial-gradient(circle, transparent 0 58%, rgba(7, 9, 25, 0.2) 59% 60%, transparent 61%),
+        rgba(15, 18, 39, 0.28);
+      box-shadow: inset 0 0 0 8px rgba(239, 228, 199, 0.025), 0 8px 25px rgba(4, 6, 18, 0.18);
+      pointer-events: auto;
+      touch-action: none;
+      -webkit-touch-callout: none;
+    }
+
+    #move-stick { left: var(--safe-left); }
+    #turn-stick { right: var(--safe-right); }
+
+    .joystick::before,
+    .joystick::after {
+      content: "";
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      background: rgba(239, 228, 199, 0.13);
+      transform: translate(-50%, -50%);
+      pointer-events: none;
+    }
+
+    .joystick::before { width: 70%; height: 1px; }
+    .joystick::after { width: 1px; height: 70%; }
+
+    .joystick-knob {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: 38%;
+      height: 38%;
+      border: 1px solid rgba(239, 228, 199, 0.48);
+      border-radius: 50%;
+      background: radial-gradient(circle at 38% 34%, rgba(223, 244, 207, 0.42), rgba(189, 121, 86, 0.42) 45%, rgba(17, 19, 38, 0.74));
+      box-shadow: 0 7px 18px rgba(3, 5, 17, 0.32), inset 0 0 0 4px rgba(239, 228, 199, 0.045);
+      transform: translate3d(-50%, -50%, 0);
+      transition: border-color 120ms ease, background 120ms ease;
+      pointer-events: none;
+      will-change: transform;
+    }
+
+    .joystick.active .joystick-knob {
+      border-color: var(--opal);
+      background: radial-gradient(circle at 38% 34%, rgba(223, 244, 207, 0.62), rgba(189, 121, 86, 0.5) 48%, rgba(17, 19, 38, 0.76));
+    }
+
+    .joystick-label {
+      position: absolute;
+      top: -20px;
+      left: 50%;
+      color: rgba(239, 228, 199, 0.66);
+      transform: translateX(-50%);
+      text-shadow: 0 2px 8px rgba(5, 6, 18, 0.9);
+      pointer-events: none;
+    }
+
+    #live-region {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+      clip: rect(0 0 0 0);
+      clip-path: inset(50%);
+      white-space: nowrap;
+    }
+
+    @media (hover: none), (pointer: coarse), (max-width: 760px) {
+      body.is-playing #touch-controls { display: block; }
+      #coordinates { display: none; }
+      #seed-chip { bottom: calc(var(--safe-bottom) + var(--joystick-size) + 38px); }
+      #place-cluster { max-width: 52vw; }
+      #place-name { max-width: 46vw; }
+    }
+
+    @media (max-width: 620px) {
+      #compass-cluster { min-width: 118px; height: 42px; }
+      .compass-rule { width: 76px; }
+      #compass-letter { top: 24px; }
+      .hud-button { min-width: 38px; height: 38px; padding: 0 10px; font-size: 9px; }
+      #place-name { max-width: 43vw; font-size: 14px; }
+      .hud-kicker { font-size: 8px; }
+      #seed-chip { min-height: 34px; padding-right: 11px; }
+      .fragment-count { display: none; }
+      #journal { grid-template-columns: 1fr; }
+      .control-grid { grid-template-columns: 1fr; gap: 8px; }
+      .panel-title { align-items: flex-start; }
+      #toast { top: 16%; }
+    }
+
+    @media (max-height: 560px) and (orientation: landscape) {
+      :root { --safe-top: max(10px, env(safe-area-inset-top)); --safe-bottom: max(10px, env(safe-area-inset-bottom)); }
+      :root { --joystick-size: 94px; }
+      .joystick-label { top: -16px; font-size: 8px; }
+      #seed-chip { bottom: calc(var(--safe-bottom) + var(--joystick-size) + 30px); min-height: 30px; }
+      .folio { padding: 22px 30px; }
+      .folio-rule { margin: 14px 0; }
+      .lede { margin-bottom: 12px; line-height: 1.45; }
+      .control-grid { margin-bottom: 16px; grid-template-columns: repeat(2, 1fr); }
+      #journal { grid-template-columns: repeat(3, 1fr); margin: 14px 0; }
+      .journal-entry { min-height: 72px; }
+    }
+
+    @media (max-width: 360px) {
+      #compass-cluster { top: calc(var(--safe-top) + 50px); }
+      #toast { top: 23%; }
+    }
+
+    @media (max-width: 420px) and (max-height: 680px) {
+      .modal { padding-left: max(8px, env(safe-area-inset-left)); padding-right: max(8px, env(safe-area-inset-right)); }
+      .folio { width: 100%; padding: 20px 24px; }
+      #intro-modal h1 { font-size: 44px; }
+      #intro-modal .subtitle { margin-bottom: 12px; font-size: 15px; }
+      #intro-modal .lede { margin-bottom: 9px; font-size: 13px; line-height: 1.4; }
+      #intro-modal .folio-rule { margin: 14px 0; }
+      #intro-modal .control-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 12px; margin-bottom: 16px; }
+      #intro-modal .control-grid div { gap: 6px; font-size: 10px; }
+      #intro-modal .fine-print { display: none; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { scroll-behavior: auto !important; }
+    }
+
+    .reduce-motion *, .reduce-motion *::before, .reduce-motion *::after {
+      animation-duration: 0.001ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.001ms !important;
+    }
+  </style>
+</head>
+<body>
+  <main id="game" aria-label="Lumenroot, a first-person exploration game">
+    <svg id="world" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid slice" tabindex="0" aria-hidden="true" focusable="false">
+      <defs>
+        <linearGradient id="sky-gradient" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stop-color="#090b24"/>
+          <stop offset="0.38" stop-color="#24204f"/>
+          <stop offset="0.72" stop-color="#6e3b69"/>
+          <stop offset="1" stop-color="#e48b72"/>
+        </linearGradient>
+        <radialGradient id="horizon-glow" cx="50%" cy="100%" r="75%">
+          <stop offset="0" stop-color="#f4b087" stop-opacity="0.72"/>
+          <stop offset="0.28" stop-color="#ce6f76" stop-opacity="0.25"/>
+          <stop offset="1" stop-color="#322052" stop-opacity="0"/>
+        </radialGradient>
+        <linearGradient id="ground-gradient" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stop-color="#53606a"/>
+          <stop offset="0.09" stop-color="#294c55"/>
+          <stop offset="0.45" stop-color="#153d43"/>
+          <stop offset="1" stop-color="#0a252d"/>
+        </linearGradient>
+        <linearGradient id="fog-gradient" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stop-color="#db9a92" stop-opacity="0"/>
+          <stop offset="0.48" stop-color="#d59b9b" stop-opacity="0.3"/>
+          <stop offset="1" stop-color="#5f466d" stop-opacity="0"/>
+        </linearGradient>
+        <linearGradient id="copper-gradient" x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0" stop-color="#6f3d43"/>
+          <stop offset="0.48" stop-color="#d08761"/>
+          <stop offset="1" stop-color="#733d4a"/>
+        </linearGradient>
+        <linearGradient id="canopy-a" x1="0" y1="0" x2="0.8" y2="1">
+          <stop offset="0" stop-color="#d6e6b7"/>
+          <stop offset="0.28" stop-color="#7fb99a"/>
+          <stop offset="0.72" stop-color="#356f73"/>
+          <stop offset="1" stop-color="#203f53"/>
+        </linearGradient>
+        <linearGradient id="canopy-b" x1="0.1" y1="0" x2="0.8" y2="1">
+          <stop offset="0" stop-color="#f0c49a"/>
+          <stop offset="0.3" stop-color="#c87972"/>
+          <stop offset="0.72" stop-color="#65445f"/>
+          <stop offset="1" stop-color="#26374e"/>
+        </linearGradient>
+        <linearGradient id="wing-gradient" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stop-color="#f0d7a3" stop-opacity="0.9"/>
+          <stop offset="0.5" stop-color="#dd8d79" stop-opacity="0.82"/>
+          <stop offset="1" stop-color="#48657b" stop-opacity="0.35"/>
+        </linearGradient>
+        <radialGradient id="pod-gradient">
+          <stop offset="0" stop-color="#fff8cf"/>
+          <stop offset="0.2" stop-color="#dff4cf" stop-opacity="0.95"/>
+          <stop offset="0.58" stop-color="#8bd2bd" stop-opacity="0.36"/>
+          <stop offset="1" stop-color="#8bd2bd" stop-opacity="0"/>
+        </radialGradient>
+        <radialGradient id="crystal-gradient" cx="34%" cy="26%">
+          <stop offset="0" stop-color="#fff8d9"/>
+          <stop offset="0.35" stop-color="#b9ead4"/>
+          <stop offset="1" stop-color="#4e8f91"/>
+        </radialGradient>
+        <radialGradient id="vignette-gradient">
+          <stop offset="0.54" stop-color="#070818" stop-opacity="0"/>
+          <stop offset="0.8" stop-color="#070818" stop-opacity="0.2"/>
+          <stop offset="1" stop-color="#040511" stop-opacity="0.72"/>
+        </radialGradient>
+        <radialGradient id="moon-gradient" cx="35%" cy="28%">
+          <stop offset="0" stop-color="#fff3cf"/>
+          <stop offset="0.62" stop-color="#d9c7ba"/>
+          <stop offset="1" stop-color="#7c7184"/>
+        </radialGradient>
+        <pattern id="moss-specks" width="76" height="58" patternUnits="userSpaceOnUse">
+          <circle cx="8" cy="12" r="1.2" fill="#b2ca8f" opacity="0.18"/>
+          <circle cx="42" cy="7" r="0.8" fill="#d7d29d" opacity="0.14"/>
+          <circle cx="63" cy="31" r="1.4" fill="#79a984" opacity="0.15"/>
+          <path d="M20 43q8-7 15-1" fill="none" stroke="#8bb28a" stroke-width="1" opacity="0.12"/>
+          <path d="M48 52q5-8 11-5" fill="none" stroke="#d0bf80" stroke-width="0.8" opacity="0.1"/>
+          <circle cx="31" cy="21" r="0.7" fill="#061f29" opacity="0.35"/>
+        </pattern>
+        <mask id="broken-moon-mask">
+          <rect x="1040" y="10" width="440" height="300" fill="white"/>
+          <circle cx="1317" cy="158" r="116" fill="black"/>
+          <path d="M1262 49l34 24-14 31 28 18-18 37 20 24-24 39 13 28" fill="none" stroke="black" stroke-width="12" stroke-linecap="round"/>
+        </mask>
+
+        <g id="sky-tile">
+          <g fill="#f4e7ce">
+            <circle cx="92" cy="84" r="1.3" opacity="0.72"/><circle cx="176" cy="188" r="0.9" opacity="0.5"/>
+            <circle cx="274" cy="62" r="1.6" opacity="0.62"/><circle cx="367" cy="153" r="1" opacity="0.8"/>
+            <circle cx="448" cy="103" r="0.7" opacity="0.55"/><circle cx="535" cy="220" r="1.2" opacity="0.58"/>
+            <circle cx="622" cy="74" r="1.5" opacity="0.74"/><circle cx="716" cy="178" r="0.8" opacity="0.68"/>
+            <circle cx="811" cy="51" r="1.1" opacity="0.7"/><circle cx="908" cy="202" r="1.4" opacity="0.52"/>
+            <circle cx="1012" cy="93" r="0.9" opacity="0.82"/><circle cx="1088" cy="246" r="1.2" opacity="0.5"/>
+            <circle cx="1185" cy="62" r="0.8" opacity="0.66"/><circle cx="1428" cy="104" r="1.4" opacity="0.7"/>
+            <circle cx="1510" cy="229" r="0.8" opacity="0.62"/><circle cx="1612" cy="74" r="1.1" opacity="0.72"/>
+            <circle cx="1698" cy="185" r="1.5" opacity="0.52"/><circle cx="1786" cy="46" r="0.8" opacity="0.78"/>
+            <circle cx="1891" cy="143" r="1.2" opacity="0.61"/><circle cx="1980" cy="239" r="0.7" opacity="0.66"/>
+            <circle cx="2074" cy="82" r="1.4" opacity="0.74"/><circle cx="2188" cy="171" r="0.8" opacity="0.55"/>
+            <circle cx="2281" cy="53" r="1.2" opacity="0.71"/><circle cx="2364" cy="216" r="0.9" opacity="0.5"/>
+          </g>
+          <g fill="none" stroke="#eadfcf" stroke-linecap="round" opacity="0.52">
+            <path d="M218 111h12m-6-6v12" stroke-width="1"/>
+            <path d="M746 248h10m-5-5v10" stroke-width="0.8"/>
+            <path d="M1556 151h14m-7-7v14" stroke-width="1"/>
+            <path d="M2110 130h10m-5-5v10" stroke-width="0.8"/>
+          </g>
+          <g>
+            <circle cx="1248" cy="157" r="145" fill="none" stroke="#efb17e" stroke-width="1.5" opacity="0.24"/>
+            <circle cx="1248" cy="157" r="132" fill="#0a0c24" opacity="0.7"/>
+            <circle cx="1248" cy="157" r="117" fill="url(#moon-gradient)" mask="url(#broken-moon-mask)"/>
+            <path d="M1328 91a132 132 0 0 1 61 92" fill="none" stroke="#f7d2a1" stroke-width="2" opacity="0.52"/>
+            <path d="M1154 94q-46 52-41 119" fill="none" stroke="#a998ae" stroke-width="1" opacity="0.34"/>
+            <path d="M1288 53l-8 17 13 9-11 17" fill="none" stroke="#fff2ce" stroke-width="2" opacity="0.48"/>
+          </g>
+          <path d="M0 456Q92 424 181 451T360 445T552 458T734 430T930 456T1115 438T1320 462T1515 436T1730 458T1944 432T2160 457T2400 441V590H0Z" fill="#20233f" opacity="0.38"/>
+          <path d="M0 486Q140 448 272 478T530 473T802 490T1090 462T1370 484T1648 467T1930 490T2190 466T2400 484V590H0Z" fill="#171b36" opacity="0.6"/>
+        </g>
+
+        <symbol id="prop-tree-a" viewBox="-120 -300 240 300" overflow="visible">
+          <ellipse cx="0" cy="-2" rx="54" ry="10" fill="#071d26" opacity="0.36"/>
+          <path d="M-9 2C-4-44 8-89 2-137c-4-35-3-62 4-91" fill="none" stroke="#21192a" stroke-width="20" stroke-linecap="round"/>
+          <path d="M-6 1C-2-44 9-89 4-137c-3-34-1-61 5-88" fill="none" stroke="url(#copper-gradient)" stroke-width="11" stroke-linecap="round"/>
+          <path d="M2-117C-21-146-46-160-67-173M5-139C27-170 53-184 75-196M1-173C-19-199-25-218-31-237" fill="none" stroke="#2b2030" stroke-width="12" stroke-linecap="round"/>
+          <path d="M2-117C-21-146-46-160-67-173M5-139C27-170 53-184 75-196M1-173C-19-199-25-218-31-237" fill="none" stroke="#b56f56" stroke-width="5" stroke-linecap="round"/>
+          <path d="M-101-170C-114-204-82-232-45-225c13-34 60-42 84-15 39-14 73 11 68 48 31 13 31 58 4 76-6 37-59 47-88 26-30 25-82 9-84-29-25 2-39-17-34-39Z" fill="url(#canopy-a)" stroke="#203a49" stroke-width="3"/>
+          <path d="M-78-195q30-20 58-3m-45 44q37-24 72-4m10-50q31 3 44 29m-92 53q18 12 34 12" fill="none" stroke="#e5efc7" stroke-width="2" opacity="0.34" stroke-linecap="round"/>
+          <path d="M-59-225q-7-29 19-46 15 27-19 46ZM24-238q4-31 35-39 5 32-35 39Z" fill="#e7efc5" opacity="0.32"/>
+          <circle cx="-52" cy="-183" r="23" fill="url(#pod-gradient)"/>
+          <circle cx="37" cy="-205" r="28" fill="url(#pod-gradient)"/>
+          <circle cx="72" cy="-150" r="18" fill="url(#pod-gradient)"/>
+          <circle cx="-52" cy="-183" r="3.2" fill="#f8efbe"/><circle cx="37" cy="-205" r="3.6" fill="#f8efbe"/><circle cx="72" cy="-150" r="2.8" fill="#f8efbe"/>
+        </symbol>
+
+        <symbol id="prop-tree-b" viewBox="-120 -300 240 300" overflow="visible">
+          <ellipse cx="0" cy="-2" rx="58" ry="11" fill="#071d26" opacity="0.34"/>
+          <path d="M-10 3C-9-43 2-84-2-130c-3-35 3-71 13-105" fill="none" stroke="#201a2d" stroke-width="22" stroke-linecap="round"/>
+          <path d="M-7 1C-6-45 4-83 0-130c-2-34 3-68 12-101" fill="none" stroke="url(#copper-gradient)" stroke-width="12" stroke-linecap="round"/>
+          <path d="M0-130c-31-16-51-40-70-71M2-111c30-13 55-40 73-72M8-159c-16-30-11-52-2-74" fill="none" stroke="#282034" stroke-width="12" stroke-linecap="round"/>
+          <path d="M0-130c-31-16-51-40-70-71M2-111c30-13 55-40 73-72M8-159c-16-30-11-52-2-74" fill="none" stroke="#c17a60" stroke-width="5" stroke-linecap="round"/>
+          <path d="M-103-181c-2-34 30-55 59-45 13-36 62-45 84-13 40-10 70 20 59 53 26 21 15 60-14 69-16 34-66 30-82 3-32 20-76 1-74-34-22-1-34-15-32-33Z" fill="url(#canopy-b)" stroke="#392d47" stroke-width="3"/>
+          <path d="M-77-206q31-17 58 0m-43 47q31-19 62-2m22-49q26 7 35 31m-106 52q22 8 39 4" fill="none" stroke="#ffe1b3" stroke-width="2" opacity="0.3" stroke-linecap="round"/>
+          <path d="M-37-243q-14-22 6-42 19 20-6 42ZM54-224q5-30 34-38 3 30-34 38Z" fill="#f4d2a5" opacity="0.28"/>
+          <circle cx="-53" cy="-179" r="25" fill="url(#pod-gradient)"/>
+          <circle cx="42" cy="-206" r="30" fill="url(#pod-gradient)"/>
+          <circle cx="78" cy="-150" r="20" fill="url(#pod-gradient)"/>
+          <circle cx="-53" cy="-179" r="3.2" fill="#fff1c2"/><circle cx="42" cy="-206" r="4" fill="#fff1c2"/><circle cx="78" cy="-150" r="3" fill="#fff1c2"/>
+        </symbol>
+
+        <symbol id="prop-moonwell" viewBox="-120 -300 240 300" overflow="visible">
+          <ellipse cx="0" cy="-3" rx="66" ry="14" fill="#071b25" opacity="0.48"/>
+          <path d="M-65-2l19-38 48-18 51 19 15 37Z" fill="#263943" stroke="#0c202b" stroke-width="4"/>
+          <path d="M-42-47l18-44 48-7 34 39-25 23Z" fill="#40525a" stroke="#172a35" stroke-width="4"/>
+          <path d="M-22-86l8-54 41-23 39 30-6 50Z" fill="#536068" stroke="#1a2c37" stroke-width="4"/>
+          <path d="M-5-132l25-57 45 20 13 54Z" fill="#6a6870" stroke="#23313d" stroke-width="4"/>
+          <path d="M-55-18l45 8m-24-49l40 9m-9-51l34 11m10-59l30 21" fill="none" stroke="#a6a08f" stroke-width="2" opacity="0.32"/>
+          <ellipse cx="0" cy="-167" rx="73" ry="25" fill="none" stroke="#d6b776" stroke-width="5"/>
+          <ellipse cx="0" cy="-171" rx="52" ry="15" fill="#0c2734" stroke="#779f9a" stroke-width="3"/>
+          <path d="M0-225l19 37-4 44-15 23-18-25 1-43Z" fill="url(#crystal-gradient)" stroke="#d9f1d7" stroke-width="2"/>
+          <path d="M0-225v104" stroke="#f6f2c7" stroke-width="2" opacity="0.64"/>
+          <path d="M-86-187q-14 19 0 37m172-37q14 19 0 37" fill="none" stroke="#d9b978" stroke-width="3" stroke-linecap="round"/>
+          <circle cx="0" cy="-174" r="42" fill="url(#pod-gradient)" opacity="0.75"/>
+        </symbol>
+
+        <symbol id="prop-lanternwing" viewBox="-120 -300 240 300" overflow="visible">
+          <ellipse cx="0" cy="-7" rx="42" ry="8" fill="#102936" opacity="0.24"/>
+          <path d="M-8-139C-45-203-93-202-103-166c-8 31 25 57 82 55Z" fill="url(#wing-gradient)" stroke="#342a45" stroke-width="3"/>
+          <path d="M8-139C45-203 93-202 103-166c8 31-25 57-82 55Z" fill="url(#wing-gradient)" stroke="#342a45" stroke-width="3"/>
+          <path d="M-8-123C-34-164-68-166-78-145c-8 18 17 36 58 39Z" fill="#eab08b" fill-opacity="0.56" stroke="#594258" stroke-width="2"/>
+          <path d="M8-123C34-164 68-166 78-145c8 18-17 36-58 39Z" fill="#eab08b" fill-opacity="0.56" stroke="#594258" stroke-width="2"/>
+          <path d="M0-143c-18 0-24 18-19 40l10 38h18l10-38c5-22-1-40-19-40Z" fill="#25364a" stroke="#101b2b" stroke-width="4"/>
+          <path d="M0-134v55" stroke="#d8b277" stroke-width="3"/>
+          <path d="M-7-143l-15-24m29 23l14-27" fill="none" stroke="#d5c59d" stroke-width="2" stroke-linecap="round"/>
+          <circle cx="-23" cy="-168" r="2.8" fill="#dff4cf"/><circle cx="27" cy="-171" r="2.8" fill="#dff4cf"/>
+          <circle cx="0" cy="-120" r="18" fill="url(#pod-gradient)"/>
+          <path d="M-14-84l-15 17m43-17l15 17" stroke="#1b2836" stroke-width="3" stroke-linecap="round"/>
+        </symbol>
+
+        <symbol id="prop-reed" viewBox="-120 -300 240 300" overflow="visible">
+          <ellipse cx="0" cy="-1" rx="43" ry="8" fill="#071d26" opacity="0.28"/>
+          <g fill="none" stroke-linecap="round">
+            <path d="M-20 0q4-71 14-117M-4 0q-2-94 5-154M16 0q-3-73-15-126M29 0q5-54 18-87" stroke="#24464a" stroke-width="5"/>
+            <path d="M-20 0q4-71 14-117M-4 0q-2-94 5-154M16 0q-3-73-15-126M29 0q5-54 18-87" stroke="#80a978" stroke-width="2"/>
+          </g>
+          <path d="M-5-89q-35-8-47-40 32 2 48 29M8-110q37-15 48-48-33 8-47 36M11-66q32-5 45-31-31 1-44 23" fill="#6e9b73" stroke="#2b5153" stroke-width="2"/>
+          <ellipse cx="-6" cy="-160" rx="9" ry="24" fill="#e69b7f" stroke="#693f51" stroke-width="2"/>
+          <ellipse cx="47" cy="-93" rx="7" ry="17" fill="#dff4cf" stroke="#426c6e" stroke-width="2"/>
+          <circle cx="-6" cy="-160" r="25" fill="url(#pod-gradient)" opacity="0.55"/>
+        </symbol>
+      </defs>
+
+      <rect width="1600" height="900" fill="url(#sky-gradient)"/>
+      <rect width="1600" height="900" fill="url(#horizon-glow)"/>
+      <g id="sky-pan">
+        <use href="#sky-tile" x="-2400"/>
+        <use href="#sky-tile" x="0"/>
+        <use href="#sky-tile" x="2400"/>
+      </g>
+
+      <g id="stage">
+        <path id="ground-base" fill="url(#ground-gradient)"/>
+        <path id="ground-texture" fill="url(#moss-specks)" opacity="0.62"/>
+        <g id="terrain-rows" fill="none" stroke="#bdd4a5" stroke-linecap="round"></g>
+        <g id="terrain-rails" fill="none" stroke="#d8c184" stroke-linecap="round"></g>
+        <g id="world-objects"></g>
+        <path id="horizon-mist" fill="url(#fog-gradient)" pointer-events="none"/>
+      </g>
+      <rect width="1600" height="900" fill="url(#vignette-gradient)" pointer-events="none"/>
+      <rect width="1600" height="900" fill="url(#moss-specks)" opacity="0.075" pointer-events="none"/>
+    </svg>
+
+    <div id="hud" aria-hidden="false">
+      <div id="place-cluster" class="hud-cluster">
+        <span class="hud-kicker">Umbral field survey</span>
+        <span id="place-name">Nacre Apron</span>
+      </div>
+
+      <div id="compass-cluster" class="hud-cluster" aria-label="Compass">
+        <span class="compass-rule"></span>
+        <span id="compass-needle"></span>
+        <span id="compass-letter">N</span>
+      </div>
+
+      <div id="actions-cluster" class="hud-cluster">
+        <button id="help-button" class="hud-button" type="button" aria-label="Open field guide">Guide</button>
+      </div>
+
+      <div id="reticle" aria-hidden="true"></div>
+      <div id="coordinates"><strong id="coordinate-value">E 000 · N 000</strong><span>lumenroot survey</span></div>
+      <div id="seed-chip"><span class="seed-mark" aria-hidden="true"></span><span id="seed-count">0 / 6 seeds</span></div>
+      <div id="toast" role="status"><strong id="toast-title"></strong><span id="toast-body"></span></div>
+      <div id="live-region" aria-live="polite"></div>
+    </div>
+
+    <div id="touch-controls" aria-label="Touch movement controls">
+      <div id="move-stick" class="joystick" role="group" aria-label="Move joystick: up and down">
+        <span class="joystick-label">Move</span><span class="joystick-knob"></span>
+      </div>
+      <div id="turn-stick" class="joystick" role="group" aria-label="Turn joystick: left and right">
+        <span class="joystick-label">Turn</span><span class="joystick-knob"></span>
+      </div>
+    </div>
+
+    <section id="intro-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="game-title">
+      <div class="folio">
+        <span class="eyebrow">A first-person field walk</span>
+        <h1 id="game-title">Lumenroot</h1>
+        <p class="subtitle">The Garden Beneath the Broken Moon</p>
+        <p class="lede">When the moon broke, its silver fell into the wetland and took root. Now vesper trees sing in frequencies only the lonely can hear, while lanternwings carry half-remembered light between buried wells.</p>
+        <p class="lede">You are the last moon-shearer. Recover six eclipse seeds from the endless Umbral Forest. Nothing here wishes harm; the forest is only trying to remember the shape of the sky.</p>
+        <div class="folio-rule"></div>
+        <div class="control-grid" aria-label="Desktop controls">
+          <div><kbd>W</kbd><kbd>S</kbd><span>walk / retreat</span></div>
+          <div><kbd>A</kbd><kbd>D</kbd><span>step sideways</span></div>
+          <div><kbd>←</kbd><kbd>→</kbd><span>turn</span></div>
+          <div><kbd>drag</kbd><span>look with mouse</span></div>
+        </div>
+        <div class="button-row">
+          <button id="start-button" class="modal-button primary" type="button">Enter the forest</button>
+          <span class="fine-print">On touch screens, use both lower-corner joysticks at once.</span>
+        </div>
+      </div>
+    </section>
+
+    <section id="pause-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="guide-title" hidden>
+      <div class="folio">
+        <div class="panel-title">
+          <div>
+            <span class="eyebrow">Walk suspended</span>
+            <h2 id="guide-title">Moon-shearer's field guide</h2>
+          </div>
+          <span id="fragment-count" class="fragment-count">0 of 6</span>
+        </div>
+        <div class="folio-rule"></div>
+        <p class="lede">Moonwell fragments surface when you walk close to their cairns. The path continues in every direction; the same forest returns when you retrace your steps.</p>
+        <div id="journal" aria-label="Recovered moonwell fragments"></div>
+        <div class="control-grid" aria-label="Controls">
+          <div><kbd>W</kbd><kbd>S</kbd><span>walk / retreat</span></div>
+          <div><kbd>A</kbd><kbd>D</kbd><span>step sideways</span></div>
+          <div><kbd>←</kbd><kbd>→</kbd><span>turn</span></div>
+          <div><kbd>drag</kbd><span>mouse look</span></div>
+          <div><kbd>Esc</kbd><span>pause / resume</span></div>
+          <div><kbd>H</kbd><span>open this guide</span></div>
+        </div>
+        <div class="button-row">
+          <button id="resume-button" class="modal-button primary" type="button">Return to the path</button>
+          <button id="motion-button" class="modal-button" type="button" aria-pressed="false">Motion: full</button>
+          <button id="forget-button" class="text-button" type="button">Forget recovered fragments</button>
+        </div>
+        <p class="fine-print">Reduced motion disables head bob, moth drift, and sky parallax while preserving exploration.</p>
+      </div>
+    </section>
+  </main>
+
+  <script>
+  (() => {
+    "use strict";
+
+    const NS = "http://www.w3.org/2000/svg";
+    const TAU = Math.PI * 2;
+    const VIEW_W = 1600;
+    const VIEW_H = 900;
+    const FOCAL = 1030;
+    const EYE_HEIGHT = 3.35;
+    const CHUNK_SIZE = 48;
+    const RENDER_DISTANCE = 132;
+    const LOAD_DISTANCE = RENDER_DISTANCE + CHUNK_SIZE;
+    const CACHE_CHUNK_RADIUS = 4;
+    const MAX_CACHE_CHUNKS = (CACHE_CHUNK_RADIUS * 2 + 1) ** 2;
+    const NEAR_CULL = 2.4;
+    const POOL_SIZE = 176;
+    const MOVE_SPEED = 7.4;
+    const TURN_SPEED = 1.78;
+    const ARCHIVE_KEY = "lumenroot-eclipse-seeds-v1";
+
+    const world = document.getElementById("world");
+    const stage = document.getElementById("stage");
+    const skyPan = document.getElementById("sky-pan");
+    const groundBase = document.getElementById("ground-base");
+    const groundTexture = document.getElementById("ground-texture");
+    const horizonMist = document.getElementById("horizon-mist");
+    const terrainRows = document.getElementById("terrain-rows");
+    const terrainRails = document.getElementById("terrain-rails");
+    const objectLayer = document.getElementById("world-objects");
+    const placeName = document.getElementById("place-name");
+    const coordinateValue = document.getElementById("coordinate-value");
+    const compassNeedle = document.getElementById("compass-needle");
+    const compassLetter = document.getElementById("compass-letter");
+    const seedCount = document.getElementById("seed-count");
+    const toast = document.getElementById("toast");
+    const toastTitle = document.getElementById("toast-title");
+    const toastBody = document.getElementById("toast-body");
+    const liveRegion = document.getElementById("live-region");
+    const introModal = document.getElementById("intro-modal");
+    const pauseModal = document.getElementById("pause-modal");
+    const startButton = document.getElementById("start-button");
+    const resumeButton = document.getElementById("resume-button");
+    const helpButton = document.getElementById("help-button");
+    const motionButton = document.getElementById("motion-button");
+    const forgetButton = document.getElementById("forget-button");
+    const journal = document.getElementById("journal");
+    const fragmentCount = document.getElementById("fragment-count");
+    const moveStick = document.getElementById("move-stick");
+    const turnStick = document.getElementById("turn-stick");
+
+    const FRAGMENTS = [
+      { title: "The Waking Seed", text: "A moon-seed remembers warmth as a round yellow memory." },
+      { title: "Rain Kept in a Bell", text: "The first rain fell upward and has not yet found the sea." },
+      { title: "The Borrowed Shore", text: "At low tide, the wetland shows a coastline no map admits." },
+      { title: "A Root Facing Up", text: "Some roots climb toward a sky they remember leaving." },
+      { title: "The Patient Eclipse", text: "The broken moon will reunite when all six fragments sing." },
+      { title: "Lanternwing Errand", text: "The moths carry echoes between roots so no memory falls alone." }
+    ];
+
+    const REGIONS = [
+      "Nacre Apron", "Mothwake Fen", "The Copper Roots", "Aster Shallows",
+      "Quiet Orrery", "Rainbell Reach", "Old Moon Furrow", "Opal Drift"
+    ];
+
+    const player = { x: 0, z: 0, vx: 0, vz: 0, yaw: 0.18, pitch: -0.015 };
+    const game = {
+      started: false,
+      paused: true,
+      elapsed: 0,
+      bobPhase: 0,
+      bobAmount: 0,
+      toastUntil: 0,
+      visibleCount: 0,
+      frameCount: 0
+    };
+
+    const keys = new Set();
+    const chunkCache = new Map();
+    const activeEntities = [];
+    const archive = loadArchive();
+    const foundLore = new Set(Object.values(archive));
+    const reducedMotionQuery = window.matchMedia ? window.matchMedia("(prefers-reduced-motion: reduce)") : { matches: false };
+    let motionEnabled = !reducedMotionQuery.matches;
+    let lastFrame = null;
+    let toastSerial = 0;
+    let lastHudUpdate = 0;
+    let lastCoverageKey = "";
+
+    function clamp(value, min, max) {
+      return Math.max(min, Math.min(max, value));
+    }
+
+    function lerp(a, b, amount) {
+      return a + (b - a) * amount;
+    }
+
+    function positiveModulo(value, modulus) {
+      return ((value % modulus) + modulus) % modulus;
+    }
+
+    function hash2(x, z, salt = 0) {
+      let value = (Math.imul(x | 0, 0x45d9f3b) ^ Math.imul(z | 0, 0x119de1f3) ^ Math.imul(salt | 0, 0x27d4eb2d)) >>> 0;
+      value ^= value >>> 16;
+      value = Math.imul(value, 0x7feb352d);
+      value ^= value >>> 15;
+      value = Math.imul(value, 0x846ca68b);
+      value ^= value >>> 16;
+      return value >>> 0;
+    }
+
+    function mulberry32(seed) {
+      let state = seed >>> 0;
+      return () => {
+        state += 0x6d2b79f5;
+        let value = state;
+        value = Math.imul(value ^ (value >>> 15), value | 1);
+        value ^= value + Math.imul(value ^ (value >>> 7), value | 61);
+        return ((value ^ (value >>> 14)) >>> 0) / 4294967296;
+      };
+    }
+
+    function loadArchive() {
+      try {
+        const parsed = JSON.parse(localStorage.getItem(ARCHIVE_KEY) || "{}");
+        return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+      } catch (_) {
+        return {};
+      }
+    }
+
+    function saveArchive() {
+      try {
+        localStorage.setItem(ARCHIVE_KEY, JSON.stringify(archive));
+      } catch (_) {
+        // The journey still works when storage is unavailable.
+      }
+    }
+
+    function makeEntity(type, x, z, size, phase, lore = 0, id = "") {
+      return {
+        type,
+        x,
+        z,
+        size,
+        phase,
+        lore,
+        id,
+        scale: 0,
+        sx: 0,
+        sy: 0,
+        depth: 0
+      };
+    }
+
+    function curatedOriginChunk() {
+      return [
+        makeEntity("tree-a", -8.5, 15.5, 0.056, 0.3, 0, "origin:tree:1"),
+        makeEntity("tree-b", 12.2, 18.8, 0.067, 1.7, 0, "origin:tree:2"),
+        makeEntity("tree-a", 19.5, 32.5, 0.05, 3.2, 0, "origin:tree:3"),
+        makeEntity("tree-b", -21, 35, 0.063, 4.6, 0, "origin:tree:4"),
+        makeEntity("moonwell", 7.5, 25, 0.017, 0, 0, "origin:moonwell:0"),
+        makeEntity("lanternwing", 5.8, 16, 0.013, 0.4, 0, "origin:moth:1"),
+        makeEntity("reed", -3.8, 10.5, 0.012, 2.2, 0, "origin:reed:1"),
+        makeEntity("reed", 16.4, 12.2, 0.014, 5.1, 0, "origin:reed:2")
+      ];
+    }
+
+    function generateChunk(cx, cz) {
+      if (cx === 0 && cz === 0) return curatedOriginChunk();
+
+      const random = mulberry32(hash2(cx, cz, 0x4c554d45));
+      const entities = [];
+      const count = 4 + (hash2(cx, cz, 0x13) % 2);
+      for (let index = 0; index < count; index += 1) {
+        let x = (cx + 0.08 + random() * 0.84) * CHUNK_SIZE;
+        let z = (cz + 0.08 + random() * 0.84) * CHUNK_SIZE;
+        if (Math.hypot(x, z) < 4.5) {
+          x += x >= 0 ? 5.5 : -5.5;
+          z += z >= 0 ? 3.5 : -3.5;
+        }
+
+        const roll = random();
+        let type = "tree-a";
+        if (roll < 0.18) type = "moonwell";
+        else if (roll < 0.43) type = "lanternwing";
+        else if (roll < 0.58) type = "reed";
+        else if (roll < 0.79) type = "tree-b";
+
+        const size = type === "tree-a" || type === "tree-b"
+          ? 0.047 + random() * 0.025
+          : type === "moonwell"
+            ? 0.015 + random() * 0.003
+            : type === "lanternwing"
+              ? 0.010 + random() * 0.004
+              : 0.010 + random() * 0.006;
+
+        entities.push(makeEntity(
+          type,
+          x,
+          z,
+          size,
+          random() * TAU,
+          Math.floor(random() * FRAGMENTS.length),
+          `${cx}:${cz}:${index}`
+        ));
+      }
+      return entities;
+    }
+
+    function chunkBounds(x, z, radius = LOAD_DISTANCE) {
+      return {
+        minX: Math.floor((x - radius) / CHUNK_SIZE),
+        maxX: Math.floor((x + radius) / CHUNK_SIZE),
+        minZ: Math.floor((z - radius) / CHUNK_SIZE),
+        maxZ: Math.floor((z + radius) / CHUNK_SIZE)
+      };
+    }
+
+    function ensureChunks(force = false) {
+      const bounds = chunkBounds(player.x, player.z);
+      const coverageKey = `${bounds.minX}:${bounds.maxX}:${bounds.minZ}:${bounds.maxZ}`;
+      if (!force && coverageKey === lastCoverageKey) return;
+      lastCoverageKey = coverageKey;
+
+      for (let chunkZ = bounds.minZ; chunkZ <= bounds.maxZ; chunkZ += 1) {
+        for (let chunkX = bounds.minX; chunkX <= bounds.maxX; chunkX += 1) {
+          const key = `${chunkX},${chunkZ}`;
+          if (!chunkCache.has(key)) chunkCache.set(key, generateChunk(chunkX, chunkZ));
+        }
+      }
+
+      const centerX = Math.floor(player.x / CHUNK_SIZE);
+      const centerZ = Math.floor(player.z / CHUNK_SIZE);
+      if (chunkCache.size > MAX_CACHE_CHUNKS) {
+        for (const [key, entities] of chunkCache) {
+          const [chunkX, chunkZ] = key.split(",").map(Number);
+          if (Math.abs(chunkX - centerX) > CACHE_CHUNK_RADIUS || Math.abs(chunkZ - centerZ) > CACHE_CHUNK_RADIUS) {
+            chunkCache.delete(key);
+          }
+          if (chunkCache.size <= MAX_CACHE_CHUNKS) break;
+        }
+      }
+    }
+
+    function projectPoint(x, y, z) {
+      const dx = x - player.x;
+      const dy = y - EYE_HEIGHT;
+      const dz = z - player.z;
+      const sinYaw = Math.sin(player.yaw);
+      const cosYaw = Math.cos(player.yaw);
+      const cameraX = dx * cosYaw - dz * sinYaw;
+      const forward = dx * sinYaw + dz * cosYaw;
+      const sinPitch = Math.sin(player.pitch);
+      const cosPitch = Math.cos(player.pitch);
+      const cameraY = dy * cosPitch - forward * sinPitch;
+      const cameraZ = forward * cosPitch + dy * sinPitch;
+      if (cameraZ <= 0.18) return null;
+      const scale = FOCAL / cameraZ;
+      return {
+        x: VIEW_W * 0.5 + cameraX * scale,
+        y: VIEW_H * 0.5 - cameraY * scale,
+        scale,
+        depth: cameraZ
+      };
+    }
+
+    function projectEntity(entity, time) {
+      const hover = entity.type === "lanternwing" ? 5.2 + (motionEnabled ? Math.sin(time * 1.15 + entity.phase) * 0.85 : 0) : 0;
+      const projected = projectPoint(entity.x, hover, entity.z);
+      if (!projected) return false;
+      entity.sx = projected.x;
+      entity.sy = projected.y;
+      entity.scale = projected.scale * entity.size;
+      entity.depth = projected.depth;
+      const halfWidth = 120 * entity.scale;
+      const topExtent = 300 * entity.scale;
+      const bottomExtent = 14 * entity.scale;
+      return entity.sx + halfWidth > -64 && entity.sx - halfWidth < VIEW_W + 64
+        && entity.sy + bottomExtent > -64 && entity.sy - topExtent < VIEW_H + 64;
+    }
+
+    const spritePool = [];
+    for (let index = 0; index < POOL_SIZE; index += 1) {
+      const group = document.createElementNS(NS, "g");
+      group.setAttribute("display", "none");
+      const use = document.createElementNS(NS, "use");
+      use.setAttribute("href", "#prop-tree-a");
+      use.setAttribute("x", "-120");
+      use.setAttribute("y", "-300");
+      use.setAttribute("width", "240");
+      use.setAttribute("height", "300");
+      group.appendChild(use);
+      objectLayer.appendChild(group);
+      spritePool.push({ group, use });
+    }
+
+    const rowPool = [];
+    for (let index = 0; index < 18; index += 1) {
+      const path = document.createElementNS(NS, "path");
+      path.setAttribute("stroke-width", index % 4 === 0 ? "2.2" : "1");
+      path.setAttribute("opacity", "0");
+      terrainRows.appendChild(path);
+      rowPool.push(path);
+    }
+
+    const railPool = [];
+    for (let index = 0; index < 12; index += 1) {
+      const path = document.createElementNS(NS, "path");
+      path.setAttribute("stroke-width", index % 3 === 0 ? "1.4" : "0.8");
+      path.setAttribute("opacity", "0");
+      terrainRails.appendChild(path);
+      railPool.push(path);
+    }
+
+    function renderTerrain() {
+      const rowBase = Math.floor(player.z / 8);
+      for (let index = 0; index < rowPool.length; index += 1) {
+        const z = (rowBase + index - 5) * 8;
+        const a = projectPoint(player.x - 95, 0.03, z);
+        const b = projectPoint(player.x + 95, 0.03, z);
+        const path = rowPool[index];
+        if (!a || !b || a.depth < 4) {
+          path.setAttribute("opacity", "0");
+          continue;
+        }
+        path.setAttribute("d", `M${a.x.toFixed(1)} ${a.y.toFixed(1)}Q${VIEW_W * 0.5} ${(a.y + b.y) * 0.5 + 4} ${b.x.toFixed(1)} ${b.y.toFixed(1)}`);
+        path.setAttribute("opacity", (0.08 + 0.08 * (1 - clamp((a.depth - 8) / 115, 0, 1))).toFixed(3));
+      }
+
+      const railBase = Math.floor(player.x / 14);
+      for (let index = 0; index < railPool.length; index += 1) {
+        const x = (railBase + index - 6) * 14;
+        const near = projectPoint(x, 0.04, player.z + 5);
+        const far = projectPoint(x, 0.04, player.z + 125);
+        const path = railPool[index];
+        if (!near || !far || near.depth < 2.2) {
+          path.setAttribute("opacity", "0");
+          continue;
+        }
+        path.setAttribute("d", `M${near.x.toFixed(1)} ${near.y.toFixed(1)}Q${(near.x + far.x) * 0.5 + Math.sin(player.x * 0.03 + index) * 8} ${(near.y + far.y) * 0.5} ${far.x.toFixed(1)} ${far.y.toFixed(1)}`);
+        path.setAttribute("opacity", (0.045 + 0.035 * (1 - clamp((far.depth - 15) / 110, 0, 1))).toFixed(3));
+      }
+    }
+
+    function symbolFor(entity) {
+      if (entity.type === "moonwell") return "#prop-moonwell";
+      if (entity.type === "lanternwing") return "#prop-lanternwing";
+      if (entity.type === "reed") return "#prop-reed";
+      return entity.phase < Math.PI ? "#prop-tree-a" : "#prop-tree-b";
+    }
+
+    function renderObjects(time) {
+      activeEntities.length = 0;
+      const renderDistanceSq = RENDER_DISTANCE * RENDER_DISTANCE;
+      for (const entities of chunkCache.values()) {
+        for (const entity of entities) {
+          const dx = entity.x - player.x;
+          const dz = entity.z - player.z;
+          const distanceSq = dx * dx + dz * dz;
+          if (distanceSq < NEAR_CULL * NEAR_CULL || distanceSq > renderDistanceSq) continue;
+          if (projectEntity(entity, time)) activeEntities.push(entity);
+        }
+      }
+      activeEntities.sort((a, b) => b.depth - a.depth);
+
+      const count = Math.min(activeEntities.length, spritePool.length);
+      for (let index = 0; index < count; index += 1) {
+        const entity = activeEntities[index];
+        const slot = spritePool[index];
+        const distance = Math.hypot(entity.x - player.x, entity.z - player.z);
+        const opacity = clamp(1 - Math.max(0, distance - 64) / (RENDER_DISTANCE - 64), 0, 1);
+        const sway = motionEnabled
+          ? (entity.type === "lanternwing" ? Math.sin(time * 2.1 + entity.phase) * 2.8 : Math.sin(time * 0.52 + entity.phase) * 0.7)
+          : 0;
+        slot.group.removeAttribute("display");
+        slot.group.setAttribute("transform", `translate(${entity.sx.toFixed(2)} ${entity.sy.toFixed(2)}) scale(${entity.scale.toFixed(5)})`);
+        slot.group.setAttribute("opacity", opacity.toFixed(3));
+        slot.use.setAttribute("href", symbolFor(entity));
+        slot.use.setAttribute("x", (-120 + sway).toFixed(2));
+        slot.use.setAttribute("y", "-300");
+      }
+      for (let index = count; index < spritePool.length; index += 1) {
+        spritePool[index].group.setAttribute("display", "none");
+      }
+      game.visibleCount = count;
+    }
+
+    function renderSky() {
+      const yawProgress = positiveModulo(player.yaw, TAU) / TAU;
+      const verticalDrift = player.pitch * FOCAL * 0.78 - (motionEnabled ? Math.sin(game.bobPhase) * game.bobAmount * 0.5 : 0);
+      skyPan.setAttribute("transform", `translate(${(-yawProgress * 2400).toFixed(2)} ${verticalDrift.toFixed(2)})`);
+    }
+
+    function renderHorizon() {
+      const horizon = VIEW_H * 0.5 + Math.tan(player.pitch) * FOCAL;
+      const clamped = clamp(horizon, -80, VIEW_H + 50);
+      groundBase.setAttribute("d", `M0 ${clamped.toFixed(1)}H${VIEW_W}V${VIEW_H}H0Z`);
+      groundTexture.setAttribute("d", `M0 ${clamped.toFixed(1)}H${VIEW_W}V${VIEW_H}H0Z`);
+      horizonMist.setAttribute("d", `M0 ${(clamped - 35).toFixed(1)}C260 ${(clamped - 12).toFixed(1)} 450 ${(clamped + 24).toFixed(1)} 790 ${(clamped + 7).toFixed(1)}S1320 ${(clamped - 15).toFixed(1)} 1600 ${(clamped + 2).toFixed(1)}V${(clamped + 78).toFixed(1)}H0Z`);
+      groundTexture.setAttribute("transform", "");
+    }
+
+    function render(time) {
+      const bobY = motionEnabled ? -Math.abs(Math.sin(game.bobPhase)) * 4.2 * game.bobAmount : 0;
+      const roll = motionEnabled ? Math.sin(game.bobPhase * 0.5) * 0.34 * game.bobAmount : 0;
+      stage.setAttribute("transform", `translate(0 ${bobY.toFixed(2)}) rotate(${roll.toFixed(3)} ${VIEW_W * 0.5} ${VIEW_H * 0.5})`);
+      renderSky();
+      renderHorizon();
+      renderTerrain();
+      renderObjects(time);
+      game.frameCount += 1;
+    }
+
+    function getInput() {
+      let forward = 0;
+      let strafe = 0;
+      let turn = 0;
+      if (keys.has("KeyW") || keys.has("ArrowUp")) forward += 1;
+      if (keys.has("KeyS") || keys.has("ArrowDown")) forward -= 1;
+      if (keys.has("KeyD")) strafe += 1;
+      if (keys.has("KeyA")) strafe -= 1;
+      if (keys.has("ArrowRight") || keys.has("KeyE")) turn += 1;
+      if (keys.has("ArrowLeft") || keys.has("KeyQ")) turn -= 1;
+
+      forward += -moveControl.axis.y;
+      turn += turnControl.axis.x;
+      const length = Math.hypot(forward, strafe);
+      if (length > 1) {
+        forward /= length;
+        strafe /= length;
+      }
+      return {
+        forward: clamp(forward, -1, 1),
+        strafe: clamp(strafe, -1, 1),
+        turn: clamp(turn, -1, 1)
+      };
+    }
+
+    function advancePlayer(dt, input) {
+      const turnAmount = input.turn * TURN_SPEED * dt;
+      player.yaw = positiveModulo(player.yaw + turnAmount, TAU);
+
+      const sinYaw = Math.sin(player.yaw);
+      const cosYaw = Math.cos(player.yaw);
+      const targetX = (sinYaw * input.forward + cosYaw * input.strafe) * MOVE_SPEED;
+      const targetZ = (cosYaw * input.forward - sinYaw * input.strafe) * MOVE_SPEED;
+      const response = 1 - Math.exp(-dt * 11);
+      player.vx = lerp(player.vx, targetX, response);
+      player.vz = lerp(player.vz, targetZ, response);
+      player.x += player.vx * dt;
+      player.z += player.vz * dt;
+
+      const speed = Math.hypot(player.vx, player.vz);
+      const moving = clamp(speed / MOVE_SPEED, 0, 1);
+      game.bobAmount = lerp(game.bobAmount, moving, 1 - Math.exp(-dt * 7));
+      if (moving > 0.025) game.bobPhase += dt * (7.4 + speed * 0.56);
+      else game.bobPhase += dt * 0.7;
+      document.body.classList.toggle("is-moving", moving > 0.08);
+    }
+
+    function updateDiscoveries() {
+      let changed = false;
+      for (const entities of chunkCache.values()) {
+        for (const entity of entities) {
+          if (entity.type !== "moonwell" || Object.prototype.hasOwnProperty.call(archive, entity.id)) continue;
+          const distance = Math.hypot(entity.x - player.x, entity.z - player.z);
+          if (distance > 6.2) continue;
+          archive[entity.id] = entity.lore;
+          foundLore.add(entity.lore);
+          changed = true;
+          const fragment = FRAGMENTS[entity.lore];
+          showToast(fragment.title, fragment.text, 5.2);
+          liveRegion.textContent = `${fragment.title} recovered. ${foundLore.size} of 6 eclipse seeds.`;
+          if (foundLore.size === FRAGMENTS.length) {
+            setTimeout(() => {
+              if (game.started && !game.paused) showToast("The eclipse seed is whole", "The forest has remembered the shape of the sky. Keep walking; Lumenroot has no final edge.", 7);
+            }, 1300);
+          }
+        }
+      }
+      if (changed) {
+        saveArchive();
+        renderArchiveUI();
+      }
+    }
+
+    function showToast(title, body, duration = 4.5) {
+      const serial = ++toastSerial;
+      toastTitle.textContent = title;
+      toastBody.textContent = body;
+      toast.classList.add("is-visible");
+      game.toastUntil = game.elapsed + duration;
+      window.setTimeout(() => {
+        if (serial === toastSerial) toast.classList.remove("is-visible");
+      }, duration * 1000);
+    }
+
+    function renderArchiveUI() {
+      seedCount.textContent = `${foundLore.size} / 6 seeds`;
+      fragmentCount.textContent = `${foundLore.size} of 6`;
+      journal.replaceChildren();
+      FRAGMENTS.forEach((fragment, index) => {
+        const article = document.createElement("article");
+        const found = foundLore.has(index);
+        article.className = `journal-entry${found ? " found" : ""}`;
+        const number = document.createElement("span");
+        number.className = "index";
+        number.textContent = `Fragment ${String(index + 1).padStart(2, "0")}`;
+        const title = document.createElement("strong");
+        title.textContent = found ? fragment.title : "Unread moonwell";
+        const text = document.createElement(found ? "p" : "span");
+        text.className = found ? "" : "sealed";
+        text.textContent = found ? fragment.text : "Its words rest beneath an unopened cap.";
+        article.append(number, title, text);
+        journal.appendChild(article);
+      });
+    }
+
+    function updateHud(force = false) {
+      if (!force && game.elapsed - lastHudUpdate < 0.12) return;
+      lastHudUpdate = game.elapsed;
+      const east = Math.round(player.x);
+      const north = Math.round(player.z);
+      coordinateValue.textContent = `E ${String(east).padStart(4, "0")} · N ${String(north).padStart(4, "0")}`;
+      const regionIndex = positiveModulo(Math.floor((player.x - player.z) / 180) + 2, REGIONS.length);
+      placeName.textContent = foundLore.size === 6 ? "The Remembered Sky" : REGIONS[regionIndex];
+      const degrees = positiveModulo(player.yaw * 180 / Math.PI, 360);
+      compassNeedle.style.transform = `rotate(${degrees.toFixed(2)}deg)`;
+      const cardinals = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"];
+      compassLetter.textContent = cardinals[Math.round(degrees / 45) % 8];
+    }
+
+    function update(dt) {
+      game.elapsed += dt;
+      advancePlayer(dt, getInput());
+      ensureChunks();
+      updateDiscoveries();
+      if (game.elapsed > game.toastUntil) toast.classList.remove("is-visible");
+      updateHud();
+    }
+
+    function animationFrame(timestamp) {
+      if (lastFrame === null) lastFrame = timestamp;
+      const dt = clamp((timestamp - lastFrame) / 1000, 0, 0.05);
+      lastFrame = timestamp;
+      if (game.started && !game.paused && !document.hidden) update(dt);
+      render(game.elapsed);
+      requestAnimationFrame(animationFrame);
+    }
+
+    function resetInput() {
+      keys.clear();
+      resetStick(moveControl);
+      resetStick(turnControl);
+      player.vx = 0;
+      player.vz = 0;
+      game.bobAmount = 0;
+      document.body.classList.remove("is-moving");
+    }
+
+    function setPaused(paused) {
+      if (!game.started) return;
+      game.paused = paused;
+      pauseModal.hidden = !paused;
+      document.body.classList.toggle("is-playing", !paused);
+      resetInput();
+      if (paused) resumeButton.focus();
+      else world.focus({ preventScroll: true });
+    }
+
+    function startGame() {
+      game.started = true;
+      game.paused = false;
+      introModal.hidden = true;
+      document.body.classList.add("is-playing");
+      world.focus({ preventScroll: true });
+      ensureChunks(true);
+      showToast("The path begins at Nacre Apron", "Walk toward a ring of pale stones. The forest repeats when you return, but it never ends.", 5.5);
+    }
+
+    function openGuide() {
+      if (!game.started) return;
+      setPaused(true);
+    }
+
+    function applyMotionPreference() {
+      document.documentElement.classList.toggle("reduce-motion", !motionEnabled);
+      motionButton.textContent = `Motion: ${motionEnabled ? "full" : "reduced"}`;
+      motionButton.setAttribute("aria-pressed", String(!motionEnabled));
+      if (!motionEnabled) game.bobAmount = 0;
+    }
+
+    startButton.addEventListener("click", startGame);
+    resumeButton.addEventListener("click", () => setPaused(false));
+    helpButton.addEventListener("click", openGuide);
+    motionButton.addEventListener("click", () => {
+      motionEnabled = !motionEnabled;
+      try { localStorage.setItem("lumenroot-motion", motionEnabled ? "full" : "reduced"); } catch (_) {}
+      applyMotionPreference();
+    });
+    forgetButton.addEventListener("click", () => {
+      for (const key of Object.keys(archive)) delete archive[key];
+      foundLore.clear();
+      saveArchive();
+      renderArchiveUI();
+      liveRegion.textContent = "Recovered fragments forgotten.";
+    });
+
+    window.addEventListener("keydown", (event) => {
+      const target = event.target;
+      if (target instanceof HTMLElement && (target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName))) return;
+      if (event.ctrlKey || event.metaKey || event.altKey) return;
+      if ((event.key === "Enter" || event.code === "Space") && target instanceof HTMLButtonElement) return;
+
+      if (event.key === "Escape") {
+        event.preventDefault();
+        if (game.started) setPaused(!game.paused);
+        return;
+      }
+      if (event.key.toLowerCase() === "h" && game.started) {
+        event.preventDefault();
+        if (game.paused) setPaused(false); else openGuide();
+        return;
+      }
+      if (!game.started || game.paused) return;
+      if (["KeyW", "KeyA", "KeyS", "KeyD", "KeyQ", "KeyE", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(event.code)) {
+        event.preventDefault();
+        keys.add(event.code);
+      }
+    }, { passive: false });
+
+    window.addEventListener("keyup", (event) => {
+      keys.delete(event.code);
+    });
+
+    window.addEventListener("blur", () => {
+      resetInput();
+      if (game.started && !game.paused) setPaused(true);
+    });
+    document.addEventListener("visibilitychange", () => {
+      if (document.hidden && game.started && !game.paused) setPaused(true);
+    });
+
+    const lookPointer = { id: null, x: 0, y: 0 };
+    world.addEventListener("pointerdown", (event) => {
+      if (lookPointer.id !== null || game.paused || !game.started) return;
+      if (event.pointerType === "mouse" && event.button !== 0) return;
+      lookPointer.id = event.pointerId;
+      lookPointer.x = event.clientX;
+      lookPointer.y = event.clientY;
+      world.setPointerCapture(event.pointerId);
+      world.classList.add("is-dragging");
+    });
+    world.addEventListener("pointermove", (event) => {
+      if (event.pointerId !== lookPointer.id || game.paused) return;
+      const dx = event.clientX - lookPointer.x;
+      const dy = event.clientY - lookPointer.y;
+      lookPointer.x = event.clientX;
+      lookPointer.y = event.clientY;
+      player.yaw = positiveModulo(player.yaw + dx * 0.0042, TAU);
+      player.pitch = clamp(player.pitch - dy * 0.0032, -0.27, 0.27);
+    });
+    function releaseLook(event) {
+      if (event.pointerId !== lookPointer.id) return;
+      lookPointer.id = null;
+      world.classList.remove("is-dragging");
+    }
+    world.addEventListener("pointerup", releaseLook);
+    world.addEventListener("pointercancel", releaseLook);
+    world.addEventListener("lostpointercapture", releaseLook);
+    world.addEventListener("contextmenu", (event) => event.preventDefault());
+
+    function configureStick(stick) {
+      return {
+        element: stick,
+        pointerId: null,
+        axis: { x: 0, y: 0 },
+        knob: stick.querySelector(".joystick-knob")
+      };
+    }
+
+    const moveControl = configureStick(moveStick);
+    const turnControl = configureStick(turnStick);
+
+    function updateStick(control, event) {
+      const rect = control.element.getBoundingClientRect();
+      const radius = rect.width * 0.5;
+      const maxTravel = radius * 0.52;
+      let dx = event.clientX - (rect.left + radius);
+      let dy = event.clientY - (rect.top + radius);
+      const length = Math.hypot(dx, dy);
+      if (length > maxTravel) {
+        dx = dx / length * maxTravel;
+        dy = dy / length * maxTravel;
+      }
+      control.axis.x = dx / maxTravel;
+      control.axis.y = dy / maxTravel;
+      control.knob.style.transform = `translate3d(calc(-50% + ${dx.toFixed(2)}px), calc(-50% + ${dy.toFixed(2)}px), 0)`;
+    }
+
+    function resetStick(control) {
+      control.pointerId = null;
+      control.axis.x = 0;
+      control.axis.y = 0;
+      control.knob.style.transform = "translate3d(-50%, -50%, 0)";
+      control.element.classList.remove("active");
+    }
+
+    function bindStick(control) {
+      control.element.addEventListener("pointerdown", (event) => {
+        if (!game.started || game.paused || control.pointerId !== null) return;
+        event.preventDefault();
+        event.stopPropagation();
+        control.pointerId = event.pointerId;
+        control.element.setPointerCapture(event.pointerId);
+        control.element.classList.add("active");
+        updateStick(control, event);
+      }, { passive: false });
+
+      control.element.addEventListener("pointermove", (event) => {
+        if (event.pointerId !== control.pointerId) return;
+        event.preventDefault();
+        event.stopPropagation();
+        updateStick(control, event);
+      }, { passive: false });
+
+      const release = (event) => {
+        if (event.pointerId !== control.pointerId) return;
+        event.preventDefault();
+        event.stopPropagation();
+        resetStick(control);
+      };
+      control.element.addEventListener("pointerup", release, { passive: false });
+      control.element.addEventListener("pointercancel", release, { passive: false });
+      control.element.addEventListener("lostpointercapture", release, { passive: false });
+    }
+
+    bindStick(moveControl);
+    bindStick(turnControl);
+
+    function blockBrowserGesture(event) {
+      if (event.cancelable) event.preventDefault();
+    }
+    document.addEventListener("touchmove", (event) => {
+      const target = event.target;
+      if (target instanceof Element && target.closest(".modal")) return;
+      blockBrowserGesture(event);
+    }, { passive: false });
+    document.addEventListener("gesturestart", blockBrowserGesture, { passive: false });
+    document.addEventListener("gesturechange", blockBrowserGesture, { passive: false });
+    document.addEventListener("gestureend", blockBrowserGesture, { passive: false });
+    document.addEventListener("dblclick", blockBrowserGesture, { passive: false });
+
+    if (reducedMotionQuery.addEventListener) {
+      reducedMotionQuery.addEventListener("change", (event) => {
+        motionEnabled = !event.matches;
+        applyMotionPreference();
+      });
+    }
+
+    try {
+      const savedMotion = localStorage.getItem("lumenroot-motion");
+      if (savedMotion === "reduced") motionEnabled = false;
+      if (savedMotion === "full") motionEnabled = true;
+    } catch (_) {}
+
+    applyMotionPreference();
+    renderArchiveUI();
+    ensureChunks(true);
+    updateHud(true);
+    requestAnimationFrame(animationFrame);
+
+    window.__lumenroot = {
+      getState() {
+        return {
+          player: { x: player.x, z: player.z, yaw: player.yaw, pitch: player.pitch, vx: player.vx, vz: player.vz },
+          started: game.started,
+          paused: game.paused,
+          found: foundLore.size,
+          visibleCount: game.visibleCount,
+          pooledNodes: spritePool.length,
+          chunkCount: chunkCache.size,
+          frameCount: game.frameCount,
+          motionEnabled,
+          moveAxis: { ...moveControl.axis },
+          turnAxis: { ...turnControl.axis },
+          movePointer: moveControl.pointerId,
+          turnPointer: turnControl.pointerId
+        };
+      },
+      start: startGame,
+      setPaused,
+      setView(yaw = player.yaw, pitch = player.pitch) {
+        player.yaw = positiveModulo(Number(yaw) || 0, TAU);
+        player.pitch = clamp(Number(pitch) || 0, -0.27, 0.27);
+        render(game.elapsed);
+        return this.getState();
+      },
+      projectPoint,
+      hash2,
+      generateChunk,
+      simulate(input, seconds, steps = 60) {
+        const dt = seconds / steps;
+        for (let index = 0; index < steps; index += 1) {
+          advancePlayer(dt, { forward: 0, strafe: 0, turn: 0, ...input });
+        }
+        ensureChunks(true);
+        return this.getState();
+      },
+      runSelfTests() {
+        const near = projectPoint(player.x, 0, player.z + 20);
+        const far = projectPoint(player.x, 0, player.z + 80);
+        const horizonPoint = projectPoint(player.x, 0, player.z + 1000000);
+        const horizonBoundary = Number(groundBase.getAttribute("d").match(/^M0 ([^H]+)/)[1]);
+        const sampleA = generateChunk(7, -4);
+        const sampleB = generateChunk(7, -4);
+        const signature = (entities) => entities.map((entity) => `${entity.type}:${entity.x.toFixed(3)}:${entity.z.toFixed(3)}:${entity.lore}`).join("|");
+        const loadedIds = new Set();
+        for (const entities of chunkCache.values()) {
+          for (const entity of entities) loadedIds.add(entity.id);
+        }
+        const renderBounds = chunkBounds(player.x, player.z, RENDER_DISTANCE);
+        let missingRenderEntities = 0;
+        for (let chunkZ = renderBounds.minZ; chunkZ <= renderBounds.maxZ; chunkZ += 1) {
+          for (let chunkX = renderBounds.minX; chunkX <= renderBounds.maxX; chunkX += 1) {
+            for (const entity of generateChunk(chunkX, chunkZ)) {
+              const distance = Math.hypot(entity.x - player.x, entity.z - player.z);
+              if (distance >= NEAR_CULL && distance <= RENDER_DISTANCE && !loadedIds.has(entity.id)) missingRenderEntities += 1;
+            }
+          }
+        }
+        const checks = [
+          ["pure SVG scene", document.querySelectorAll("canvas, img, video, object, embed").length === 0],
+          ["fixed sprite pool", spritePool.length === POOL_SIZE],
+          ["visible set within pool", activeEntities.length <= spritePool.length],
+          ["bounded chunk cache", chunkCache.size <= MAX_CACHE_CHUNKS],
+          ["load ring exceeds render ring", LOAD_DISTANCE > RENDER_DISTANCE && LOAD_DISTANCE - RENDER_DISTANCE >= CHUNK_SIZE],
+          ["all render-distance entities loaded", missingRenderEntities === 0],
+          ["deterministic hash", hash2(7, -4, 99) === hash2(7, -4, 99)],
+          ["deterministic chunks", signature(sampleA) === signature(sampleB)],
+          ["near projection", Boolean(near && near.depth > 0)],
+          ["perspective scaling", Boolean(near && far && far.scale < near.scale)],
+          ["ground horizon follows pitch", Boolean(horizonPoint && Math.abs(horizonPoint.y - horizonBoundary) < 1)],
+          ["all pool nodes are SVG", spritePool.every((slot) => slot.group.namespaceURI === NS && slot.use.namespaceURI === NS)],
+          ["multitouch axes separate", moveControl !== turnControl && moveControl.axis !== turnControl.axis]
+        ];
+        return { passed: checks.every(([, pass]) => pass), checks };
+      }
+    };
+  })();
+  </script>
+</body>
+</html>
