@@ -66,5 +66,8 @@ specimen `utils/degauss.html`.
   hex-prefix card moved out of the 60-ligature groups, inspector/filter sync
   with an empty state, debounced screen-reader summary, parallel manifest
   fetch, copy feedback reset, and verify.py now also rejects stray spacers.
+- Background block added at the end of the specimen page (2026-09-24): Monotype,
+  Linotype duplex, IBM Executive, CJK duospacing, iA Writer Duo/Quattro, sourced.
+  History is background only; the term "mixed-space" stays.
 - Not verified: Safari/CoreText shaping, real screen-reader output, Windows
   rendering of the unhinted TTF (gasp table added for greyscale smoothing).
