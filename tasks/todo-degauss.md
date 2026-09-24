@@ -39,7 +39,7 @@ specimen `utils/degauss.html`.
 - [x] Browser verification: desktop full-page, 375px (no overflow), 500px
       narrow capture, interactions via JS, console clean
 - [x] Independent review findings addressed
-- [ ] Commit (signed) + push
+- [x] Commit (signed) + push (d83c47e)
 
 ## Assumptions
 

@@ -1,0 +1,671 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Degauss intro renderer</title>
+<!--
+  Frame-stepped renderer for the 15 s Degauss launch video (1080x1080, 60 fps).
+  window.__render(i, type, quality) draws frame i and returns it as a data URL.
+  window.__audio() renders the score offline; the WAV is left in window.__wav
+  as base64 chunks. Open with ?t=<seconds> to look at one moment in a browser.
+-->
+<style>
+  @font-face { font-family: Degauss; src: url('../Degauss-Regular.woff2') format('woff2'); font-weight: 400; }
+  @font-face { font-family: Degauss; src: url('../Degauss-Bold.woff2') format('woff2'); font-weight: 700; }
+  html, body { margin: 0; background: #000; }
+  canvas#gl { display: block; width: 1080px; height: 1080px; }
+</style>
+</head>
+<body>
+<canvas id="gl" width="1080" height="1080"></canvas>
+<script>window.onerror = (msg, src, line) => { window.__error = `${msg} (line ${line})`; };</script>
+<script>
+'use strict';
+const SIZE = 1080, S = 1.5, CW = Math.round(SIZE * S);
+const FPS = 60, DURATION = 15;
+const BEAT = 0.5; // 120 bpm; every cut lands on the beat grid
+
+// Palette: the specimen page's beam and width-class colours.
+const CORE = '#ffe7bf', AMBER = '#ffb447', DIM = '#c9965c', FAINT = '#8a6a48';
+const CLS = { 300: '#f5c24a', 450: '#f08b2e', 600: '#e3502c', 900: '#b8703f' };
+const GREEN = '#b8ffc8', ICE = '#e3eeff', OSD = '#8dffb4', REC = '#f1462c';
+const WM_Y = 520, WM_SIZE = 216, SUB_Y = 622; // the wordmark sits in the same place on the title and end cards
+
+// --- small maths -----------------------------------------------------------------------------
+const clamp = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
+const lerp = (a, b, k) => a + (b - a) * k;
+const seg = (t, a, b) => clamp((t - a) / (b - a));
+const smooth = k => k * k * (3 - 2 * k);
+const easeOut = k => 1 - Math.pow(1 - k, 3);
+const easeIn = k => k * k * k;
+const easeOutBack = k => { const c1 = 1.9, c3 = c1 + 1; return 1 + c3 * Math.pow(k - 1, 3) + c1 * Math.pow(k - 1, 2); };
+const blink = (t, hz) => Math.floor(t * hz * 2) % 2 === 0;
+function mulberry32(a) {
+  return function () {
+    a |= 0; a = a + 0x6D2B79F5 | 0;
+    let t = Math.imul(a ^ a >>> 15, 1 | a);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+function mix(hexA, hexB, k) {
+  const a = parseInt(hexA.slice(1), 16), b = parseInt(hexB.slice(1), 16);
+  const ch = s => Math.round(lerp((a >> s) & 255, (b >> s) & 255, k));
+  return `rgb(${ch(16)},${ch(8)},${ch(0)})`;
+}
+
+// --- 2D scene drawing (in 1080 units) ----------------------------------------------------------
+function makeCanvas() { const c = document.createElement('canvas'); c.width = c.height = CW; return c; }
+const scene = makeCanvas();
+let cx = scene.getContext('2d');
+
+function font(size, weight = 400) { cx.font = `${weight} ${size}px Degauss`; }
+function measure(s, size, weight = 400) { font(size, weight); return cx.measureText(s).width; }
+function txt(s, x, y, size, o = {}) {
+  const a = o.a ?? 1;
+  if (a <= 0) return;
+  font(size, o.w || 400);
+  cx.textAlign = o.align || 'left';
+  cx.textBaseline = 'alphabetic';
+  cx.globalAlpha = a;
+  cx.fillStyle = o.c || CORE;
+  cx.fillText(s, x, y);
+  cx.globalAlpha = 1;
+}
+const advCache = new Map();
+function adv(ch) {
+  // Advance in font units, snapped to the 150-unit grid every Degauss width sits on.
+  if (!advCache.has(ch)) advCache.set(ch, Math.round(measure(ch, 1000) / 150) * 150);
+  return advCache.get(ch);
+}
+function rrect(x, y, w, h, r) {
+  w = Math.max(0, w);
+  cx.beginPath(); cx.roundRect(x, y, w, h, Math.min(r, w / 2, h / 2));
+}
+function cursor(x, y, w, h, c = CORE) { cx.fillStyle = c; cx.fillRect(x, y - h, w, h); }
+function rawRun(seq, center, base, size, gap, color) {
+  // Each character is drawn on its own, so no ligature can form.
+  const k = size / 1000, chars = [...seq], units = chars.map(adv);
+  let x = center - (units.reduce((s, u) => s + u, 0) * k + gap * (chars.length - 1)) / 2;
+  chars.forEach((ch, i) => { txt(ch, x + units[i] * k / 2, base, size, { align: 'center', c: color }); x += units[i] * k + gap; });
+}
+
+function burnIn() {
+  // A VCR menu burned into the phosphor long ago.
+  const o = { w: 700, c: AMBER, a: 0.085 };
+  txt('PRESS PLAY', 1008, 850, 44, { ...o, align: 'right' });
+  txt('ON TAPE', 1008, 900, 44, { ...o, align: 'right' });
+  cx.globalAlpha = o.a; cx.fillStyle = AMBER; cx.fillRect(72, 934, 936, 3); cx.globalAlpha = 1;
+  txt('COUNTER 000', 72, 980, 30, { c: AMBER, a: o.a });
+  txt('C90', 1008, 980, 30, { c: AMBER, a: o.a, align: 'right' });
+}
+
+function osd(t) {
+  const a = seg(t, 0.84, 0.9) * (1 - seg(t, 1.32, 1.45));
+  if (a <= 0) return;
+  cx.globalAlpha = a;
+  rrect(340, 176, 400, 96, 18); cx.fillStyle = 'rgba(0,36,18,0.55)'; cx.fill();
+  cx.lineWidth = 3; cx.strokeStyle = OSD; cx.stroke();
+  cx.globalAlpha = 1;
+  txt('DEGAUSSING', 540, 222, 34, { w: 700, align: 'center', c: OSD, a });
+  const filled = Math.floor(clamp((t - 0.88) / 0.5) * 12);
+  for (let i = 0; i < 12; i++) {
+    cx.globalAlpha = a * (i < filled ? 1 : 0.22);
+    cx.fillStyle = OSD; cx.fillRect(388 + i * 26, 240, 18, 16);
+  }
+  cx.globalAlpha = 1;
+}
+
+const SUBTITLE = 'a mixed-space typeface', TYPE_AT = 2.56, TYPE_CPS = 27;
+function sceneTitle(t) {
+  txt('READY.', 72, 112, 38);
+  if (blink(t, 1)) cursor(72 + measure('READY.', 38) + 10, 114, 22, 36);
+  txt('C90  TYPE II', 1008, 112, 38, { align: 'right', c: DIM });
+  burnIn();
+  osd(t);
+  txt('DEGAUSS', 540, WM_Y, WM_SIZE, { w: 700, align: 'center' });
+  if (t > TYPE_AT) {
+    const n = clamp(Math.floor((t - TYPE_AT) * TYPE_CPS), 0, SUBTITLE.length);
+    const x0 = 540 - measure(SUBTITLE, 62) / 2;
+    txt(SUBTITLE.slice(0, n), x0, SUB_Y, 62);
+    if (n < SUBTITLE.length || blink(t, 1.25)) cursor(x0 + measure(SUBTITLE.slice(0, n), 62) + 6, SUB_Y + 6, 28, 58);
+  }
+}
+
+const WORD = 'firmware'; // C45 C30 C45 C90 C90 C60 C45 C60: all four classes
+function sceneWidths(u) {
+  const m = u < 1.1 ? 0 : easeOutBack(clamp((u - 1.1) / 0.5));
+  const mc = clamp(m);
+  const monoA = 1 - seg(u, 1.02, 1.12), mixA = seg(u, 1.1, 1.22);
+  txt('monospace', 540, 200, 70, { w: 700, align: 'center', c: DIM, a: monoA });
+  txt('every glyph forced into one cell', 540, 262, 40, { align: 'center', c: FAINT, a: monoA });
+  txt('mixed-space', 540, 200, 70, { w: 700, align: 'center', a: mixA });
+  txt('four fixed widths', 540, 262, 40, { align: 'center', c: AMBER, a: mixA });
+  const size = 196, k = size / 1000;
+  const units = [...WORD].map(adv);
+  const widths = units.map(w => lerp(600, w, m) * k);
+  let x = 540 - widths.reduce((s, w) => s + w, 0) / 2;
+  const top = 350, bottom = 628, base = 574;
+  units.forEach((unit, i) => {
+    const w = widths[i];
+    rrect(x + 3, top, w - 6, bottom - top, 14);
+    cx.lineWidth = 2; cx.strokeStyle = `rgba(255,231,191,${0.30 - 0.14 * mc})`; cx.stroke();
+    // In the monospace state wide glyphs are squeezed and narrow ones float.
+    const sx = lerp(Math.min(1, 600 / unit), 1, mc);
+    cx.save(); cx.translate(x + w / 2, base); cx.scale(sx, 1);
+    txt(WORD[i], 0, 0, size, { align: 'center' }); cx.restore();
+    rrect(x + 6, 652, w - 12, 16, 8); cx.fillStyle = mix('#5b4633', CLS[unit], mc); cx.fill();
+    txt('C' + unit / 10, x + w / 2, 712, 26, { w: 700, align: 'center', c: CLS[unit], a: seg(u, 1.45, 1.6) });
+    x += w;
+  });
+  if (u > 2.1) legend(u - 2.1);
+}
+
+function legend(v) {
+  let x = 60;
+  [300, 450, 600, 900].forEach((c, i) => {
+    const full = c / 150 * 60, a = clamp((v - i * 0.08) / 0.12);
+    txt('C' + c / 10, x, 818, 32, { w: 700, c: CLS[c], a });
+    rrect(x, 836, full * easeOut(clamp((v - i * 0.08) / 0.28)), 30, 15); cx.fillStyle = CLS[c]; cx.fill();
+    txt(String(c), x, 902, 26, { c: DIM, a });
+    x += full + 20;
+  });
+  txt('2 : 3 : 4 : 6', 540, 982, 42, { w: 700, align: 'center', a: seg(v, 0.5, 0.65) });
+}
+
+const LIGS = [
+  ['->', 'Rust  C++  PHP'], ['!=', 'every language'], ['=>', 'JavaScript  Scala'], ['|>', 'Elixir  F#  Elm'],
+  ['===', 'JavaScript  Ruby'], ['<=', 'every language'], ['<>', 'SQL  Haskell'],
+];
+const LIG_AT = 0.16; // seconds into each beat when the characters fuse
+function sceneLigatures(u) {
+  txt('60 coding ligatures', 540, 190, 66, { w: 700, align: 'center' });
+  txt('each character keeps its own width', 540, 250, 40, { align: 'center', c: DIM });
+  const b = Math.min(LIGS.length - 1, Math.floor(u / BEAT)), v = u - b * BEAT;
+  const [seq, langs] = LIGS[b];
+  const size = 300, base = 632;
+  if (v < LIG_AT) {
+    rawRun(seq, 540, base, size, 40, DIM);
+    chip('calt off', FAINT);
+  } else {
+    const pop = 1 + 0.16 * (1 - easeOut(clamp((v - LIG_AT) / 0.16)));
+    cx.save(); cx.translate(540, base - 90); cx.scale(pop, pop);
+    txt(seq, 0, 90, size, { align: 'center' });
+    cx.restore();
+    chip('calt on', AMBER);
+  }
+  rawRun(seq, 540, 780, 48, 12, FAINT);
+  txt(langs, 540, 866, 42, { align: 'center', c: AMBER });
+  for (let i = 0; i < LIGS.length; i++) {
+    cx.beginPath(); cx.arc(540 + (i - 3) * 34, 962, i === b ? 9 : 6, 0, Math.PI * 2);
+    cx.fillStyle = i <= b ? CORE : '#4a3a2c'; cx.fill();
+  }
+}
+function chip(label, color) {
+  const w = measure(label, 30) + 38;
+  rrect(540 - w / 2, 298, w, 48, 14); cx.lineWidth = 2; cx.strokeStyle = color; cx.stroke();
+  txt(label, 540, 332, 30, { align: 'center', c: color });
+}
+
+const GLYPHS = ['0', '@', '&', 'g', 'Ж', 'λ', 'ß', 'Ω', '⏻', '⏵', '∞', 'Æ', '?', '₿', '⌘', 'Ψ'];
+const TINTS = [CORE, GREEN, ICE, AMBER];
+const SLOT = BEAT / 4;
+function sceneRoulette(u) {
+  const i = Math.min(GLYPHS.length - 1, Math.floor(u / SLOT));
+  txt('LATIN  GREEK  CYRILLIC  CODE  TERMINAL', 540, 120, 36, { align: 'center', c: DIM });
+  txt(GLYPHS[i], 540, 742, 560, { w: i % 2 ? 700 : 400, align: 'center', c: TINTS[i % TINTS.length] });
+  txt('913 glyphs', 540, 980, 60, { w: 700, align: 'center' });
+}
+
+const URL_TEXT = 'ealdent.github.io/the-grove/utils/degauss.html', URL_AT = 0.64, URL_CPS = 70;
+function sceneEnd(u, still = false) {
+  const a = (s, e) => still ? 1 : seg(u, s, e);
+  txt('DEGAUSS', 540, WM_Y, WM_SIZE, { w: 700, align: 'center', a: a(0, 0.1) });
+  txt('a free mixed-space font', 540, SUB_Y, 62, { align: 'center', a: a(0.2, 0.32) });
+  const top = a(0.2, 0.3);
+  if (still || blink(u, 1)) { cx.globalAlpha = top; cx.beginPath(); cx.arc(86, 100, 13, 0, Math.PI * 2); cx.fillStyle = REC; cx.fill(); cx.globalAlpha = 1; }
+  txt('OUT NOW', 112, 114, 38, { w: 700, a: top });
+  txt('MIT  v1.0', 1008, 114, 38, { align: 'right', c: DIM, a: top });
+  const parts = [2, 3, 4, 6].map(r => r / 15 * 840), grow = a(0.36, 0.52);
+  let x = 120;
+  [300, 450, 600, 900].forEach((c, i) => {
+    cx.fillStyle = CLS[c]; cx.fillRect(x, 666, parts[i] * clamp(grow * 4 - i), 18);
+    x += parts[i];
+  });
+  txt('Regular + Bold    TTF  OTF  WOFF2', 540, 772, 42, { align: 'center', c: DIM, a: a(0.5, 0.62) });
+  const n = still ? URL_TEXT.length : clamp(Math.floor((u - URL_AT) * URL_CPS), 0, URL_TEXT.length);
+  const x0 = 540 - measure(URL_TEXT, 38) / 2;
+  if (n > 0) txt(URL_TEXT.slice(0, n), x0, 884, 38);
+  if (!still && u > URL_AT && (n < URL_TEXT.length || blink(u, 1.25))) cursor(x0 + measure(URL_TEXT.slice(0, n), 38) + 6, 890, 18, 38);
+}
+
+function paint(canvas, draw) {
+  cx = canvas.getContext('2d');
+  cx.setTransform(1, 0, 0, 1, 0, 0);
+  cx.fillStyle = '#000'; cx.fillRect(0, 0, CW, CW);
+  cx.setTransform(S, 0, 0, S, 0, 0);
+  draw();
+  cx = scene.getContext('2d');
+}
+function drawScene(t) {
+  paint(scene, () => {
+    if (t < 3.5) sceneTitle(t);
+    else if (t < 7.0) sceneWidths(t - 3.5);
+    else if (t < 10.5) sceneLigatures(t - 7.0);
+    else if (t < 12.5) sceneRoulette(t - 10.5);
+    else sceneEnd(t - 12.5);
+  });
+}
+
+// --- tube parameters over time ------------------------------------------------------------------
+// The loop point is the power-off dot with the end card's afterglow behind it,
+// so the last frame runs straight back into the first.
+const GHOST = 0.11;
+function tube(t) {
+  const P = { sx: 1, sy: 1, vis: 1, lineW: 0, lineI: 0, dotI: 0, flash: 0, magnet: 0, wob: 0, phase: 0,
+              stat: 0, persist: 0.6, bright: 1, ghost: 0 };
+  if (t < 0.5) {                                   // power-on: dot, line, picture
+    P.persist = 0.8;
+    P.ghost = GHOST * (1 - smooth(seg(t, 0.22, 0.36)));
+    if (t < 0.1) { P.vis = 0; P.dotI = lerp(0.45, 1.1, t / 0.1); }
+    else if (t < 0.22) { P.vis = 0; const k = easeOut((t - 0.1) / 0.12); P.lineW = k; P.lineI = 1.3; P.dotI = 1.1 * (1 - k); }
+    else {
+      const k = clamp((t - 0.22) / 0.2);
+      P.sy = Math.max(0.004, easeOutBack(k)); P.lineW = 1; P.lineI = 1.3 * (1 - clamp(k * 2.5));
+      P.bright = 1 + 1.2 * (1 - k);
+      if (t > 0.3) P.flash = 0.42 * Math.exp(-(t - 0.3) * 13);
+    }
+  }
+  P.magnet = t < 1.0 ? smooth(seg(t, 0.3, 0.55)) : Math.pow(Math.max(0, 1 - (t - 1.0) / 1.15), 2);
+  if (t >= 1.0 && t < 3.0) {                       // the degauss
+    const d = t - 1.0;
+    P.wob = Math.exp(-d * 2.2) * smooth(clamp(d / 0.04)) * (1 - smooth(seg(d, 1.3, 1.9)));
+    P.phase = d * Math.PI * 2 * 5.4;
+    P.flash += 0.35 * Math.exp(-d * 11);
+    P.persist = 0.84;
+  }
+  for (const c of [3.5, 7.0, 10.5]) {             // channel flips between scenes
+    if (t >= c - 0.03 && t < c + 0.06) P.stat = 0.8 * (1 - clamp((t - (c - 0.03)) / 0.09));
+  }
+  if (t >= 10.5 && t < 12.5) { P.persist = 0.45; if ((t - 10.5) % SLOT < 1.2 / FPS) P.stat = Math.max(P.stat, 0.3); }
+  if (t >= 7.0 && t < 10.5) { const v = (t - 7.0) % BEAT; if (v >= LIG_AT && v < LIG_AT + 0.08) P.flash += 0.16 * (1 - (v - LIG_AT) / 0.08); }
+  if (t >= 12.5 && t < 12.8) P.flash += 0.38 * Math.exp(-(t - 12.5) * 14);
+  if (t >= 14.5) {                                 // power-off: line, dot, afterglow
+    const d = t - 14.5;
+    P.persist = 0.78;
+    P.ghost = GHOST * smooth(seg(d, 0.12, 0.26));
+    if (d < 0.12) { const k = d / 0.12; P.sy = lerp(1, 0.004, easeIn(k)); P.bright = 1 + 1.6 * k; P.lineW = 1; P.lineI = 1.4 * k; }
+    else if (d < 0.24) { const k = (d - 0.12) / 0.12; P.vis = 0; P.lineW = 1 - easeIn(k); P.lineI = 1.4; P.dotI = 1.1 * k; }
+    else { P.vis = 0; P.dotI = lerp(1.1, 0.45, (d - 0.24) / 0.26); }
+  }
+  return P;
+}
+
+// --- WebGL2 picture tube -----------------------------------------------------------------------------
+const glc = document.getElementById('gl');
+const gl = glc.getContext('webgl2', { preserveDrawingBuffer: true, antialias: false });
+const VS = `#version 300 es
+in vec2 a; void main() { gl_Position = vec4(a, 0.0, 1.0); }`;
+const FS_TUBE = `#version 300 es
+precision highp float;
+uniform sampler2D uScene, uPrev, uGhost;
+uniform vec2 uRes;
+uniform float uTime, uSx, uSy, uVis, uLineW, uLineI, uDotI, uFlash, uMagnet, uWob, uPhase, uStatic, uPersist, uBright, uGhostA, uSeed;
+out vec4 frag;
+float hash(vec2 p) { p = fract(p * vec2(123.34, 456.21)); p += dot(p, p + 45.32); return fract(p.x * p.y); }
+vec3 hue(vec3 c, float a) {
+  float Y = dot(c, vec3(0.299, 0.587, 0.114));
+  float I = dot(c, vec3(0.596, -0.274, -0.322));
+  float Q = dot(c, vec3(0.211, -0.523, 0.312));
+  float h = atan(Q, I) + a, ch = length(vec2(I, Q));
+  I = ch * cos(h); Q = ch * sin(h);
+  return vec3(Y + 0.956 * I + 0.621 * Q, Y - 0.272 * I - 0.647 * Q, Y - 1.106 * I + 1.703 * Q);
+}
+void main() {
+  vec2 uv = gl_FragCoord.xy / uRes;
+  vec2 p = uv * 2.0 - 1.0;
+  vec2 pc = p * (1.0 + 0.055 * dot(p, p));                      // curved glass
+  vec2 e = abs(pc) - vec2(0.955);
+  float edge = length(max(e + 0.1, 0.0)) - 0.1;
+  float mask = 1.0 - smoothstep(-0.014, 0.004, edge);
+  float w = uWob;
+  vec2 q = pc;                                                   // the degauss field bends the raster
+  q.x += w * (0.06 * sin(q.y * 3.1 + uPhase) + 0.028 * sin(q.y * 7.3 - uPhase * 1.7));
+  q.y += w * 0.048 * sin(q.x * 2.6 - uPhase * 1.2);
+  q *= vec2(1.0 + w * 0.06 * sin(uPhase * 0.9), 1.0 - w * 0.05 * sin(uPhase * 1.1));
+  q /= vec2(max(uSx, 1e-3), max(uSy, 1e-3));
+  vec2 cuv = vec2(q.x * 0.5 + 0.5, 0.5 - q.y * 0.5);
+  float inside = step(0.0, cuv.x) * step(cuv.x, 1.0) * step(0.0, cuv.y) * step(cuv.y, 1.0);
+  vec2 ca = pc * (0.0018 + w * 0.011) + vec2(w * 0.007 * sin(uPhase * 1.3), 0.0);
+  vec3 col = vec3(texture(uScene, cuv + ca).r, texture(uScene, cuv).g, texture(uScene, cuv - ca).b);
+  vec3 glow = textureLod(uScene, cuv, 3.0).rgb * 0.5 + textureLod(uScene, cuv, 4.5).rgb * 0.55 + textureLod(uScene, cuv, 6.0).rgb * 0.55;
+  col = (col + glow * 0.8) * inside * uVis;
+  float field = uMagnet * (1.7 * sin(pc.x * 2.3 + 0.8) * cos(pc.y * 1.9 - 0.5) + 0.9 * sin(pc.x * 4.1 - pc.y * 3.3 + uTime * 0.9));
+  field += w * 3.4 * sin(uPhase * 0.7 + pc.x * 2.2 + pc.y * 1.6);  // purity blotches
+  vec3 purity = 0.5 + 0.5 * cos(field * 1.3 + vec3(0.0, 2.1, 4.2));
+  col = max(hue(col, field), 0.0) * mix(vec3(1.0), purity * 1.6, clamp(uMagnet + w * 1.5, 0.0, 1.0) * 0.55) * uBright;
+  vec2 guv = vec2(pc.x * 0.5 + 0.5, 0.5 - pc.y * 0.5);           // afterglow of the last picture
+  col += textureLod(uGhost, guv, 1.6).rgb * vec3(1.0, 0.74, 0.5) * uGhostA;
+  float lx = 1.0 - smoothstep(uLineW - 0.03, uLineW + 0.03, abs(p.x));
+  float yPix = p.y * uRes.y * 0.5;
+  col += vec3(1.0, 0.93, 0.82) * uLineI * lx * (exp(-pow(yPix / 2.6, 2.0)) + 0.4 * exp(-pow(yPix / 16.0, 2.0)));
+  float dr = length(p * uRes * 0.5);
+  col += vec3(1.0, 0.95, 0.88) * uDotI * (1.5 * exp(-pow(dr / 8.0, 2.0)) + 0.45 * exp(-pow(dr / 42.0, 2.0)));
+  col *= 0.87 + 0.13 * cos(gl_FragCoord.y * 3.14159265 / 3.0);  // scanlines, 6 px pitch
+  float n = hash(gl_FragCoord.xy + vec2(uSeed * 17.0, uSeed * 31.0));
+  col += uFlash * vec3(1.0, 0.94, 0.84) * mask;
+  col = mix(col, vec3(n * 0.95), uStatic * mask);
+  col += (n - 0.5) * 0.03 * mask;
+  col += vec3(0.02, 0.017, 0.014) * mask;                       // phosphor black is never black
+  col += vec3(0.022, 0.024, 0.026) * (1.0 - smoothstep(0.0, 0.75, length((pc - vec2(-0.5, 0.58)) * vec2(1.0, 1.7)))) * mask;
+  col *= mix(1.0, 1.0 - smoothstep(0.45, 1.6, length(pc)), 0.55);
+  col *= mask;
+  col = max(col, texture(uPrev, uv).rgb * uPersist);             // phosphor persistence
+  frag = vec4(col, 1.0);
+}`;
+const FS_COPY = `#version 300 es
+precision highp float;
+uniform sampler2D uSrc; uniform vec2 uRes; out vec4 frag;
+void main() { frag = vec4(texture(uSrc, gl_FragCoord.xy / uRes).rgb, 1.0); }`;
+
+function program(fs) {
+  const p = gl.createProgram();
+  for (const [type, src] of [[gl.VERTEX_SHADER, VS], [gl.FRAGMENT_SHADER, fs]]) {
+    const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s);
+    if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s));
+    gl.attachShader(p, s);
+  }
+  gl.bindAttribLocation(p, 0, 'a'); gl.linkProgram(p);
+  if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p));
+  return p;
+}
+const progTube = program(FS_TUBE), progCopy = program(FS_COPY);
+const loc = (prog, name) => gl.getUniformLocation(prog, name);
+gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
+gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+
+function mipTexture() {
+  const tex = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, tex);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  return tex;
+}
+function upload(tex, canvas) {
+  gl.bindTexture(gl.TEXTURE_2D, tex);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, canvas);
+  gl.generateMipmap(gl.TEXTURE_2D);
+}
+const sceneTex = mipTexture(), ghostTex = mipTexture();
+const targets = [0, 1].map(() => {
+  const tex = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, tex);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, SIZE, SIZE, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+  const fb = gl.createFramebuffer();
+  gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
+  return { tex, fb };
+});
+let cur = 0;
+
+function frame(i) {
+  const t = i / FPS, P = tube(t);
+  drawScene(t);
+  gl.viewport(0, 0, SIZE, SIZE);
+  gl.activeTexture(gl.TEXTURE0); upload(sceneTex, scene);
+  const prev = targets[cur], next = targets[1 - cur];
+  gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, prev.tex);
+  gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, ghostTex);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, next.fb);
+  gl.useProgram(progTube);
+  gl.uniform1i(loc(progTube, 'uScene'), 0);
+  gl.uniform1i(loc(progTube, 'uPrev'), 1);
+  gl.uniform1i(loc(progTube, 'uGhost'), 2);
+  gl.uniform2f(loc(progTube, 'uRes'), SIZE, SIZE);
+  const u = { uTime: t, uSx: P.sx, uSy: P.sy, uVis: P.vis, uLineW: P.lineW, uLineI: P.lineI, uDotI: P.dotI, uFlash: P.flash,
+              uMagnet: P.magnet, uWob: P.wob, uPhase: P.phase, uStatic: P.stat, uPersist: P.persist, uBright: P.bright,
+              uGhostA: P.ghost, uSeed: (i % 97) + 1 };
+  for (const [name, v] of Object.entries(u)) gl.uniform1f(loc(progTube, name), v);
+  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  gl.useProgram(progCopy);
+  gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, next.tex);
+  gl.uniform1i(loc(progCopy, 'uSrc'), 0);
+  gl.uniform2f(loc(progCopy, 'uRes'), SIZE, SIZE);
+  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+  cur = 1 - cur;
+}
+
+// A seek starts from a clean tube and replays the preceding frames, so the
+// phosphor trails look exactly as they do in sequential playback.
+let lastFrame = -1;
+function renderFrame(i) {
+  if (i !== lastFrame + 1) {
+    for (const t of targets) { gl.bindFramebuffer(gl.FRAMEBUFFER, t.fb); gl.clearColor(0, 0, 0, 1); gl.clear(gl.COLOR_BUFFER_BIT); }
+    for (let j = Math.max(0, i - 30); j < i; j++) frame(j);
+  }
+  frame(i);
+  lastFrame = i;
+}
+window.__render = (i, type = 'image/jpeg', quality = 0.95) => { renderFrame(i); return glc.toDataURL(type, quality); };
+
+// Ligature check: does canvas text shaping apply calt? Compare a fused run with its characters drawn one by one.
+window.__ligCheck = () => LIGS.map(([seq]) => {
+  const probe = document.createElement('canvas'); probe.width = 800; probe.height = 300;
+  const c = probe.getContext('2d'); c.font = '400 200px Degauss'; c.fillStyle = '#fff';
+  const draw = whole => {
+    c.clearRect(0, 0, 800, 300);
+    if (whole) c.fillText(seq, 20, 220);
+    else { let x = 20; for (const ch of seq) { c.fillText(ch, x, 220); x += c.measureText(ch).width; } }
+    return c.getImageData(0, 0, 800, 300).data;
+  };
+  const a = draw(true), b = draw(false);
+  let diff = 0; for (let k = 3; k < a.length; k += 4) diff += Math.abs(a[k] - b[k]) > 64;
+  return [seq, diff];
+});
+
+// --- the score (offline WebAudio) ---------------------------------------------------------------------
+const hz = n => 440 * Math.pow(2, (n - 69) / 12);
+
+function buildScore(ctx) {
+  const rng = mulberry32(90210);
+  const noise = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate);
+  { const d = noise.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = rng() * 2 - 1; }
+  const master = ctx.createGain(); master.gain.value = 0.8;
+  const comp = ctx.createDynamicsCompressor();
+  comp.threshold.value = -16; comp.knee.value = 8; comp.ratio.value = 3.2; comp.attack.value = 0.004; comp.release.value = 0.2;
+  master.connect(comp).connect(ctx.destination);
+  const verb = ctx.createConvolver();
+  { const len = Math.floor(ctx.sampleRate * 2.4), ir = ctx.createBuffer(2, len, ctx.sampleRate);
+    for (let c = 0; c < 2; c++) { const d = ir.getChannelData(c); for (let i = 0; i < len; i++) d[i] = (rng() * 2 - 1) * Math.pow(1 - i / len, 3.4); }
+    verb.buffer = ir; }
+  const verbOut = ctx.createGain(); verbOut.gain.value = 0.32; verb.connect(verbOut).connect(master);
+  // The music runs through a cassette: a little wow and some tape saturation.
+  const music = ctx.createGain(); music.gain.value = 0.85;
+  const wow = ctx.createDelay(0.05); wow.delayTime.value = 0.012;
+  const lfo = ctx.createOscillator(); lfo.frequency.value = 0.55;
+  const lfoAmt = ctx.createGain(); lfoAmt.gain.value = 0.0008;
+  lfo.connect(lfoAmt).connect(wow.delayTime); lfo.start(0);
+  const sat = ctx.createWaveShaper();
+  { const n = 2048, c = new Float32Array(n); for (let i = 0; i < n; i++) { const x = i / (n - 1) * 2 - 1; c[i] = Math.tanh(1.5 * x) / Math.tanh(1.5); } sat.curve = c; sat.oversample = '2x'; }
+  music.connect(wow).connect(sat).connect(master);
+  const duck = ctx.createGain(); duck.connect(music);           // pads and bass pump against the kick
+  const sfx = ctx.createGain(); sfx.connect(master);
+
+  function env(param, t, peak, attack, decay, hold = 0) {
+    param.setValueAtTime(0.0001, t);
+    param.exponentialRampToValueAtTime(peak, t + attack);
+    if (hold) param.setValueAtTime(peak, t + attack + hold);
+    param.exponentialRampToValueAtTime(0.0001, t + attack + hold + decay);
+  }
+  function osc(type, f, t, dur, dest) { const o = ctx.createOscillator(); o.type = type; o.frequency.setValueAtTime(f, t); o.connect(dest); o.start(t); o.stop(t + dur + 0.05); return o; }
+  function gain(dest, v = 1) { const g = ctx.createGain(); g.gain.value = v; g.connect(dest); return g; }
+  function filt(type, f, q, dest) { const b = ctx.createBiquadFilter(); b.type = type; b.frequency.value = f; b.Q.value = q; b.connect(dest); return b; }
+  function noiseSrc(t, dur, dest, offset = 0) { const s = ctx.createBufferSource(); s.buffer = noise; s.loop = true; s.connect(dest); s.start(t, offset % 1.9); s.stop(t + dur + 0.05); return s; }
+  function pan(dest, v) { const p = ctx.createStereoPanner(); p.pan.value = v; p.connect(dest); return p; }
+
+  const kick = (t, v = 0.9) => {
+    const g = gain(sfx); env(g.gain, t, v, 0.002, 0.34);
+    const o = osc('sine', 150, t, 0.4, g); o.frequency.exponentialRampToValueAtTime(44, t + 0.12);
+    const cg = gain(sfx); env(cg.gain, t, v * 0.4, 0.001, 0.012); noiseSrc(t, 0.02, filt('highpass', 3000, 0.7, cg), t * 7);
+    duck.gain.setValueAtTime(0.35, t); duck.gain.linearRampToValueAtTime(1, t + 0.2);
+  };
+  const snare = (t, v = 0.32) => {
+    const g = gain(sfx); env(g.gain, t, v, 0.002, 0.2); noiseSrc(t, 0.25, filt('bandpass', 1900, 0.9, g), t * 3);
+    const tg = gain(sfx); env(tg.gain, t, v * 0.56, 0.002, 0.1); osc('triangle', 190, t, 0.12, tg);
+    const vs = gain(verb); env(vs.gain, t, v, 0.002, 0.2); noiseSrc(t, 0.2, filt('bandpass', 2400, 0.8, vs), t * 5);
+  };
+  const hat = (t, v = 0.1) => { const g = gain(pan(sfx, 0.25)); env(g.gain, t, v, 0.001, 0.045); noiseSrc(t, 0.06, filt('highpass', 7500, 0.7, g), t * 11); };
+  const bass = (t, n, dur) => {
+    const g = gain(duck); env(g.gain, t, 0.34, 0.004, dur * 0.9);
+    const lp = filt('lowpass', 900, 3, g); lp.frequency.setValueAtTime(1500, t); lp.frequency.exponentialRampToValueAtTime(260, t + dur);
+    osc('sawtooth', hz(n), t, dur, lp);
+    const sg = gain(duck); env(sg.gain, t, 0.28, 0.004, dur * 0.9); osc('sine', hz(n - 12), t, dur, sg);
+  };
+  const pad = (t, notes, dur, v = 0.07) => {
+    for (const n of notes) for (const det of [-7, 7]) {
+      const g = gain(duck); g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(v, t + 0.25);
+      g.gain.setValueAtTime(v, t + dur - 0.1); g.gain.exponentialRampToValueAtTime(0.0001, t + dur + 0.35);
+      g.connect(gain(verb, 1.4));                                   // reverb send after the envelope: no clicks
+      const o = osc('sawtooth', hz(n), t, dur + 0.4, filt('lowpass', 1700, 0.8, g)); o.detune.value = det;
+    }
+  };
+  const blip = (t, f, v = 0.2) => {
+    const g = gain(sfx); env(g.gain, t, v, 0.002, 0.16); g.connect(gain(verb, 0.8));
+    osc('square', f, t, 0.2, filt('lowpass', 2600, 1, g));
+  };
+  const plink = (t, f, v = 0.22) => {
+    for (const [mult, amp] of [[1, 1], [2.76, 0.28], [5.4, 0.1]]) {
+      const g = gain(sfx); env(g.gain, t, v * amp, 0.002, 0.9 / mult); g.connect(gain(verb, 0.9));
+      osc('sine', f * mult, t, 1, g);
+    }
+  };
+  const tick = (t, p, v = 0.28) => { const g = gain(pan(sfx, p)); env(g.gain, t, v, 0.001, 0.02); noiseSrc(t, 0.03, filt('bandpass', 3600, 1.4, g), t * 13); };
+  const staticBurst = (t, dur, v = 0.22) => { const g = gain(sfx); g.gain.setValueAtTime(v, t); g.gain.linearRampToValueAtTime(0.0001, t + dur); noiseSrc(t, dur, filt('bandpass', 2600, 0.5, g), t * 17); };
+
+  // 0.0 power-on: thump, crackle, a faint flyback whine
+  { const g = gain(sfx); env(g.gain, 0.02, 0.7, 0.004, 0.32); const o = osc('sine', 78, 0.02, 0.36, g); o.frequency.exponentialRampToValueAtTime(36, 0.34);
+    const c = gain(sfx); env(c.gain, 0.05, 0.22, 0.01, 0.28); noiseSrc(0.05, 0.32, filt('highpass', 2400, 0.8, c), 0.3);
+    const w = gain(sfx); w.gain.setValueAtTime(0.0001, 0.08); w.gain.exponentialRampToValueAtTime(0.012, 0.3); w.gain.exponentialRampToValueAtTime(0.0001, 0.95);
+    osc('sine', 7400, 0.08, 0.9, w); }
+  // 0.45-1.0 magnetized buzz
+  { const g = gain(sfx); g.gain.setValueAtTime(0.0001, 0.45); g.gain.exponentialRampToValueAtTime(0.05, 0.6); g.gain.setValueAtTime(0.05, 0.98); g.gain.exponentialRampToValueAtTime(0.0001, 1.08);
+    osc('sawtooth', 60, 0.45, 0.7, filt('lowpass', 520, 1, g)); }
+  // 0.86 the OSD button
+  { const g = gain(sfx); env(g.gain, 0.86, 0.35, 0.001, 0.03); noiseSrc(0.86, 0.04, filt('highpass', 1800, 0.8, g), 0.9);
+    const b = gain(sfx); env(b.gain, 0.86, 0.14, 0.001, 0.05); osc('square', 1320, 0.86, 0.06, filt('lowpass', 3000, 1, b)); }
+  // 1.0 THE DEGAUSS: a thud, a ringing coil that wobbles as it dies, a falling hum
+  { const t = 1.0;
+    const th = gain(sfx); env(th.gain, t, 1.0, 0.006, 0.6); const o = osc('sine', 98, t, 0.7, th); o.frequency.exponentialRampToValueAtTime(33, t + 0.45);
+    const ring = gain(sfx); env(ring.gain, t, 0.3, 0.02, 1.55);
+    const am = gain(ring, 0.55); const amLfo = ctx.createOscillator(); amLfo.frequency.setValueAtTime(12, t); amLfo.frequency.exponentialRampToValueAtTime(2.2, t + 1.5);
+    const depth = ctx.createGain(); depth.gain.value = 0.45; amLfo.connect(depth).connect(am.gain); amLfo.start(t); amLfo.stop(t + 1.7);
+    for (const [f, a] of [[182, 1], [247, 0.72], [334, 0.5], [441, 0.34], [589, 0.2]]) {
+      const po = osc('sine', f, t, 1.6, gain(am, a)); po.frequency.exponentialRampToValueAtTime(f * 0.93, t + 1.5);
+    }
+    const twang = gain(am); env(twang.gain, t, 1, 0.004, 0.55);
+    for (const [f, a] of [[1130, 0.14], [1745, 0.09], [2610, 0.06], [3390, 0.035]]) osc('sine', f, t, 0.6, gain(twang, a));
+    ring.connect(gain(verb, 0.8));
+    const hum = gain(sfx); env(hum.gain, t, 0.26, 0.01, 1.4); const ho = osc('sawtooth', 126, t, 1.5, filt('lowpass', 1100, 1.2, hum)); ho.frequency.exponentialRampToValueAtTime(48, t + 1.45);
+    const wh = gain(sfx); env(wh.gain, t, 0.12, 0.05, 0.9); const lp = filt('lowpass', 3000, 1, wh); lp.frequency.exponentialRampToValueAtTime(300, t + 1.0); noiseSrc(t, 1.0, lp, 1.2); }
+  // 1.7-2.5 the tape spins up into the drop: motor whirr and a rising swell
+  { const g = gain(sfx); g.gain.setValueAtTime(0.0001, 1.7); g.gain.exponentialRampToValueAtTime(0.2, 2.47); g.gain.linearRampToValueAtTime(0.0001, 2.5);
+    const hp = filt('bandpass', 700, 0.9, g); hp.frequency.setValueAtTime(700, 1.7); hp.frequency.exponentialRampToValueAtTime(7000, 2.47); noiseSrc(1.7, 0.8, hp, 1.4);
+    const m = gain(sfx); m.gain.setValueAtTime(0.0001, 1.85); m.gain.exponentialRampToValueAtTime(0.09, 2.46); m.gain.linearRampToValueAtTime(0.0001, 2.5);
+    const mo = osc('sawtooth', 55, 1.85, 0.65, filt('lowpass', 900, 2, m)); mo.frequency.exponentialRampToValueAtTime(220, 2.48); }
+  // 2.5 the beat drops: Am F C G F G, i-VI-III-VII
+  const chords = [[2.5, 45, [57, 60, 64]], [4.5, 41, [53, 57, 60]], [6.5, 48, [55, 60, 64]], [8.5, 43, [55, 59, 62]], [10.5, 41, [53, 57, 60]], [11.5, 43, [55, 59, 62]]];
+  chords.forEach(([t0, root, notes], ci) => {
+    const t1 = ci + 1 < chords.length ? chords[ci + 1][0] : 12.5;
+    pad(t0, notes, t1 - t0);
+    for (let t = t0; t < t1 - 1e-6; t += BEAT / 2) bass(t, Math.round((t - t0) / (BEAT / 2)) % 2 ? root + 12 : root, BEAT / 2 * 0.92);
+  });
+  for (let b = 5; b < 25; b++) {
+    const t = b * BEAT;
+    kick(t, b === 5 ? 1.0 : 0.85);
+    if (b % 2 === 0) snare(t);
+    hat(t + BEAT / 2, b >= 21 ? 0.14 : 0.1);
+  }
+  [0.125, 0.25, 0.375].forEach((d, i) => snare(12.0 + d, 0.14 + i * 0.07)); // fill into the end card
+  { const g = gain(music); g.gain.setValueAtTime(0.0001, 2.5); g.gain.exponentialRampToValueAtTime(0.012, 3.0); g.gain.setValueAtTime(0.012, 14.4); g.gain.exponentialRampToValueAtTime(0.0001, 14.6);
+    noiseSrc(2.5, 12.2, filt('lowpass', 5000, 0.5, g), 0.1); }         // tape hiss
+  // subtitle typing
+  for (let i = 1; i <= SUBTITLE.length; i++) tick(TYPE_AT + i / TYPE_CPS, i % 2 ? 0.3 : -0.3, 0.2);
+  // scene changes
+  for (const t of [3.47, 6.97, 10.47]) staticBurst(t, 0.09);
+  // 4.6 widths snap: each class sounds its own note. Width is string length, so
+  // 2:3:4:6 rings as 660, 440, 330 and 220 Hz: an A-E-A-E open chord.
+  { const g = gain(sfx); env(g.gain, 4.52, 0.16, 0.08, 0.35); const lp = filt('bandpass', 400, 0.8, g); lp.frequency.exponentialRampToValueAtTime(3000, 4.9); noiseSrc(4.52, 0.45, lp, 0.7);
+    const note = { 300: 660, 450: 440, 600: 330, 900: 220 };
+    [...WORD].forEach((ch, i) => plink(4.62 + i * 0.035, note[adv(ch)] || 330, 0.14));
+    [300, 450, 600, 900].forEach((c, i) => plink(5.6 + i * 0.08, note[c], 0.2));
+    [300, 450, 600, 900].forEach(c => plink(6.1, note[c], 0.12)); }
+  // ligatures fuse on ascending blips (A minor pentatonic)
+  [69, 72, 74, 76, 79, 81, 84].forEach((n, i) => { blip(7.0 + LIG_AT + i * BEAT, hz(n), 0.16); tick(7.0 + LIG_AT + i * BEAT, 0, 0.18); });
+  // 10.5-12.5 roulette ticks and a riser
+  for (let i = 0; i < 16; i++) tick(10.5 + i * SLOT, i % 2 ? 0.4 : -0.4, 0.26);
+  { const g = gain(sfx); g.gain.setValueAtTime(0.0001, 10.5); g.gain.exponentialRampToValueAtTime(0.16, 12.45); g.gain.linearRampToValueAtTime(0.0001, 12.5);
+    const bp = filt('bandpass', 400, 1.2, g); bp.frequency.setValueAtTime(400, 10.5); bp.frequency.exponentialRampToValueAtTime(6500, 12.45); noiseSrc(10.5, 2.0, bp, 0.4);
+    const sg = gain(sfx); sg.gain.setValueAtTime(0.0001, 10.5); sg.gain.exponentialRampToValueAtTime(0.05, 12.45); sg.gain.linearRampToValueAtTime(0.0001, 12.5);
+    const so = osc('sawtooth', 110, 10.5, 2.0, filt('lowpass', 1800, 1, sg)); so.frequency.exponentialRampToValueAtTime(440, 12.45); }
+  // 12.5 end card: Am9 stinger, crash, sub, then the URL types itself out
+  { const t = 12.5; kick(t, 1.0);
+    pad(t, [45, 52, 57, 60, 64, 71], 1.9, 0.08);
+    const cr = gain(sfx); env(cr.gain, t, 0.2, 0.002, 1.8); noiseSrc(t, 2.0, filt('highpass', 4500, 0.6, cr), 0.55);
+    const sub = gain(sfx); env(sub.gain, t, 0.5, 0.01, 1.2); osc('sine', 55, t, 1.3, sub);
+    [57, 64, 69, 76].forEach((n, i) => plink(t + 0.12 + i * 0.09, hz(n), 0.1));
+    for (let i = 1; i <= URL_TEXT.length; i++) tick(t + URL_AT + i / URL_CPS, i % 2 ? 0.2 : -0.2, 0.09); }
+  // 14.5 power-off: zip down, thump, fizz
+  { const t = 14.5;
+    const g = gain(sfx); env(g.gain, t, 0.3, 0.003, 0.28); const o = osc('sine', 1900, t, 0.32, g); o.frequency.exponentialRampToValueAtTime(52, t + 0.26);
+    const f = gain(sfx); env(f.gain, t + 0.1, 0.12, 0.01, 0.3); noiseSrc(t + 0.1, 0.35, filt('highpass', 3000, 0.7, f), 0.8);
+    const th = gain(sfx); env(th.gain, t, 0.35, 0.004, 0.25); const to = osc('sine', 70, t, 0.3, th); to.frequency.exponentialRampToValueAtTime(30, t + 0.25); }
+}
+
+function wavBase64(buf) {
+  const ch = buf.numberOfChannels, n = buf.length, sr = buf.sampleRate;
+  const data = [...Array(ch).keys()].map(c => buf.getChannelData(c));
+  let peak = 0;
+  for (const d of data) for (let i = 0; i < n; i++) peak = Math.max(peak, Math.abs(d[i]));
+  const scale = peak > 0.89 ? 0.89 / peak : 1;                   // float graph, so scaling afterwards is lossless
+  const out = new DataView(new ArrayBuffer(44 + n * ch * 2));
+  const w = (o, s) => { for (let i = 0; i < s.length; i++) out.setUint8(o + i, s.charCodeAt(i)); };
+  w(0, 'RIFF'); out.setUint32(4, 36 + n * ch * 2, true); w(8, 'WAVE'); w(12, 'fmt ');
+  out.setUint32(16, 16, true); out.setUint16(20, 1, true); out.setUint16(22, ch, true); out.setUint32(24, sr, true);
+  out.setUint32(28, sr * ch * 2, true); out.setUint16(32, ch * 2, true); out.setUint16(34, 16, true); w(36, 'data'); out.setUint32(40, n * ch * 2, true);
+  let o = 44;
+  for (let i = 0; i < n; i++) for (let c = 0; c < ch; c++) { out.setInt16(o, Math.round(clamp(data[c][i] * scale, -1, 1) * 32767), true); o += 2; }
+  const bytes = new Uint8Array(out.buffer), chunks = [], STEP = 3 * 65536; // multiple of 3: chunks concatenate after decoding
+  for (let i = 0; i < bytes.length; i += STEP) {
+    let s = ''; const end = Math.min(bytes.length, i + STEP);
+    for (let j = i; j < end; j += 0x8000) s += String.fromCharCode.apply(null, bytes.subarray(j, Math.min(end, j + 0x8000)));
+    chunks.push(btoa(s));
+  }
+  return { chunks, peak };
+}
+window.__audio = async () => {
+  const ctx = new OfflineAudioContext(2, 48000 * DURATION, 48000);
+  buildScore(ctx);
+  const { chunks, peak } = wavBase64(await ctx.startRendering());
+  window.__wav = chunks;
+  return { chunks: chunks.length, peak };
+};
+
+// --- boot -------------------------------------------------------------------------------------------
+window.__ready = false;
+Promise.all([document.fonts.load('400 40px Degauss'), document.fonts.load('700 40px Degauss')]).then(() => {
+  const ghost = makeCanvas();
+  paint(ghost, () => sceneEnd(0, true));
+  gl.activeTexture(gl.TEXTURE2); upload(ghostTex, ghost);
+  const t = new URLSearchParams(location.search).get('t');
+  if (t !== null) renderFrame(Math.round(Number(t) * FPS));
+  window.__ready = true;
+});
+</script>
+</body>
+</html>
