@@ -573,6 +573,46 @@ WWWWWWWWW
 .WW...WW.
 W.......W
 """)
+HAN_REN = grid("""
+....W....
+....W....
+....W....
+...W.W...
+...W.W...
+..W...W..
+.W.....W.
+W.......W
+""")
+HAN_KOU = grid("""
+.........
+.WWWWWWW.
+.W.....W.
+.W.....W.
+.W.....W.
+.W.....W.
+.WWWWWWW.
+.........
+""")
+HAN_DA = grid("""
+....W....
+....W....
+WWWWWWWWW
+....W....
+...W.W...
+..W...W..
+.W.....W.
+W.......W
+""")
+HAN_RI = grid("""
+.WWWWWWW.
+.W.....W.
+.W.....W.
+.WWWWWWW.
+.W.....W.
+.W.....W.
+.WWWWWWW.
+.........
+""")
 EMOJI = grid("""
 ..AAAAA..
 .AAAAAAA.
@@ -703,6 +743,10 @@ SPRITES = {
     'lightstick': LIGHTSTICK,
     'han_zhong': HAN_ZHONG,
     'han_wen': HAN_WEN,
+    'han_ren': HAN_REN,
+    'han_kou': HAN_KOU,
+    'han_da': HAN_DA,
+    'han_ri': HAN_RI,
     'emoji': EMOJI,
     'floppy': FLOPPY,
     'joystick': JOYSTICK,

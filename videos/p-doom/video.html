@@ -83,10 +83,11 @@ function audio(i) {
 }
 
 // --- P(DOOM): one step per beat, keyed to bars -------------------------------------------------
-// It follows the lyric: a first nudge at the loss cliff, a jump on each chorus, the long climb after.
-const PD_KEYS = [[-9, 0.4], [3.75, 0.4], [5.49, 1.0], [5.5, 3.0], [11, 4.0], [12.75, 8.0], [20, 12], [31.5, 25], [32, 29],
-                 [40, 34], [48, 44], [50.25, 52], [52, 60], [59, 61], [60, 70], [68, 81], [71, 86], [75, 94], [76, 94],
-                 [77, 98], [78, 99], [79, 99.5], [80, 99.8], [81, 99.9], [999, 99.9]];
+// It follows the lyric: a nudge at the loss cliff, a slow climb between choruses, and a surge on every
+// title hook, when it ticks twice a beat and ratchets by a notch at a time.
+const PD_KEYS = [[-9, 0.4], [4, 0.4], [5.49, 1.0], [5.5, 2.5], [11.25, 3.0], [12.9, 14.0], [31.45, 21.0], [32.2, 33.0],
+                 [51.4, 45.0], [52.2, 60.0], [67.3, 74.0], [68.3, 88.0], [80.1, 96.0], [80.45, 99.9], [999, 99.9]];
+const SURGES = [[11.25, 12.9], [31.45, 32.2], [51.4, 52.2], [67.3, 68.3], [80.1, 80.45]];
 function pdAtBar(b) {
   for (let k = 1; k < PD_KEYS.length; k++) if (b <= PD_KEYS[k][0]) {
     const [b0, v0] = PD_KEYS[k - 1], [b1, v1] = PD_KEYS[k];
@@ -94,9 +95,18 @@ function pdAtBar(b) {
   }
   return 99.9;
 }
+const inSurge = b => SURGES.some(([a, z]) => b >= a && b < z);
+// 0..1: how hard the readout is surging right now (eased in and out over a sixth of a bar).
+function pdSurge(t) {
+  const b = (t - BAR0) / BAR;
+  let k = 0;
+  for (const [a, z] of SURGES) k = Math.max(k, smooth(seg(b, a - 0.08, a + 0.08)) * (1 - smooth(seg(b, z - 0.05, z + 0.12))));
+  return k;
+}
 function pdoom(t) {
-  const beats = (t - BAR0) / PER, n = Math.floor(beats + 1e-6), f = beats - n;
-  return lerp(pdAtBar((n - 1) / 4), pdAtBar(n / 4), easeOut(clamp(f / 0.22)));
+  const beats = (t - BAR0) / PER, surge = inSurge(beats / 4), step = surge ? 0.5 : 1;
+  const n = Math.floor(beats / step + 1e-6), f = beats / step - n;
+  return lerp(pdAtBar((n - 1) * step / 4), pdAtBar(n * step / 4), easeOut(clamp(f / (surge ? 0.4 : 0.22))));
 }
 
 // --- 2D scene drawing (in 1920x1080 units) -------------------------------------------------------
@@ -224,8 +234,10 @@ function osd(A, o = {}) {
   pw('RUN 0x5EED', 72, 92, 30, { c: OSD, a });
   pw('STEP ' + fmtStep(t), 72, 132, 30, { c: OSD, a: a * 0.75 });
   if (o.readout !== false) {
-    txt('P(DOOM)', 1848, 84, 30, { w: 700, align: 'right', c: DIM, a });
-    odometer(pdoom(t), 1848, 158, 66, { align: 'right', a, c: A.pd > 60 ? HOT : CORE });
+    const sg = pdSurge(t), size = 66 + 52 * sg;
+    txt('P(DOOM)', 1848, 84, 30 + 10 * sg, { w: 700, align: 'right', c: sg > 0.3 ? REC : DIM, a });
+    odometer(pdoom(t), 1848, 158 + 50 * sg, size, { align: 'right', a, c: sg > 0.3 ? REC : A.pd > 60 ? HOT : CORE });
+    if (sg > 0.3 && Math.floor(t * 6) % 2 === 0) txt('▲▲', 1848, 250 + 50 * sg, 44, { w: 700, align: 'right', c: REC, a: sg });
   }
   if (o.dog !== false) {
     dobby(A, 72 + CORGI_W * 2, 1004, 4, o.bark ? 'bark' : 'wag', { a });
@@ -271,10 +283,12 @@ function spectrumLEDs(A, x, y, w, cols, segs, segH, o = {}) {
   }
 }
 function sceneReadout(A, u, o = {}) {
-  const pd = o.pd ?? pdoom(A.t);
-  txt('P(DOOM)', 960, 270, 150, { w: 700, align: 'center', c: pd > 60 ? HOT : DIM });
+  const pd = o.pd ?? pdoom(A.t), sg = o.pd === undefined ? pdSurge(A.t) : 0;
+  const tick = sg * Math.exp(-(((A.t - BEAT0) / (PER / 2)) % 1) * 5);          // a kick on every surge tick
+  txt('P(DOOM)', 960, 270, 150, { w: 700, align: 'center', c: sg > 0.3 ? REC : pd > 60 ? HOT : DIM });
+  if (sg > 0.3) for (const x of [250, 1670]) for (let j = 0; j < 3; j++) txt('▲', x, 720 - j * 110 - tick * 40, 110, { w: 700, align: 'center', c: REC, a: sg * (1 - j * 0.28) });
   cx.save();
-  const k = 1 + 0.03 * A.kick;
+  const k = 1 + 0.03 * A.kick + 0.07 * tick;
   cx.translate(960, 640); cx.scale(k, k); cx.translate(-960, -640);
   odometer(pd, 960, 700, 400, { c: CORE, scramble: o.scramble });
   cx.restore();
@@ -414,6 +428,7 @@ function tube(A) {
   if (so.cut === 'hard' && sh.u < 0.16) P.roll = (1 - easeOut(sh.u / 0.16)) * 0.35;
   P.persist = Math.max(P.persist, so.persist ?? 0.55);
   if (so.pulse && A.beatInBar === 0) P.flash += 0.07 * A.kick;
+  { const sg = pdSurge(t); if (sg > 0) { const h = ((t - BEAT0) / (PER / 2)) % 1; P.flash += 0.12 * sg * Math.exp(-h * 6); } }
   if (so.flashAt !== undefined) { const d = sh.u - so.flashAt * BAR; if (d >= 0 && d < 0.4) P.flash += 0.35 * Math.exp(-d * 10); }
   if (so.shake) {                                         // the riser shakes the tube apart
     const k = sh.u / sh.d;

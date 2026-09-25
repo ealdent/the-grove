@@ -694,3 +694,17 @@ Goal: per Jason, fix the shoggoth, shinigami and Gato scenes (disconnected lines
 Review/proof: `out/p-doom-c90-v4.mp4` is 8494 frames, 141.567 s, with the song's AAC copied (141.547 s), 313.0 MB at 17.7 Mbit/s, rendered in 248 s. `out/p-doom-c90-v4-x.mp4` is 139.900 s for both streams and 313.0 MB. Sync: kicks fold to +14.5 ms and picture changes to -10.3 ms. Stills of all 62 shots were reviewed at full size, and fixes followed from them: the paw layered under Seed's hands, Dobby clear of the REC timecode, the museum rope clear of the corner OSD, a drawn Ω, "✓ healthy" moved off her jacket, and the capability stamp moved off the LR inset. Six-frame strips confirm the rebuilt shoggoth, shinigami and Gato scenes animate as planned. A lyric-phrase scan is clean.
 
 Not verified: a human watch-through with sound, X's re-encode, and phone-size legibility of the small labels.
+
+# P(DOOM) version 5: the room, the singularity, Omega, and P(DOOM) surges
+
+Goal: per Jason, fill the Chinese Room with books and ticker tape to match Searle's setup; make the singularity grander and the Omega Point show what it means; and make P(DOOM) ratchet much faster during the title-hook lines, keeping the pace elsewhere.
+- [x] Timed the hook from the original at 4 fps: bars 11.25-12.9, 31.45-32.2, 51.4-52.2, 67.3-68.3 and 80.1-80.45.
+- [x] P(DOOM) re-keyed with surges (ticks every half beat, 4-11 %/s against 0.2-0.6 %/s between). The corner readout grows, reddens and flashes ▲▲. The big readouts pulse per tick with ▲ columns, each tick flashes the tube, and the chorus hides the duplicate corner readout.
+- [x] Chinese Room: two full bookcases, floor stacks, a lamp-lit desk with a rulebook of 中→文 lookup rows (the current row highlighted per beat), ticker tape in through IN and coiling, tape out through OUT to Dobby, and the understanding/fluency gauge. Four new pixel characters for the tape (人 口 大 日).
+- [x] Singularity: a hyperbolic run to t* with the axis labels racing, then a black hole with a gravity-well grid, a Doppler-bright accretion disk, the lensed far side arcing over the hole, jets, infalling stars, a faint ∞, Seed through the horizon, and "t = t*".
+- [x] Omega Point: Teilhard's cone, with ATOMS → LIFE → MINDS (the noosphere) → MACHINES → Ω, 70 icons streaming in, and a push into a blazing Ω.
+- [x] Full render, X cut, checks, commit.
+
+Review/proof: `out/p-doom-c90-v5.mp4` is 8494 frames, 141.567 s, AAC copied, 309.3 MB. `out/p-doom-c90-v5-x.mp4` is 139.900 s and 309.3 MB. Six-frame strips show the surges on screen: 3.0 → 11.3% through the first chorus, 21.8 → 27.8% in the second hook, 44.4 → 51.8% on the corner readout during the fall, and 74.0 → 82.1% in the fourth hook. Rates run 4-11 %/s during surges against 0.2-0.6 %/s between them. The strips also show the ticker tape scrolling, the curve-to-black-hole transition with the lensed arc, and the Omega streams.
+
+Not verified: a watch-through with sound, and X's re-encode.

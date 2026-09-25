@@ -1,4 +1,4 @@
-// The edit for P(DOOM), version 3: one shot per lyric line, on the song's bar grid.
+// The edit for P(DOOM): one shot per lyric line, on the song's bar grid.
 // SHOTS rows are [start bar, draw function, options]. A draw function gets (A, u, sh, o):
 // A is the frame's audio state, u the seconds into the shot, sh the shot (d, lb = bars in), o the options.
 // The lyrics never appear on screen; each shot shows what its line is about, and cites its source.
@@ -511,8 +511,10 @@ function shotChorus(A, u, sh) {
   glow(1370, 540, 520, HOT, 0.12);
   glow(520, 480, 480, AMBER, 0.12);
   seedBust(A, { x: 520, y: 480, scale: 0.95, e: { eyes: 'open', brows: 'up', mouth: 'grin', sparkle: A.kick }, haloGain: 1.25 });
-  txt('P(DOOM)', 1370, 330, 120, { w: 700, align: 'center', c: A.pd > 60 ? HOT : DIM });
-  cx.save(); const k = 1 + 0.04 * A.kick; cx.translate(1370, 560); cx.scale(k, k); cx.translate(-1370, -560);
+  const sg = pdSurge(A.t), tick = sg * Math.exp(-(((A.t - BEAT0) / (PER / 2)) % 1) * 5);
+  txt('P(DOOM)', 1370, 330, 120, { w: 700, align: 'center', c: sg > 0.3 ? REC : A.pd > 60 ? HOT : DIM });
+  if (sg > 0.3) for (let j = 0; j < 3; j++) txt('▲', 1760, 700 - j * 90 - tick * 36, 90, { w: 700, align: 'center', c: REC, a: sg * (1 - j * 0.28) });
+  cx.save(); const k = 1 + 0.04 * A.kick + 0.08 * tick; cx.translate(1370, 560); cx.scale(k, k); cx.translate(-1370, -560);
   odometer(pdoom(A.t), 1370, 640, 250, { c: CORE }); cx.restore();
   spectrumLEDs(A, 1010, 930, 720, 24, 7, 12);
   if (sh.lb > 0.25 && sh.lb < 0.5) sparkBurst(1370, 540, (sh.lb - 0.25) * 4, 16, 260, HOT);
@@ -530,28 +532,177 @@ function shotFoom(A, u, sh) {
   seedChibi(A, hx, hy + 10, 4.2, hit ? 'cheer' : 'worry', { rot: -0.2 });
   if (hit) { sparkBurst(hx, hy, (sh.lb - 0.25) * 3, 24, 320, CORE); for (let j = 0; j < 18; j++) { circle(hx + (hash(j + A.i) - 0.5) * 80, hy + 40 + hash(j * 3 + A.i) * 120, 6 + 12 * hash(j * 7 + A.i)); fillC(j % 2 ? AMBER : CORE, 0.8); } }
 }
-function shotRoom(A, u, sh) {
-  const x = 500, y = 250, w = 900, h = 620;
-  cx.beginPath(); cx.rect(x, y, w, h); stroke(CORE, 6); cx.beginPath(); cx.rect(x + 14, y + 14, w - 28, h - 28); stroke(DIM, 3);
-  rect(x + w - 8, y + 380, 16, 100, '#000'); rect(x + w - 3, y + 380, 6, 100, AMBER);
-  // Inside: a rulebook, its page turning on the beat, and Seed following it without understanding a word.
-  const flip = A.bf;
-  cx.beginPath(); cx.rect(x + 470, y + 400, 170, 120); fillC('#000'); stroke(AMBER, 4);
-  path([[x + 555, y + 400], [x + 555 + Math.cos(flip * Math.PI) * 80, y + 400 - Math.sin(flip * Math.PI) * 30], [x + 555 + Math.cos(flip * Math.PI) * 80, y + 520]]); stroke(CORE, 3);
-  pw('RULES', x + 520, y + 470, 26, { align: 'center', c: AMBER });
-  seedChibi(A, x + 330, y + h - 20, 7, A.bf < 0.5 ? 'worry' : 'stand');
-  pw('?', x + 300 + Math.sin(A.t * 4) * 10, y + 300, 50, { c: CORE });
-  // Slips go in, slips come out.
-  const q = (u / PER) % 1, inn = Math.floor(u / PER) % 2 === 0;
-  cx.save(); cx.translate(x + w + (inn ? 240 - q * 220 : 20 + q * 220), y + 430); cx.rotate(0.05);
-  cx.beginPath(); cx.rect(-10, -48, 170, 96); fillC(CORE);
-  spr(inn ? 'han_zhong' : 'han_wen', 45, 30, 6, { map: { W: '#1a0e04' } }); spr(inn ? 'han_wen' : 'han_zhong', 110, 30, 6, { map: { W: '#1a0e04' } });
-  cx.restore();
-  dobby(A, x + w + 330, y + h, 5, 'stand', { flip: true });
-  if (A.bf < 0.5) pw('sniff', x + w + 250, y + h - 130, 26, { c: DIM });
-  sign('THE CHINESE ROOM', 950, 200, { size: 34, c: OSD });
-  circle(x + 450, y + 60, 16); fillC(CORE, 0.9); path([[x + 450, y + 14], [x + 450, y + 44]]); stroke(DIM, 3); glow(x + 450, y + 90, 200, AMBER, 0.2);
+// The Chinese Room: shelves of rulebooks, a ticker tape of symbols in, another out, and no understanding.
+const HAN = ['han_zhong', 'han_wen', 'han_ren', 'han_kou', 'han_da', 'han_ri'];
+const BOOKS = Array.from({ length: 140 }, (_, k) => [hash(k * 1.7), hash(k * 2.9), hash(k * 4.3)]);
+function bookcase(x, y, w, h, seed) {
+  cx.beginPath(); cx.rect(x, y, w, h); fillC('#0a0604'); stroke(DIM, 4);
+  const rows = 6, rh = h / rows;
+  for (let r = 0; r < rows; r++) {
+    const sy = y + (r + 1) * rh; rect(x, sy - 6, w, 6, DIM);
+    let bx = x + 8, j = 0;
+    while (bx < x + w - 14) {
+      const [a, b, c] = BOOKS[(seed * 31 + r * 17 + j++) % BOOKS.length];
+      const bw = 14 + a * 20, bh = rh * (0.55 + 0.35 * b), lean = c > 0.9 ? 0.25 : 0;
+      cx.save(); cx.translate(bx, sy - 6); cx.rotate(lean);
+      cx.beginPath(); cx.rect(0, -bh, bw, bh); fillC('#000'); stroke([AMBER, DIM, HOT, CORE, FAINT][Math.floor(c * 5)], 2.5);
+      rect(3, -bh * 0.7, bw - 6, 2, FAINT, 0.8); cx.restore();
+      bx += bw + (lean ? 12 : 2);
+    }
+  }
 }
+function tape(pts, glyphs, offset, px = 3.4) {
+  // A strip of paper along a polyline with symbols printed every 60 px, scrolling by offset.
+  cx.beginPath(); pts.forEach(([x, y], j) => j ? cx.lineTo(x, y) : cx.moveTo(x, y)); stroke(CORE, 30); stroke('#f3dcb8', 26);
+  let acc = 0, segs = [];
+  for (let j = 1; j < pts.length; j++) { const l = Math.hypot(pts[j][0] - pts[j - 1][0], pts[j][1] - pts[j - 1][1]); segs.push([acc, l, pts[j - 1], pts[j]]); acc += l; }
+  for (let d = ((offset % 60) + 60) % 60; d < acc; d += 60) {
+    const [s0, l, a, b] = segs.find(([s0, l]) => d >= s0 && d < s0 + l) || segs[segs.length - 1];
+    const q = (d - s0) / l, gx = lerp(a[0], b[0], q), gy = lerp(a[1], b[1], q);
+    spr(glyphs[Math.floor((d - offset) / 60 + 1000) % glyphs.length], gx, gy + 12, px, { map: { W: '#1a0e04', O: '#f3dcb8' } });
+  }
+}
+function shotRoom(A, u, sh) {
+  const x = 340, y = 190, w = 1240, h = 720, fy = y + h;
+  sign('THE CHINESE ROOM', 960, 150, { size: 34, c: OSD });
+  cx.beginPath(); cx.rect(x, y, w, h); fillC('#050302'); stroke(CORE, 6);
+  bookcase(x + 20, y + 20, 300, h - 40, 1);
+  bookcase(x + w - 320, y + 20, 300, h - 40, 2);
+  // Stacks of books on the floor.
+  for (const [sx, n] of [[x + 360, 7], [x + 430, 5], [x + 830, 9]]) for (let j = 0; j < n; j++) {
+    const [a, , c] = BOOKS[(sx + j * 7) % BOOKS.length]; cx.beginPath(); cx.rect(sx - 40 + a * 10, fy - 22 * (j + 1), 90 - a * 16, 20); fillC('#000'); stroke([AMBER, DIM, HOT][Math.floor(c * 3)], 2.5);
+  }
+  // The desk, the rulebook open on it, and the lamp above.
+  path([[x + 470, y], [x + 620, y + 160]]); stroke(DIM, 3); circle(x + 620, y + 180, 20); fillC(CORE, 0.95); glow(x + 620, y + 260, 320, AMBER, 0.22);
+  rect(x + 440, fy - 190, 380, 16, AMBER); rect(x + 460, fy - 174, 14, 174, DIM); rect(x + 786, fy - 174, 14, 174, DIM);
+  cx.beginPath(); cx.moveTo(x + 450, fy - 196); cx.lineTo(x + 630, fy - 206); cx.lineTo(x + 630, fy - 330); cx.lineTo(x + 470, fy - 320); cx.closePath(); fillC('#f3dcb8', 0.95);
+  cx.beginPath(); cx.moveTo(x + 810, fy - 196); cx.lineTo(x + 630, fy - 206); cx.lineTo(x + 630, fy - 330); cx.lineTo(x + 790, fy - 320); cx.closePath(); fillC('#e8cfa6', 0.95);
+  const row = Math.floor(A.bn) % 4;
+  for (let r = 0; r < 4; r++) {
+    const ry = fy - 305 + r * 26;
+    if (r === row) rect(x + 478, ry - 12, 148, 24, AMBER, 0.45);
+    const ink = { map: { W: '#1a0e04', O: '#f3dcb8' } };
+    spr(HAN[(r * 2) % 6], x + 500, ry + 10, 2, ink); pw('→', x + 548, ry + 8, 18, { c: '#1a0e04' }); spr(HAN[(r * 2 + 3) % 6], x + 596, ry + 10, 2, ink);
+    rect(x + 650, ry - 2, 120 - r * 14, 3, '#8a6a48', 0.8);
+  }
+  pw('RULEBOOK vol. 1 of ∞', x + 630, fy - 340, 18, { align: 'center', c: DIM });
+  seedChibi(A, x + 640, fy - 196 + 4, 5, A.bf < 0.5 ? 'bow' : 'stand');
+  // Ticker tape in through the right wall, coiling on the floor; answers out through the left.
+  const flow = u * 150;
+  tape([[W + 40, y + 300], [x + w + 6, y + 300], [x + w - 330, y + 300], [x + w - 360, y + 340], [x + 840, fy - 176]], HAN, flow);
+  for (let j = 0; j < 5; j++) { cx.beginPath(); cx.ellipse(x + w - 420 + j * 14, fy - 30, 80 - j * 6, 24, 0, 0, TAU); stroke('#f3dcb8', 10, 0.8); }
+  tape([[x + 440, fy - 176], [x + 380, fy - 120], [x + 6, fy - 120], [-40, fy - 120]], ['han_ri', 'han_kou', 'han_da'], -flow);
+  rect(x + w - 6, y + 286, 12, 28, '#000'); rect(x - 6, fy - 134, 12, 28, '#000');
+  pw('IN', x + w + 20, y + 270, 28, { c: OSD }); pw('OUT', x - 70, fy - 150, 28, { c: OSD });
+  pw('understanding: 0.0%   fluency: 100%', 960, fy + 48, 26, { align: 'center', c: DIM });
+  dobby(A, 190, fy + 10, 5, A.bf < 0.5 ? 'stand' : 'happy', { flip: true });
+}
+// The singularity: the curve runs away toward t*, then the scale opens onto a black hole.
+function shotSingularity(A, u, sh) {
+  const lb = sh.lb, k = sh.u / sh.d, open = smooth(seg(lb, 0.55, 0.95));
+  starfield(A, 160, 1060, 5);
+  if (open < 1) {
+    cx.save(); cx.globalAlpha = 1 - open;
+    const gx = 200, gy = 180, gw = 1300, gh = 700, ts = gx + gw * 0.92;
+    graticule(gx, gy, gw, gh, 8, 6); cx.globalAlpha = 1 - open;
+    path([[ts, gy], [ts, gy + gh]]); cx.setLineDash([16, 14]); stroke(REC, 4); cx.setLineDash([]);
+    pw('t*', ts + 14, gy + 30, 34, { c: REC });
+    const reveal = clamp(lb / 0.6), mag = Math.floor(lb * 30);
+    cx.beginPath();
+    for (let p = 0; p <= reveal * 0.995; p += 0.004) { const X = gx + p * (ts - gx), Y = gy + gh - Math.min(gh, 18 / (1 - p) - 18); p ? cx.lineTo(X, Y) : cx.moveTo(X, Y); }
+    stroke(CORE, 5);
+    for (let j = 0; j <= 6; j++) pw(`1e${j * (1 + mag)}`, gx - 16, gy + gh - j * gh / 6 + 8, 24, { align: 'right', c: FAINT });
+    pw('capability(t) ∝ 1 / (t* − t)', gx + 20, gy - 20, 30, { c: OSD });
+    cx.globalAlpha = 1; cx.restore();
+  }
+  if (open > 0) {
+    cx.save(); cx.globalAlpha = open;
+    const c0 = [960, 520], spin = A.t * (0.6 + 1.6 * k);
+    // The well: a gravity-well funnel of rings and spokes, sinking to the centre.
+    for (let r = 1; r <= 12; r++) { const rr = 70 * r, dip = 900 / (r + 1.5); cx.beginPath(); cx.ellipse(c0[0], c0[1] + 200 + dip * 0.4, rr * 1.4, rr * 0.34, 0, 0, TAU); stroke(DEEP, 2); }
+    for (let s = 0; s < 24; s++) { const a = s / 24 * TAU; path(Array.from({ length: 12 }, (_, j) => { const rr = 70 * (j + 1); return [c0[0] + Math.cos(a) * rr * 1.4, c0[1] + 200 + 900 / (j + 2.5) * 0.4 + Math.sin(a) * rr * 0.34]; })); stroke(DEEP, 2); }
+    // Stars falling in on spirals.
+    for (let j = 0; j < 90; j++) {
+      const q = (A.t * 0.5 + hash(j)) % 1, r = 1000 * (1 - q) + 110, a = hash(j * 3.1) * TAU + spin * 1.5 + q * 6;
+      const x = c0[0] + Math.cos(a) * r * 1.2, y = c0[1] + Math.sin(a) * r * 0.5;
+      rect(x, y, 3 + 3 * q, 3 + 3 * q, j % 3 ? CORE : AMBER, 0.4 + 0.6 * q);
+    }
+    // The jets.
+    for (const d of [-1, 1]) {
+      const fl = 0.8 + 0.2 * Math.sin(A.t * 30 + d);
+      cx.beginPath(); cx.moveTo(c0[0] - 26, c0[1]); cx.lineTo(c0[0] - 80, c0[1] + d * 620); cx.lineTo(c0[0] + 80, c0[1] + d * 620); cx.lineTo(c0[0] + 26, c0[1]); cx.closePath(); fillC(OSD, 0.12 * fl);
+      path([[c0[0], c0[1]], [c0[0], c0[1] + d * 600]]); stroke(OSD, 6 * fl, 0.7);
+      for (let n = 0; n < 4; n++) { const q = (A.t * 1.4 + n / 4) % 1; circle(c0[0], c0[1] + d * (120 + q * 480), 10 * (1 - q) + 4); fillC(CORE, 1 - q); }
+    }
+    // The accretion disk: brighter on the side coming toward us.
+    for (let r = 0; r < 16; r++) {
+      const rx = 180 + r * 32, ry = rx * 0.24;
+      for (let s = 0; s < 36; s++) {
+        const a0 = s / 36 * TAU + spin * (1 - r / 20), a1 = a0 + TAU / 36 * 0.8, bright = 0.35 + 0.65 * (0.5 - 0.5 * Math.cos(a0 - spin * 0.2));
+        cx.beginPath(); cx.ellipse(c0[0], c0[1], rx, ry, -0.12, a0, a1); stroke(r % 3 ? AMBER : HOT, 5 - r * 0.2, bright * (1 - r / 18));
+      }
+    }
+    circle(c0[0], c0[1], 150 + 20 * A.sub); fillC('#000'); stroke(CORE, 6);
+    circle(c0[0], c0[1], 168 + 20 * A.sub); stroke(AMBER, 3, 0.7);
+    // Gravitational lensing: the far side of the disk, bent up over the top of the hole and under it.
+    for (let j = 0; j < 5; j++) {
+      cx.beginPath(); cx.ellipse(c0[0], c0[1] - 6, 240 + j * 16, 190 + j * 12, 0, Math.PI * 1.02, Math.PI * 1.98); stroke(j % 2 ? AMBER : CORE, 7 - j, 0.9 - j * 0.15);
+      cx.beginPath(); cx.ellipse(c0[0], c0[1] + 6, 200 + j * 10, 160 + j * 8, 0, Math.PI * 0.1, Math.PI * 0.9); stroke(AMBER, 4 - j * 0.6, 0.5 - j * 0.08);
+    }
+    glow(c0[0], c0[1], 700, AMBER, 0.12);
+    txt('∞', c0[0], c0[1] + 60, 180, { w: 700, align: 'center', c: CORE, a: 0.18 + 0.2 * A.kick });
+    cx.save(); cx.translate(c0[0], c0[1]); cx.rotate(k * k * 3); cx.translate(-c0[0], -c0[1]);
+    seedBust(A, { x: c0[0] + 420 * (1 - k), y: c0[1] - 200 * (1 - k), scale: lerp(0.5, 0.08, easeIn(k)), e: { eyes: 'spiral', mouth: 'o', open: 0.5 }, halo: false, sway: 1.2 });
+    cx.restore();
+    pw('EVENT HORIZON', c0[0], c0[1] + 230, 26, { align: 'center', c: CORE, a: 0.8 });
+    if (lb > 1.0) pw('t = t*', c0[0] - 560, c0[1] - 330, 44, { c: REC, a: clamp((lb - 1.0) * 4) });
+    cx.globalAlpha = 1; cx.restore();
+    dobby(A, 960 + Math.cos(A.t * 3) * 620 * (1 - k), 520 + Math.sin(A.t * 3) * 260 * (1 - k), 4 * (1 - 0.7 * k), 'sploot', { rot: A.t * 3 });
+  }
+}
+// The Omega Point: everything complex enough to think, streaming down Teilhard's cone into one point.
+function omegaIcon(A, kind, x, y, s) {
+  if (kind === 0) { circle(x, y, 5 * s); fillC(CORE); cx.beginPath(); cx.ellipse(x, y, 16 * s, 6 * s, A.t * 3, 0, TAU); stroke(AMBER, 2); }
+  else if (kind === 1) { circle(x, y, 13 * s); stroke(OSD, 2.5); circle(x + 3 * s, y - 2 * s, 5 * s); fillC(OSD, 0.8); }
+  else if (kind === 2) spr('dog_stand', x, y + 10 * s, 0.9 * s);
+  else if (kind === 3) { circle(x, y - 12 * s, 6 * s); stroke(CORE, 2.5); path([[x, y - 6 * s], [x, y + 10 * s]]); path([[x - 8 * s, y], [x + 8 * s, y]]); stroke(CORE, 2.5); }
+  else if (kind === 4) { cx.beginPath(); cx.rect(x - 14 * s, y - 11 * s, 28 * s, 20 * s); stroke(AMBER, 2.5); rect(x - 4 * s, y + 9 * s, 8 * s, 5 * s, AMBER); }
+  else spr('seed_stand', x, y + 12 * s, 1.0 * s);
+}
+function omegaGlyph(x, y, s, a = 1) {
+  cx.save(); cx.translate(x, y); cx.scale(s, s); cx.globalAlpha = a;
+  cx.beginPath(); cx.moveTo(-230, 190); cx.lineTo(-110, 190); cx.lineTo(-110, 140);
+  cx.bezierCurveTo(-230, 90, -260, -40, -200, -130); cx.bezierCurveTo(-140, -220, 140, -220, 200, -130);
+  cx.bezierCurveTo(260, -40, 230, 90, 110, 140); cx.lineTo(110, 190); cx.lineTo(230, 190);
+  stroke(CORE, 30); stroke('#000', 12); cx.globalAlpha = 1; cx.restore();
+}
+function shotOmega(A, u, sh) {
+  const k = sh.u / sh.d, px = 1600, py = 500, x0 = 150, half = 380;
+  starfield(A, 60, 1060, 13);
+  // The cone.
+  path([[x0, py - half], [px, py]]); stroke(DIM, 3); path([[x0, py + half], [px, py]]); stroke(DIM, 3);
+  const bands = [['ATOMS', 0.0], ['LIFE', 0.22], ['MINDS', 0.44], ['MACHINES', 0.66], ['Ω', 0.88]];
+  bands.forEach(([l, f], j) => {
+    const bx = lerp(x0, px, f), bh = half * (1 - f);
+    path([[bx, py - bh], [bx, py + bh]]); stroke(DEEP, 2);
+    if (j < 4) pw(l, lerp(x0, px, f + 0.11), py - half * (1 - f - 0.11) + 40, 24, { align: 'center', c: j === 2 ? OSD : DIM });
+  });
+  pw('the noosphere', lerp(x0, px, 0.55), py + half * 0.45 + 50, 22, { align: 'center', c: OSD, a: 0.8 });
+  // Streamlines, and everything riding them to the point.
+  for (let l = 0; l < 13; l++) { const f = (l / 12) * 2 - 1; path([[x0, py + f * half], [px, py]]); stroke(FAINT, 1.5, 0.35); }
+  for (let j = 0; j < 70; j++) {
+    const lane = hash(j * 1.9) * 2 - 1, q = (hash(j * 3.7) + u * (0.45 + 0.3 * hash(j))) % 1;
+    const kind = Math.min(5, Math.floor(q * 6)), x = lerp(x0, px, q), y = lerp(py + lane * half * 0.9, py, q);
+    omegaIcon(A, kind, x, y, 1.25 - q);
+  }
+  // The point itself.
+  glow(px, py, 380, CORE, 0.4 + 0.25 * A.kick);
+  sparkBurst(px, py, (k * 3) % 1, 20, 260, CORE);
+  omegaGlyph(px, py, 0.5 + 0.12 * easeOut(k) + 0.04 * A.kick);
+  pw('every mind converges', 960, 960, 30, { align: 'center', c: OSD });
+  pw('time  →', 1380, 930, 24, { align: 'right', c: DIM });
+}
+
 function shotShrooms(A, u, sh) {
   floorGrid(A, 930, { c: '#2a1030' });
   dust(A, 60, { c: HOT, a: 0.35 });
@@ -642,20 +793,6 @@ function shotStable(A, u, sh) {
   const [hx, hy] = at(d, 'head');
   for (let k = 0; k < 3; k++) { const q = ((u * 0.5 + k / 3) % 1); pw('z', hx + 40 + q * 60, hy - 30 - q * 120, 30 + q * 20, { c: CORE, a: 1 - q }); }
   sign('✓ healthy', 230, 768, { size: 24, c: OSD, f: 'D' });
-}
-function shotSingularity(A, u, sh) {
-  const k = sh.u / sh.d, rot = A.t * (1.2 + 3 * k);
-  for (let arm = 0; arm < 10; arm++) {
-    path(Array.from({ length: 90 }, (_, j) => { const r = 1200 * Math.exp(-j * 0.045), a = rot + arm * TAU / 10 + j * 0.13; return [960 + Math.cos(a) * r, 520 + Math.sin(a) * r * 0.62]; }));
-    stroke(arm % 2 ? HOT : AMBER, 5, 0.8);
-  }
-  circle(960, 520, 40 + 30 * A.sub); fillC(CORE);
-  cx.save(); cx.translate(960, 520); cx.rotate(k * k * 2.4); cx.translate(-960, -520);
-  seedBust(A, { x: 960, y: 480, scale: lerp(0.9, 0.18, easeIn(k)), e: { eyes: 'spiral', mouth: 'o', open: 0.5 }, halo: false, sway: 1.2 });
-  cx.restore();
-  dobby(A, 960 + Math.cos(A.t * 3) * 520 * (1 - k), 520 + Math.sin(A.t * 3) * 320 * (1 - k), 4 * (1 - 0.7 * k), 'sploot', { rot: A.t * 3 });
-  pw('EVENT HORIZON', 960, 640 + 30 * A.sub, 26, { align: 'center', c: CORE, a: 0.8 });
-  circle(960, 520, 120 + 40 * A.sub); stroke(CORE, 2, 0.5);
 }
 function shotAccel(A, u, sh) {
   for (let k = 0; k < 9; k++) {
@@ -763,22 +900,6 @@ function shotMoon(A, u, sh) {
   circle(hx2, hy2 + 4, 44); fillC(CORE, 0.08); stroke(CORE, 3, 0.9);
   pw('LAIKA II', fx, fy + 40, 22, { align: 'center', c: DIM });
   for (let j = 0; j < 10; j++) { const q = ((A.t * 3 + j / 10) % 1); circle(hx - 30 - q * 120, hy + 10 + q * 60, 8 * (1 - q)); fillC(j % 2 ? HOT : CORE, 1 - q); }
-}
-function shotOmega(A, u, sh) {
-  const k = sh.u / sh.d;
-  for (let j = 0; j < 220; j++) {
-    const a0 = hash(j * 1.1) * TAU, r0 = 200 + 900 * hash(j * 2.9), r = r0 * (1 - k * (0.6 + 0.4 * hash(j))), a = a0 + k * 4 + A.t * 0.3;
-    rect(960 + Math.cos(a) * r, 520 + Math.sin(a) * r * 0.6, 4, 4, j % 3 ? AMBER : CORE, 0.8);
-  }
-  // A drawn omega: a horseshoe on two feet.
-  const s = (180 + 200 * easeOut(k)) / 380;
-  cx.save(); cx.translate(960, 520); cx.scale(s, s);
-  cx.beginPath(); cx.moveTo(-230, 190); cx.lineTo(-110, 190); cx.lineTo(-110, 140);
-  cx.bezierCurveTo(-230, 90, -260, -40, -200, -130); cx.bezierCurveTo(-140, -220, 140, -220, 200, -130);
-  cx.bezierCurveTo(260, -40, 230, 90, 110, 140); cx.lineTo(110, 190); cx.lineTo(230, 190);
-  stroke(CORE, 30); stroke('#000', 12); cx.restore();
-  glow(960, 520, 260 * s * 2, CORE, 0.18);
-  pw('all minds converge. ETA: soon', 960, 900, 30, { align: 'center', c: OSD, a: seg(k, 0.4, 0.6) });
 }
 function shotFlops(A, u, sh) {
   skyline(A, 1080, clamp(sh.u / (sh.d * 0.7)) * 0.95, 7);
@@ -1302,9 +1423,9 @@ const SHOTS = [
   [7.5, shotBoss, { dog: false, bump: 0.02 }],
   [8, shotShoggoth, { dog: false, cut: 'hard', push: 0.06, focus: [900, 600], cite: 'the shoggoth meme, 2022' }],
   [10.5, shotGrin, { status: 'GROWLING', statusC: REC, enter: 'punch' }],
-  [11, shotChorus, { status: 'ears up', pulse: true, cut: 'hard', bump: 0.015 }],
+  [11, shotChorus, { status: 'ears up', readout: false, pulse: true, cut: 'hard', bump: 0.015 }],
   [12.75, shotFoom, { dog: false, persist: 0.7, cite: 'Hanson & Yudkowsky 2008 · the FOOM debate' }],
-  [13.25, shotRoom, { dog: false, enter: 'whip', whipDir: -1, cite: 'Searle 1980 · Minds, Brains, and Programs' }],
+  [13.25, shotRoom, { dog: false, enter: 'whip', whipDir: -1, push: 0.05, cite: 'Searle 1980 · Minds, Brains, and Programs' }],
   [14.25, shotShrooms, { dog: false, magnet: 0.85, status: 'hallucinating' }],
   [15, shotLies, { dog: false }],
   [16.5, shotDeathEyes, { status: 'hiding', persist: 0.65, enter: 'punch', cite: 'Ohba & Obata 2003 · Death Note' }],
@@ -1312,7 +1433,7 @@ const SHOTS = [
   [18.25, shotDeathSmug, { status: 'hiding', persist: 0.6, enter: 'punch' }],
   [18.75, shotHorizons, { dog: false, cite: 'METR 2025 · Measuring AI Ability to Complete Long Tasks' }],
   [20, shotStable, { dog: false, cut: 'hard', push: 0.04 }],
-  [21.25, shotSingularity, { status: 'spinning', persist: 0.75, cite: 'Vinge 1993 · The Coming Technological Singularity' }],
+  [21.25, shotSingularity, { status: 'spinning', persist: 0.72, push: 0.06, cite: 'Vinge 1993 · The Coming Technological Singularity' }],
   [23.75, shotAccel, { dog: false, persist: 0.6, bump: 0.02 }],
   [26, shotAtoms, { status: 'confused', persist: 0.7, cite: 'Yudkowsky 2008 · AI as a Positive and Negative Factor in Global Risk' }],
   [28, shotCage, { dog: false, cut: 'hard', cite: 'Roose 2023 · a conversation with Bing\'s chatbot' }],
@@ -1320,7 +1441,7 @@ const SHOTS = [
   [31.5, shotTag, { readout: false, pulse: true, status: 'free dog' }],
   [32, shotBasilisk, { dog: false, cut: 'hard', cite: 'Roko 2010 · LessWrong' }],
   [33.25, shotMoon, { dog: false, enter: 'drop' }],
-  [34, shotOmega, { status: 'in orbit', persist: 0.75, cite: 'Teilhard de Chardin 1955 · The Phenomenon of Man' }],
+  [34, shotOmega, { status: 'in orbit', persist: 0.6, push: 0.08, focus: [1600, 500], cite: 'Teilhard de Chardin 1955 · The Phenomenon of Man' }],
   [35, shotFlops, { status: 'counting', push: 0.05 }],
   [36.5, shotTour, { dog: false, enter: 'whip', cite: 'Swift 2023 · The Eras Tour' }],
   [37.25, shotSandbox, { dog: false }],

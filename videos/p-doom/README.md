@@ -2,7 +2,9 @@
 
 A music video for the AI-generated song "Upping My P(doom)", 1920×1080 at
 60 fps. It plays on the Degauss picture tube, and a P(DOOM) readout climbs
-from 0.4% to 99.9% as the song goes.
+from 0.4% to 99.9% as the song goes. It climbs slowly between choruses. On
+every title hook it surges: it ticks twice a beat, 10–30× faster,
+while the readout grows, turns red and throws up ▲ arrows.
 
 The video follows the lyrics. Each sung line gets its own shot, cut on the
 song's bar grid, 61 in all, and shows what the line is about. The lyrics
@@ -53,6 +55,22 @@ Three scenes were rebuilt in version 4:
 - **Gato** lies at the table's edge holding Seed by the paw, gets distracted
   by a laser dot, and opens the paw on "go".
 
+Version 5 rebuilt three more:
+
+- **The Chinese Room** is lined floor to ceiling with bookshelves, with stacks
+  of books on the floor and a rulebook of lookup rules open on a lamp-lit
+  desk. Symbols arrive on ticker tape through the IN slot and coil on the
+  floor; answers leave through OUT. A gauge reads understanding 0.0%,
+  fluency 100%.
+- **The singularity** starts as a curve racing toward a dashed t* while the
+  axis labels climb by orders of magnitude. Then it opens onto a black hole:
+  a gravity-well grid, an accretion disk brighter on its approaching side,
+  the lensed far side of the disk arcing over the top, polar jets, and stars
+  spiralling in, with Seed falling through the event horizon.
+- **The Omega Point** is Teilhard's cone of convergence: atoms, cells, dogs,
+  people, machines and Seeds stream down converging lines, through ATOMS,
+  LIFE, MINDS (the noosphere) and MACHINES, into a blazing Ω.
+
 The song holds 145.2 bpm. Bar 0 starts at 1.085 s, and each bar lasts 1.653 s.
 
 | Bars | Time (s) | Shots |
@@ -100,8 +118,8 @@ Chrome must run outside the command sandbox.
 ```bash
 python3 analyze.py <song.mp4>
 python3 sprites.py
-node render.mjs --song <song.mp4>                    # out/p-doom-c90-v4.mp4
-node render.mjs --song <song.mp4> --cut x            # out/p-doom-c90-v4-x.mp4, 139.9 s
+node render.mjs --song <song.mp4>                    # out/p-doom-c90-v5.mp4
+node render.mjs --song <song.mp4> --cut x            # out/p-doom-c90-v5-x.mp4, 139.9 s
 node render.mjs --song <song.mp4> --from 98 --to 104 # out/segment.mp4
 node render.mjs --stills 3.6,40,88                   # stills/t_*.png
 ```
@@ -114,4 +132,4 @@ and fades the audio out by 139.9 s.
 `out/`, `stills/` and `prof/`. The song is not part of this repo. Add the
 song's creator to `SONG` in `video.html` for the end-card credit. Version 1
 (the training-run console with Blue Ridge ridgelines) is commit `367e9d2`;
-version 2 (the first lyric-synced cut) is `20ece6f`, and version 3 is `9f07194`.
+version 2 (the first lyric-synced cut) is `20ece6f`, version 3 is `9f07194`, and version 4 is `967139c`.
