@@ -1,9 +1,9 @@
 // Render the P(DOOM) C90 video with headless Chrome and pipe the frames straight into ffmpeg.
-//   node render.mjs --song <song.mp4>                    the whole video -> out/p-doom-c90.mp4
+//   node render.mjs --song <song.mp4>                    the whole video -> out/p-doom-c90-v2.mp4
 //   node render.mjs --song <song.mp4> --from 20 --to 34  a segment (seconds) -> out/segment.mp4
-//   node render.mjs --song <song.mp4> --cut x            a 139.9 s cut for X's 2:20 limit -> out/p-doom-c90-x.mp4
+//   node render.mjs --song <song.mp4> --cut x            a 139.9 s cut for X's 2:20 limit -> out/p-doom-c90-v2-x.mp4
 //   node render.mjs --stills 1.3,22.5,90                  PNG stills into stills/
-// Needs analysis/features.js and analysis/ridges.js (analyze.py, ridges.py). Chrome runs outside the command sandbox.
+// Needs analysis/features.js (analyze.py) and sprites.js (sprites.py). Chrome runs outside the command sandbox.
 import { spawn } from 'node:child_process';
 import { mkdirSync, writeFileSync, statSync } from 'node:fs';
 import path from 'node:path';
@@ -42,7 +42,7 @@ try {
     const from = Math.round(Number(opt('from', 0)) * FPS), to = Math.min(FRAMES, Math.round(Number(opt('to', FRAMES / FPS)) * FPS));
     const n = to - from, secs = n / FPS;
     mkdirSync(path.join(HERE, 'out'), { recursive: true });
-    const mp4 = path.join(HERE, 'out', whole ? (cutX ? 'p-doom-c90-x.mp4' : 'p-doom-c90.mp4') : 'segment.mp4');
+    const mp4 = path.join(HERE, 'out', whole ? (cutX ? 'p-doom-c90-v2-x.mp4' : 'p-doom-c90-v2.mp4') : 'segment.mp4');
     // The full cut keeps the song's own AAC stream; anything shorter is re-encoded, and the X cut fades out.
     const copyAudio = whole && !cutX;
     // JPEG frames are full-range BT.601; convert to limited-range BT.709 and tag it so players keep the amber.

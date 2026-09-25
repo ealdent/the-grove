@@ -2,11 +2,12 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>P(DOOM) C90 renderer</title>
+<title>P(DOOM) C90 renderer, v2</title>
 <!--
-  Frame-stepped renderer for the P(DOOM) C90 music video (1920x1080, 60 fps).
-  Every scene is drawn on a 2D canvas at 1.25x with the grove's own fonts, then
-  passed through a WebGL2 picture tube. Timing comes from analysis/features.js
+  Frame-stepped renderer for the P(DOOM) C90 music video, version 2 (1920x1080, 60 fps).
+  Seed (seed.js) sings the lead; Dobby and the cast are pixel sprites (sprites.py);
+  the edit, one shot per lyric line, is shots.js. Every frame is drawn on a 2D
+  canvas at 1.25x with the grove's own fonts, then passed through a WebGL2 picture tube. Timing comes from analysis/features.js
   (python3 analyze.py <song>): the beat grid, per-frame loudness and spectrum,
   and a 12 kHz copy of the waveform for the scopes.
   window.__render(i) draws frame i and returns a JPEG data URL.
@@ -24,11 +25,12 @@
 <canvas id="gl" width="1920" height="1080"></canvas>
 <script>window.onerror = (msg, src, line) => { window.__error = `${msg} (line ${line})`; };</script>
 <script src="analysis/features.js"></script>
-<script src="analysis/ridges.js"></script>
+<script src="sprites.js"></script>
+<script src="seed.js"></script>
 <script>
 'use strict';
 if (!window.FEAT) throw new Error('analysis/features.js is missing: run python3 analyze.py <song> first');
-if (!window.RIDGES) throw new Error('analysis/ridges.js is missing: run python3 ridges.py first');
+if (!window.SPRITES || !window.drawSeed) throw new Error('sprites.js or seed.js did not load');
 
 const W = 1920, H = 1080, S = 1.25, CW = Math.round(W * S), CH = Math.round(H * S);
 const F = window.FEAT, FPS = F.fps, NF = Math.floor(F.duration * FPS);
@@ -59,7 +61,7 @@ const hash = n => { const s = Math.sin(n * 127.1 + 311.7) * 43758.5453; return s
 const u8 = s => { const b = atob(s), a = new Uint8Array(b.length); for (let i = 0; i < b.length; i++) a[i] = b.charCodeAt(i); return a; };
 const SPEC = u8(F.spec), NB = F.specBins;
 const FE = {};
-for (const k of ['rmsL', 'rmsR', 'sub', 'low', 'mid', 'high', 'onset']) FE[k] = u8(F[k]);
+for (const k of ['rmsL', 'rmsR', 'sub', 'low', 'mid', 'high', 'onset', 'vox']) FE[k] = u8(F[k]);
 const SCOPE = new Int8Array(u8(F.scope).buffer), SCOPE_SR = F.scopeRate, SCOPE_N = SCOPE.length / 2;
 const fi = i => Math.min(NF - 1, Math.max(0, i));
 const feat = (k, i) => FE[k][fi(i)] / 255;
@@ -75,14 +77,16 @@ function audio(i) {
     i, t, bn, bf, bars, barN: Math.floor(bars + 1e-6), beatInBar: ((bn - F.downPhase) % 4 + 4) % 4,
     kick: t < BEAT0 ? 0 : Math.exp(-bf * PER * 9),            // on the grid, whatever the mix does
     sub: hold('sub', i, 0.82, 14), low: feat('low', i), mid: feat('mid', i), high: hold('high', i, 0.75, 8),
-    onset: hold('onset', i, 0.8, 12), rms: (feat('rmsL', i) + feat('rmsR', i)) / 2
+    onset: hold('onset', i, 0.8, 12), rms: (feat('rmsL', i) + feat('rmsR', i)) / 2,
+    vox: hold('vox', i, 0.6, 5)
   };
 }
 
 // --- P(DOOM): one step per beat, keyed to bars -------------------------------------------------
-const PD_KEYS = [[-9, 0.4], [2, 0.4], [8, 1.2], [11.74, 2.2], [11.75, 6.0], [12, 6.2], [20, 11], [28, 25], [32, 30], [40, 44],
-                 [48, 58], [59, 61], [60, 70], [68, 86], [75, 97], [76, 97], [77, 98], [78, 98.5], [79, 99], [80, 99.5],
-                 [81, 99.7], [82, 99.8], [83, 99.9], [999, 99.9]];
+// It follows the lyric: a first nudge at the loss cliff, a jump on each chorus, the long climb after.
+const PD_KEYS = [[-9, 0.4], [3.75, 0.4], [5.49, 1.0], [5.5, 3.0], [11, 4.0], [12.75, 8.0], [20, 12], [31.5, 25], [32, 29],
+                 [40, 34], [48, 44], [50.25, 52], [52, 60], [59, 61], [60, 70], [68, 81], [71, 86], [75, 94], [76, 94],
+                 [77, 98], [78, 99], [79, 99.5], [80, 99.8], [81, 99.9], [999, 99.9]];
 function pdAtBar(b) {
   for (let k = 1; k < PD_KEYS.length; k++) if (b <= PD_KEYS[k][0]) {
     const [b0, v0] = PD_KEYS[k - 1], [b1, v1] = PD_KEYS[k];
@@ -157,45 +161,39 @@ function odometer(v, x, y, size, o = {}) {
   return total;
 }
 
-// --- watchdogd: Dobby, drawn as a 35x20 sprite facing right --------------------------------------
-const CORGI_STAND = [
-  '.........................T.....T...',
-  '........................TT....TT...',
-  '........................TDT..TDT...',
-  '........................TDDTTDDT...',
-  '.......................TTTTTWTTTT..',
-  '.......................TTTTTWTTKTT.',
-  '.......................TTTTWWWTTTTT',
-  '.......................TTTTWWWWWWWK',
-  '........................TTWWWWWWW..',
-  '..TT....................TWWWWWWW...',
-  '.TTTT..................TTWWWWW.....',
-  'TTTTTTTTTTTTTTTTTTTTTTTTWWWWW......',
-  'TTTTTTTTTTTTTTTTTTTTTTTWWWWWW......',
-  'TTTTTTTTTTTTTTTTTTTTTTTWWWWW.......',
-  'TTTTTTTTTTTTTTTTTTTTTTTWWWWW.......',
-  '.TTTTTTTTTTTTTTTTTTTTTTWWWW........',
-  '.TTTWWWWWWWWWWWWWWWWTTTWWWW........',
-  '..TTT.............TTT.WWW..........',
-  '..TTW.............TTW.WWW..........',
-  '..WWW.............WWW.WWW..........'
-];
-const CORGI_WAG = CORGI_STAND.map((r, y) => y === 8 ? '...T' + r.slice(4) : y === 9 ? '..TTT' + r.slice(5) : r);
-const CORGI_BARK = CORGI_STAND.map((r, y) => y === 8 ? '........................TTWWW......' : y === 9 ? '..TT....................TWWWWWW....' : r);
-const CORGI_PAL = { T: AMBER, W: CORE, D: '#9a5a28', K: '#000' };
-function corgi(x, feetY, px, sprite = CORGI_STAND, a = 1, color) {
-  // A black silhouette first, so the dog hides whatever it stands in front of.
-  const y0 = feetY - sprite.length * px;
-  cx.globalAlpha = a;
-  for (let y = 0; y < sprite.length; y++) for (let x0 = 0; x0 < sprite[y].length; x0++) {
-    const ch = sprite[y][x0];
-    if (ch === '.') continue;
-    cx.fillStyle = ch === 'K' ? '#000' : (color && ch === 'T' ? color : CORGI_PAL[ch]);
-    cx.fillRect(x + x0 * px, y0 + y * px, px + 0.35, px + 0.35);
+// --- pixel sprites (sprites.py): (x, y) is the sprite's bottom centre ---------------------------
+const SPR = window.SPRITES;
+const SPR_PAL = { T: AMBER, W: CORE, D: '#9a5a28', K: '#000', H: HOT, R: REC, G: OSD, A: DIM, S: '#5a4030' };
+function spr(name, x, y, px, o = {}) {
+  const s = SPR[name];
+  if (!s) throw new Error('no sprite ' + name);
+  const w = s[0].length, h = s.length;
+  cx.save(); cx.translate(x, y);
+  if (o.rot) cx.rotate(o.rot);
+  if (o.flip) cx.scale(-1, 1);
+  if (o.sy) cx.scale(1, o.sy);
+  cx.globalAlpha = o.a ?? 1;
+  const x0 = -w * px / 2, y0 = -h * px;
+  for (let r = 0; r < h; r++) {
+    const row = s[r];
+    for (let c = 0; c < w; c++) {
+      const ch = row[c];
+      if (ch === '.') continue;
+      cx.fillStyle = (o.map && o.map[ch]) || SPR_PAL[ch];
+      cx.fillRect(x0 + c * px, y0 + r * px, px + 0.4, px + 0.4);
+    }
   }
-  cx.globalAlpha = 1;
+  cx.restore();
 }
-const CORGI_W = CORGI_STAND[0].length, CORGI_H = CORGI_STAND.length;
+const sprW = (name, px) => SPR[name][0].length * px, sprH = (name, px) => SPR[name].length * px;
+// Dobby by pose; 'walk' and 'wag' animate on the beat grid.
+function dobby(A, x, y, px, pose = 'wag', o = {}) {
+  const q = Math.floor(A.bf * 4) % 2;
+  const name = { walk: q ? 'dog_run_a' : 'dog_run_b', run: Math.floor(A.bf * 8) % 2 ? 'dog_run_a' : 'dog_run_b',
+                 wag: q ? 'dog_wag' : 'dog_stand', bark: A.bf < 0.5 ? 'dog_bark' : 'dog_stand' }[pose] || 'dog_' + pose;
+  spr(name, x, y, px, o);
+}
+const CORGI_W = SPR.dog_stand[0].length;
 
 // --- the on-screen display, burned in over most scenes -------------------------------------------
 function fmtStep(t) { return Math.floor(Math.pow(2, 11 + t * 0.19)).toLocaleString('en-US'); }
@@ -209,8 +207,7 @@ function osd(A, o = {}) {
     odometer(pdoom(t), 1848, 158, 66, { align: 'right', a, c: A.pd > 60 ? HOT : CORE });
   }
   if (o.dog !== false) {
-    const wag = Math.floor(A.bf * 4) % 2 ? CORGI_WAG : CORGI_STAND;
-    corgi(72, 1004, 4, o.bark ? CORGI_BARK : wag, a);
+    dobby(A, 72 + CORGI_W * 2, 1004, 4, o.bark ? 'bark' : 'wag', { a });
     pw('watchdogd', 72 + CORGI_W * 4 + 22, 966, 24, { c: DIM, a });
     pw(o.status || 'good boy', 72 + CORGI_W * 4 + 22, 1000, 28, { c: o.statusC || CORE, a });
   }
@@ -218,36 +215,7 @@ function osd(A, o = {}) {
   for (let k = 0; k < 4; k++) rect(1848 - 142 + k * 38, 936, 26, 16, k === A.beatInBar ? AMBER : DEEP, t < BAR0 ? 0.3 : a);
 }
 
-// --- scenes ----------------------------------------------------------------------------------------
-function sceneTitle(A) {
-  const t = A.t;
-  txt('READY.', 72, 112, 38);
-  if (blink(t, 1)) cursor(72 + measure('READY.', 38) + 10, 114, 22, 36);
-  txt('C90  TYPE II', 1848, 112, 38, { align: 'right', c: DIM });
-  txt('P(DOOM)', 960, 600, 330, { w: 700, align: 'center' });
-  const sub = 'live from the training run', at = bar(1) - 0.2;
-  if (t > at) {
-    const s = typed(sub, t - at, 26), x0 = 960 - measure(sub, 66) / 2;
-    txt(s, x0, 740, 66, { c: AMBER });
-    if (s.length < sub.length || blink(t, 1.25)) cursor(x0 + measure(s, 66) + 8, 746, 30, 60, AMBER);
-  }
-  txt('PLAY ▶', 1848, 1000, 34, { align: 'right', c: OSD, a: blink(t, 0.8) ? 0.9 : 0.35 });
-}
-
-const BOOT = [
-  ['C90 TYPE II  MIXED-SPACE TERMINAL', ''],
-  ['> mount /dev/tape0', 'ok'],
-  ['> load corpus 15T tokens', 'ok'],
-  ['> tokenizer bpe-200k', 'ok'],
-  ['> init weights seed=0x5EED', 'ok'],
-  ['> nodes 0..127', 'online'],
-  ['> optimizer adamw lr=3e-4', 'ok'],
-  ['> evals helpful honest harmless', 'ok'],
-  ['> watchdogd --dog=dobby', 'good boy'],
-  ['> alignment', 'todo'],
-  ['> ./train --until=done', ''],
-  ['  step 0', '']
-];
+// --- drawing pieces carried over from version 1 ---------------------------------------------------
 function nodeGrid(A, x, y, cols, rows, pitch, lit, o = {}) {
   const size = pitch * 0.78;
   for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
@@ -259,37 +227,6 @@ function nodeGrid(A, x, y, cols, rows, pitch, lit, o = {}) {
     rect(x + c * pitch, y + r * pitch, size, size, hot ? REC : (s > 0.72 ? CORE : AMBER), (0.42 + 0.58 * s) * fl);
   }
 }
-function sceneBoot(A, u) {
-  const beat = u / PER;
-  pw(BOOT[0][0], 96, 236, 30, { c: OSD });
-  for (let k = 1; k < BOOT.length; k++) {
-    const at = (k - 1) * 2 + 0.25;                   // one line every two beats; the status lands on the beat
-    if (beat < at) break;
-    const [cmd, status] = BOOT[k], y = 236 + k * 58;
-    const s = typed(cmd, (beat - at) * PER, 64);
-    pw(s, 96, y, 34, { c: CORE });
-    if (s.length === cmd.length && status && beat >= at + 1 - 0.25) {
-      const dots = '.'.repeat(Math.max(2, 34 - cmd.length));
-      pw(dots, 96 + measure(cmd + ' ', 34, 400, 'P'), y, 34, { c: FAINT });
-      const flash = clamp(1 - (beat - (at + 0.75)) * 1.5);
-      pw(status, 1000, y, 34, { align: 'right', c: status === 'todo' ? REC : (flash > 0.5 ? CORE : OSD) });
-    }
-    if (k === BOOT.length - 1 || beat < (k) * 2 + 0.25) {
-      if (blink(A.t, 2)) cursor(96 + measure(s, 34, 400, 'P') + 6, y + 4, 18, 34, CORE);
-    }
-  }
-  // The cluster wakes up as the "nodes" line lands.
-  const lit = Math.floor(128 * easeOut(clamp((beat - 9) / 6)));
-  pw('CLUSTER', 1130, 236, 30, { c: OSD });
-  nodeGrid(A, 1130, 280, 16, 8, 44, lit);
-  pw(`NODES ${String(lit).padStart(3, ' ')}/128`, 1130, 690, 30, { c: CORE });
-  pw(`${(lit / 128 * 8.4).toFixed(1)} EFLOP/s`, 1830, 690, 30, { align: 'right', c: AMBER });
-  const tok = clamp((beat - 3) / 20);
-  rect(1130, 730, 700, 18, DEEP);
-  rect(1130, 730, 700 * tok, 18, AMBER);
-  pw(`TOKENS ${(tok * 15).toFixed(1)}T / 15T`, 1130, 792, 26, { c: DIM });
-}
-
 function lossAt(x) {
   const cliff = 15 / 16;
   const base = 0.86 + 2.15 * Math.exp(-5.6 * x) + 0.05 * Math.sin(x * 40) * (1 - x);
@@ -297,81 +234,6 @@ function lossAt(x) {
   const n = (hash(Math.floor(x * 420)) - 0.5) * 0.11 * (1 - 0.6 * x);
   return Math.max(0.05, base - drop + n);
 }
-function sceneLoss(A, u) {
-  const gx = 240, gy = 210, gw = 1440, gh = 680, beats = u / PER;
-  for (let k = 0; k <= 10; k++) rect(gx + k * gw / 10 - 1, gy, 2, gh, DEEP, k % 5 ? 0.9 : 1);
-  for (let k = 0; k <= 8; k++) rect(gx, gy + k * gh / 8 - 1, gw, 2, DEEP, k % 4 ? 0.9 : 1);
-  for (let k = 0; k <= 50; k++) rect(gx + k * gw / 50 - 1, gy + gh / 2 - 6, 2, 12, FAINT, 0.7);
-  txt('TRAINING LOSS', gx, gy - 34, 44, { w: 700, c: AMBER });
-  pw('STEP 2^k', gx + gw, gy - 34, 26, { align: 'right', c: DIM });
-  for (let k = 0; k <= 10; k += 2) pw(String(10 + k * 2.2 | 0), gx + k * gw / 10, gy + gh + 40, 24, { align: 'center', c: FAINT });
-  for (let k = 0; k <= 4; k++) pw((3.2 - k * 0.8).toFixed(1), gx - 20, gy + k * gh / 4 + 8, 24, { align: 'right', c: FAINT });
-  const reveal = clamp(beats / 16 / 0.985);
-  const Y = L => gy + gh * (1 - L / 3.2);
-  cx.beginPath();
-  const n = Math.floor(reveal * gw);
-  for (let px = 0; px <= n; px += 2) {
-    const x = px / gw, wig = px > n - 60 ? (A.mid - 0.5) * 18 * (1 - (n - px) / 60) : 0;
-    const X = gx + px, YY = Y(lossAt(x)) + wig;
-    if (px === 0) cx.moveTo(X, YY); else cx.lineTo(X, YY);
-  }
-  stroke(CORE, 3.5);
-  const hx = gx + n, hy = Y(lossAt(reveal));
-  cx.beginPath(); cx.arc(hx, hy, 9 + 6 * A.kick, 0, Math.PI * 2); cx.fillStyle = CORE; cx.fill();
-  pw(lossAt(reveal).toFixed(3), hx + 22, hy - 16, 28, { c: CORE });
-  if (beats >= 15) {
-    const on = blink(u, 3);
-    cx.beginPath(); cx.roundRect(1060, 300, 560, 150, 14); cx.fillStyle = 'rgba(0,30,16,0.8)'; cx.fill(); stroke(OSD, 3, on ? 1 : 0.6);
-    pw('LOSS CLIFF', 1340, 362, 44, { align: 'center', c: OSD });
-    pw('capability unlocked', 1340, 414, 28, { align: 'center', c: CORE, a: on ? 1 : 0.7 });
-  }
-}
-
-const SOFTMAX = [
-  ['p(doom)', ['the', 'p(doom)', 'my', 'our', 'a', 'this']],
-  [' is', [' is', ' was', ' feels', ' stays', ' will', ' can']],
-  [' just', [' only', ' just', ' not', ' really', ' probably', ' clearly']],
-  [' a', [' a', ' one', ' the', ' another', ' some', ' my']],
-  [' number', [' vibe', ' guess', ' number', ' prior', ' feeling', ' bet']],
-  [',', [',', ' and', ' so', ' that', '.', ' which']],
-  [' right', [' yeah', ' surely', ' okay', ' right', ' though', ' lol']],
-  ['?', ['?', '??', '!', '?!', '...', ' lol']]
-];
-const SHAPE = [0.14, 0.1, 0.08, 0.07, 0.06, 0.05];
-function softmaxProbs(A, step, beatInStep, hot) {
-  const [pick, cands] = SOFTMAX[step];
-  const settle = smooth(clamp(beatInStep - 2.6));      // commits on the last beat of the bar
-  let p = cands.map((c, r) => {
-    const base = c === pick ? 0.3 : SHAPE[r];
-    const shimmer = 0.55 + 0.9 * spec(A.i, 6 + r * 6 + step);
-    return lerp(base * shimmer, c === pick ? 0.92 : 0.016, settle);
-  });
-  const sum = p.reduce((s, v) => s + v, 0);
-  return p.map(v => v / sum);
-}
-function sceneSoftmax(A, u) {
-  const beats = u / PER, step = clamp(Math.floor(beats / 4), 0, 7), bs = beats - step * 4;
-  pw('NEXT-TOKEN DISTRIBUTION   T = 0.8', 160, 196, 30, { c: OSD });
-  pw(`${step + 1}/8`, 1760, 196, 30, { align: 'right', c: DIM });
-  // The context: every committed token so far, then the cursor.
-  let ctxS = '';
-  for (let k = 0; k < step; k++) ctxS += SOFTMAX[k][0];
-  if (bs >= 3.2) ctxS += typed(SOFTMAX[step][0], (bs - 3.2) * PER, 30);
-  txt('>', 160, 316, 76, { c: DIM });
-  txt(ctxS, 230, 316, 76);
-  if (blink(A.t, 2)) cursor(230 + measure(ctxS, 76) + 8, 322, 34, 70, CORE);
-  const p = softmaxProbs(A, step, bs);
-  const [pick, cands] = SOFTMAX[step];
-  cands.forEach((c, r) => {
-    const y = 470 + r * 92, chosen = c === pick && bs >= 2.6;
-    txt(c.replace(/^ /, '␣'), 600, y, 50, { align: 'right', c: chosen ? CORE : DIM });
-    rect(640, y - 42, 980, 46, DEEP, 0.7);
-    rect(640, y - 42, 980 * p[r], 46, chosen ? CORE : AMBER, chosen ? 1 : 0.85);
-    pw((p[r] * 100).toFixed(1) + '%', 640 + 980 * p[r] + 18, y - 6, 32, { c: chosen ? CORE : DIM });
-    if (chosen && blink(A.t, 3)) txt('▶', 120, y, 44, { c: CORE });
-  });
-}
-
 function spectrumLEDs(A, x, y, w, cols, segs, segH, o = {}) {
   const cw = w / cols;
   for (let c = 0; c < cols; c++) {
@@ -391,97 +253,6 @@ function sceneReadout(A, u, o = {}) {
   odometer(pd, 960, 700, 400, { c: CORE, scramble: o.scramble });
   cx.restore();
   spectrumLEDs(A, 270, 908, 1380, 44, 7, 14);
-}
-
-const ATT_TOK = ['p(doom)', 'is', 'just', 'a', 'number', ',', 'right', '?'];
-function attn(head, r, c, t) {
-  if (c > r) return 0;
-  const kind = head % 4, jit = 0.25 * hash(head * 31 + r * 7 + c * 3 + Math.floor(t * 8) * 0.01);
-  let v;
-  if (kind === 0) v = c === r ? 1 : c === r - 1 ? 0.35 : 0.05;
-  else if (kind === 1) v = c === 0 ? 0.95 : c === r ? 0.3 : 0.06;
-  else if (kind === 2) v = c === r - 1 || (r === 0 && c === 0) ? 1 : 0.05;
-  else v = 1 / (r + 1) * (0.7 + 0.6 * hash(head + r * 13 + c));
-  return clamp(v + jit * (kind === 3 ? 1 : 0.3));
-}
-function attnMatrix(A, x, y, cell, head, gain, labels) {
-  for (let r = 0; r < 8; r++) for (let c = 0; c < 8; c++) {
-    const v = attn(head, r, c, A.t) * gain;
-    rect(x + c * cell + 2, y + r * cell + 2, cell - 4, cell - 4, c > r ? '#140f0a' : (v > 0.75 ? CORE : AMBER), c > r ? 1 : 0.1 + 0.9 * clamp(v));
-  }
-  if (!labels) return;
-  ATT_TOK.forEach((s, k) => {
-    pw(s, x - 18, y + k * cell + cell * 0.64, 30, { align: 'right', c: DIM });
-    cx.save(); cx.translate(x + k * cell + cell * 0.55, y - 16); cx.rotate(-Math.PI / 3.2);
-    pw(s, 0, 0, 28, { c: DIM }); cx.restore();
-  });
-}
-function sceneAttention(A, u, o = {}) {
-  const head = clamp(Math.floor(u / PER), 0, 15);
-  txt(`ATTENTION  ·  LAYER 61  ·  HEAD ${head}`, 160, 200, 44, { w: 700, c: AMBER });
-  const gain = (0.75 + 0.5 * A.mid) * (o.hot ? 1.5 : 1);
-  attnMatrix(A, 440, 360, 72, o.hot ? 1 : head, gain, true);
-  for (let h = 0; h < 16; h++) {
-    const hx = 1220 + (h % 4) * 138, hy = 360 + Math.floor(h / 4) * 138;
-    attnMatrix(A, hx, hy, 15, h, 0.9, false);
-    if (h === head) { cx.beginPath(); cx.rect(hx - 8, hy - 8, 136, 136); stroke(CORE, 3); }
-  }
-  pw(`HEAD ${String(head).padStart(2, '0')}/16`, 1220, 948, 28, { c: DIM });
-}
-
-// Scaling law: loss falls as a straight line in log-log; P(DOOM) (right axis) rises on the same compute.
-const SC_PTS = Array.from({ length: 32 }, (_, k) => {
-  const c = 20.2 + 5.6 * (k / 31) + (hash(k * 5.7) - 0.5) * 0.35;
-  return [c, Math.log10(3.6) - 0.045 * (c - 20) + (hash(k * 9.1) - 0.5) * 0.035];
-});
-function sceneScaling(A, u, o = {}) {
-  const beats = u / PER, gx = 260, gy = 260, gw = 1400, gh = 600;
-  const zoom = o.zoom ?? smooth(seg(beats, 16, 20));
-  const cMin = 20, cMax = lerp(26, 32, zoom);
-  const X = c => gx + (c - cMin) / (cMax - cMin) * gw;
-  const Y = l => gy + gh * (1 - (l - 0) / (Math.log10(4.2) - 0));
-  rect(gx, gy + gh, gw, 3, DIM); rect(gx, gy, 3, gh, DIM);
-  for (let c = 20; c <= Math.floor(cMax); c++) {
-    const x = X(c);
-    rect(x - 1, gy + gh, 2, 14, DIM);
-    if (c % (zoom > 0.5 ? 2 : 1) === 0) pw(`1e${c}`, x, gy + gh + 46, 24, { align: 'center', c: FAINT });
-  }
-  for (const l of [1, 2, 3, 4]) { const y = Y(Math.log10(l)); rect(gx - 14, y - 1, 14, 2, DIM); pw(String(l), gx - 24, y + 8, 24, { align: 'right', c: FAINT }); }
-  txt('SCALING', gx, gy - 40, 46, { w: 700, c: AMBER });
-  pw('COMPUTE (FLOP)', gx + gw, gy + gh + 92, 26, { align: 'right', c: DIM });
-  pw('LOSS', gx - 24, gy - 16, 26, { align: 'right', c: DIM });
-  const shown = o.all ? 32 : clamp(Math.floor(beats) + 1, 0, 32);
-  // Fit line to the points so far, then the dashed extrapolation once the axis opens up.
-  const lastC = SC_PTS[Math.max(0, shown - 1)][0];
-  cx.beginPath(); cx.moveTo(X(20), Y(Math.log10(3.6))); cx.lineTo(X(lastC), Y(Math.log10(3.6) - 0.045 * (lastC - 20))); stroke(AMBER, 3, 0.8);
-  if (zoom > 0) {
-    cx.setLineDash([14, 12]); cx.beginPath();
-    cx.moveTo(X(lastC), Y(Math.log10(3.6) - 0.045 * (lastC - 20)));
-    const ce = lerp(lastC, cMax, zoom);
-    cx.lineTo(X(ce), Y(Math.log10(3.6) - 0.045 * (ce - 20))); stroke(AMBER, 3, 0.6); cx.setLineDash([]);
-  }
-  for (let k = 0; k < shown; k++) {
-    const [c, l] = SC_PTS[k], fresh = k === shown - 1 ? A.kick : 0;
-    cx.beginPath(); cx.arc(X(c), Y(l), 8 + 8 * fresh, 0, Math.PI * 2); cx.fillStyle = fresh > 0.3 ? CORE : AMBER; cx.fill();
-  }
-  if (shown > 0 && zoom < 0.2) {
-    const [c, l] = SC_PTS[shown - 1];
-    pw('you are here', X(c) + 22, Y(l) - 22, 26, { c: CORE, a: blink(A.t, 1.5) ? 1 : 0.5 });
-  }
-  // The right axis and the red curve.
-  const redIn = o.red ?? seg(beats, 18, 30);
-  if (redIn > 0) {
-    rect(gx + gw - 3, gy, 3, gh, REC, redIn);
-    for (const v of [0, 50, 100]) pw(`${v}%`, gx + gw + 18, gy + gh * (1 - v / 100) + 8, 24, { c: REC, a: redIn });
-    pw('P(DOOM)', gx + gw + 18, gy - 16, 26, { c: REC, a: redIn });
-    cx.beginPath();
-    const cEnd = lerp(20, cMax, redIn);
-    for (let c = 20; c <= cEnd; c += 0.05) {
-      const v = 100 / (1 + Math.exp(-(c - 28.4) * 1.5)), x = X(c), y = gy + gh * (1 - v / 100);
-      if (c === 20) cx.moveTo(x, y); else cx.lineTo(x, y);
-    }
-    stroke(REC, 4.5);
-  }
 }
 
 function polarScope(A, cxp, cyp, R, amp, n, rot, color, alpha, ch, lw = 3) {
@@ -525,110 +296,10 @@ function eye(A, u, o = {}) {
   cx.restore();
   if (o.readout !== false) odometer(pdoom(A.t), X0, Y0 + 30 * sc, 86 * sc, { c: A.pd > 50 ? HOT : CORE, a: open > 0.5 ? 1 : 0 });
 }
-function sceneEye(A, u) { eye(A, u); }
-
-// Blue Ridge ridgelines, cut from the grove's own USGS relief.
-const RID = (() => { const d = u8(window.RIDGES.data); return { n: window.RIDGES.lines, m: window.RIDGES.points, d }; })();
-function ridgeY(line, xi) {
-  const l0 = Math.floor(line), l1 = Math.min(RID.n - 1, l0 + 1), f = line - l0;
-  const a = RID.d[Math.min(RID.n - 1, l0) * RID.m + xi], b = RID.d[l1 * RID.m + xi];
-  return lerp(a, b, f) / 255;
-}
-function ridges(A, o) {
-  const { x0 = 240, x1 = 1680, yTop = 380, pitch = 17, lines = 36, amp = 150, scroll = 0, pulse = 0, front = 0, alpha = 1, color = AMBER } = o;
-  const env = xn => 0.16 + 0.84 * Math.exp(-Math.pow((xn - 0.5) / 0.24, 2));
-  let frontLine = null;
-  for (let j = 0; j < lines; j++) {
-    const base = yTop + j * pitch, src = clamp(j + scroll, 0, RID.n - 1.001);
-    const wave = pulse * Math.exp(-Math.pow((j - front) / 3.5, 2));
-    const pts = [];
-    for (let xi = 0; xi < RID.m; xi += 2) {
-      const xn = xi / (RID.m - 1);
-      pts.push([lerp(x0, x1, xn), base - amp * (1 + wave) * env(xn) * ridgeY(src, xi)]);
-    }
-    cx.beginPath(); cx.moveTo(pts[0][0], pts[0][1]);
-    for (const [x, y] of pts) cx.lineTo(x, y);
-    cx.lineTo(x1, H + 10); cx.lineTo(x0, H + 10); cx.closePath();
-    cx.fillStyle = '#000'; cx.fill();
-    cx.beginPath(); cx.moveTo(pts[0][0], pts[0][1]);
-    for (const [x, y] of pts) cx.lineTo(x, y);
-    stroke(wave > 0.25 ? CORE : color, 2.6, alpha * (0.4 + 0.6 * j / (lines - 1)));
-    if (j === lines - 1) frontLine = pts;
-  }
-  return frontLine;
-}
-function lineYAt(pts, x) {
-  for (let k = 1; k < pts.length; k++) if (pts[k][0] >= x) { const [xa, ya] = pts[k - 1], [xb, yb] = pts[k]; return lerp(ya, yb, (x - xa) / (xb - xa)); }
-  return pts[pts.length - 1][1];
-}
-const STARS = Array.from({ length: 170 }, (_, k) => [hash(k * 1.7) * W, 60 + hash(k * 3.3) * 360, hash(k * 9.9)]);
-function sceneRidges(A, u) {
-  const dur = bar(59) - bar(48), k = u / dur;
-  for (const [x, y, s] of STARS) {
-    const tw = 0.35 + 0.65 * (0.5 + 0.5 * Math.sin(A.t * (1.3 + s * 3) + s * 40));
-    rect(x, y, 3, 3, CORE, tw * (0.25 + 0.5 * s) * (0.7 + 0.5 * A.high));
-  }
-  // The moon slowly opens into a ring: the eye is coming back.
-  const ring = smooth(seg(u / BAR, 8.5, 10.8));
-  const mx = 1480, my = 210, mr = 66;
-  cx.beginPath(); cx.arc(mx, my, mr, 0, Math.PI * 2); cx.fillStyle = CORE; cx.globalAlpha = 0.95; cx.fill(); cx.globalAlpha = 1;
-  if (ring > 0) {
-    cx.beginPath(); cx.arc(mx, my, mr * 0.86 * ring, 0, Math.PI * 2); cx.fillStyle = '#000'; cx.fill();
-    polarScope(A, mx, my, mr * 1.3, 28 * ring, 500, u, AMBER, ring, 0, 2);
-  }
-  const front = 35 - ((u / BAR) % 2) * 20;
-  const pts = ridges(A, { scroll: k * 7, pulse: 0.35 * A.sub, front, lines: 36 });
-  const dx = 520, fy = lineYAt(pts, dx + CORGI_W * 2.5);
-  const lookUp = Math.floor(A.bf * 2) % 2 && A.sub > 0.5;
-  corgi(dx, fy + 6, 5, lookUp ? CORGI_WAG : CORGI_STAND);
-  pw('BLUE RIDGE, NC   USGS 3DEP', 960, 1040, 24, { align: 'center', c: FAINT });
-}
-
-function sceneRiser(A, u) {
-  const b = clamp(Math.floor(u / PER), 0, 3), n = [1, 2, 4, 8][b];
-  const cw = 1700 / n, ch = 860 / n;
-  for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) {
-    const x = 110 + c * cw + cw / 2, y = 150 + r * ch + ch * 0.72, size = Math.min(ch * 0.8, cw * 0.28);
-    odometer(0, x, y, size, { scramble: A.t * (1 + hash(r * 9 + c)) + r * 3 + c, c: (r + c + b) % 3 ? CORE : HOT });
-  }
-}
-
-const MONTAGE = [0, 1, 5, 2, 0, 4, 6, 3, 0, 1, 5, 2, 0, 4, 6, 3, 5, 0, 7, 0, 6, 0, 5, 0];
-function sceneMontage(A, u) {
-  const beats = u / PER;
-  const cut = beats < 16 ? Math.floor(beats) : 16 + Math.floor((beats - 16) / 2);
-  const cutAt = cut < 16 ? cut : 16 + (cut - 16) * 2;
-  const lu = (beats - cutAt) * PER, panel = MONTAGE[clamp(cut, 0, MONTAGE.length - 1)];
-  if (panel === 0) sceneReadout(A, lu);
-  else if (panel === 1) {
-    pw('NEXT-TOKEN DISTRIBUTION   T = 0.8', 160, 196, 30, { c: OSD });
-    txt('> the forecast is', 160, 316, 76, { c: CORE });
-    const c = [' doom', ' bloom', ' boom', ' gloom', ' zoom', ' fine'], p = [0.93, 0.02, 0.018, 0.015, 0.01, 0.007];
-    c.forEach((s, r) => {
-      const y = 470 + r * 92, v = p[r] * (r ? 0.6 + 0.8 * spec(A.i, 8 + r * 6) : 1);
-      txt(s.replace(/^ /, '␣'), 600, y, 50, { align: 'right', c: r ? DIM : CORE });
-      rect(640, y - 42, 980, 46, DEEP, 0.7); rect(640, y - 42, 980 * v, 46, r ? AMBER : HOT);
-      pw((v * 100).toFixed(1) + '%', 640 + 980 * v + 18, y - 6, 32, { c: r ? DIM : CORE });
-    });
-  } else if (panel === 2) sceneAttention(A, lu, { hot: true });
-  else if (panel === 3) {
-    txt('P(DOOM) vs STEP', 240, 176, 44, { w: 700, c: HOT });
-    cx.beginPath();
-    for (let px = 0; px <= 1440; px += 4) { const x = px / 1440, y = 890 - 680 * (1 - lossAt(x) / 3.2) * (0.3 + 0.7 * x); if (!px) cx.moveTo(240 + px, y); else cx.lineTo(240 + px, y); }
-    stroke(HOT, 4);
-    rect(240, 890, 1440, 3, DIM); rect(240, 210, 3, 680, DIM);
-  } else if (panel === 4) sceneScaling(A, 30 * PER, { zoom: 1, all: true, red: 1 });
-  else if (panel === 5) eye(A, lu + (cut % 3) * BAR * 0.5);
-  else if (panel === 6) {
-    txt('CLUSTER', 160, 150, 46, { w: 700, c: HOT });
-    nodeGrid(A, 176, 214, 32, 16, 46, 512, { hot: 0.5 });
-  } else ridges(A, { scroll: 2, pulse: 0.8 * A.kick, front: 20, lines: 36, color: HOT });
-}
-
 const fb = document.createElement('canvas'); fb.width = CW; fb.height = CH;
 const fbTmp = document.createElement('canvas'); fbTmp.width = CW; fbTmp.height = CH;
 let fbFresh = true;
-function sceneFeedback(A, u) {
+function feedback(A, u, draw) {
   // Video feedback: last frame, shrunk and turned, under this frame. Copies nest into a corridor.
   const g = fb.getContext('2d'), tg = fbTmp.getContext('2d');
   if (fbFresh || u < 0.5 / FPS) { g.setTransform(1, 0, 0, 1, 0, 0); g.fillStyle = '#000'; g.fillRect(0, 0, CW, CH); fbFresh = false; }
@@ -638,89 +309,39 @@ function sceneFeedback(A, u) {
   g.setTransform(1, 0, 0, 1, 0, 0); g.fillStyle = '#000'; g.fillRect(0, 0, CW, CH);
   g.save(); g.translate(CW / 2, CH / 2); g.rotate(rot); g.scale(z, z); g.translate(-CW / 2, -CH / 2);
   g.globalAlpha = 0.93; g.drawImage(fbTmp, 0, 0); g.restore();
-  // This frame's window, hollow, so the older copies show through it.
-  paintOver(g, () => {
-    const bw = 1180, bh = 660, x = 960 - bw / 2, y = 540 - bh / 2;
-    cx.beginPath(); cx.roundRect(x, y, bw, bh, 22); stroke(A.pd > 90 ? HOT : CORE, 6);
-    const copies = Math.pow(2, Math.floor(u / PER) + 1);
-    rect(x + 30, y - 26, 520, 52, '#000');
-    pw('./train --self', x + 48, y + 12, 36, { c: OSD });
-    rect(x + bw - 450, y + bh - 26, 420, 52, '#000');
-    pw(`copies ${copies > 1e9 ? '2^' + (Math.floor(u / PER) + 1) : copies.toLocaleString('en-US')}`, x + bw - 48, y + bh + 12, 36, { align: 'right', c: CORE });
-    polarScope(A, 960, 540, 150 + 40 * A.sub, 70, 700, u, AMBER, 0.9, 0, 3);
-  });
+  paintOver(g, () => draw(A, u));
   cx.drawImage(fb, 0, 0, W, H);
 }
 function paintOver(ctx2, fn) {
   const keep = cx; cx = ctx2; cx.save(); cx.setTransform(CW / W, 0, 0, CH / H, 0, 0); fn(); cx.restore(); cx = keep;
 }
 
-function scenePause(A, u) {
-  sceneReadout(A, u, { pd: 97 });
-  pw('PAUSE ‖', 72, 120, 64, { c: OSD });
-  pw('C90 SP  TRACKING', 72, 176, 30, { c: OSD, a: 0.7 });
-}
 
-function sceneFinal(A, u) {
-  const lb = u / BAR;
-  eye(A, u, { y: 420, scale: 0.72, readout: false, a: 0.75, open: 1 });
-  const pts = ridges(A, { yTop: 740, pitch: 15, lines: 18, amp: 110, scroll: 18 + lb, pulse: 0.5 * A.sub, front: 17 - (lb % 1) * 17, color: A.pd > 95 ? HOT : AMBER });
-  txt('P(DOOM)', 960, 330, 120, { w: 700, align: 'center', c: HOT });
-  cx.save(); const k = 1 + 0.035 * A.kick; cx.translate(960, 560); cx.scale(k, k); cx.translate(-960, -560);
-  odometer(pdoom(A.t), 960, 640, 330, { c: CORE }); cx.restore();
-  const bark = A.beatInBar === 0 && A.bf < 0.55;
-  const dx = 250, fy = lineYAt(pts, dx + CORGI_W * 3);
-  corgi(dx, fy + 6, 6, bark ? CORGI_BARK : (Math.floor(A.bf * 4) % 2 ? CORGI_WAG : CORGI_STAND));
-  if (bark) {
-    cx.beginPath(); cx.roundRect(dx + CORGI_W * 6 - 20, fy - 210, 190, 74, 12); cx.fillStyle = '#000'; cx.fill(); stroke(CORE, 3);
-    pw('WOOF', dx + CORGI_W * 6 + 75, fy - 158, 44, { align: 'center', c: CORE });
-  }
-}
-
-function sceneEnd(A, u, still) {
-  const size = 108, x0 = 200, x1 = Math.max(1290, x0 + measure('P(WALKIES)', size, 700) + measure('100.0%', size, 700) + 90);
-  txt('P(DOOM)', x0, 440, size, { w: 700, c: DIM });
-  odometer(99.9, x1, 440, size, { align: 'right', c: HOT });
-  txt('P(WALKIES)', x0, 600, size, { w: 700, c: CORE });
-  txt('100.0%', x1, 600, size, { w: 700, align: 'right', c: CORE });
-  const wag = !still && Math.floor(u * 8) % 2;
-  corgi(x1 + 90, 630, 9, wag ? CORGI_WAG : CORGI_STAND);
-  pw(`music: ${SONG}   ·   picture: Degauss + Phosphor Wake on a C90 tube`, 960, 860, 28, { align: 'center', c: DIM });
-}
-
-// --- the edit ----------------------------------------------------------------------------------------
-const SCENES = [
-  ['title', 0, sceneTitle], ['boot', bar(2), sceneBoot], ['loss', bar(8), sceneLoss], ['softmax', bar(12), sceneSoftmax],
-  ['readout', bar(20), sceneReadout], ['attention', bar(28), sceneAttention], ['scaling', bar(32), sceneScaling],
-  ['eye', bar(40), sceneEye], ['ridges', bar(48), sceneRidges], ['riser', bar(59), sceneRiser], ['montage', bar(60), sceneMontage],
-  ['feedback', bar(68), sceneFeedback], ['pause', bar(75), scenePause], ['final', bar(76), sceneFinal], ['end', bar(END_BAR), sceneEnd]
-];
-const STATUS = { boot: 'good boy', loss: 'watching', softmax: 'watching', readout: 'ears up', attention: 'sniffing', scaling: 'alert',
-                 eye: 'growling', montage: 'BARKING', feedback: 'confused' };
-function sceneAt(t) { let k = 0; while (k + 1 < SCENES.length && t >= SCENES[k + 1][1]) k++; return k; }
+// --- the edit: shots.js supplies SHOTS, one entry per lyric line ----------------------------------------
 const T_OFF = CUT_X ? 138.75 : 140.35;                 // power-off, after the last hit has rung out
-
+function shotAt(t) { let k = 0; while (k + 1 < SHOTS.length && t >= bar(SHOTS[k + 1][0])) k++; return k; }
+function shotInfo(t) {
+  const k = shotAt(t), [b0, fn, o = {}] = SHOTS[k];
+  const t0 = k === 0 ? 0 : bar(b0), t1 = k + 1 < SHOTS.length ? bar(SHOTS[k + 1][0]) : F.duration;
+  return { k, fn, o, t0, t1, u: t - t0, d: t1 - t0, lb: (t - t0) / BAR, name: fn.name };
+}
 function drawScene(A) {
   cx.setTransform(1, 0, 0, 1, 0, 0);
   cx.fillStyle = '#000'; cx.fillRect(0, 0, CW, CH);
   cx.setTransform(S, 0, 0, S, 0, 0);
-  const k = sceneAt(A.t), [name, t0, fn] = SCENES[k];
-  if (name !== 'feedback') fbFresh = true;
-  fn(A, A.t - t0);
-  const bigReadout = ['title', 'readout', 'riser', 'pause', 'final', 'end'].includes(name);
-  if (!['title', 'pause', 'end', 'riser'].includes(name)) {
-    osd(A, { readout: !bigReadout, dog: !['ridges', 'final'].includes(name), status: STATUS[name],
-             statusC: name === 'montage' ? HOT : undefined, bark: name === 'montage' && A.beatInBar % 2 === 0 && A.bf < 0.5 });
-  }
-  if (name === 'ridges') pw('watchdogd: all quiet', 72, 1000, 28, { c: DIM });
+  const sh = A.shot;
+  if (!sh.o.feedback) fbFresh = true;
+  sh.fn(A, sh.u, sh, sh.o);
+  if (sh.o.osd !== false) osd(A, { readout: sh.o.readout !== false, dog: sh.o.dog !== false, status: sh.o.status,
+                                   statusC: sh.o.statusC, bark: sh.o.bark });
 }
 
 // --- tube parameters over time ----------------------------------------------------------------------
 const GHOST = 0.12;
 function tube(A) {
-  const t = A.t, name = SCENES[sceneAt(t)][0];
+  const t = A.t, sh = A.shot, so = sh.o;
   const P = { sx: 1, sy: 1, vis: 1, lineW: 0, lineI: 0, dotI: 0, flash: 0, magnet: 0, wob: 0, phase: 0, stat: 0,
-              persist: 0.55, bright: 1, ghost: 0, tint: 0, jit: 0, band: -3, bandAmt: 0 };
+              persist: 0.55, bright: 1, ghost: 0, tint: 0, jit: 0, band: -3, bandAmt: 0, blue: 0 };
   if (t < 0.5) {                                          // power-on: dot, line, picture
     P.persist = 0.8;
     if (t < 0.1) { P.vis = 0; P.dotI = lerp(0.45, 1.1, t / 0.1); }
@@ -743,28 +364,24 @@ function tube(A) {
     P.persist = Math.max(P.persist, 0.82);
   };
   degauss(d0, 1, 2.0);
-  for (const b of [24, 64, 76]) { const c = bar(b); if (t >= c && t < c + 2.4) P.magnet = Math.max(P.magnet, 0.7 * Math.pow(1 - (t - c) / 2.4, 2)); }
-  for (let k = 1; k < SCENES.length; k++) {                // channel flips at the cuts
-    const c = SCENES[k][1];
-    if (t >= c - 0.02 && t < c + 0.06 && !['pause', 'end'].includes(SCENES[k][0])) P.stat = Math.max(P.stat, 0.75 * (1 - clamp((t - c + 0.02) / 0.08)));
+  // A shot can magnetise the tube (the shrooms), turn it blue (the blues) or fast-forward it.
+  if (so.magnet) P.magnet = Math.max(P.magnet, so.magnet * smooth(clamp(sh.u / 0.3)) * (1 - smooth(seg(sh.u, sh.d - 0.3, sh.d))));
+  if (so.blue) P.blue = so.blue * smooth(clamp(sh.u / 0.25)) * (1 - smooth(seg(sh.u, sh.d - 0.2, sh.d)));
+  // Every cut flips the channel a little; section starts flip it hard.
+  if (sh.k > 0 && sh.u < 0.06 && !so.nocut) P.stat = Math.max(P.stat, (so.cut === 'hard' ? 0.75 : 0.3) * (1 - sh.u / 0.06));
+  P.persist = Math.max(P.persist, so.persist ?? 0.55);
+  if (so.pulse && A.beatInBar === 0) P.flash += 0.07 * A.kick;
+  if (so.flashAt !== undefined) { const d = sh.u - so.flashAt * BAR; if (d >= 0 && d < 0.4) P.flash += 0.35 * Math.exp(-d * 10); }
+  if (so.shake) {                                         // the riser shakes the tube apart
+    const k = sh.u / sh.d;
+    P.wob = so.shake * k * k; P.phase = t * Math.PI * 2 * 3.1; P.stat = Math.max(P.stat, 0.18 * k);
   }
-  const persist = { title: 0.6, eye: 0.8, ridges: 0.72, riser: 0.5, montage: 0.45, feedback: 0.6, final: 0.66 };
-  P.persist = Math.max(P.persist, persist[name] ?? 0.55);
-  if (name === 'montage' && A.bf * PER < 1.5 / FPS) P.stat = Math.max(P.stat, 0.28);
-  if (['readout', 'final', 'montage'].includes(name) && A.beatInBar === 0) P.flash += 0.07 * A.kick;
-  if (name === 'loss' && t >= bar(11) + 3 * PER && t < bar(11) + 3 * PER + 0.3) P.flash += 0.3 * Math.exp(-(t - bar(11) - 3 * PER) * 12);
-  if (name === 'riser') {                                  // the riser shakes the tube apart
-    const k = seg(t, bar(59), bar(60));
-    P.wob = 0.55 * k * k; P.phase = t * Math.PI * 2 * 3.1; P.stat = Math.max(P.stat, 0.18 * k);
-  }
-  degauss(bar(60), 0.7, 1.6);
-  if (t >= bar(60) && t < bar(60) + 0.4) P.flash += 0.5 * Math.exp(-(t - bar(60)) * 9);
-  P.tint = smooth(seg(pdoom(t), 30, 99));
-  if (name === 'end') P.tint = 0.25;
-  if (name === 'pause') {                                  // VCR pause: the field judders, a tracking band crawls
-    const u = t - bar(75);
+  if (so.degauss) degauss(sh.t0, so.degauss, 1.6);
+  if (so.slam) { const d = sh.u; if (d < 0.4) P.flash += 0.5 * Math.exp(-d * 9); }
+  P.tint = so.tint ?? smooth(seg(pdoom(t), 30, 99));
+  if (so.pause) {                                         // VCR pause: the field judders, a tracking band crawls
     P.jit = (hash(Math.floor(t * 30)) - 0.5) * 0.012;
-    P.band = lerp(-1.1, 0.9, (u * 0.6) % 1); P.bandAmt = 1; P.persist = 0.3; P.tint = 0.1;
+    P.band = lerp(-1.1, 0.9, (sh.u * 0.6) % 1); P.bandAmt = 1; P.persist = 0.3; P.tint = 0.1;
   }
   if (t >= T_OFF) {                                        // power-off: line, dot, afterglow
     const d = t - T_OFF;
@@ -787,7 +404,7 @@ precision highp float;
 uniform sampler2D uScene, uPrev, uGhost;
 uniform vec2 uRes;
 uniform float uTime, uSx, uSy, uVis, uLineW, uLineI, uDotI, uFlash, uMagnet, uWob, uPhase, uStatic, uPersist, uBright, uGhostA, uSeed;
-uniform float uTint, uJit, uBand, uBandAmt;
+uniform float uTint, uJit, uBand, uBandAmt, uBlue;
 out vec4 frag;
 float hash(vec2 p) { p = fract(p * vec2(123.34, 456.21)); p += dot(p, p + 45.32); return fract(p.x * p.y); }
 vec3 hue(vec3 c, float a) {
@@ -826,6 +443,7 @@ void main() {
   vec3 purity = 0.5 + 0.5 * cos(field * 1.3 + vec3(0.0, 2.1, 4.2));
   col = max(hue(col, field), 0.0) * mix(vec3(1.0), purity * 1.6, clamp(uMagnet + w * 1.5, 0.0, 1.0) * 0.55) * uBright;
   col *= mix(vec3(1.0), vec3(1.1, 0.6, 0.52), uTint);           // the amber runs hot as P(DOOM) climbs
+  col = mix(col, vec3(dot(col, vec3(0.3, 0.55, 0.15))) * vec3(0.5, 0.8, 1.4), uBlue);  // the blues: a blue phosphor
   vec2 guv = vec2(pc.x * 0.5 + 0.5, 0.5 - pc.y * 0.5);           // afterglow of the last picture
   col += textureLod(uGhost, guv, 1.6).rgb * vec3(1.0, 0.74, 0.5) * uGhostA;
   float lx = 1.0 - smoothstep(uLineW - 0.03, uLineW + 0.03, abs(p.x));
@@ -898,6 +516,7 @@ let cur = 0;
 function frame(i) {
   const A = audio(i);
   A.pd = pdoom(A.t);
+  A.shot = shotInfo(A.t);
   const P = tube(A);
   drawScene(A);
   gl.viewport(0, 0, W, H);
@@ -913,7 +532,7 @@ function frame(i) {
   gl.uniform2f(loc(progTube, 'uRes'), W, H);
   const u = { uTime: A.t, uSx: P.sx, uSy: P.sy, uVis: P.vis, uLineW: P.lineW, uLineI: P.lineI, uDotI: P.dotI, uFlash: P.flash,
               uMagnet: P.magnet, uWob: P.wob, uPhase: P.phase, uStatic: P.stat, uPersist: P.persist, uBright: P.bright,
-              uGhostA: P.ghost, uSeed: (i % 97) + 1, uTint: P.tint, uJit: P.jit, uBand: P.band, uBandAmt: P.bandAmt };
+              uGhostA: P.ghost, uSeed: (i % 97) + 1, uTint: P.tint, uJit: P.jit, uBand: P.band, uBandAmt: P.bandAmt, uBlue: P.blue };
   for (const [name, v] of Object.entries(u)) gl.uniform1f(loc(progTube, name), v);
   gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
   gl.bindFramebuffer(gl.FRAMEBUFFER, null);
@@ -946,12 +565,13 @@ window.__ready = false;
 Promise.all([document.fonts.load('400 40px Degauss'), document.fonts.load('700 40px Degauss'), document.fonts.load('400 40px "Phosphor Wake"')]).then(() => {
   if (!document.fonts.check('700 40px Degauss') || !document.fonts.check('400 40px "Phosphor Wake"')) throw new Error('fonts did not load');
   const ghost = document.createElement('canvas'); ghost.width = CW; ghost.height = CH;
-  paint(ghost, () => sceneEnd(audio(Math.round(bar(83) * FPS)), 0, true));
+  { const A = audio(Math.round(bar(END_BAR) * FPS)); A.pd = 99.9; A.shot = shotInfo(bar(END_BAR)); paint(ghost, () => shotEnd(A, 0, A.shot, { still: true })); }
   gl.activeTexture(gl.TEXTURE2); upload(ghostTex, ghost);
   const t = new URLSearchParams(location.search).get('t');
   if (t !== null) renderFrame(Math.round(Number(t) * FPS));
   window.__ready = true;
 });
 </script>
+<script src="shots.js"></script>
 </body>
 </html>

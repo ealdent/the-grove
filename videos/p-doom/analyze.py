@@ -5,7 +5,7 @@
 
 Writes, under analysis/:
   pcm.f32        48 kHz stereo float32, decoded by ffmpeg (gitignored)
-  features.js    window.FEAT: per-video-frame loudness, bands and spectrum,
+  features.js    window.FEAT: per-video-frame loudness, bands, spectrum and voice,
                  plus a 12 kHz int8 copy of the waveform for the oscilloscope
   summary.json   tempo, beat grid, downbeats, per-bar energy and novelty
   profile.png    energy/novelty strip with bar numbers, for choosing sections
@@ -208,6 +208,20 @@ def main():
     venv = np.interp(np.arange(nvf) / FPS, np.arange(len(env)) * HOP / SR, env)
     venv = np.clip(venv / 6, 0, 1)
 
+    # Voice: the harmonic part (median-filter HPSS) of the centre channel in 250 Hz-4 kHz, in dB
+    # against its own 3 s running peak. The mix is too dense to isolate the singer, but the
+    # syllables drive this well enough to flap a mouth; the edit gates it to sung phrases.
+    from numpy.lib.stride_tricks import sliding_window_view as swv
+    cmag = stft_mag((pcm[:, 0] + pcm[:, 1]) / 2, VHOP)[:nvf]
+    vb = (vfreqs > 250) & (vfreqs < 4000)
+    X = cmag[:, vb]
+    med = lambda A, k, ax: np.median(swv(np.pad(A, [(k // 2, k // 2) if a == ax else (0, 0) for a in (0, 1)], mode='edge'), k, axis=ax), axis=-1)
+    Hm, Pm = med(X, 9, 0), med(X, 17, 1)
+    EH = ((X * (Hm ** 2 / (Hm ** 2 + Pm ** 2 + 1e-12))) ** 2).sum(axis=1)
+    vdb = 10 * np.log10(EH + 1e-10)
+    peak = swv(np.pad(vdb, (90, 89), mode='edge'), 180).max(axis=-1)
+    vox = np.clip((vdb - (peak - 20)) / 20, 0, 1)
+
     # 12 kHz scope copy: windowed-sinc low-pass then decimate by 4, int8 after peak-normalising.
     taps = 63
     h = np.sinc(np.arange(-(taps // 2), taps // 2 + 1) * (5000 * 2 / SR)) * np.hamming(taps)
@@ -225,7 +239,7 @@ def main():
         'specBins': spec.shape[1],
         'spec': b64(q8(spec)), 'rmsL': b64(q8(to_db(rl))), 'rmsR': b64(q8(to_db(rr))),
         'sub': b64(q8(vband(30, 120))), 'low': b64(q8(vband(120, 400))), 'mid': b64(q8(vband(400, 2500))),
-        'high': b64(q8(vband(2500, 9000))), 'onset': b64(q8(venv)),
+        'high': b64(q8(vband(2500, 9000))), 'onset': b64(q8(venv)), 'vox': b64(q8(vox)),
         'scopeRate': SCOPE_SR, 'scope': b64(scope),
     }
     (OUT / 'features.js').write_text('window.FEAT = ' + json.dumps(feat) + ';\n')
