@@ -5,7 +5,7 @@ A music video for the AI-generated song "Upping My P(doom)", 1920×1080 at
 from 0.4% to 99.9% as the song goes.
 
 The video follows the lyrics. Each sung line gets its own shot, cut on the
-song's bar grid, 60 in all, and shows what the line is about. The lyrics
+song's bar grid, 61 in all, and shows what the line is about. The lyrics
 themselves never appear on screen. Each shot that draws on a paper, meme or
 work cites it on a numbered line at the bottom, like a paper's reference
 list: 32 citations, from Sparks of AGI's TikZ unicorn through induction
@@ -30,12 +30,28 @@ Two characters carry it:
   - he sits on the keyboard for the masked-LM shot;
   - he leaves at the end on a leash, at P(WALKIES) 100.0%.
 
-The sprites carry named anchors (collar, mouth, head, back, hands, feet), so
+The sprites are shaded, with light on top edges, shadow below and a dark
+outline, and they carry named anchors (collar, mouth, head, back, hands, feet), so
 props land where they belong: the sock in his mouth, the leash on his collar,
 the helmet on his head, Seed's hands on the table edge. Dobby walks on a
 four-step cycle, wags, blinks and breathes in his sleep. Seed's hair lags her
-head, she breathes, and bright syllables widen her mouth. Shots can push in,
-bump on the beat, or enter with a whip pan, drop or punch-in.
+head, she breathes, and bright syllables widen her mouth. Her bust has iris
+texture, lower lashes, hair shine, a zipper, a paw-print pin, and a small
+corgi hair clip. Shots can push in, bump on the beat, or enter with a whip
+pan, drop or punch-in. Hard cuts roll the picture and flash a channel number.
+The on-screen display carries REC, a frame-accurate timecode and a battery.
+
+Three scenes were rebuilt in version 4:
+
+- **The shoggoth** has solid tapered tentacles with suckers, a mask strapped
+  to its body, and a maw that opens as it reaches for Seed. Its mask offers
+  to help.
+- **The Death Note eyes** turn Seed's iris red. Through her eyes, the
+  shoggoth's mask still claims helpful, harmless and honest while its true
+  name, BASE MODEL, and LIFESPAN: ∞ write themselves above its head, and the
+  mask cracks.
+- **Gato** lies at the table's edge holding Seed by the paw, gets distracted
+  by a laser dot, and opens the paw on "go".
 
 The song holds 145.2 bpm. Bar 0 starts at 1.085 s, and each bar lasts 1.653 s.
 
@@ -84,8 +100,8 @@ Chrome must run outside the command sandbox.
 ```bash
 python3 analyze.py <song.mp4>
 python3 sprites.py
-node render.mjs --song <song.mp4>                    # out/p-doom-c90-v3.mp4
-node render.mjs --song <song.mp4> --cut x            # out/p-doom-c90-v3-x.mp4, 139.9 s
+node render.mjs --song <song.mp4>                    # out/p-doom-c90-v4.mp4
+node render.mjs --song <song.mp4> --cut x            # out/p-doom-c90-v4-x.mp4, 139.9 s
 node render.mjs --song <song.mp4> --from 98 --to 104 # out/segment.mp4
 node render.mjs --stills 3.6,40,88                   # stills/t_*.png
 ```
@@ -98,4 +114,4 @@ and fades the audio out by 139.9 s.
 `out/`, `stills/` and `prof/`. The song is not part of this repo. Add the
 song's creator to `SONG` in `video.html` for the end-card credit. Version 1
 (the training-run console with Blue Ridge ridgelines) is commit `367e9d2`;
-version 2 (the first lyric-synced cut) is `20ece6f`.
+version 2 (the first lyric-synced cut) is `20ece6f`, and version 3 is `9f07194`.

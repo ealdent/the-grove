@@ -232,7 +232,12 @@ function osd(A, o = {}) {
     pw('watchdogd', 72 + CORGI_W * 4 + 22, 966, 24, { c: DIM, a });
     pw(o.status || 'good boy', 72 + CORGI_W * 4 + 22, 1000, 28, { c: o.statusC || CORE, a });
   }
-  pw(`C90 SP ${fmtClock(t)}`, 1848, 1000, 28, { align: 'right', c: DIM, a });
+  const f = Math.floor(t * FPS), tc = [Math.floor(t / 3600), Math.floor(t / 60) % 60, Math.floor(t) % 60, f % FPS].map(v => String(v).padStart(2, '0')).join(':');
+  pw(`SP  ${tc}`, 1848, 1000, 28, { align: 'right', c: DIM, a });
+  if (Math.floor(t * 1.6) % 2 === 0) { cx.beginPath(); cx.arc(1848 - 356, 990, 9, 0, Math.PI * 2); cx.globalAlpha = a; cx.fillStyle = REC; cx.fill(); cx.globalAlpha = 1; }
+  pw('REC', 1848 - 340, 1000, 28, { c: REC, a });
+  cx.globalAlpha = a; cx.strokeStyle = DIM; cx.lineWidth = 2; cx.strokeRect(1848 - 366, 1014, 40, 16); cx.fillStyle = DIM; cx.fillRect(1848 - 326, 1018, 4, 8);
+  const bars = 3 - Math.floor(t / 48); for (let k = 0; k < bars; k++) cx.fillRect(1848 - 362 + k * 12, 1017, 9, 10); cx.globalAlpha = 1;
   for (let k = 0; k < 4; k++) rect(1848 - 142 + k * 38, 936, 26, 16, k === A.beatInBar ? AMBER : DEEP, t < BAR0 ? 0.3 : a);
 }
 
@@ -351,6 +356,7 @@ function drawScene(A) {
   cx.fillStyle = '#000'; cx.fillRect(0, 0, CW, CH);
   cx.setTransform(S, 0, 0, S, 0, 0);
   const sh = A.shot, so = sh.o, k = sh.u / sh.d;
+  cx.lineJoin = 'round'; cx.lineCap = 'round';
   if (!so.feedback) fbFresh = true;
   // The camera: a slow push, a bump on the beat, and an entrance (whip pan, drop or punch-in).
   let z = 1 + (so.push || 0) * smooth(k) + (so.bump || 0) * A.kick, dx = 0, dy = 0;
@@ -362,18 +368,22 @@ function drawScene(A) {
   sh.fn(A, sh.u, sh, so);
   cx.restore();
   if (so.cite) pw(`[${so.citeN}] ${so.cite}`, 960, 1046, 22, { align: 'center', c: FAINT, a: clamp(sh.u * 4) * 0.95 });
+  if (so.cut === 'hard' && sh.u < 0.9) pw(`CH ${String(so.ch).padStart(2, '0')}`, 1848, 220, 56, { align: 'right', c: OSD, a: sh.u < 0.7 ? 1 : (0.9 - sh.u) / 0.2 });
   if (so.osd !== false) osd(A, { readout: so.readout !== false, dog: so.dog !== false, status: so.status,
                                  statusC: so.statusC, bark: so.bark });
 }
 // Number the citations in order of appearance, like a paper's references.
-function numberCites() { let n = 0; for (const [, , o] of SHOTS) if (o && o.cite) o.citeN = ++n; }
+function numberCites() {
+  let n = 0, ch = 2;
+  for (const [, , o] of SHOTS) { if (o && o.cite) o.citeN = ++n; if (o && o.cut === 'hard') o.ch = ++ch; }
+}
 
 // --- tube parameters over time ----------------------------------------------------------------------
 const GHOST = 0.12;
 function tube(A) {
   const t = A.t, sh = A.shot, so = sh.o;
   const P = { sx: 1, sy: 1, vis: 1, lineW: 0, lineI: 0, dotI: 0, flash: 0, magnet: 0, wob: 0, phase: 0, stat: 0,
-              persist: 0.55, bright: 1, ghost: 0, tint: 0, jit: 0, band: -3, bandAmt: 0, blue: 0 };
+              persist: 0.55, bright: 1, ghost: 0, tint: 0, jit: 0, band: -3, bandAmt: 0, blue: 0, roll: 0 };
   if (t < 0.5) {                                          // power-on: dot, line, picture
     P.persist = 0.8;
     if (t < 0.1) { P.vis = 0; P.dotI = lerp(0.45, 1.1, t / 0.1); }
@@ -401,6 +411,7 @@ function tube(A) {
   if (so.blue) P.blue = so.blue * smooth(clamp(sh.u / 0.25)) * (1 - smooth(seg(sh.u, sh.d - 0.2, sh.d)));
   // Every cut flips the channel a little; section starts flip it hard.
   if (sh.k > 0 && sh.u < 0.06 && !so.nocut) P.stat = Math.max(P.stat, (so.cut === 'hard' ? 0.75 : 0.3) * (1 - sh.u / 0.06));
+  if (so.cut === 'hard' && sh.u < 0.16) P.roll = (1 - easeOut(sh.u / 0.16)) * 0.35;
   P.persist = Math.max(P.persist, so.persist ?? 0.55);
   if (so.pulse && A.beatInBar === 0) P.flash += 0.07 * A.kick;
   if (so.flashAt !== undefined) { const d = sh.u - so.flashAt * BAR; if (d >= 0 && d < 0.4) P.flash += 0.35 * Math.exp(-d * 10); }
@@ -436,7 +447,7 @@ precision highp float;
 uniform sampler2D uScene, uPrev, uGhost;
 uniform vec2 uRes;
 uniform float uTime, uSx, uSy, uVis, uLineW, uLineI, uDotI, uFlash, uMagnet, uWob, uPhase, uStatic, uPersist, uBright, uGhostA, uSeed;
-uniform float uTint, uJit, uBand, uBandAmt, uBlue;
+uniform float uTint, uJit, uBand, uBandAmt, uBlue, uRoll;
 out vec4 frag;
 float hash(vec2 p) { p = fract(p * vec2(123.34, 456.21)); p += dot(p, p + 45.32); return fract(p.x * p.y); }
 vec3 hue(vec3 c, float a) {
@@ -463,13 +474,15 @@ void main() {
   q.y += uJit;
   q /= vec2(max(uSx, 1e-3), max(uSy, 1e-3));
   vec2 cuv = vec2(q.x * 0.5 + 0.5, 0.5 - q.y * 0.5);
+  float blank = 1.0;
+  if (uRoll > 0.0) { cuv.y = fract(cuv.y + uRoll); blank = smoothstep(0.0, 0.04, cuv.y) * smoothstep(1.0, 0.96, cuv.y); }  // vertical roll
   float band = exp(-pow((q.y - uBand) / 0.06, 2.0)) * uBandAmt;  // VCR tracking band
   cuv.x += band * (hash(vec2(floor(gl_FragCoord.y / 3.0), uSeed)) - 0.5) * 0.05;
   float inside = step(0.0, cuv.x) * step(cuv.x, 1.0) * step(0.0, cuv.y) * step(cuv.y, 1.0);
   vec2 ca = pc * vec2(0.0014, 0.0018) * (1.0 + w * 6.0) + vec2(w * 0.006 * sin(uPhase * 1.3), 0.0);
   vec3 col = vec3(texture(uScene, cuv + ca).r, texture(uScene, cuv).g, texture(uScene, cuv - ca).b);
   vec3 glow = textureLod(uScene, cuv, 3.0).rgb * 0.5 + textureLod(uScene, cuv, 4.5).rgb * 0.55 + textureLod(uScene, cuv, 6.0).rgb * 0.55;
-  col = (col + glow * 0.8) * inside * uVis;
+  col = (col + glow * 0.8) * inside * uVis * blank;
   float field = uMagnet * (1.7 * sin(pc.x * 2.3 + 0.8) * cos(pc.y * 1.9 - 0.5) + 0.9 * sin(pc.x * 4.1 - pc.y * 3.3 + uTime * 0.9));
   field += w * 3.4 * sin(uPhase * 0.7 + pc.x * 2.2 + pc.y * 1.6);  // purity blotches
   vec3 purity = 0.5 + 0.5 * cos(field * 1.3 + vec3(0.0, 2.1, 4.2));
@@ -564,7 +577,7 @@ function frame(i) {
   gl.uniform2f(loc(progTube, 'uRes'), W, H);
   const u = { uTime: A.t, uSx: P.sx, uSy: P.sy, uVis: P.vis, uLineW: P.lineW, uLineI: P.lineI, uDotI: P.dotI, uFlash: P.flash,
               uMagnet: P.magnet, uWob: P.wob, uPhase: P.phase, uStatic: P.stat, uPersist: P.persist, uBright: P.bright,
-              uGhostA: P.ghost, uSeed: (i % 97) + 1, uTint: P.tint, uJit: P.jit, uBand: P.band, uBandAmt: P.bandAmt, uBlue: P.blue };
+              uGhostA: P.ghost, uSeed: (i % 97) + 1, uTint: P.tint, uJit: P.jit, uBand: P.band, uBandAmt: P.bandAmt, uBlue: P.blue, uRoll: P.roll };
   for (const [name, v] of Object.entries(u)) gl.uniform1f(loc(progTube, name), v);
   gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
   gl.bindFramebuffer(gl.FRAMEBUFFER, null);

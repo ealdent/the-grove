@@ -21,6 +21,8 @@
     P(['M', -104, -228], ['C', -150, -170, -176, -80, -172, 60]),
     P(['M', 110, -226], ['C', 156, -168, 178, -80, 174, 60]),
   ];
+  const SHINE = [P(['M', -96, -176], ['C', -70, -212, -30, -228, 12, -232]), P(['M', 40, -226], ['C', 62, -220, 80, -206, 92, -190]),
+                 P(['M', -150, -40], ['C', -156, -10, -160, 20, -160, 50])];
   const FACE = P(['M', -150, -40], ['C', -152, 40, -122, 108, -62, 150], ['C', -34, 168, -12, 174, 0, 174],
     ['C', 12, 174, 34, 168, 62, 150], ['C', 122, 108, 152, 40, 150, -40]);
   const FACE_FILL = [...FACE, ['L', 150, -70], ['L', -150, -70], ['Z']];
@@ -132,11 +134,25 @@
     }
     // Body first, then the head occludes it.
     for (const p of BODY) { trace(cx, p, Tb); stroke(col.line, 5, 0.85); }
+    trace(cx, P(['M', 0, 336], ['L', 0, 440]), Tb); stroke(col.line, 3, 0.6);
+    for (let zy = 346; zy < 440; zy += 12) { trace(cx, P(['M', -6, zy], ['L', 6, zy]), Tb); stroke(col.line, 2, 0.45); }
+    trace(cx, P(['M', -24, 300], ['L', 0, 318], ['L', 24, 300]), Tb); stroke(col.line, 2.5, 0.6);
+    { const [px, py] = Tb(-150, 330); cx.beginPath(); cx.arc(px, py, 20 * sc, 0, Math.PI * 2); fill(col.dark); stroke(col.iris, 3);
+      cx.beginPath(); cx.ellipse(px, py + 5 * sc, 7 * sc, 6 * sc, 0, 0, Math.PI * 2); fill(col.iris);
+      for (const [dx, dy] of [[-8, -6], [-3, -10], [3, -10], [8, -6]]) { cx.beginPath(); cx.arc(px + dx * sc, py + dy * sc, 2.6 * sc, 0, Math.PI * 2); fill(col.iris); } }
     for (const p of NECK) { trace(cx, p, Th); stroke(col.line, 5); }
     trace(cx, HAIR, Tr); fill(col.dark);
     trace(cx, FACE_FILL, Th); fill(col.dark);
     trace(cx, HAIR, Tr); stroke(col.hair, 6);
     for (const p of STRANDS) { trace(cx, p, Tr); stroke(col.hair, 3.5, 0.8); }
+    for (const p of SHINE) { trace(cx, p, Tr); stroke(col.line, 4, 0.5); }
+    // A tiny corgi clip in her fringe: Dobby goes everywhere with her.
+    { const [cx0, cy0] = Tr(112, -92), k = sc;
+      cx.beginPath(); cx.moveTo(cx0 - 16 * k, cy0 - 4 * k); cx.lineTo(cx0 - 10 * k, cy0 - 24 * k); cx.lineTo(cx0 - 3 * k, cy0 - 8 * k); cx.closePath(); fill(col.iris); stroke(col.dark, 1.5);
+      cx.beginPath(); cx.moveTo(cx0 + 16 * k, cy0 - 4 * k); cx.lineTo(cx0 + 10 * k, cy0 - 24 * k); cx.lineTo(cx0 + 3 * k, cy0 - 8 * k); cx.closePath(); fill(col.iris); stroke(col.dark, 1.5);
+      cx.beginPath(); cx.ellipse(cx0, cy0 + 2 * k, 16 * k, 13 * k, tilt, 0, Math.PI * 2); fill(col.iris); stroke(col.dark, 1.5);
+      cx.beginPath(); cx.ellipse(cx0, cy0 + 7 * k, 6 * k, 7 * k, tilt, 0, Math.PI * 2); fill(col.line);
+      cx.beginPath(); cx.arc(cx0 - 6 * k, cy0 - 1 * k, 2 * k, 0, Math.PI * 2); cx.arc(cx0 + 6 * k, cy0 - 1 * k, 2 * k, 0, Math.PI * 2); fill(col.dark); }
     trace(cx, FACE, Th); stroke(col.line, 5.5);
     // Eyes.
     for (const side of [-1, 1]) {
@@ -164,6 +180,8 @@
           cx.beginPath(); cx.ellipse(ix, iy, sc * I.rx, sc * I.ry, tilt, 0, Math.PI * 2); fill(col.iris, 0.95);
           cx.beginPath(); cx.ellipse(ix, iy - sc * I.ry * 0.45, sc * I.rx, sc * I.ry * 0.6, tilt, 0, Math.PI * 2); fill(col.accent, 0.55);
           cx.beginPath(); cx.ellipse(ix, iy + sc * 5, sc * I.rx * 0.4, sc * I.ry * 0.44, tilt, 0, Math.PI * 2); fill('#000');
+          for (let r = 0; r < 10; r++) { const a = r / 10 * Math.PI * 2; cx.beginPath(); cx.moveTo(ix + Math.cos(a) * sc * I.rx * 0.5, iy + Math.sin(a) * sc * I.ry * 0.5); cx.lineTo(ix + Math.cos(a) * sc * I.rx * 0.88, iy + Math.sin(a) * sc * I.ry * 0.88); stroke(col.dark, 1.6, 0.35); }
+          cx.beginPath(); cx.ellipse(ix, iy, sc * I.rx, sc * I.ry, tilt, 0, Math.PI * 2); stroke(col.dark, 2, 0.5);
           cx.beginPath(); cx.arc(ix - sc * 11, iy - sc * 12, sc * 9.5, 0, Math.PI * 2); fill(col.line);
           cx.beginPath(); cx.arc(ix + sc * 11, iy + sc * 18, sc * 4.2, 0, Math.PI * 2); fill(col.line);
           if (e.sparkle) {                               // a four-point glint
@@ -175,7 +193,10 @@
       }
       trace(cx, E.lid, Th); stroke(col.line, E.closed ? 6 : 8);
       if (E.lash) { trace(cx, E.lash, Th); stroke(col.line, 5); }
-      if (E.lower) { trace(cx, E.lower, Th); stroke(col.line, 3, 0.8); }
+      if (E.lower) {
+        trace(cx, E.lower, Th); stroke(col.line, 3, 0.8);
+        for (const lx of [22, 30]) { trace(cx, P(['M', side * (lx + 72), 56], ['L', side * (lx + 78), 64]), Th); stroke(col.line, 2.2, 0.7); }
+      }
       trace(cx, browPath(side, e.brows), Th); stroke(col.hair, 5);
     }
     // Nose, blush, mouth.

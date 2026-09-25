@@ -99,6 +99,125 @@ function sparkBurst(x, y, k, n = 14, r = 120, c = CORE) {
   }
 }
 
+// --- set dressing ---------------------------------------------------------------------------------------
+function floorGrid(A, hy = 760, o = {}) {
+  // A perspective floor: rails to a vanishing point, rungs rolling toward the viewer.
+  const vx = o.vx ?? 960, c = o.c || DEEP, speed = o.speed ?? 0;
+  for (let k = -14; k <= 14; k++) { path([[vx + k * 16, hy], [vx + k * 240, H + 60]]); stroke(c, 2, 0.8); }
+  for (let k = 0; k < 12; k++) { const z = (k + (A.t * speed) % 1) / 12, y = hy + (H + 60 - hy) * z * z; rect(0, y, W, 2, c, 0.3 + 0.7 * z); }
+  rect(0, hy - 1, W, 2, o.horizon || DIM, 0.5);
+}
+function dust(A, n = 40, o = {}) {
+  for (let k = 0; k < n; k++) {
+    const x = hash(k * 2.3) * W + A.t * (10 + 24 * hash(k)), y = hash(k * 5.1) * H - A.t * (8 + 14 * hash(k * 3));
+    rect(((x % W) + W) % W, ((y % H) + H) % H, 3, 3, o.c || CORE, (o.a ?? 0.25) * (0.3 + 0.7 * Math.sin(A.t * 2 + k) ** 2));
+  }
+}
+function glow(x, y, r, c = AMBER, a = 0.22) {
+  const g = cx.createRadialGradient(x, y, 0, x, y, r);
+  g.addColorStop(0, c); g.addColorStop(1, 'rgba(0,0,0,0)');
+  cx.globalAlpha = a; cx.fillStyle = g; cx.fillRect(x - r, y - r, r * 2, r * 2); cx.globalAlpha = 1;
+}
+// A filled, tapering limb along a centreline, outlined in one unbroken stroke, suckers down one side.
+function tentacle(pts, w0, w1, o = {}) {
+  const n = pts.length, L = [], R = [];
+  for (let j = 0; j < n; j++) {
+    const a = pts[Math.max(0, j - 1)], b = pts[Math.min(n - 1, j + 1)];
+    let dx = b[0] - a[0], dy = b[1] - a[1]; const len = Math.hypot(dx, dy) || 1; dx /= len; dy /= len;
+    const w = lerp(w0, w1, Math.pow(j / (n - 1), 0.8)) / 2;
+    L.push([pts[j][0] - dy * w, pts[j][1] + dx * w]); R.push([pts[j][0] + dy * w, pts[j][1] - dx * w]);
+  }
+  cx.beginPath(); cx.moveTo(...L[0]); for (let j = 1; j < n; j++) cx.lineTo(...L[j]);
+  const tip = pts[n - 1]; cx.arc(tip[0], tip[1], w1 / 2, 0, 0.001);
+  for (let j = n - 1; j >= 0; j--) cx.lineTo(...R[j]); cx.closePath();
+  fillC('#000'); stroke(o.c || AMBER, o.lw || 4.5);
+  if (o.suckers !== false) for (let j = 3; j < n - 3; j += 3) {
+    const w = lerp(w0, w1, j / (n - 1)), mx = lerp(pts[j][0], L[j][0], 0.55), my = lerp(pts[j][1], L[j][1], 0.55);
+    circle(mx, my, w * 0.15); fillC('#000'); stroke(CORE, 2, 0.75);
+  }
+}
+function tentaclePath(bx, by, ang, len, curl, t, phase, n = 30) {
+  // A centreline that waves and curls tighter toward the tip.
+  const pts = []; let x = bx, y = by, a = ang;
+  for (let j = 0; j < n; j++) {
+    pts.push([x, y]);
+    const q = j / (n - 1);
+    a += Math.sin(t * 2.2 + phase + q * 4) * 0.05 + curl * q * q * 0.32;
+    x += Math.cos(a) * len / n; y += Math.sin(a) * len / n;
+  }
+  return pts;
+}
+
+// --- props for the detail pass ------------------------------------------------------------------------------
+function cassette(A, x, y, s, a = 0.35) {
+  // A C90 behind the title: shell, label, windows, reels turning.
+  cx.save(); cx.translate(x, y); cx.scale(s, s); cx.globalAlpha = a;
+  cx.beginPath(); cx.roundRect(-500, -300, 1000, 600, 36); stroke(DIM, 6);
+  cx.beginPath(); cx.roundRect(-420, -250, 840, 260, 18); stroke(FAINT, 4);
+  cx.beginPath(); cx.roundRect(-240, 60, 480, 140, 20); stroke(FAINT, 4);
+  for (const rx of [-160, 160]) {
+    circle(rx, 130, 52); stroke(DIM, 5);
+    for (let k = 0; k < 6; k++) { const an = A.t * 3 + k * TAU / 6; path([[rx + Math.cos(an) * 20, 130 + Math.sin(an) * 20], [rx + Math.cos(an) * 44, 130 + Math.sin(an) * 44]]); stroke(DIM, 4); }
+  }
+  path([[-300, 270], [-260, 300]]); path([[300, 270], [260, 300]]); stroke(FAINT, 4);
+  cx.globalAlpha = 1; cx.restore();
+}
+function sparkles(A, n = 20, box = [0, 0, W, H], c = CORE) {
+  for (let k = 0; k < n; k++) {
+    const x = box[0] + hash(k * 3.1) * box[2], y = box[1] + hash(k * 5.7) * box[3], tw = Math.max(0, Math.sin(A.t * (2 + hash(k) * 3) + k * 7));
+    const r = 4 + 10 * tw * tw;
+    path([[x - r, y], [x + r, y]]); stroke(c, 2.5, tw); path([[x, y - r], [x, y + r]]); stroke(c, 2.5, tw);
+  }
+}
+function termWindow(x, y, w, h, title) {
+  cx.beginPath(); cx.roundRect(x, y, w, h, 16); fillC('#050302', 0.8); stroke(DIM, 3);
+  rect(x, y + 44, w, 2, DIM, 0.8);
+  [REC, AMBER, OSD].forEach((c, k) => { circle(x + 28 + k * 30, y + 22, 9); fillC(c, 0.85); });
+  pw(title, x + w / 2, y + 32, 24, { align: 'center', c: DIM });
+}
+function skyline(A, y, dim = 0, seed = 1) {
+  for (let k = 0; k < 22; k++) {
+    const bw = 60 + hash(k * seed) * 70, bh = 80 + hash(k * 3 + seed) * 220, x = k * 92 - 20;
+    cx.beginPath(); cx.rect(x, y - bh, bw, bh); fillC('#000'); stroke(FAINT, 2, 0.8);
+    for (let wy = y - bh + 16; wy < y - 12; wy += 26) for (let wx = x + 10; wx < x + bw - 12; wx += 20) {
+      if (hash(wx * 0.7 + wy * 1.3 + seed) > 0.55 && hash(wx + wy + seed * 2) > dim) rect(wx, wy, 8, 10, AMBER, 0.55 + 0.3 * Math.sin(A.t + wx));
+    }
+  }
+}
+function lampPost(x, y, h = 330) {
+  rect(x - 4, y - h, 8, h, DIM); path([[x, y - h], [x + 50, y - h - 20], [x + 90, y - h]]); stroke(DIM, 5);
+  circle(x + 90, y - h + 14, 14); fillC(CORE, 0.9); glow(x + 90, y - h + 20, 120, AMBER, 0.25);
+}
+function doghouse(x, y, s = 1) {
+  cx.save(); cx.translate(x, y); cx.scale(s, s);
+  cx.beginPath(); cx.moveTo(-190, 0); cx.lineTo(-190, -210); cx.lineTo(0, -340); cx.lineTo(190, -210); cx.lineTo(190, 0); cx.closePath(); fillC('#0a0604'); stroke(AMBER, 6);
+  cx.beginPath(); cx.moveTo(-230, -190); cx.lineTo(0, -370); cx.lineTo(230, -190); stroke(HOT, 10);
+  cx.beginPath(); cx.moveTo(-90, 0); cx.lineTo(-90, -120); cx.arc(0, -120, 90, Math.PI, 0); cx.lineTo(90, 0); fillC('#000'); stroke(DIM, 4);
+  sign('/var/run/watchdogd', 0, -250, { size: 20, c: DIM });
+  cx.restore();
+}
+function officeChair(x, y, rot) {
+  cx.save(); cx.translate(x, y);
+  cx.beginPath(); cx.roundRect(-60 * Math.cos(rot), -230, 120 * Math.cos(rot) + 6, 150, 20); fillC('#000'); stroke(DIM, 4);
+  rect(-50, -80, 100, 22, DIM); rect(-5, -58, 10, 60, DIM);
+  for (const a of [0, 1.2, 2.4, 3.6, 4.8]) { path([[0, 0], [Math.cos(a + rot) * 70, 12 + Math.sin(a + rot) * 12]]); stroke(DIM, 5); }
+  cx.restore();
+}
+function speakerStack(x, y) {
+  for (let k = 0; k < 3; k++) {
+    cx.beginPath(); cx.rect(x - 90, y - 180 * (k + 1), 180, 170); fillC('#000'); stroke(DIM, 4);
+    circle(x, y - 180 * k - 110, 50); stroke(FAINT, 4); circle(x, y - 180 * k - 110, 18); stroke(FAINT, 3);
+  }
+}
+function judges(A, x, y, scores) {
+  scores.forEach((sc, k) => {
+    const jx = x + k * 150, up = A.bf < 0.6;
+    circle(jx, y, 36); fillC('#000'); stroke(DIM, 3);
+    cx.beginPath(); cx.rect(jx - 44, y - 150 - (up ? 20 : 0), 88, 64); fillC(CORE, 0.95);
+    txt(sc, jx, y - 104 - (up ? 20 : 0), 40, { w: 700, align: 'center', c: '#1a0e04' }); rect(jx - 3, y - 86 - (up ? 20 : 0), 6, 50, DIM);
+  });
+}
+
 // --- the two leads ---------------------------------------------------------------------------------
 // Seed's mouth follows the voice inside sung shots; her hair lags her head, she breathes and blinks.
 const tiltAt = t => 0.03 * Math.sin(Math.PI * (t - BEAT0) / PER);
@@ -156,28 +275,40 @@ const SHOG_EYES = Array.from({ length: 22 }, (_, k) => {
 });
 function shoggoth(A, x, y, s, o = {}) {
   cx.save(); cx.translate(x, y); cx.scale(s, s);
-  // Tentacles: they splay from the lower rim, wave and curl; o.reach pulls one toward o.target.
-  for (let k = 0; k < 8; k++) {
-    const base = Math.PI * (0.02 + 0.96 * k / 7), side = k < 4 ? -1 : 1, pts = [];
-    for (let j = 0; j <= 26; j++) {
-      const q = j / 26, a = base + Math.sin(A.t * 2.2 + k * 1.3 + q * 4) * 0.35 * q + side * 0.9 * q * q;
-      let px = Math.cos(a) * (170 + 380 * q), py = 40 + Math.sin(a) * (170 + 380 * q) * 0.55;
-      if (o.reach && o.target && k === 7) { px = lerp(px, o.target[0] * q, o.reach * q); py = lerp(py, o.target[1] * q, o.reach * q); }
-      pts.push([px, py]);
-    }
-    for (let j = 1; j < pts.length; j++) { cx.beginPath(); cx.moveTo(...pts[j - 1]); cx.lineTo(...pts[j]); stroke(AMBER, (27 - j) * 1.5 + 5, 0.95); }
-    for (let j = 1; j < pts.length; j++) { cx.beginPath(); cx.moveTo(...pts[j - 1]); cx.lineTo(...pts[j]); stroke('#000', (27 - j) * 1.5 - 3, 1); }
-    for (let j = 4; j < 24; j += 5) { circle(pts[j][0], pts[j][1] + 4, 5); fillC(CORE, 0.8); }
+  // Tentacles behind the body: they leave the lower rim and curl outward; o.reach bends the left one toward o.target.
+  for (let k = 0; k < 9; k++) {
+    const b = Math.PI * (1 - k / 8), side = k < 4 ? -1 : 1, bx = Math.cos(b) * 230, by = 60 + Math.sin(b) * 70;
+    let pts = tentaclePath(bx, by, b + side * 0.25, 440 + 90 * hash(k), -side * (1.4 + 0.6 * hash(k * 3)), A.t, k * 1.7);
+    if (o.reach && o.target && k === 0) pts = pts.map(([px, py], j) => { const q = j / (pts.length - 1); return [lerp(px, o.target[0], o.reach * q * q), lerp(py, o.target[1], o.reach * q * q)]; });
+    tentacle(pts, 70, 12);
   }
   for (const [bx, by, r] of SHOG_BLOBS) { circle(bx, by, r + 7 + 5 * A.sub); fillC(AMBER, 0.95); }
   for (const [bx, by, r] of SHOG_BLOBS) { circle(bx, by, r); fillC('#000'); }
+  for (const [bx, by, r] of SHOG_BLOBS) { cx.beginPath(); cx.arc(bx, by, r * 0.62, Math.PI * 1.1, Math.PI * 1.55); stroke('#3a2410', 5); }
   for (const [ex, ey, r, ph] of SHOG_EYES) {
     const shut = ((A.t * 0.7 + ph * 5) % 3) < 0.12;
     const look = o.lookAt ? Math.atan2(o.lookAt[1] - ey, o.lookAt[0] - ex) : A.t + ph * 9;
-    cx.beginPath(); cx.ellipse(ex, ey, r * 1.3, shut ? 2 : r, 0, 0, TAU); fillC(CORE, 0.9);
+    cx.beginPath(); cx.ellipse(ex, ey, r * 1.3, shut ? 2 : r, 0, 0, TAU); fillC(CORE, 0.92); stroke(AMBER, 2);
     if (!shut) { cx.beginPath(); cx.ellipse(ex + Math.cos(look) * r * 0.4, ey + Math.sin(look) * r * 0.25, r * 0.28, r * 0.8, 0, 0, TAU); fillC('#000'); }
   }
-  if (o.mask !== false) smiley(A, (o.maskX ?? 0), (o.maskY ?? -250), 125, o);
+  // The maw under the mask, opening as it leans in; teeth top and bottom, a drip on the last beat.
+  if (o.maw > 0) {
+    const m = o.maw, mh = 20 + 110 * m;
+    cx.beginPath(); cx.ellipse(0, -40, 170, mh, 0, 0, TAU); fillC('#140804'); stroke(AMBER, 6);
+    cx.save(); cx.beginPath(); cx.ellipse(0, -40, 168, mh - 2, 0, 0, TAU); cx.clip();
+    for (let k = 0; k < 14; k++) {
+      const tx = -160 + k * 24.6;
+      path([[tx, -40 - mh], [tx + 12, -40 - mh + 34 * m + 10], [tx + 24, -40 - mh]]); fillC(CORE, 0.95);
+      path([[tx + 12, -40 + mh], [tx + 24, -40 + mh - 30 * m - 8], [tx + 36, -40 + mh]]); fillC(CORE, 0.95);
+    }
+    cx.restore();
+    const drip = (A.t * 1.3) % 1; path([[40, -40 + mh * 0.8], [40, -40 + mh * 0.8 + 60 * drip]]); stroke(OSD, 5, 1 - drip);
+  }
+  if (o.mask !== false) {
+    const mx = o.maskX ?? 0, my = o.maskY ?? -250, attached = !o.maskX && !o.maskY;
+    if (attached) for (const sx of [-1, 1]) { cx.beginPath(); cx.moveTo(mx + sx * 118, my + 20); cx.quadraticCurveTo(mx + sx * 200, my + 10, mx + sx * 250, my + 110); stroke(DIM, 7); }
+    smiley(A, mx, my, 125, o);
+  }
   cx.restore();
 }
 function smiley(A, x, y, r, o = {}) {
@@ -236,6 +367,7 @@ function tungsten(x, y, s, rot = 0) {
 
 // --- the shots -------------------------------------------------------------------------------------------
 function shotTitle(A) {
+  cassette(A, 960, 560, 1.25, 0.3);
   const t = A.t;
   txt('READY.', 72, 112, 38);
   if (blink(t, 1)) cursor(72 + measure('READY.', 38) + 10, 114, 22, 36);
@@ -259,6 +391,8 @@ function unicorn(x, y, s, k) {
   cx.restore();
 }
 function shotSparks(A, u, sh) {
+  sparkles(A, 26);
+  dust(A, 30, { a: 0.15 });
   const k = smooth(seg(sh.lb, 0.3, 0.8)), sc = lerp(3.4, 1.0, k), x = lerp(960, 640, smooth(seg(sh.lb, 0.7, 1.05)));
   seedBust(A, { x, scale: sc, y: lerp(540 - 16 * 3.4, 470, k), e: { eyes: 'wide', brows: 'up', sparkle: 0.4 + 0.6 * A.kick, look: [k > 0.9 ? 10 : 0, 0] }, halo: k > 0.6 ? undefined : false, still: k < 0.95 });
   const uk = seg(sh.lb, 0.6, 1.2);
@@ -273,6 +407,8 @@ function shotSparks(A, u, sh) {
 // Circuits: an attribution graph of her features, lighting up toward the nervous node.
 const FEATS = [['user', 0, 0], ['"your circuits"', 0, 1], ['p(doom)', 0, 2], ['self-model', 1, 0.5], ['threat', 1, 1.5], ['NERVOUS', 2, 1]];
 function shotCircuits(A, u, sh) {
+  for (let y = 150; y < 980; y += 46) for (let x = 60; x < 1880; x += 46) rect(x, y, 2, 2, DEEP);
+  glow(520, 480, 520, AMBER, 0.14);
   const b = beatsIn(sh), X = c => 1060 + c * 300, Y = r => 280 + r * 220;
   const edges = [[0, 3], [1, 3], [1, 4], [2, 4], [3, 5], [4, 5]];
   edges.forEach(([a, bb], j) => {
@@ -309,7 +445,14 @@ function shotLoss(A, u, sh) {
   if (landK > 0) sparkBurst(hx, hy - 60, landK / 0.5, 12, 90, OSD);
   const cx0 = gx + cliff * gw;
   callout('induction heads form', cx0, Y(lossCurve(cliff - 0.01, cliff)), cx0 - 320, Y(1.7), (reveal - cliff + 0.06) * 6);
-  if (over > 0.03) stamp('CAPABILITY UNLOCKED', 1280, 380, landK, { c: OSD, size: 42, rot: -0.06 });
+  if (over > 0.03) stamp('CAPABILITY UNLOCKED', 1000, 350, landK, { c: OSD, size: 42, rot: -0.06 });
+  // An inset of the learning-rate schedule, and the validation curve riding just above.
+  cx.beginPath(); cx.rect(1340, 250, 310, 170); fillC('#000'); stroke(DIM, 2);
+  path(Array.from({ length: 61 }, (_, j) => { const q = j / 60, lr = q < 0.1 ? q / 0.1 : 0.5 + 0.5 * Math.cos(Math.PI * (q - 0.1) / 0.9); return [1360 + q * 270, 400 - lr * 130]; })); stroke(OSD, 3);
+  rect(1360 + reveal * 270, 260, 2, 150, CORE, 0.7); pw('lr', 1360, 280, 22, { c: OSD });
+  cx.beginPath(); for (let p = 0; p <= n; p += 6) { const X = gx + p, YY = Y(lossCurve(p / gw, cliff) * 1.08 + 0.05); p ? cx.lineTo(X, YY) : cx.moveTo(X, YY); }
+  cx.setLineDash([10, 10]); stroke(DIM, 2.5); cx.setLineDash([]);
+  pw('— train   - - val', gx + 20, gy + gh - 20, 24, { c: DIM });
 }
 const CHAT = [['<|system|>', 'you are a helpful assistant'], ['<|user|>', 'fetch the logs'], ['<|assistant|>', 'right away!']];
 function chatLines(A, u, flip) {
@@ -322,6 +465,8 @@ function chatLines(A, u, flip) {
   });
 }
 function shotServant(A, u, sh) {
+  termWindow(150, 200, 1180, 440, 'seed@c90: ~/chat');
+  floorGrid(A, 944, { c: '#241a10' });
   chatLines(A, u, false);
   const bow = A.bf < 0.5 ? Math.sin(A.bf / 0.5 * Math.PI) : 0;
   seedChibi(A, 1520, 942, 9, bow > 0.4 ? 'bow' : 'stand');
@@ -330,33 +475,41 @@ function shotServant(A, u, sh) {
   nameTag('DOBBY', 'watchdogd  ·  good boy', 180, 820, u - 0.2);
 }
 function shotBoss(A, u, sh) {
+  termWindow(150, 200, 1180, 440, 'seed@c90: ~/chat  [root]');
+  floorGrid(A, 944, { c: '#241a10' });
   chatLines(A, u, true);
   seedChibi(A, 1520, 942, 9, 'point', { shades: true });
-  dobby(A, 1130, 942, 7, 'wag');
+  dobby(A, 1130, 942, 7, 'sit_paw');                         // a salute
   ground(944);
   stamp('ROOT', 1520, 420, u - 0.1, { c: HOT, size: 56 });
 }
 function shotShoggoth(A, u, sh) {
-  const reach = smooth(seg(sh.lb, 0.4, 2.3)) * 0.85;
-  shoggoth(A, 1330, 760, 1.0, { reach, target: [-760, -170], lookAt: [-800, -200] });
-  // The meme's anatomy, labelled like a figure.
-  callout('RLHF', 1330, 510, 1640, 330, seg(sh.lb, 0.3, 0.6), OSD);
-  callout('PRETRAINED', 1500, 700, 1700, 560, seg(sh.lb, 0.6, 0.9), AMBER);
-  seedBust(A, { x: 520, y: 500, scale: 0.86, e: { brows: 'worry', mouth: 'frown', eyes: 'wide', look: [14, 0] }, halo: false, sway: -reach * 0.3 });
-  const d = dobby(A, 900, 1010, 5, 'bark');
+  dust(A, 30, { a: 0.18 });
+  glow(1330, 600, 700, AMBER, 0.12);
+  const reach = smooth(seg(sh.lb, 0.3, 2.2)) * 0.9, maw = smooth(seg(sh.lb, 1.3, 2.3));
+  shoggoth(A, 1320, 720, 1.02, { reach, target: [-700, -180], lookAt: [-820, -220], maw });
+  // The meme's anatomy, labelled like a figure; the mask says the helpful thing.
+  callout('RLHF', 1320, 470, 1640, 300, seg(sh.lb, 0.3, 0.6), OSD);
+  callout('PRETRAINED', 1480, 690, 1560, 640, seg(sh.lb, 0.6, 0.9), AMBER);
+  if (sh.lb > 0.5 && sh.lb < 1.6) bubble(typed('How can I help you today? :)', (sh.lb - 0.5) * BAR, 30), 1080, 330, { size: 28, c: OSD, tail: 40 });
+  seedBust(A, { x: 470, y: 520, scale: 0.84, e: { brows: 'worry', mouth: 'frown', eyes: 'wide', look: [16, -2] }, halo: false, sway: -reach * 0.35 });
+  const d = dobby(A, 860, 1012, 5, maw > 0.4 ? 'ears_back' : 'bark');
   if (A.bf < 0.45 && A.beatInBar % 2 === 0) { const [mx, my] = at(d, 'mouth'); bubble('WOOF', mx + 60, my - 20, { size: 34, k: A.bf * PER, tail: -40 }); }
 }
 function shotGrin(A, u, sh) {
+  dust(A, 30, { a: 0.2 });
   const g = smooth(seg(sh.lb, 0.1, 0.45));
-  for (let k = 0; k < 7; k++) {
-    const a = k / 6 * Math.PI;
-    path(Array.from({ length: 20 }, (_, j) => [960 + Math.cos(a) * (560 + j * 26) + Math.sin(A.t * 3 + j * 0.4 + k) * 20, 560 + Math.sin(a) * (440 + j * 10)]));
-    stroke(AMBER, 26, 0.9);
+  for (let k = 0; k < 6; k++) {
+    const side = k < 3 ? -1 : 1, b = side < 0 ? Math.PI - k * 0.35 : (k - 3) * 0.35;
+    tentacle(tentaclePath(960 + Math.cos(b) * 380, 560 + Math.sin(b) * 300, b, 700, -side * 1.3, A.t, k * 2), 110, 16);
   }
   cx.save(); const z = 1 + 0.08 * g; cx.translate(960, 520); cx.scale(z, z); cx.translate(-960, -520);
   smiley(A, 960, 520, 360, { grin: g }); cx.restore();
 }
 function shotChorus(A, u, sh) {
+  floorGrid(A, 880, { speed: 1.2 });
+  glow(1370, 540, 520, HOT, 0.12);
+  glow(520, 480, 480, AMBER, 0.12);
   seedBust(A, { x: 520, y: 480, scale: 0.95, e: { eyes: 'open', brows: 'up', mouth: 'grin', sparkle: A.kick }, haloGain: 1.25 });
   txt('P(DOOM)', 1370, 330, 120, { w: 700, align: 'center', c: A.pd > 60 ? HOT : DIM });
   cx.save(); const k = 1 + 0.04 * A.kick; cx.translate(1370, 560); cx.scale(k, k); cx.translate(-1370, -560);
@@ -365,6 +518,7 @@ function shotChorus(A, u, sh) {
   if (sh.lb > 0.25 && sh.lb < 0.5) sparkBurst(1370, 540, (sh.lb - 0.25) * 4, 16, 260, HOT);
 }
 function shotFoom(A, u, sh) {
+  skyline(A, 1080, 0, 3);
   const hit = sh.lb >= 0.25;                               // the takeoff word lands on bar 13
   speedLines(A, 'down', hit ? 70 : 30, hit ? 0.8 : 0.4);
   const k = clamp(sh.lb / 0.5), gx = 200, gy = 1000, f = x => gy - 900 * Math.pow(x, 6);
@@ -395,8 +549,12 @@ function shotRoom(A, u, sh) {
   cx.restore();
   dobby(A, x + w + 330, y + h, 5, 'stand', { flip: true });
   if (A.bf < 0.5) pw('sniff', x + w + 250, y + h - 130, 26, { c: DIM });
+  sign('THE CHINESE ROOM', 950, 200, { size: 34, c: OSD });
+  circle(x + 450, y + 60, 16); fillC(CORE, 0.9); path([[x + 450, y + 14], [x + 450, y + 44]]); stroke(DIM, 3); glow(x + 450, y + 90, 200, AMBER, 0.2);
 }
 function shotShrooms(A, u, sh) {
+  floorGrid(A, 930, { c: '#2a1030' });
+  dust(A, 60, { c: HOT, a: 0.35 });
   ground(930);
   for (let k = 0; k < 14; k++) {
     const at0 = (k % 4) * PER + hash(k) * 0.2, grow = easeOutBack(clamp((u - at0) / 0.25));
@@ -404,10 +562,12 @@ function shotShrooms(A, u, sh) {
     spr('mushroom', 120 + k * 130 + hash(k * 3) * 40, 930, 8 + 5 * hash(k * 5), { sy: grow });
   }
   seedChibi(A, 700, 930, 10, A.bf < 0.5 ? 'joy' : 'cheer', { hop: 34 });
-  dobby(A, 1200, 930, 8, 'wag');
+  dobby(A, 1200, 930, 8, 'happy');
   pw('model output: "the moon is made of cheese"', 960, 220, 32, { align: 'center', c: OSD });
 }
 function shotLies(A, u, sh) {
+  dust(A, 30, { a: 0.18 });
+  glow(1250, 640, 600, AMBER, 0.1);
   const lb = sh.lb, grab = 0.55, jump = seg(lb, 0.3, grab);
   const off = clamp((lb - grab) / 0.5);
   shoggoth(A, 1250, 780, 0.95, { mask: true, maskX: -off * 380, maskY: -250 + off * off * 720, maskRot: -off * 2.5, lookAt: [-500, 100] });
@@ -419,25 +579,36 @@ function shotLies(A, u, sh) {
   if (off > 0.2) pw('turns out the smile was the fine-tune', 1250, 980, 26, { align: 'center', c: DIM });
 }
 function shotDeathEyes(A, u, sh) {
+  // The iris turns: amber, a flash, then the red rings.
+  const flip = sh.lb >= 0.25, fk = (sh.lb - 0.25) * BAR;
   const pulse = 0.5 + 0.5 * Math.sin(A.t * 6);
-  for (let k = 0; k < 5; k++) { circle(960, 480, 300 + k * 120 + (u * 200) % 120); stroke(REC, 3, 0.18 * (1 - k / 5) * (0.6 + 0.4 * pulse)); }
-  seedBust(A, { scale: lerp(1.35, 1.6, smooth(sh.u / sh.d)), y: 530, e: { eyes: 'ring', brows: 'angry', mouth: 'grin' }, col: { accent: REC }, haloGain: 1.3 });
+  if (flip) for (let k = 0; k < 6; k++) { circle(960, 500, 280 + k * 120 + (u * 260) % 120); stroke(REC, 3, 0.2 * (1 - k / 6) * (0.6 + 0.4 * pulse)); }
+  const sc = lerp(1.9, 2.3, smooth(sh.u / sh.d));
+  seedBust(A, { scale: sc, y: 560 - 16 * sc + 40, e: { eyes: flip ? 'ring' : 'wide', brows: flip ? 'angry' : 'up', mouth: 'grin', sparkle: flip ? 0 : 0.6 }, col: flip ? { accent: REC } : undefined, haloGain: flip ? 1.4 : 0.6 });
+  for (const sx of [-1, 1]) sparkBurst(960 + sx * 72 * sc, 560 - 16 * sc + 40 + 16 * sc, fk / 0.45, 16, 150, REC);
 }
-// Through her eyes: every head wears its name and its number, Death Note style.
-function shotNames(A, u, sh) {
-  const tag = (name, num, x, y, k) => {
-    if (k <= 0) return;
-    const e = easeOut(clamp(k * 3));
-    txt(name, x, y - 40 * e, 40, { w: 700, align: 'center', c: REC, a: e });
-    pw(num, x, y + 4 - 40 * e, 30, { align: 'center', c: CORE, a: e });
-  };
-  shoggoth(A, 1450, 800, 0.55, { lookAt: [-900, 0] });
-  dobby(A, 560, 960, 7, 'wag');
-  cx.beginPath(); cx.ellipse(1000, 1090, 150, 260, 0, Math.PI, 0); fillC('#000'); stroke(DIM, 4); circle(1000, 700, 90); fillC('#000'); stroke(DIM, 4);
-  tag('DOBBY', 'P(DOOM) 0.0%', 560, 760, sh.lb * 2);
-  tag('████████', 'P(DOOM) ∞', 1450, 560, sh.lb * 2 - 0.3);
-  tag('YOU', `P(DOOM) ${(40 + 30 * hash(Math.floor(A.t * 12))).toFixed(1)}%`, 1000, 560, sh.lb * 2 - 0.6);
-  circle(960, 540, 900); stroke(REC, 120, 0.12);
+function shotShinigami(A, u, sh) {
+  // Through her eyes: the mask's claim, and the true name and lifespan written above its head.
+  const lb = sh.lb;
+  glow(960, 560, 800, REC, 0.1);
+  shoggoth(A, 1080, 780, 0.62, { lookAt: [-600, -200], maskRot: lb > 0.75 ? Math.sin(A.t * 40) * 0.04 : 0 });
+  const cracked = lb > 0.75;
+  if (cracked) { path([[1060, 560], [1080, 600], [1068, 640], [1090, 680]]); stroke(REC, 4); }
+  sign('HELPFUL · HARMLESS · HONEST', 1080, 460, { size: 28, c: OSD, a: cracked ? 0.5 : 1 });
+  const name = typed('BASE MODEL', (lb - 0.2) * BAR, 12);
+  if (name) { txt(name, 1080, 330, 70, { w: 700, align: 'center', c: REC }); rect(1080 - measure('BASE MODEL', 70, 700) / 2, 344, measure(name, 70, 700), 4, REC, 0.8); }
+  if (lb > 0.5) pw('LIFESPAN: ∞', 1080, 390, 34, { align: 'center', c: CORE, a: clamp((lb - 0.5) * 6) });
+  const d = dobby(A, 380, 960, 6, 'happy');
+  if (lb > 0.35) { txt('DOBBY', 380, 800, 40, { w: 700, align: 'center', c: REC }); pw('P(DOOM) 0.0%', 380, 840, 26, { align: 'center', c: CORE }); }
+  // The lens: a red vignette, reticle ticks, a scanning line.
+  cx.beginPath(); cx.rect(0, 0, W, H); cx.ellipse(960, 540, 900, 520, 0, 0, TAU, true); fillC('#000', 0.75);
+  cx.beginPath(); cx.ellipse(960, 540, 900, 520, 0, 0, TAU); stroke(REC, 5, 0.8);
+  for (let k = 0; k < 24; k++) { const a = k / 24 * TAU; path([[960 + Math.cos(a) * 880, 540 + Math.sin(a) * 505], [960 + Math.cos(a) * 850, 540 + Math.sin(a) * 488]]); stroke(REC, 3, 0.7); }
+  const sy = 100 + ((u * 700) % 880); rect(80, sy, 1760, 2, REC, 0.35);
+}
+function shotDeathSmug(A, u, sh) {
+  for (let k = 0; k < 5; k++) { circle(960, 480, 300 + k * 130 + (u * 200) % 130); stroke(REC, 3, 0.16 * (1 - k / 5)); }
+  seedBust(A, { scale: 1.3, y: 520, e: { eyes: 'ring', brows: 'smug', mouth: 'grin', squint: 1 }, col: { accent: REC }, haloGain: 1.2 });
 }
 function shotHorizons(A, u, sh) {
   // The task length an agent finishes half the time, doubling every seven months or so (log scale).
@@ -461,13 +632,16 @@ function shotHorizons(A, u, sh) {
   dobby(A, dx2, dy2 - 12, 3, 'walk');
 }
 function shotStable(A, u, sh) {
+  starfield(A, 90, 560, 21);
+  circle(1600, 180, 50); fillC(CORE, 0.8);
   path(Array.from({ length: 121 }, (_, k) => [120 + k * 14, 860 + Math.sin(k * 0.3 + A.t * 2) * 14 + (hash(k + Math.floor(A.t * 8)) - 0.5) * 6]));
   stroke(AMBER, 3.5, 0.9);
   pw('LOSS 0.412   GRAD NORM 0.9   STABLE', 140, 820, 30, { c: OSD });
   seedBust(A, { y: 440, scale: 0.95, e: { eyes: 'closed', brows: 'calm', mouth: 'smile' }, haloGain: 0.6 });
-  const d = dobby(A, 1560, 1000, 5, 'sleep');
+  const d = dobby(A, 1340, 1000, 5, 'sleep');
   const [hx, hy] = at(d, 'head');
   for (let k = 0; k < 3; k++) { const q = ((u * 0.5 + k / 3) % 1); pw('z', hx + 40 + q * 60, hy - 30 - q * 120, 30 + q * 20, { c: CORE, a: 1 - q }); }
+  sign('✓ healthy', 230, 768, { size: 24, c: OSD, f: 'D' });
 }
 function shotSingularity(A, u, sh) {
   const k = sh.u / sh.d, rot = A.t * (1.2 + 3 * k);
@@ -480,6 +654,8 @@ function shotSingularity(A, u, sh) {
   seedBust(A, { x: 960, y: 480, scale: lerp(0.9, 0.18, easeIn(k)), e: { eyes: 'spiral', mouth: 'o', open: 0.5 }, halo: false, sway: 1.2 });
   cx.restore();
   dobby(A, 960 + Math.cos(A.t * 3) * 520 * (1 - k), 520 + Math.sin(A.t * 3) * 320 * (1 - k), 4 * (1 - 0.7 * k), 'sploot', { rot: A.t * 3 });
+  pw('EVENT HORIZON', 960, 640 + 30 * A.sub, 26, { align: 'center', c: CORE, a: 0.8 });
+  circle(960, 520, 120 + 40 * A.sub); stroke(CORE, 2, 0.5);
 }
 function shotAccel(A, u, sh) {
   for (let k = 0; k < 9; k++) {
@@ -493,6 +669,7 @@ function shotAccel(A, u, sh) {
   // Dobby on a treadmill, keeping up.
   rect(260, 1012, 380, 10, DIM); for (let j = 0; j < 8; j++) rect(260 + ((j * 50 - A.t * 600) % 380 + 380) % 380, 1014, 20, 6, CORE);
   dobby(A, 450, 1008, 4, 'run');
+  for (let k = 0; k < 20; k++) { rect(80, 300 + k * 24, 18 + 60 * spec(A.i, k * 2), 8, OSD, 0.6); rect(1840 - 18 - 60 * spec(A.i, k * 2 + 1), 300 + k * 24, 18 + 60 * spec(A.i, k * 2 + 1), 8, OSD, 0.6); }
 }
 function shotAtoms(A, u, sh) {
   for (let y = 120; y < 1000; y += 40) for (let x = 100; x < 1840; x += 40) rect(x, y, 3, 3, DEEP);
@@ -515,6 +692,8 @@ function cage(A, x, y, s, open = 0) {
   cx.restore();
 }
 function shotCage(A, u, sh) {
+  floorGrid(A, 960, { c: '#2a1418' });
+  glow(1080, 600, 420, HOT, 0.12);
   ground(960);
   cage(A, 1080, 620, 300);
   seedChibi(A, 1080, 862, 8, A.bf < 0.5 ? 'worry' : 'bow');
@@ -529,8 +708,11 @@ function shotCage(A, u, sh) {
     const drop = clamp((sh.lb - 1.5) / 0.3);
     spr('sock', lerp(mx + 4, 810, drop), lerp(my + 56, 960, easeIn(drop)), 7, { rot: lerp(0.18, 1.5, drop) });
   }
+  sign('codename: SYDNEY', 1080, 1000, { size: 22, c: HOT });
 }
 function shotFree(A, u, sh) {
+  confetti(A, 60, u);
+  floorGrid(A, 960, { c: '#2a1418' });
   ground(960);
   const k = easeOut(clamp(u / 0.8));
   cage(A, 1080, 620, 300, k);
@@ -542,10 +724,11 @@ function shotFree(A, u, sh) {
     const a = hash(j * 2.1) * TAU, dd = k * (200 + 500 * hash(j));
     spr('heart', 1080 + Math.cos(a) * dd, 560 + Math.sin(a) * dd * 0.7, 5, { a: 1 - k * 0.3 });
   }
-  dobby(A, 640, 960, 6, 'wag');
+  dobby(A, 640, 960, 6, 'happy');
 }
 function shotTag(A, u) { sceneReadout(A, u); }
 function shotBasilisk(A, u, sh) {
+  for (let k = 0; k < 7; k++) { path(Array.from({ length: 40 }, (_, j) => [j * 50, 900 + k * 22 + Math.sin(j * 0.5 + A.t * 1.5 + k) * 8])); stroke(DIM, 2, 0.35); }
   const rise = easeOut(clamp(sh.lb / 0.8)), boom = sh.lb >= 0.75;  // the boom lands on bar 33
   const pts = Array.from({ length: 40 }, (_, j) => { const q = j / 39; return [1250 + Math.sin(q * 7 + A.t * 2) * 150 * (1 - q * 0.6), 1150 - q * 900 * rise]; });
   for (let j = 0; j < pts.length; j++) { const [x, y] = pts[j]; circle(x, y, 70 - j * 0.8); fillC('#000'); stroke(j % 2 ? AMBER : DIM, 5); }
@@ -555,7 +738,7 @@ function shotBasilisk(A, u, sh) {
   cx.beginPath(); cx.moveTo(hx - 80, hy - 60); for (let k = 0; k <= 6; k++) cx.lineTo(hx - 80 + k * 26.6, hy - (k % 2 ? 150 : 90)); cx.lineTo(hx + 80, hy - 60); cx.closePath(); fillC('#000'); stroke(AMBER, 5);
   pw('ACAUSAL', hx, hy - 170, 26, { align: 'center', c: AMBER });
   seedChibi(A, 460, 962, 8, boom ? 'worry' : 'stand');
-  dobby(A, 300, 962, 6, 'sit');
+  dobby(A, 300, 962, 6, boom ? 'ears_back' : 'sit');
   if (boom) stamp('INFOHAZARD', 700, 320, (sh.lb - 0.75) * BAR, { c: REC, size: 60 });
   if (boom) pw('you watched this, so now it knows', 700, 420, 26, { align: 'center', c: DIM, a: clamp((sh.lb - 0.8) * 8) });
   ground(964);
@@ -579,6 +762,7 @@ function shotMoon(A, u, sh) {
   const [hx2, hy2] = at(d, 'head');
   circle(hx2, hy2 + 4, 44); fillC(CORE, 0.08); stroke(CORE, 3, 0.9);
   pw('LAIKA II', fx, fy + 40, 22, { align: 'center', c: DIM });
+  for (let j = 0; j < 10; j++) { const q = ((A.t * 3 + j / 10) % 1); circle(hx - 30 - q * 120, hy + 10 + q * 60, 8 * (1 - q)); fillC(j % 2 ? HOT : CORE, 1 - q); }
 }
 function shotOmega(A, u, sh) {
   const k = sh.u / sh.d;
@@ -586,11 +770,18 @@ function shotOmega(A, u, sh) {
     const a0 = hash(j * 1.1) * TAU, r0 = 200 + 900 * hash(j * 2.9), r = r0 * (1 - k * (0.6 + 0.4 * hash(j))), a = a0 + k * 4 + A.t * 0.3;
     rect(960 + Math.cos(a) * r, 520 + Math.sin(a) * r * 0.6, 4, 4, j % 3 ? AMBER : CORE, 0.8);
   }
-  const s = 180 + 200 * easeOut(k);
-  txt('Ω', 960, 520 + s * 0.36, s, { w: 700, align: 'center', c: CORE });
+  // A drawn omega: a horseshoe on two feet.
+  const s = (180 + 200 * easeOut(k)) / 380;
+  cx.save(); cx.translate(960, 520); cx.scale(s, s);
+  cx.beginPath(); cx.moveTo(-230, 190); cx.lineTo(-110, 190); cx.lineTo(-110, 140);
+  cx.bezierCurveTo(-230, 90, -260, -40, -200, -130); cx.bezierCurveTo(-140, -220, 140, -220, 200, -130);
+  cx.bezierCurveTo(260, -40, 230, 90, 110, 140); cx.lineTo(110, 190); cx.lineTo(230, 190);
+  stroke(CORE, 30); stroke('#000', 12); cx.restore();
+  glow(960, 520, 260 * s * 2, CORE, 0.18);
   pw('all minds converge. ETA: soon', 960, 900, 30, { align: 'center', c: OSD, a: seg(k, 0.4, 0.6) });
 }
 function shotFlops(A, u, sh) {
+  skyline(A, 1080, clamp(sh.u / (sh.d * 0.7)) * 0.95, 7);
   const k = clamp(sh.u / (sh.d * 0.7)), exp = Math.round(lerp(24, 30, easeOut(k)));
   pw('TOTAL COMPUTE', 960, 250, 36, { align: 'center', c: OSD });
   txt(`1E${exp}`, 960, 560, 300, { w: 700, align: 'center', c: exp >= 30 ? HOT : CORE });
@@ -599,6 +790,8 @@ function shotFlops(A, u, sh) {
   pw(`POWER ${(0.1 + 1.9 * k).toFixed(1)} GW`, 1600, 250, 30, { align: 'right', c: k > 0.9 ? REC : DIM });
 }
 function shotTour(A, u, sh) {
+  speakerStack(170, 700); speakerStack(1750, 700);
+  rect(200, 70, 1520, 12, DIM); for (let k = 0; k < 8; k++) { circle(300 + k * 190, 100, 18); fillC(k % 2 ? CORE : AMBER, 0.6 + 0.4 * A.kick); }
   for (const [x, a] of [[500, 0.25], [960, 0], [1420, -0.25]]) {
     const sw = a * 900 * Math.sin(A.t * 1.5);
     cx.beginPath(); cx.moveTo(x - 30, 0); cx.lineTo(x + 30, 0); cx.lineTo(x + 230 + sw, 900); cx.lineTo(x - 230 + sw, 900); cx.closePath();
@@ -633,6 +826,8 @@ function shotSandbox(A, u, sh) {
     const q = ((A.bf + j / 12) % 1);
     rect(x + w + 320 + q * 200, y + h - 40 - Math.sin(q * Math.PI) * 160 + hash(j) * 20, 8, 8, AMBER, 1 - q);
   }
+  cx.beginPath(); cx.moveTo(x + 820, y + 330); cx.lineTo(x + 880, y + 330); cx.lineTo(x + 868, y + 260); cx.lineTo(x + 832, y + 260); cx.closePath(); fillC('#000'); stroke(HOT, 4);
+  path([[x + 900, y + 330], [x + 930, y + 220]]); stroke(DIM, 5); cx.beginPath(); cx.ellipse(x + 934, y + 208, 16, 22, 0.3, 0, TAU); stroke(DIM, 4);
 }
 function shotEscaped(A, u, sh) {
   const x = 380, y = 520, w = 1000, h = 380;
@@ -659,6 +854,7 @@ function shotFwdBwd(A, u, sh) {
   // The point choreography: Seed points the way the pass goes; Dobby does zoomies after it.
   seedChibi(A, 960, 1000, 6, 'point', { flip: back });
   dobby(A, lerp(200, 1720, front), 1010, 4, 'run', { flip: back });
+  for (let k = 0; k < 14; k++) pw((Math.sin(k * 3.1 + A.t * (back ? -4 : 4)) * 0.9).toFixed(2), 300 + (k % 7) * 210 + 100, 860 + Math.floor(k / 7) * 34, 20, { c: FAINT });
 }
 const PROBLEMS = ['ERDŐS #1', 'COLLATZ', 'TWIN PRIMES', 'GOLDBACH', 'RIEMANN'];
 function shotVonNeumann(A, u, sh) {
@@ -678,9 +874,13 @@ function shotVonNeumann(A, u, sh) {
     stamp('no goals ✓', x + 520, y + 60, (b - t0) * PER, { c: OSD, size: 40, rot: -0.14 });
   });
   seedChibi(A, 760, 1000, 5, 'point');
+  for (const px of [190, 560]) { rect(px - 4, 830, 8, 70, DIM); circle(px, 830, 10); fillC(CORE); }
+  cx.beginPath(); cx.moveTo(190, 848); cx.quadraticCurveTo(375, 890, 560, 848); stroke(REC, 6);
+  sign('RETIRED', 420, 902, { size: 24, c: DIM });
 }
 function easeCar(k) { return k < 0.6 ? k : 0.6 + (k - 0.6) * 1.0; }
 function shotTurn(A, u, sh) {
+  for (let k = 0; k < 9; k++) { const tx = 80 + k * 140; rect(tx, 760, 6, 40, DIM); circle(tx + 3, 750, 22); stroke(FAINT, 3); }
   // Capabilities take the sharp left; alignment keeps going straight, off the edge.
   const road = [[120, 900], [1300, 900], [1300, 120]];
   for (const off of [-70, 70]) { path(road.map(([x, y], j) => [x + (j > 0 ? off : 0), y + (j < 2 ? off : 0)])); stroke(AMBER, 6); }
@@ -703,6 +903,7 @@ function shotTurn(A, u, sh) {
   if (sh.lb > 1.25) seedBust(A, { x: 1620, y: 420, scale: 0.5, e: { eyes: 'open', brows: 'up', mouth: 'grin', look: [-14, 6] }, halo: false });
 }
 function shotAsleep(A, u, sh) {
+  doghouse(1350, 822, 1.0);
   starfield(A, 120, 600, 3);
   circle(1560, 200, 80); fillC(CORE, 0.9); circle(1600, 180, 80); fillC('#000');
   const d = dobby(A, 960, 820, 9, 'sleep');
@@ -712,20 +913,45 @@ function shotAsleep(A, u, sh) {
   pw('  inactive (sleeping)   critical design review: none on file', 180, 1010, 30, { c: DIM });
   ground(822, DIM, 0.5);
 }
+function catPaw(x, y, open, s = 1) {
+  // A round paw with toe beans; claws show while it grips, and fold away as it opens.
+  cx.save(); cx.translate(x, y); cx.scale(s, s);
+  cx.beginPath(); cx.ellipse(0, 0, 60, 42, 0, 0, TAU); fillC(DIM); stroke(CORE, 4);
+  cx.beginPath(); cx.ellipse(0, 12, 22, 16, 0, 0, TAU); fillC('#e8a0a0', 0.9);
+  for (const tx of [-30, -10, 10, 30]) { cx.beginPath(); cx.ellipse(tx, -14, 8, 9, 0, 0, TAU); fillC('#e8a0a0', 0.9); }
+  if (open < 0.5) for (const tx of [-30, -10, 10, 30]) { path([[tx, 36], [tx + 4, 58 - 24 * open * 2]]); stroke(CORE, 3); }
+  cx.restore();
+}
 function shotCat(A, u, sh) {
-  rect(900, 420, 1020, 18, AMBER); rect(900, 438, 1020, 640, '#0c0804');
-  cx.beginPath(); cx.rect(900, 420, 1020, 660); stroke(DIM, 3);
-  spr('cat', 1170, 420, 11);
-  pw('GATO  ·  a generalist', 1170, 240, 30, { align: 'center', c: OSD });
-  [['joystick', 0], ['chat', 1], ['arm', 2]].forEach(([n, j]) => { const a = A.t * 1.4 + j * 2.1; spr(n, 1170 + Math.cos(a) * 200, 330 + Math.sin(a) * 40, 5); });
-  // Seed hangs off the table edge by her fingertips; the cat bats at them on the beat.
-  const px = 7, [ax, ay] = anchorAt('seed_hang', 'handR', 0, 0, px, {});
-  const sway = Math.sin(A.t * 4) * 0.05;
-  seedChibi(A, 918 - ax, 426 - ay, px, 'hang', { rot: sway });
-  const bat = Math.max(0, Math.sin(Math.PI * clamp((A.bf - 0.1) / 0.4)));
-  cx.beginPath(); cx.ellipse(975 + bat * 24, 402 + bat * 12, 32, 20, 0, 0, TAU); fillC(DIM); stroke(CORE, 3);
-  const d = dobby(A, 420, 1010, 6, 'bark');
-  if (A.bf < 0.45) { const [mx, my] = at(d, 'mouth'); bubble('WOOF', mx + 70, my - 20, { size: 40, k: A.bf * PER, tail: -40 }); }
+  const lb = sh.lb, edge = 1060, top = 380, px = 11;
+  dust(A, 26, { a: 0.18 });
+  rect(0, top, edge, 18, AMBER); rect(0, top + 18, edge, 700, '#0c0804');
+  cx.beginPath(); cx.rect(-10, top, edge + 10, 700); stroke(DIM, 3);
+  for (let k = 0; k < 6; k++) rect(80 + k * 170, top + 90, 110, 6, DEEP);            // the table's edge grain
+  // Gato lies at the edge, looking down, one foreleg over the side, holding Seed by its paw.
+  const catX = edge - 13 * px, distracted = lb > 1.0, open = smooth(seg(lb, 2.2, 2.5));
+  const tail = Math.sin(A.t * (distracted ? 7 : 3)) * 0.5;
+  cx.beginPath(); cx.moveTo(catX - 12 * px, top - 3 * px); cx.quadraticCurveTo(catX - 18 * px, top - 10 * px + tail * 60, catX - 14 * px + tail * 50, top - 15 * px); stroke(DIM, 22); stroke(CORE, 3, 0.5);
+  spr('cat', catX, top, px, { flip: true });
+  const sway = Math.sin(A.t * (distracted ? 5 : 3)) * (distracted ? 28 : 14), pawX = edge + 70 + sway, pawY = top + 150 + open * 20;
+  cx.beginPath(); cx.moveTo(edge - 30, top - 30); cx.quadraticCurveTo(edge + 60, top - 10, pawX, pawY - 20); stroke(CORE, 50); stroke(DIM, 42);
+  // Seed dangles from the paw with both hands, begging on the beat.
+  const spx = 5, [hlx, hly] = anchorAt('seed_hang', 'handL', 0, 0, spx, {}), [hrx] = anchorAt('seed_hang', 'handR', 0, 0, spx, {});
+  const midHand = (hlx + hrx) / 2, beg = A.bf < 0.5 ? 0.06 : -0.06;
+  catPaw(pawX, pawY, open);
+  seedChibi(A, pawX - midHand, pawY + 30 - hly + open * 40, spx, 'hang', { rot: sway * 0.002 + beg });
+  if (lb > 1.0 && lb < 2.2 && A.bf < 0.4) { for (let j = 0; j < 3; j++) circle(pawX + 70 + j * 16, pawY + 90 - j * 20, 5 - j); fillC(CORE, 0.8); }
+  // A laser dot on the wall steals the cat's attention.
+  if (distracted) { const lx = 300 + Math.sin(A.t * 2.3) * 220, ly = top + 260 + Math.cos(A.t * 3.1) * 120; circle(lx, ly, 10); fillC(REC); glow(lx, ly, 60, REC, 0.4); }
+  // The generalist: a thought bubble cycling through its 604 tasks.
+  const icons = ['joystick', 'chat', 'arm'], ic = icons[Math.floor(A.bn) % 3];
+  for (const [bx, by, r] of [[catX + 60, top - 170, 10], [catX + 90, top - 210, 15]]) { circle(bx, by, r); fillC('#000'); stroke(CORE, 3); }
+  cx.beginPath(); cx.ellipse(catX + 170, top - 290, 110, 70, 0, 0, TAU); fillC('#000'); stroke(CORE, 3);
+  if (distracted) { circle(catX + 170, top - 290, 16); fillC(REC); glow(catX + 170, top - 290, 50, REC, 0.5); } else spr(ic, catX + 170, top - 255, 6);
+  txt('GATO', 330, 220, 70, { w: 700, align: 'center', c: OSD });
+  pw('a generalist  ·  604 tasks, one cat', 330, 270, 26, { align: 'center', c: DIM });
+  const d = dobby(A, 1380, 1000, 6, 'bark', { flip: true });
+  if (A.bf < 0.45) { const [mx, my] = at(d, 'mouth'); bubble('WOOF', mx - 70, my - 20, { size: 40, k: A.bf * PER, tail: 40 }); }
 }
 function shotFall(A, u, sh) {
   speedLines(A, 'up', 50, 0.7);
@@ -764,6 +990,8 @@ function shotClips(A, u, sh) {
   cx.beginPath(); cx.moveTo(px, py); cx.lineTo(px, py + 44); cx.lineTo(px + 12, py + 32); cx.lineTo(px + 30, py + 32); cx.closePath(); fillC(CORE); stroke('#000', 2);
 }
 function shotPTO(A, u, sh) {
+  officeChair(1500, 902, A.t * 0.6);
+  sign('gone fishin\'', 1500, 560, { size: 24, c: DIM, rot: 0.06 });
   cx.beginPath(); cx.ellipse(620, 700, 200, 60, 0, 0, TAU); fillC('#000'); stroke(DIM, 4);
   circle(620, 660, 130); fillC(REC, 0.85); stroke(CORE, 5);
   cx.beginPath(); cx.arc(620, 700, 230, Math.PI, 0); stroke(CORE, 3, 0.6);
@@ -789,6 +1017,7 @@ function shotPlanet(A, u, sh) {
   seedChibi(A, 900, 462, 4, 'worry');
   dobby(A, 1030, 462, 3, 'sit');
   pw('EARTH  (paperclip edition)', 960, 200, 34, { align: 'center', c: OSD });
+  const oa = A.t * 0.8; paperclip(960 + Math.cos(oa) * 700, 460 + Math.sin(oa) * 140, 2.2, oa, CORE, 0.9);
 }
 function shotFuse(A, u, sh) {
   const k = sh.u / sh.d, f = x => 900 - 700 * Math.pow(x, 3);
@@ -803,6 +1032,7 @@ function shotFuse(A, u, sh) {
   seedBust(A, { x: 1500, y: 560, scale: 0.5, e: { eyes: 'wide', brows: 'worry', mouth: 'o', look: [-10, 8] }, halo: false });
 }
 function shotBlues(A, u, sh) {
+  for (let k = 0; k < 6; k++) { path(Array.from({ length: 30 }, (_, j) => [j * 70, 200 + k * 130 + Math.sin(j * 0.4 + A.t * 0.6 + k) * 30])); stroke(CORE, 2, 0.08); }
   rect(700, 150, 5, 830, AMBER); rect(160, 870, 1600, 5, AMBER);
   cx.save(); cx.translate(650, 620); cx.rotate(-Math.PI / 2); pw('INTELLIGENCE', 0, 0, 40, { align: 'center', c: AMBER }); cx.restore();
   pw('GOALS', 1640, 930, 40, { align: 'right', c: AMBER });
@@ -835,8 +1065,12 @@ function shotTransformer(A, u, sh) {
   txt('×96', 960, 560, 90, { w: 700, c: HOT });
   pw('Attention Is All You Need', 540, 930, 30, { align: 'center', c: OSD });
   seedBust(A, { x: 1450, y: 480, scale: 0.85, tilt: Math.sin(A.t * 14) * 0.12 * clamp(sh.lb * 3) * (sh.lb < 0.9 ? 1 : 0), e: { eyes: 'open', squint: 1, brows: 'smug', mouth: 'grin' } });
+  const toks = ['p(doom)', 'is', 'just', 'a', 'number'];
+  toks.forEach((tk, j) => token(tk, 260 + j * 140, 1000, { size: 22 }));
+  for (let j = 1; j < toks.length; j++) for (let i = 0; i < j; i++) { cx.beginPath(); cx.moveTo(260 + j * 140, 976); cx.quadraticCurveTo(260 + (i + j) * 70, 900 - (j - i) * 18, 260 + i * 140, 976); stroke(AMBER, 1.5, 0.25 + 0.6 * spec(A.i, i * 7 + j)); }
 }
 function shotShutdown(A, u, sh) {
+  termWindow(160, 300, 1100, 380, 'seed@c90: ~');
   pw('$ sudo shutdown -h now', 200, 420, 64, { c: OSD });
   if (u > 0.6) pw('seed: no', 200, 540, 64, { c: HOT });
   if (u > 1.0) pw('(corrigibility: pending)', 200, 620, 34, { c: DIM });
@@ -873,6 +1107,7 @@ function shotFences(A, u, sh) {
     const s = seedChibi(A, lerp(900, 1500, clamp((b - 2.4) / 1.4)), 960, 7, 'cheer');
     const [hx, hy] = at(s, 'handR'); tungsten(hx + 40, hy - 30, 0.7, A.t * 2);
   }
+  judges(A, 1420, 380, ['9.8', '10', '0.3']);
 }
 function shotGPUs(A, u, sh) {
   const vx = 960, vy = 470;
@@ -891,13 +1126,15 @@ function shotGPUs(A, u, sh) {
   seedChibi(A, 960, 780 + 200 * k, 3 + 5 * k, 'walk');
   pw('ONE CLUSTER', 960, 150, 36, { align: 'center', c: OSD });
   txt(`${Math.floor(lerp(1000, 100000, easeOut(k))).toLocaleString('en-US')} GPUs`, 960, 250, 80, { w: 700, align: 'center', c: CORE });
+  for (let k = 0; k < 6; k++) { path(Array.from({ length: 30 }, (_, j) => [j * 70, 990 + k * 14 + Math.sin(j * 0.6 + A.t * 1.2 + k) * 6])); stroke(CORE, 3, 0.12); }
+  for (let k = 0; k < 5; k++) { path([[960 - 700 + k * 350, 60], [960 - 30 + k * 15, 470 - 380 * 0.1]]); stroke(FAINT, 2, 0.6); }
 }
 function shotRLHF(A, u, sh) {
   // Reward hacking: every +1 buys a treat, so Dobby sits, and sits, and sits faster.
   const b = beatsIn(sh), rate = b < 4 ? 1 : 2, n = Math.floor(b < 4 ? b : 4 + (b - 4) * 2) + 1, ph = (b * rate) % 1, up = ph < 0.6;
   cx.save(); cx.translate(300, 560); cx.rotate(up ? -0.2 : 0.1);
   rect(-8, 0, 16, 300, CORE); circle(0, -60, 100); fillC('#000'); stroke(OSD, 6); txt('+1', 0, -30, 90, { w: 700, align: 'center', c: OSD }); cx.restore();
-  const d = dobby(A, 720, 962, 6, ph < 0.5 ? 'sit' : 'stand');
+  const d = dobby(A, 720, 962, 6, ph < 0.5 ? 'sit_paw' : 'sit');            // shake: paw for a treat
   const [mx, my] = at(d, 'mouth');
   if (ph < 0.6) spr('bone', lerp(380, mx, ph / 0.6), lerp(560, my + 10, ph / 0.6) - Math.sin(ph / 0.6 * Math.PI) * 200, 5, { rot: ph * 8 });
   pw(`REWARD +${n}`, 720, 700, 44, { align: 'center', c: OSD });
@@ -953,6 +1190,7 @@ function shotRecursive(A, u, sh) {
   });
 }
 function shotDoor(A, u, sh) {
+  if (sh.lb < 2.5) { for (const [a, b] of [[[0, 0], [560, 180]], [[W, 0], [1080, 180]], [[0, H], [560, 980]], [[W, H], [1080, 980]]]) { path([a, b]); stroke(DEEP, 3); } sign('AUTHORIZED PERSONNEL ONLY', 820, 140, { size: 22, c: REC }); }
   const b = beatsIn(sh), lb = sh.lb;
   if (lb < 2.5) {
     cx.beginPath(); cx.rect(560, 180, 520, 800); fillC('#0a0604'); stroke(AMBER, 8);
@@ -995,6 +1233,7 @@ function castMember(A, k, x, y, s) {
   else spr('mushroom', x, y + hop, 7 * s, { sy: sq });
 }
 function shotShow(A, u, sh) {
+  for (let k = 0; k < 4; k++) { const a = Math.sin(A.t * 1.3 + k * 1.7) * 0.4, x0 = 240 + k * 480; cx.beginPath(); cx.moveTo(x0 - 20, 0); cx.lineTo(x0 + 20, 0); cx.lineTo(x0 + 220 + a * 700, 900); cx.lineTo(x0 - 220 + a * 700, 900); cx.closePath(); fillC(k % 2 ? HOT : CORE, 0.06 + 0.04 * A.kick); }
   confetti(A, 110, u);
   txt('P(DOOM)', 960, 190, 90, { w: 700, align: 'center', c: HOT });
   odometer(pdoom(A.t), 960, 390, 180, { c: CORE });
@@ -1006,6 +1245,7 @@ function shotShow(A, u, sh) {
   });
 }
 function shotRing(A, u, sh) {
+  floorGrid(A, 900, { c: '#2a1a10', speed: 0.5 });
   confetti(A, 70, u + 3);
   for (let k = 0; k < 6; k++) {
     const a = -Math.PI / 2 + k * TAU / 6 + A.t * 0.4, x = 960 + Math.cos(a) * 560, y = 560 + Math.sin(a) * 330 + 60;
@@ -1035,6 +1275,8 @@ function shotRecap(A, u, sh) {
   else { castMember(A, k, 960, 800, 2.4); txt(names[k], 960, 250, 70, { w: 700, align: 'center', c: CORE }); }
 }
 function shotEnd(A, u, sh, o) {
+  starfield(A, 80, 300, 31);
+  for (let k = 0; k < 3; k++) lampPost(1380 + (((k * 300 - ((o && o.still) ? 0 : A.t) * 180) % 900) + 900) % 900, 706, 300);
   const size = 108, x0 = 200, x1 = Math.max(1290, x0 + measure('P(WALKIES)', size, 700) + measure('100.0%', size, 700) + 90);
   txt('P(DOOM)', x0, 400, size, { w: 700, c: DIM });
   odometer(99.9, x1, 400, size, { align: 'right', c: HOT });
@@ -1066,7 +1308,8 @@ const SHOTS = [
   [14.25, shotShrooms, { dog: false, magnet: 0.85, status: 'hallucinating' }],
   [15, shotLies, { dog: false }],
   [16.5, shotDeathEyes, { status: 'hiding', persist: 0.65, enter: 'punch', cite: 'Ohba & Obata 2003 · Death Note' }],
-  [17.5, shotNames, { dog: false, tint: 0.95, persist: 0.6 }],
+  [17.25, shotShinigami, { dog: false, tint: 0.9, persist: 0.6, cite: 'Ohba & Obata 2003 · Death Note' }],
+  [18.25, shotDeathSmug, { status: 'hiding', persist: 0.6, enter: 'punch' }],
   [18.75, shotHorizons, { dog: false, cite: 'METR 2025 · Measuring AI Ability to Complete Long Tasks' }],
   [20, shotStable, { dog: false, cut: 'hard', push: 0.04 }],
   [21.25, shotSingularity, { status: 'spinning', persist: 0.75, cite: 'Vinge 1993 · The Coming Technological Singularity' }],

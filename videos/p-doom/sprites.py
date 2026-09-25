@@ -26,6 +26,12 @@ PALETTE = {
     'G': (141, 255, 180),  # OSD green
     'A': (201, 150, 92),   # dim amber
     'S': (90, 64, 48),     # deep shadow
+    'Y': (255, 214, 140),  # amber highlight (added by shade())
+    'E': (222, 190, 150),  # white in shadow
+    'I': (255, 170, 130),  # hair highlight
+    'J': (196, 82, 44),    # hair in shadow
+    'O': (24, 12, 6),      # outline
+    'P': (255, 120, 150),  # tongue
 }
 
 
@@ -128,6 +134,19 @@ COLLAR = grid("""
 .RRR
 RRR.
 ..A.
+""")
+
+
+DOG_HEAD_EARS_BACK = grid("""
+.............
+.............
+.TTD....TTD..
+..TTDTTTTDTT.
+.TTTTTWTTTT..
+.TTTTTWTTKTT.
+.TTTTWWWTTTTT
+.TTTTWWWWWWWK
+..TTWWWWWWW..
 """)
 
 
@@ -602,6 +621,43 @@ AA......
 AAAA....
 """)
 
+def happy(sprite):
+    """Tongue out: a pink tongue under the muzzle."""
+    return paste(sprite, ['PP', 'PP', '.P'], 30, 9)
+
+
+DOG_SIT_PAW = paste(DOG_SIT, grid("""
+..WW
+.WWW
+WWW.
+"""), 16, 10)
+DOG_SIT_PAW = [r[:14] + r[14:17].replace('W', '.') + r[17:] if y >= 17 else r for y, r in enumerate(DOG_SIT_PAW)]
+
+
+def shade(sprite):
+    """Pixel-art shading and a dark outline: top edges catch light, bottom edges fall into shadow."""
+    h, w = len(sprite), len(sprite[0])
+    g = [['.'] * (w + 2)] + [['.'] + list(r) + ['.'] for r in sprite] + [['.'] * (w + 2)]
+    out = [row[:] for row in g]
+    H, Wd = h + 2, w + 2
+    op = lambda y, x: 0 <= y < H and 0 <= x < Wd and g[y][x] != '.'
+    for y in range(H):
+        for x in range(Wd):
+            c = g[y][x]
+            if c == '.':
+                if any(op(y + dy, x + dx) for dy, dx in ((1, 0), (-1, 0), (0, 1), (0, -1))):
+                    out[y][x] = 'O'
+                continue
+            up, down = not op(y - 1, x), not op(y + 1, x)
+            if c == 'T':
+                out[y][x] = 'Y' if up else 'D' if down else 'T'
+            elif c == 'H':
+                out[y][x] = 'I' if up else 'J' if down else 'H'
+            elif c == 'W' and down:
+                out[y][x] = 'E'
+    return [''.join(r) for r in out]
+
+
 SPRITES = {
     'dog_stand': dog(),
     'dog_wag': dog(tail=1),
@@ -613,6 +669,10 @@ SPRITES = {
     'dog_run_a': dog(legs=LEGS_RUN_A),
     'dog_run_b': dog(legs=LEGS_RUN_B, tail=1),
     'dog_sit': DOG_SIT,
+    'dog_sit_paw': DOG_SIT_PAW,
+    'dog_happy': happy(dog(tail=1)),
+    'dog_happy_walk': happy(dog(legs=LEGS_WALK_1, tail=1)),
+    'dog_ears_back': dog(head=DOG_HEAD_EARS_BACK, tail=-1),
     'dog_sleep': DOG_SLEEP,
     'dog_sploot': DOG_SPLOOT,
     'sock': SOCK,
@@ -661,6 +721,7 @@ for name in SPRITES:
         ANCHORS[name] = DOG_ANCHORS
     elif name.startswith('seed_') and not name.startswith('seed_head'):
         ANCHORS[name] = dict(SEED_ANCHORS)
+ANCHORS['dog_sit_paw'] = {'collar': (12.5, 9.5), 'mouth': (20.5, 8.2), 'head': (16, 3.5), 'feet': (10, 21), 'paw': (18.5, 10.5)}
 ANCHORS['dog_sit'] = {'collar': (12.5, 9.5), 'mouth': (20.5, 8.2), 'head': (16, 3.5), 'feet': (10, 21)}
 ANCHORS['dog_sploot'] = {'head': (30, 3.5), 'collar': (27, 7.5), 'feet': (18, 12)}
 ANCHORS['dog_sleep'] = {'head': (28, 3.5), 'feet': (17, 12)}
@@ -673,6 +734,10 @@ ANCHORS['seed_hang'] = {'handL': (1, 0), 'handR': (21, 0), 'head': (11, 4), 'fee
 ANCHORS['seed_bow'] = dict(SEED_ANCHORS, head=(10, 4), feet=(10, 30))
 ANCHORS['seed_fall'].update(handL=(0.5, 14.5), handR=(19.5, 14.5))
 ANCHORS['seed_shrug'].update(handL=(0.5, 17.5), handR=(19.5, 17.5))
+
+
+SPRITES = {name: shade(sp) for name, sp in SPRITES.items()}
+ANCHORS = {name: {k: (x + 1, y + 1) for k, (x, y) in an.items()} for name, an in ANCHORS.items()}
 
 
 def main():
