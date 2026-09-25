@@ -4,7 +4,8 @@
 'use strict';
 
 (() => {
-  const P = (...cmds) => cmds;                     // a path: ['M',x,y] ['C',x1,y1,x2,y2,x,y] ['L',x,y] ['Z']
+  const P = (...cmds) => cmds;
+  const clamp01 = x => Math.min(1, Math.max(0, x));                     // a path: ['M',x,y] ['C',x1,y1,x2,y2,x,y] ['L',x,y] ['Z']
   const mirror = path => path.map(c => c[0] === 'C' ? ['C', -c[1], c[2], -c[3], c[4], -c[5], c[6]] : c.length > 1 ? [c[0], -c[1], c[2]] : c);
 
   const FRINGE_X = [150, 112, 74, 36, 0, -36, -74, -112, -150], FY = x => -66 + Math.abs(x) * 0.07;
@@ -89,7 +90,8 @@
     // m.open 0..1 from the voice; m.shape: smile | grin | frown | o | flat
     const y = 116;
     if (m.open > 0.08) {
-      const w = 20 + 10 * m.open * (m.shape === 'o' ? 0.4 : 1), h = 6 + 34 * m.open, rise = m.shape === 'grin' ? 6 : 0;
+      const wide = m.wide || 0;
+      const w = (20 + 10 * m.open * (m.shape === 'o' ? 0.4 : 1)) * (1 + 0.45 * wide), h = (6 + 34 * m.open) * (1 - 0.35 * wide), rise = m.shape === 'grin' ? 6 : 0;
       return { fill: P(['M', -w, y - rise], ['C', -w * 0.5, y - 5, w * 0.5, y - 5, w, y - rise], ['C', w * 0.9, y + h, -w * 0.9, y + h, -w, y - rise], ['Z']), tongue: h > 18 };
     }
     if (m.shape === 'frown') return { line: P(['M', -24, y + 8], ['C', -8, y - 4, 8, y - 4, 24, y + 8]) };
@@ -107,7 +109,9 @@
     const e = { eyes: 'open', brows: 'calm', mouth: 'smile', open: 0, blink: 0, ...o.e };
     const ct = Math.cos(tilt), st = Math.sin(tilt), pivotY = 160;
     const Th = (x, y) => { const yy = y - pivotY; return [ox + sc * (x * ct - yy * st), oy + sc * (x * st + yy * ct + pivotY)]; };
-    const Tb = (x, y) => [ox + sc * x, oy + sc * y];
+    const breath = o.breath || 0, sway = o.sway || 0;
+    const Tb = (x, y) => [ox + sc * x, oy + sc * (y + breath * clamp01((y - 200) / 200 + 0.4))];
+    const Tr = (x, y) => { const k = clamp01((y + 80) / 200); return Th(x + sway * 34 * k * k, y + Math.abs(sway) * 4 * k); };
     const lw = w => Math.max(1, w * sc);
     const stroke = (c, w, a = 1) => { cx.globalAlpha = a * (o.a ?? 1); cx.strokeStyle = c; cx.lineWidth = lw(w); cx.lineCap = 'round'; cx.lineJoin = 'round'; cx.stroke(); cx.globalAlpha = 1; };
     const fill = (c, a = 1) => { cx.globalAlpha = a * (o.a ?? 1); cx.fillStyle = c; cx.fill(); cx.globalAlpha = 1; };
@@ -129,10 +133,10 @@
     // Body first, then the head occludes it.
     for (const p of BODY) { trace(cx, p, Tb); stroke(col.line, 5, 0.85); }
     for (const p of NECK) { trace(cx, p, Th); stroke(col.line, 5); }
-    trace(cx, HAIR, Th); fill(col.dark);
+    trace(cx, HAIR, Tr); fill(col.dark);
     trace(cx, FACE_FILL, Th); fill(col.dark);
-    trace(cx, HAIR, Th); stroke(col.hair, 6);
-    for (const p of STRANDS) { trace(cx, p, Th); stroke(col.hair, 3.5, 0.8); }
+    trace(cx, HAIR, Tr); stroke(col.hair, 6);
+    for (const p of STRANDS) { trace(cx, p, Tr); stroke(col.hair, 3.5, 0.8); }
     trace(cx, FACE, Th); stroke(col.line, 5.5);
     // Eyes.
     for (const side of [-1, 1]) {
@@ -180,7 +184,7 @@
       const bx = side * (92 + k * 11);
       trace(cx, P(['M', bx - 5, 88], ['L', bx + 3, 76]), Th); stroke(col.accent, 3, 0.55 * (e.blush ?? 1));
     }
-    const M = mouthPaths({ open: e.open, shape: e.mouth });
+    const M = mouthPaths({ open: e.open, shape: e.mouth, wide: e.wide });
     if (M.fill) {
       trace(cx, M.fill, Th); fill('#1a0804'); stroke(col.line, 4.5);
       if (M.tongue) { const [tx, ty] = Th(0, 116 + 6 + 30 * e.open * 0.8); cx.beginPath(); cx.ellipse(tx, ty, sc * 11, sc * 6, tilt, Math.PI, 0); fill(col.accent, 0.8); }

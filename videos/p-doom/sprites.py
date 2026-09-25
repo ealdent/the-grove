@@ -113,13 +113,39 @@ LEGS_RUN_B = grid("""
 """)
 
 
-def dog(head=DOG_HEAD, legs=LEGS_STAND, tail_up=False):
+LEGS_WALK_1 = grid("""
+.TTT..............TTT...WWW........
+.TTW...............TTW...WWW.......
+WWW.................WWW...WWW......
+""")
+LEGS_WALK_3 = grid("""
+...TTT...........TTT.WWW...........
+....TTW.........TTW.WWW............
+.....WWW.......WWW.WWW.............
+""")
+DOG_HEAD_BLINK = [r if y != 5 else '.TTTTTWTTDTT.' for y, r in enumerate(DOG_HEAD)]
+COLLAR = grid("""
+.RRR
+RRR.
+..A.
+""")
+
+
+def dog(head=DOG_HEAD, legs=LEGS_STAND, tail=0):
+    """tail: -1 down, 0 level, 1 up (a wag is 0, 1, 0, -1)."""
     s = paste(paste([], head, 22, 0), DOG_BODY, 0, 9)
-    if tail_up:                      # the tuft flicks up one pixel: a wag
+    if tail > 0:
         s = paste(s, grid("""
 ...T
 ..TTT
 """), 0, 8)
+    elif tail < 0:
+        s = [r if y not in (9, 10) else '.' * 5 + r[5:] for y, r in enumerate(s)]
+        s = paste(s, grid("""
+.TTT
+TTTT
+"""), 0, 10)
+    s = paste(s, COLLAR, 23, 9)
     return paste(s, legs, 0, 17)
 
 
@@ -132,8 +158,8 @@ DOG_SIT = grid("""
 ...........TTTTTWTTKT
 ...........TTTTWWWTTT
 ...........TTTTWWWWWK
-............TTWWWWWW.
-..........TTTTWWWWW..
+............RRRWWWWW.
+..........TRRRWWWWW..
 ........TTTTTTWWWW...
 ......TTTTTTTTWWWW...
 .....TTTTTTTTTWWWW...
@@ -355,8 +381,56 @@ WW...TTTTWWTTTT...WW
 """)
 
 
-def seed(head=SEED_HEAD, body=SEED_BODY_STAND):
-    return paste(paste([], body, 0, 14), head, 0, 0)
+SEED_HEAD_BLINK = [r if y not in (7, 8, 9) else ['DHHWWWWWWWWWWWWWWHH.', 'DHHWKKKWWWWWWKKKWHH.', '.HHWWWWWWWWWWWWWWHH.'][y - 7]
+                   for y, r in enumerate(SEED_HEAD)]
+SEED_LEGS_WALK_A = grid("""
+......WW...WW.......
+.....WW.....WW......
+.....WW.....WW......
+....AAA.....AAA.....
+""")
+SEED_LEGS_WALK_B = grid("""
+.......WW.WW........
+.......WW.WW........
+.......WW.WW........
+......AAA.AAA.......
+""")
+SEED_BODY_CLAP = grid("""
+.....TTTTWWTTTT.....
+....TTTTTWWTTTTT....
+...TTTTTTWWTTTTTT...
+....TTTTTWWTTTTT....
+......TTWWWWTT......
+......TTTTTTTT......
+......DDDDDDDD......
+.....DDDDDDDDDD.....
+.....DDDDDDDDDD.....
+.......WW..WW.......
+.......WW..WW.......
+.......WW..WW.......
+......AAA..AAA......
+""")
+
+
+def seed(head=SEED_HEAD, body=SEED_BODY_STAND, legs=None):
+    s = paste(paste([], body, 0, 14), head, 0, 0)
+    if legs:
+        s = [r if y < 23 else '.' * 20 for y, r in enumerate(s)]
+        s = paste(s, legs, 0, 23)
+    return s
+
+
+def seed_hang():
+    """Arms straight up, hands at the top: for hanging off ledges."""
+    s = paste([], seed(SEED_HEAD_WORRY, SEED_BODY_STAND), 1, 4)
+    s = [r[:2] + r[2:4].replace('W', '.') + r[4:18] + r[18:20].replace('W', '.') + r[20:] if 21 <= y <= 24 else r for y, r in enumerate(s)]
+    for y in range(2, 20):
+        s = paste(s, ['TT'], 0, y)
+        s = paste(s, ['TT'], 20, y)
+    s = paste(s, ['WW', 'WW'], 0, 0)
+    return paste(s, ['WW', 'WW'], 20, 0)
+
+
 
 
 # --- the cast ----------------------------------------------------------------------------------
@@ -460,18 +534,91 @@ GGGG
 .WW.
 """)
 
+HAN_ZHONG = grid("""
+....W....
+.WWWWWWW.
+.W..W..W.
+.W..W..W.
+.WWWWWWW.
+....W....
+....W....
+....W....
+""")
+HAN_WEN = grid("""
+....W....
+WWWWWWWWW
+..W...W..
+...W.W...
+....W....
+...W.W...
+.WW...WW.
+W.......W
+""")
+EMOJI = grid("""
+..AAAAA..
+.AAAAAAA.
+AAKAAAKAA
+AAKAAAKAA
+AAAAAAAAA
+AKAAAAAKA
+AAKKKKKAA
+.AAAAAAA.
+..AAAAA..
+""")
+FLOPPY = grid("""
+AAAAAAAAAA.
+AAWWWWWWAAA
+AAWWWWWWAAA
+AAAAAAAAAAA
+AAAAAAAAAAA
+AAWWWWWWWAA
+AAWKKKWWWAA
+AAWWWWWWWAA
+AAAAAAAAAAA
+""")
+JOYSTICK = grid("""
+...RR...
+...RR...
+....D...
+....D...
+.AAAAAA.
+AAAAAAAA
+""")
+CHAT = grid("""
+.GGGGGGG.
+GGWGWGWGG
+GGGGGGGGG
+.GGGGGGG.
+..GG.....
+.G.......
+""")
+ARM = grid("""
+......AA
+.....AA.
+....AA..
+AAAAA...
+AA......
+AA......
+AAAA....
+""")
+
 SPRITES = {
     'dog_stand': dog(),
-    'dog_wag': dog(tail_up=True),
-    'dog_bark': dog(head=DOG_HEAD_BARK),
+    'dog_wag': dog(tail=1),
+    'dog_wag_down': dog(tail=-1),
+    'dog_blink': dog(head=DOG_HEAD_BLINK),
+    'dog_bark': dog(head=DOG_HEAD_BARK, tail=1),
+    'dog_walk_1': dog(legs=LEGS_WALK_1, tail=1),
+    'dog_walk_3': dog(legs=LEGS_WALK_3, tail=-1),
     'dog_run_a': dog(legs=LEGS_RUN_A),
-    'dog_run_b': dog(legs=LEGS_RUN_B, tail_up=True),
+    'dog_run_b': dog(legs=LEGS_RUN_B, tail=1),
     'dog_sit': DOG_SIT,
     'dog_sleep': DOG_SLEEP,
     'dog_sploot': DOG_SPLOOT,
     'sock': SOCK,
     'bone': BONE,
     'seed_stand': seed(),
+    'seed_blink': seed(SEED_HEAD_BLINK),
     'seed_sing': seed(SEED_HEAD_SING, SEED_BODY_SING),
     'seed_joy': seed(SEED_HEAD_JOY, SEED_BODY_CHEER),
     'seed_cheer': seed(SEED_HEAD_SING, SEED_BODY_CHEER),
@@ -479,6 +626,10 @@ SPRITES = {
     'seed_point': seed(SEED_HEAD, SEED_BODY_POINT),
     'seed_fall': seed(SEED_HEAD_WORRY, SEED_BODY_FALL),
     'seed_shrug': seed(SEED_HEAD_WORRY, SEED_BODY_SHRUG),
+    'seed_walk_a': seed(SEED_HEAD, SEED_BODY_STAND, SEED_LEGS_WALK_A),
+    'seed_walk_b': seed(SEED_HEAD, SEED_BODY_STAND, SEED_LEGS_WALK_B),
+    'seed_clap': seed(SEED_HEAD_JOY, SEED_BODY_CLAP),
+    'seed_hang': seed_hang(),
     'seed_head': SEED_HEAD,
     'seed_head_sing': SEED_HEAD_SING,
     'seed_head_joy': SEED_HEAD_JOY,
@@ -490,7 +641,38 @@ SPRITES = {
     'sandcastle': SANDCASTLE,
     'car': CAR,
     'lightstick': LIGHTSTICK,
+    'han_zhong': HAN_ZHONG,
+    'han_wen': HAN_WEN,
+    'emoji': EMOJI,
+    'floppy': FLOPPY,
+    'joystick': JOYSTICK,
+    'chat': CHAT,
+    'arm': ARM,
 }
+# Bowing, front view: the head drops onto the shoulders and the eyes close.
+SPRITES['seed_bow'] = paste(paste([], SEED_BODY_STAND, 0, 17), SEED_HEAD_BLINK, 0, 4)
+
+# Anchors, in sprite pixels from the top-left (col, row): where props, leashes and riders attach.
+DOG_ANCHORS = {'collar': (24.5, 9.5), 'mouth': (33.5, 8.2), 'head': (28, 3.5), 'nose': (34.6, 7.4), 'back': (12, 9.5), 'feet': (17.5, 20)}
+SEED_ANCHORS = {'handL': (3.5, 19.5), 'handR': (16, 19.5), 'head': (10, 0), 'eyes': (10, 8), 'feet': (10, 27)}
+ANCHORS = {}
+for name in SPRITES:
+    if name.startswith('dog_') and name not in ('dog_sit', 'dog_sleep', 'dog_sploot'):
+        ANCHORS[name] = DOG_ANCHORS
+    elif name.startswith('seed_') and not name.startswith('seed_head'):
+        ANCHORS[name] = dict(SEED_ANCHORS)
+ANCHORS['dog_sit'] = {'collar': (12.5, 9.5), 'mouth': (20.5, 8.2), 'head': (16, 3.5), 'feet': (10, 21)}
+ANCHORS['dog_sploot'] = {'head': (30, 3.5), 'collar': (27, 7.5), 'feet': (18, 12)}
+ANCHORS['dog_sleep'] = {'head': (28, 3.5), 'feet': (17, 12)}
+for n in ('seed_joy', 'seed_cheer'):
+    ANCHORS[n].update(handL=(0.5, 14.5), handR=(19.5, 14.5))
+ANCHORS['seed_point'].update(handR=(19.5, 15.5))
+ANCHORS['seed_sing'].update(handR=(16, 14.5))
+ANCHORS['seed_clap'].update(handL=(9, 18.5), handR=(11, 18.5))
+ANCHORS['seed_hang'] = {'handL': (1, 0), 'handR': (21, 0), 'head': (11, 4), 'feet': (11, 31)}
+ANCHORS['seed_bow'] = dict(SEED_ANCHORS, head=(10, 4), feet=(10, 30))
+ANCHORS['seed_fall'].update(handL=(0.5, 14.5), handR=(19.5, 14.5))
+ANCHORS['seed_shrug'].update(handL=(0.5, 17.5), handR=(19.5, 17.5))
 
 
 def main():
@@ -500,7 +682,8 @@ def main():
             sys.exit(f'{name}: unknown palette letters {bad}')
     out = HERE / 'sprites.js'
     out.write_text('// Generated by sprites.py; edit the sprites there.\nwindow.SPRITES = ' +
-                   json.dumps(SPRITES, separators=(',', ':')) + ';\n')
+                   json.dumps(SPRITES, separators=(',', ':')) + ';\nwindow.SPRITE_ANCHORS = ' +
+                   json.dumps(ANCHORS, separators=(',', ':')) + ';\n')
     print(f'{len(SPRITES)} sprites -> sprites.js')
     if '--preview' in sys.argv:
         from PIL import Image, ImageDraw
@@ -514,6 +697,9 @@ def main():
         for k, (name, s) in enumerate(cells):
             x0, y0 = (k % cols) * cw + pad // 2, (k // cols) * ch + 14
             d.text((x0, y0 - 12), name, fill=(200, 200, 200))
+            for ax, ay in ANCHORS.get(name, {}).values():
+                d.line([x0 + ax * px - 5, y0 + ay * px, x0 + ax * px + 5, y0 + ay * px], fill=(0, 200, 255))
+                d.line([x0 + ax * px, y0 + ay * px - 5, x0 + ax * px, y0 + ay * px + 5], fill=(0, 200, 255))
             for y, r in enumerate(s):
                 for x, c in enumerate(r):
                     if c != '.':

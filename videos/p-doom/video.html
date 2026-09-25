@@ -186,12 +186,33 @@ function spr(name, x, y, px, o = {}) {
   cx.restore();
 }
 const sprW = (name, px) => SPR[name][0].length * px, sprH = (name, px) => SPR[name].length * px;
-// Dobby by pose; 'walk' and 'wag' animate on the beat grid.
+// Where a sprite's named anchor (sprites.py) lands on screen, for a sprite drawn with spr(name, x, y, px, o).
+const SPR_ANCH = window.SPRITE_ANCHORS || {};
+function anchorAt(name, key, x, y, px, o = {}) {
+  const sp = SPR[name], an = (SPR_ANCH[name] || {})[key];
+  if (!an) throw new Error(`no anchor ${key} on ${name}`);
+  let lx = (an[0] - sp[0].length / 2) * px, ly = (an[1] - sp.length) * px;
+  if (o.sy) ly *= o.sy;
+  if (o.flip) lx = -lx;
+  if (o.rot) { const c = Math.cos(o.rot), sn = Math.sin(o.rot); [lx, ly] = [lx * c - ly * sn, lx * sn + ly * c]; }
+  return [x + lx, y + ly];
+}
+// Dobby by pose, animated on the beat grid: a four-step walk, a wag cycle, blinks, a breathing sleep.
+// Returns what was drawn, so props can attach to his anchors.
 function dobby(A, x, y, px, pose = 'wag', o = {}) {
-  const q = Math.floor(A.bf * 4) % 2;
-  const name = { walk: q ? 'dog_run_a' : 'dog_run_b', run: Math.floor(A.bf * 8) % 2 ? 'dog_run_a' : 'dog_run_b',
-                 wag: q ? 'dog_wag' : 'dog_stand', bark: A.bf < 0.5 ? 'dog_bark' : 'dog_stand' }[pose] || 'dog_' + pose;
-  spr(name, x, y, px, o);
+  const q4 = Math.floor(A.bf * 4) % 4, blinkNow = ((A.t + (o.blinkOff ?? 0.7)) % 2.7) < 0.12;
+  let name;
+  if (pose === 'walk') name = ['dog_walk_1', 'dog_stand', 'dog_walk_3', 'dog_stand'][q4];
+  else if (pose === 'run') name = Math.floor(A.bf * 8) % 2 ? 'dog_run_a' : 'dog_run_b';
+  else if (pose === 'wag') name = ['dog_stand', 'dog_wag', 'dog_stand', 'dog_wag_down'][q4];
+  else if (pose === 'bark') name = A.bf < 0.45 ? 'dog_bark' : 'dog_wag';
+  else name = 'dog_' + pose;
+  if (blinkNow && (name === 'dog_stand' || name === 'dog_wag')) name = 'dog_blink';
+  const moving = pose === 'walk' || pose === 'run';
+  const bob = moving ? -Math.abs(Math.sin(A.bf * Math.PI * (pose === 'run' ? 4 : 2))) * px * 0.9 : 0;
+  const oo = { ...o, sy: (o.sy || 1) * (pose === 'sleep' ? 1 + 0.035 * Math.sin(A.t * 2.2) : 1) };
+  spr(name, x, y + bob, px, oo);
+  return { name, x, y: y + bob, px, o: oo };
 }
 const CORGI_W = SPR.dog_stand[0].length;
 
@@ -329,12 +350,23 @@ function drawScene(A) {
   cx.setTransform(1, 0, 0, 1, 0, 0);
   cx.fillStyle = '#000'; cx.fillRect(0, 0, CW, CH);
   cx.setTransform(S, 0, 0, S, 0, 0);
-  const sh = A.shot;
-  if (!sh.o.feedback) fbFresh = true;
-  sh.fn(A, sh.u, sh, sh.o);
-  if (sh.o.osd !== false) osd(A, { readout: sh.o.readout !== false, dog: sh.o.dog !== false, status: sh.o.status,
-                                   statusC: sh.o.statusC, bark: sh.o.bark });
+  const sh = A.shot, so = sh.o, k = sh.u / sh.d;
+  if (!so.feedback) fbFresh = true;
+  // The camera: a slow push, a bump on the beat, and an entrance (whip pan, drop or punch-in).
+  let z = 1 + (so.push || 0) * smooth(k) + (so.bump || 0) * A.kick, dx = 0, dy = 0;
+  if (so.enter === 'whip' && sh.u < 0.16) dx = (1 - easeOut(sh.u / 0.16)) * 1300 * (so.whipDir || 1);
+  if (so.enter === 'drop' && sh.u < 0.22) dy = -(1 - easeOutBack(sh.u / 0.22)) * 800;
+  if (so.enter === 'punch' && sh.u < 0.25) z *= lerp(1.5, 1, easeOut(sh.u / 0.25));
+  const [fx, fy] = so.focus || [960, 540];
+  cx.save(); cx.translate(fx + dx, fy + dy); cx.scale(z, z); cx.translate(-fx, -fy);
+  sh.fn(A, sh.u, sh, so);
+  cx.restore();
+  if (so.cite) pw(`[${so.citeN}] ${so.cite}`, 960, 1046, 22, { align: 'center', c: FAINT, a: clamp(sh.u * 4) * 0.95 });
+  if (so.osd !== false) osd(A, { readout: so.readout !== false, dog: so.dog !== false, status: so.status,
+                                 statusC: so.statusC, bark: so.bark });
 }
+// Number the citations in order of appearance, like a paper's references.
+function numberCites() { let n = 0; for (const [, , o] of SHOTS) if (o && o.cite) o.citeN = ++n; }
 
 // --- tube parameters over time ----------------------------------------------------------------------
 const GHOST = 0.12;
@@ -564,6 +596,7 @@ window.__render = (i, type = 'image/jpeg', quality = 0.93) => { renderFrame(i); 
 window.__ready = false;
 Promise.all([document.fonts.load('400 40px Degauss'), document.fonts.load('700 40px Degauss'), document.fonts.load('400 40px "Phosphor Wake"')]).then(() => {
   if (!document.fonts.check('700 40px Degauss') || !document.fonts.check('400 40px "Phosphor Wake"')) throw new Error('fonts did not load');
+  numberCites();
   const ghost = document.createElement('canvas'); ghost.width = CW; ghost.height = CH;
   { const A = audio(Math.round(bar(END_BAR) * FPS)); A.pd = 99.9; A.shot = shotInfo(bar(END_BAR)); paint(ghost, () => shotEnd(A, 0, A.shot, { still: true })); }
   gl.activeTexture(gl.TEXTURE2); upload(ghostTex, ghost);
