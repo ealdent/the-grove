@@ -1,0 +1,957 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>P(DOOM) C90 renderer</title>
+<!--
+  Frame-stepped renderer for the P(DOOM) C90 music video (1920x1080, 60 fps).
+  Every scene is drawn on a 2D canvas at 1.25x with the grove's own fonts, then
+  passed through a WebGL2 picture tube. Timing comes from analysis/features.js
+  (python3 analyze.py <song>): the beat grid, per-frame loudness and spectrum,
+  and a 12 kHz copy of the waveform for the scopes.
+  window.__render(i) draws frame i and returns a JPEG data URL.
+  Open with ?t=<seconds> to look at one moment in a browser.
+-->
+<style>
+  @font-face { font-family: Degauss; src: url('../../utils/degauss/Degauss-Regular.woff2') format('woff2'); font-weight: 400; }
+  @font-face { font-family: Degauss; src: url('../../utils/degauss/Degauss-Bold.woff2') format('woff2'); font-weight: 700; }
+  @font-face { font-family: 'Phosphor Wake'; src: url('../../utils/phosphor-wake/PhosphorWake-Regular.woff2') format('woff2'); }
+  html, body { margin: 0; background: #000; }
+  canvas#gl { display: block; width: 1920px; height: 1080px; }
+</style>
+</head>
+<body>
+<canvas id="gl" width="1920" height="1080"></canvas>
+<script>window.onerror = (msg, src, line) => { window.__error = `${msg} (line ${line})`; };</script>
+<script src="analysis/features.js"></script>
+<script src="analysis/ridges.js"></script>
+<script>
+'use strict';
+if (!window.FEAT) throw new Error('analysis/features.js is missing: run python3 analyze.py <song> first');
+if (!window.RIDGES) throw new Error('analysis/ridges.js is missing: run python3 ridges.py first');
+
+const W = 1920, H = 1080, S = 1.25, CW = Math.round(W * S), CH = Math.round(H * S);
+const F = window.FEAT, FPS = F.fps, NF = Math.floor(F.duration * FPS);
+// ?cut=x fits X's 2:20 upload limit: the end card comes in a bar early and the picture ends at 139.9 s.
+const CUT_X = new URLSearchParams(location.search).get('cut') === 'x';
+const OUT_FRAMES = CUT_X ? Math.floor(139.9 * FPS) : NF;
+const PER = F.period, BEAT0 = F.beat0, BAR0 = F.bar0, BAR = 4 * PER;
+const bar = n => BAR0 + n * BAR;             // start of bar n; every scene cut lands on one
+const END_BAR = CUT_X ? 82 : 83;
+const SONG = 'Upping My P(doom)';
+
+// Palette: the Degauss tube's beam colours, plus an alarm red that takes over as P(DOOM) climbs.
+const CORE = '#ffe7bf', AMBER = '#ffb447', DIM = '#c9965c', FAINT = '#8a6a48', DEEP = '#3a2c1e';
+const OSD = '#8dffb4', REC = '#f1462c', HOT = '#ff7a45';
+
+// --- small maths -----------------------------------------------------------------------------
+const clamp = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
+const lerp = (a, b, k) => a + (b - a) * k;
+const seg = (t, a, b) => clamp((t - a) / (b - a));
+const smooth = k => k * k * (3 - 2 * k);
+const easeOut = k => 1 - Math.pow(1 - k, 3);
+const easeIn = k => k * k * k;
+const easeOutBack = k => { const c1 = 1.9, c3 = c1 + 1; return 1 + c3 * Math.pow(k - 1, 3) + c1 * Math.pow(k - 1, 2); };
+const blink = (t, hz) => Math.floor(t * hz * 2) % 2 === 0;
+const hash = n => { const s = Math.sin(n * 127.1 + 311.7) * 43758.5453; return s - Math.floor(s); };
+
+// --- the song, decoded ---------------------------------------------------------------------------
+const u8 = s => { const b = atob(s), a = new Uint8Array(b.length); for (let i = 0; i < b.length; i++) a[i] = b.charCodeAt(i); return a; };
+const SPEC = u8(F.spec), NB = F.specBins;
+const FE = {};
+for (const k of ['rmsL', 'rmsR', 'sub', 'low', 'mid', 'high', 'onset']) FE[k] = u8(F[k]);
+const SCOPE = new Int8Array(u8(F.scope).buffer), SCOPE_SR = F.scopeRate, SCOPE_N = SCOPE.length / 2;
+const fi = i => Math.min(NF - 1, Math.max(0, i));
+const feat = (k, i) => FE[k][fi(i)] / 255;
+const spec = (i, b) => SPEC[fi(i) * NB + Math.min(NB - 1, Math.max(0, Math.round(b)))] / 255;
+// Peak-hold follower rebuilt from recent history, so any frame renders the same cold or in sequence.
+function hold(k, i, decay = 0.85, n = 20) { let m = 0, d = 1; for (let j = 0; j < n; j++, d *= decay) m = Math.max(m, feat(k, i - j) * d); return m; }
+const scopeAt = (t, ch) => SCOPE[Math.min(SCOPE_N - 1, Math.max(0, Math.round(t * SCOPE_SR))) * 2 + ch] / 127;
+
+function audio(i) {
+  const t = i / FPS, beats = (t - BEAT0) / PER, bn = Math.floor(beats + 1e-6), bf = beats - bn;
+  const bars = (t - BAR0) / BAR;
+  return {
+    i, t, bn, bf, bars, barN: Math.floor(bars + 1e-6), beatInBar: ((bn - F.downPhase) % 4 + 4) % 4,
+    kick: t < BEAT0 ? 0 : Math.exp(-bf * PER * 9),            // on the grid, whatever the mix does
+    sub: hold('sub', i, 0.82, 14), low: feat('low', i), mid: feat('mid', i), high: hold('high', i, 0.75, 8),
+    onset: hold('onset', i, 0.8, 12), rms: (feat('rmsL', i) + feat('rmsR', i)) / 2
+  };
+}
+
+// --- P(DOOM): one step per beat, keyed to bars -------------------------------------------------
+const PD_KEYS = [[-9, 0.4], [2, 0.4], [8, 1.2], [11.74, 2.2], [11.75, 6.0], [12, 6.2], [20, 11], [28, 25], [32, 30], [40, 44],
+                 [48, 58], [59, 61], [60, 70], [68, 86], [75, 97], [76, 97], [77, 98], [78, 98.5], [79, 99], [80, 99.5],
+                 [81, 99.7], [82, 99.8], [83, 99.9], [999, 99.9]];
+function pdAtBar(b) {
+  for (let k = 1; k < PD_KEYS.length; k++) if (b <= PD_KEYS[k][0]) {
+    const [b0, v0] = PD_KEYS[k - 1], [b1, v1] = PD_KEYS[k];
+    return Math.round(lerp(v0, v1, clamp((b - b0) / (b1 - b0))) * 10) / 10;
+  }
+  return 99.9;
+}
+function pdoom(t) {
+  const beats = (t - BAR0) / PER, n = Math.floor(beats + 1e-6), f = beats - n;
+  return lerp(pdAtBar((n - 1) / 4), pdAtBar(n / 4), easeOut(clamp(f / 0.22)));
+}
+
+// --- 2D scene drawing (in 1920x1080 units) -------------------------------------------------------
+const scene = document.createElement('canvas'); scene.width = CW; scene.height = CH;
+let cx = scene.getContext('2d');
+function paint(canvas, fn) {
+  const keep = cx; cx = canvas.getContext('2d');
+  cx.setTransform(1, 0, 0, 1, 0, 0); cx.fillStyle = '#000'; cx.fillRect(0, 0, canvas.width, canvas.height);
+  cx.setTransform(canvas.width / W, 0, 0, canvas.height / H, 0, 0);
+  fn(); cx = keep;
+}
+const FAM = { D: 'Degauss', P: '"Phosphor Wake"' };
+function font(size, w = 400, f = 'D') { cx.font = `${w} ${size}px ${FAM[f]}`; }
+function measure(s, size, w = 400, f = 'D') { font(size, w, f); return cx.measureText(s).width; }
+function txt(s, x, y, size, o = {}) {
+  const a = o.a ?? 1;
+  if (a <= 0 || !s) return;
+  font(size, o.w || 400, o.f || 'D');
+  cx.textAlign = o.align || 'left'; cx.textBaseline = 'alphabetic';
+  cx.globalAlpha = a; cx.fillStyle = o.c || CORE; cx.fillText(s, x, y); cx.globalAlpha = 1;
+}
+const pw = (s, x, y, size, o = {}) => txt(s, x, y, size, { ...o, f: 'P' });   // Phosphor Wake: the terminal voice
+function rect(x, y, w, h, c, a = 1) { cx.globalAlpha = a; cx.fillStyle = c; cx.fillRect(x, y, w, h); cx.globalAlpha = 1; }
+function stroke(c, lw, a = 1) { cx.globalAlpha = a; cx.strokeStyle = c; cx.lineWidth = lw; cx.stroke(); cx.globalAlpha = 1; }
+function cursor(x, y, w, h, c = CORE) { rect(x, y - h, w, h, c); }
+function typed(s, t, cps) { return s.slice(0, clamp(Math.floor(t * cps), 0, s.length)); }
+
+// Rolling odometer digits: the tenths wheel turns continuously, higher wheels carry like a tape counter.
+const cellCache = new Map();
+function digitCell(size, w) {
+  const key = size + ':' + w;
+  if (!cellCache.has(key)) { let m = 0; for (const d of '0123456789') m = Math.max(m, measure(d, size, w)); cellCache.set(key, m); }
+  return cellCache.get(key);
+}
+function wheel(pos, x, y, cw, size, o, blankZero) {
+  const lh = size * 0.94, d = Math.floor(pos), f = pos - d;
+  cx.save(); cx.beginPath(); cx.rect(x - size * 0.1, y - size * 0.8, cw + size * 0.2, size * 0.93); cx.clip();
+  for (let k = 0; k < 2; k++) {
+    const digit = (d + k) % 10;
+    if (blankZero && digit === 0 && d + k < 10) continue;
+    txt(String(digit), x + cw / 2, y - f * lh + k * lh, size, { w: o.w, align: 'center', c: o.c, a: o.a });
+  }
+  cx.restore();
+}
+function odometer(v, x, y, size, o = {}) {
+  o = { w: 700, c: CORE, a: 1, align: 'center', ...o };
+  const cw = digitCell(size, o.w), dotW = measure('.', size, o.w), pctW = measure('%', size, o.w) + size * 0.04;
+  const total = cw * 3 + dotW + pctW;
+  const x0 = o.align === 'center' ? x - total / 2 : o.align === 'left' ? x : x - total;
+  let tenths = ((v * 10) % 10 + 10) % 10;
+  let ones = Math.floor(v) % 10 + clamp(tenths - 9, 0, 1);
+  let tens = Math.floor(v / 10) % 10 + clamp(ones - 9, 0, 1);
+  if (o.scramble) {                                  // the riser: every wheel spins
+    const s = o.scramble;
+    tenths = (s * 31.7) % 10; ones = (s * 17.3 + 4) % 10; tens = (s * 7.1 + 7) % 10;
+  }
+  wheel(tens, x0, y, cw, size, o, !o.scramble);
+  wheel(ones, x0 + cw, y, cw, size, o, false);
+  txt('.', x0 + cw * 2 + dotW / 2, y, size, { w: o.w, align: 'center', c: o.c, a: o.a });
+  wheel(tenths, x0 + cw * 2 + dotW, y, cw, size, o, false);
+  txt('%', x0 + cw * 3 + dotW + size * 0.04, y, size, { w: o.w, c: o.c, a: o.a });
+  return total;
+}
+
+// --- watchdogd: Dobby, drawn as a 35x20 sprite facing right --------------------------------------
+const CORGI_STAND = [
+  '.........................T.....T...',
+  '........................TT....TT...',
+  '........................TDT..TDT...',
+  '........................TDDTTDDT...',
+  '.......................TTTTTWTTTT..',
+  '.......................TTTTTWTTKTT.',
+  '.......................TTTTWWWTTTTT',
+  '.......................TTTTWWWWWWWK',
+  '........................TTWWWWWWW..',
+  '..TT....................TWWWWWWW...',
+  '.TTTT..................TTWWWWW.....',
+  'TTTTTTTTTTTTTTTTTTTTTTTTWWWWW......',
+  'TTTTTTTTTTTTTTTTTTTTTTTWWWWWW......',
+  'TTTTTTTTTTTTTTTTTTTTTTTWWWWW.......',
+  'TTTTTTTTTTTTTTTTTTTTTTTWWWWW.......',
+  '.TTTTTTTTTTTTTTTTTTTTTTWWWW........',
+  '.TTTWWWWWWWWWWWWWWWWTTTWWWW........',
+  '..TTT.............TTT.WWW..........',
+  '..TTW.............TTW.WWW..........',
+  '..WWW.............WWW.WWW..........'
+];
+const CORGI_WAG = CORGI_STAND.map((r, y) => y === 8 ? '...T' + r.slice(4) : y === 9 ? '..TTT' + r.slice(5) : r);
+const CORGI_BARK = CORGI_STAND.map((r, y) => y === 8 ? '........................TTWWW......' : y === 9 ? '..TT....................TWWWWWW....' : r);
+const CORGI_PAL = { T: AMBER, W: CORE, D: '#9a5a28', K: '#000' };
+function corgi(x, feetY, px, sprite = CORGI_STAND, a = 1, color) {
+  // A black silhouette first, so the dog hides whatever it stands in front of.
+  const y0 = feetY - sprite.length * px;
+  cx.globalAlpha = a;
+  for (let y = 0; y < sprite.length; y++) for (let x0 = 0; x0 < sprite[y].length; x0++) {
+    const ch = sprite[y][x0];
+    if (ch === '.') continue;
+    cx.fillStyle = ch === 'K' ? '#000' : (color && ch === 'T' ? color : CORGI_PAL[ch]);
+    cx.fillRect(x + x0 * px, y0 + y * px, px + 0.35, px + 0.35);
+  }
+  cx.globalAlpha = 1;
+}
+const CORGI_W = CORGI_STAND[0].length, CORGI_H = CORGI_STAND.length;
+
+// --- the on-screen display, burned in over most scenes -------------------------------------------
+function fmtStep(t) { return Math.floor(Math.pow(2, 11 + t * 0.19)).toLocaleString('en-US'); }
+function fmtClock(t) { const s = Math.floor(t); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; }
+function osd(A, o = {}) {
+  const a = o.a ?? 0.92, t = A.t;
+  pw('RUN 0x5EED', 72, 92, 30, { c: OSD, a });
+  pw('STEP ' + fmtStep(t), 72, 132, 30, { c: OSD, a: a * 0.75 });
+  if (o.readout !== false) {
+    txt('P(DOOM)', 1848, 84, 30, { w: 700, align: 'right', c: DIM, a });
+    odometer(pdoom(t), 1848, 158, 66, { align: 'right', a, c: A.pd > 60 ? HOT : CORE });
+  }
+  if (o.dog !== false) {
+    const wag = Math.floor(A.bf * 4) % 2 ? CORGI_WAG : CORGI_STAND;
+    corgi(72, 1004, 4, o.bark ? CORGI_BARK : wag, a);
+    pw('watchdogd', 72 + CORGI_W * 4 + 22, 966, 24, { c: DIM, a });
+    pw(o.status || 'good boy', 72 + CORGI_W * 4 + 22, 1000, 28, { c: o.statusC || CORE, a });
+  }
+  pw(`C90 SP ${fmtClock(t)}`, 1848, 1000, 28, { align: 'right', c: DIM, a });
+  for (let k = 0; k < 4; k++) rect(1848 - 142 + k * 38, 936, 26, 16, k === A.beatInBar ? AMBER : DEEP, t < BAR0 ? 0.3 : a);
+}
+
+// --- scenes ----------------------------------------------------------------------------------------
+function sceneTitle(A) {
+  const t = A.t;
+  txt('READY.', 72, 112, 38);
+  if (blink(t, 1)) cursor(72 + measure('READY.', 38) + 10, 114, 22, 36);
+  txt('C90  TYPE II', 1848, 112, 38, { align: 'right', c: DIM });
+  txt('P(DOOM)', 960, 600, 330, { w: 700, align: 'center' });
+  const sub = 'live from the training run', at = bar(1) - 0.2;
+  if (t > at) {
+    const s = typed(sub, t - at, 26), x0 = 960 - measure(sub, 66) / 2;
+    txt(s, x0, 740, 66, { c: AMBER });
+    if (s.length < sub.length || blink(t, 1.25)) cursor(x0 + measure(s, 66) + 8, 746, 30, 60, AMBER);
+  }
+  txt('PLAY ▶', 1848, 1000, 34, { align: 'right', c: OSD, a: blink(t, 0.8) ? 0.9 : 0.35 });
+}
+
+const BOOT = [
+  ['C90 TYPE II  MIXED-SPACE TERMINAL', ''],
+  ['> mount /dev/tape0', 'ok'],
+  ['> load corpus 15T tokens', 'ok'],
+  ['> tokenizer bpe-200k', 'ok'],
+  ['> init weights seed=0x5EED', 'ok'],
+  ['> nodes 0..127', 'online'],
+  ['> optimizer adamw lr=3e-4', 'ok'],
+  ['> evals helpful honest harmless', 'ok'],
+  ['> watchdogd --dog=dobby', 'good boy'],
+  ['> alignment', 'todo'],
+  ['> ./train --until=done', ''],
+  ['  step 0', '']
+];
+function nodeGrid(A, x, y, cols, rows, pitch, lit, o = {}) {
+  const size = pitch * 0.78;
+  for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
+    const k = r * cols + c;
+    if (k >= lit) { rect(x + c * pitch, y + r * pitch, size, size, DEEP, 0.9); continue; }
+    const s = spec(A.i, (c / cols) * (NB - 6) + 3);
+    const fl = hash(k * 7.3 + Math.floor(A.t * 12)) < 0.12 ? 0.4 : 1;
+    const hot = o.hot && hash(k * 3.1 + Math.floor(A.t * 6)) < o.hot;
+    rect(x + c * pitch, y + r * pitch, size, size, hot ? REC : (s > 0.72 ? CORE : AMBER), (0.42 + 0.58 * s) * fl);
+  }
+}
+function sceneBoot(A, u) {
+  const beat = u / PER;
+  pw(BOOT[0][0], 96, 236, 30, { c: OSD });
+  for (let k = 1; k < BOOT.length; k++) {
+    const at = (k - 1) * 2 + 0.25;                   // one line every two beats; the status lands on the beat
+    if (beat < at) break;
+    const [cmd, status] = BOOT[k], y = 236 + k * 58;
+    const s = typed(cmd, (beat - at) * PER, 64);
+    pw(s, 96, y, 34, { c: CORE });
+    if (s.length === cmd.length && status && beat >= at + 1 - 0.25) {
+      const dots = '.'.repeat(Math.max(2, 34 - cmd.length));
+      pw(dots, 96 + measure(cmd + ' ', 34, 400, 'P'), y, 34, { c: FAINT });
+      const flash = clamp(1 - (beat - (at + 0.75)) * 1.5);
+      pw(status, 1000, y, 34, { align: 'right', c: status === 'todo' ? REC : (flash > 0.5 ? CORE : OSD) });
+    }
+    if (k === BOOT.length - 1 || beat < (k) * 2 + 0.25) {
+      if (blink(A.t, 2)) cursor(96 + measure(s, 34, 400, 'P') + 6, y + 4, 18, 34, CORE);
+    }
+  }
+  // The cluster wakes up as the "nodes" line lands.
+  const lit = Math.floor(128 * easeOut(clamp((beat - 9) / 6)));
+  pw('CLUSTER', 1130, 236, 30, { c: OSD });
+  nodeGrid(A, 1130, 280, 16, 8, 44, lit);
+  pw(`NODES ${String(lit).padStart(3, ' ')}/128`, 1130, 690, 30, { c: CORE });
+  pw(`${(lit / 128 * 8.4).toFixed(1)} EFLOP/s`, 1830, 690, 30, { align: 'right', c: AMBER });
+  const tok = clamp((beat - 3) / 20);
+  rect(1130, 730, 700, 18, DEEP);
+  rect(1130, 730, 700 * tok, 18, AMBER);
+  pw(`TOKENS ${(tok * 15).toFixed(1)}T / 15T`, 1130, 792, 26, { c: DIM });
+}
+
+function lossAt(x) {
+  const cliff = 15 / 16;
+  const base = 0.86 + 2.15 * Math.exp(-5.6 * x) + 0.05 * Math.sin(x * 40) * (1 - x);
+  const drop = 0.72 * smooth(clamp((x - cliff) / 0.018));
+  const n = (hash(Math.floor(x * 420)) - 0.5) * 0.11 * (1 - 0.6 * x);
+  return Math.max(0.05, base - drop + n);
+}
+function sceneLoss(A, u) {
+  const gx = 240, gy = 210, gw = 1440, gh = 680, beats = u / PER;
+  for (let k = 0; k <= 10; k++) rect(gx + k * gw / 10 - 1, gy, 2, gh, DEEP, k % 5 ? 0.9 : 1);
+  for (let k = 0; k <= 8; k++) rect(gx, gy + k * gh / 8 - 1, gw, 2, DEEP, k % 4 ? 0.9 : 1);
+  for (let k = 0; k <= 50; k++) rect(gx + k * gw / 50 - 1, gy + gh / 2 - 6, 2, 12, FAINT, 0.7);
+  txt('TRAINING LOSS', gx, gy - 34, 44, { w: 700, c: AMBER });
+  pw('STEP 2^k', gx + gw, gy - 34, 26, { align: 'right', c: DIM });
+  for (let k = 0; k <= 10; k += 2) pw(String(10 + k * 2.2 | 0), gx + k * gw / 10, gy + gh + 40, 24, { align: 'center', c: FAINT });
+  for (let k = 0; k <= 4; k++) pw((3.2 - k * 0.8).toFixed(1), gx - 20, gy + k * gh / 4 + 8, 24, { align: 'right', c: FAINT });
+  const reveal = clamp(beats / 16 / 0.985);
+  const Y = L => gy + gh * (1 - L / 3.2);
+  cx.beginPath();
+  const n = Math.floor(reveal * gw);
+  for (let px = 0; px <= n; px += 2) {
+    const x = px / gw, wig = px > n - 60 ? (A.mid - 0.5) * 18 * (1 - (n - px) / 60) : 0;
+    const X = gx + px, YY = Y(lossAt(x)) + wig;
+    if (px === 0) cx.moveTo(X, YY); else cx.lineTo(X, YY);
+  }
+  stroke(CORE, 3.5);
+  const hx = gx + n, hy = Y(lossAt(reveal));
+  cx.beginPath(); cx.arc(hx, hy, 9 + 6 * A.kick, 0, Math.PI * 2); cx.fillStyle = CORE; cx.fill();
+  pw(lossAt(reveal).toFixed(3), hx + 22, hy - 16, 28, { c: CORE });
+  if (beats >= 15) {
+    const on = blink(u, 3);
+    cx.beginPath(); cx.roundRect(1060, 300, 560, 150, 14); cx.fillStyle = 'rgba(0,30,16,0.8)'; cx.fill(); stroke(OSD, 3, on ? 1 : 0.6);
+    pw('LOSS CLIFF', 1340, 362, 44, { align: 'center', c: OSD });
+    pw('capability unlocked', 1340, 414, 28, { align: 'center', c: CORE, a: on ? 1 : 0.7 });
+  }
+}
+
+const SOFTMAX = [
+  ['p(doom)', ['the', 'p(doom)', 'my', 'our', 'a', 'this']],
+  [' is', [' is', ' was', ' feels', ' stays', ' will', ' can']],
+  [' just', [' only', ' just', ' not', ' really', ' probably', ' clearly']],
+  [' a', [' a', ' one', ' the', ' another', ' some', ' my']],
+  [' number', [' vibe', ' guess', ' number', ' prior', ' feeling', ' bet']],
+  [',', [',', ' and', ' so', ' that', '.', ' which']],
+  [' right', [' yeah', ' surely', ' okay', ' right', ' though', ' lol']],
+  ['?', ['?', '??', '!', '?!', '...', ' lol']]
+];
+const SHAPE = [0.14, 0.1, 0.08, 0.07, 0.06, 0.05];
+function softmaxProbs(A, step, beatInStep, hot) {
+  const [pick, cands] = SOFTMAX[step];
+  const settle = smooth(clamp(beatInStep - 2.6));      // commits on the last beat of the bar
+  let p = cands.map((c, r) => {
+    const base = c === pick ? 0.3 : SHAPE[r];
+    const shimmer = 0.55 + 0.9 * spec(A.i, 6 + r * 6 + step);
+    return lerp(base * shimmer, c === pick ? 0.92 : 0.016, settle);
+  });
+  const sum = p.reduce((s, v) => s + v, 0);
+  return p.map(v => v / sum);
+}
+function sceneSoftmax(A, u) {
+  const beats = u / PER, step = clamp(Math.floor(beats / 4), 0, 7), bs = beats - step * 4;
+  pw('NEXT-TOKEN DISTRIBUTION   T = 0.8', 160, 196, 30, { c: OSD });
+  pw(`${step + 1}/8`, 1760, 196, 30, { align: 'right', c: DIM });
+  // The context: every committed token so far, then the cursor.
+  let ctxS = '';
+  for (let k = 0; k < step; k++) ctxS += SOFTMAX[k][0];
+  if (bs >= 3.2) ctxS += typed(SOFTMAX[step][0], (bs - 3.2) * PER, 30);
+  txt('>', 160, 316, 76, { c: DIM });
+  txt(ctxS, 230, 316, 76);
+  if (blink(A.t, 2)) cursor(230 + measure(ctxS, 76) + 8, 322, 34, 70, CORE);
+  const p = softmaxProbs(A, step, bs);
+  const [pick, cands] = SOFTMAX[step];
+  cands.forEach((c, r) => {
+    const y = 470 + r * 92, chosen = c === pick && bs >= 2.6;
+    txt(c.replace(/^ /, '␣'), 600, y, 50, { align: 'right', c: chosen ? CORE : DIM });
+    rect(640, y - 42, 980, 46, DEEP, 0.7);
+    rect(640, y - 42, 980 * p[r], 46, chosen ? CORE : AMBER, chosen ? 1 : 0.85);
+    pw((p[r] * 100).toFixed(1) + '%', 640 + 980 * p[r] + 18, y - 6, 32, { c: chosen ? CORE : DIM });
+    if (chosen && blink(A.t, 3)) txt('▶', 120, y, 44, { c: CORE });
+  });
+}
+
+function spectrumLEDs(A, x, y, w, cols, segs, segH, o = {}) {
+  const cw = w / cols;
+  for (let c = 0; c < cols; c++) {
+    const v = spec(A.i, c * (NB - 1) / (cols - 1)), lit = v * segs * (o.gain || 1.05);
+    for (let s = 0; s < segs; s++) {
+      const on = s < lit, top = s >= segs - 2;
+      rect(x + c * cw + 3, y - (s + 1) * (segH + 5), cw - 6, segH, on ? (top ? HOT : (s > segs * 0.6 ? CORE : AMBER)) : DEEP, on ? 1 : 0.55);
+    }
+  }
+}
+function sceneReadout(A, u, o = {}) {
+  const pd = o.pd ?? pdoom(A.t);
+  txt('P(DOOM)', 960, 270, 150, { w: 700, align: 'center', c: pd > 60 ? HOT : DIM });
+  cx.save();
+  const k = 1 + 0.03 * A.kick;
+  cx.translate(960, 640); cx.scale(k, k); cx.translate(-960, -640);
+  odometer(pd, 960, 700, 400, { c: CORE, scramble: o.scramble });
+  cx.restore();
+  spectrumLEDs(A, 270, 908, 1380, 44, 7, 14);
+}
+
+const ATT_TOK = ['p(doom)', 'is', 'just', 'a', 'number', ',', 'right', '?'];
+function attn(head, r, c, t) {
+  if (c > r) return 0;
+  const kind = head % 4, jit = 0.25 * hash(head * 31 + r * 7 + c * 3 + Math.floor(t * 8) * 0.01);
+  let v;
+  if (kind === 0) v = c === r ? 1 : c === r - 1 ? 0.35 : 0.05;
+  else if (kind === 1) v = c === 0 ? 0.95 : c === r ? 0.3 : 0.06;
+  else if (kind === 2) v = c === r - 1 || (r === 0 && c === 0) ? 1 : 0.05;
+  else v = 1 / (r + 1) * (0.7 + 0.6 * hash(head + r * 13 + c));
+  return clamp(v + jit * (kind === 3 ? 1 : 0.3));
+}
+function attnMatrix(A, x, y, cell, head, gain, labels) {
+  for (let r = 0; r < 8; r++) for (let c = 0; c < 8; c++) {
+    const v = attn(head, r, c, A.t) * gain;
+    rect(x + c * cell + 2, y + r * cell + 2, cell - 4, cell - 4, c > r ? '#140f0a' : (v > 0.75 ? CORE : AMBER), c > r ? 1 : 0.1 + 0.9 * clamp(v));
+  }
+  if (!labels) return;
+  ATT_TOK.forEach((s, k) => {
+    pw(s, x - 18, y + k * cell + cell * 0.64, 30, { align: 'right', c: DIM });
+    cx.save(); cx.translate(x + k * cell + cell * 0.55, y - 16); cx.rotate(-Math.PI / 3.2);
+    pw(s, 0, 0, 28, { c: DIM }); cx.restore();
+  });
+}
+function sceneAttention(A, u, o = {}) {
+  const head = clamp(Math.floor(u / PER), 0, 15);
+  txt(`ATTENTION  ·  LAYER 61  ·  HEAD ${head}`, 160, 200, 44, { w: 700, c: AMBER });
+  const gain = (0.75 + 0.5 * A.mid) * (o.hot ? 1.5 : 1);
+  attnMatrix(A, 440, 360, 72, o.hot ? 1 : head, gain, true);
+  for (let h = 0; h < 16; h++) {
+    const hx = 1220 + (h % 4) * 138, hy = 360 + Math.floor(h / 4) * 138;
+    attnMatrix(A, hx, hy, 15, h, 0.9, false);
+    if (h === head) { cx.beginPath(); cx.rect(hx - 8, hy - 8, 136, 136); stroke(CORE, 3); }
+  }
+  pw(`HEAD ${String(head).padStart(2, '0')}/16`, 1220, 948, 28, { c: DIM });
+}
+
+// Scaling law: loss falls as a straight line in log-log; P(DOOM) (right axis) rises on the same compute.
+const SC_PTS = Array.from({ length: 32 }, (_, k) => {
+  const c = 20.2 + 5.6 * (k / 31) + (hash(k * 5.7) - 0.5) * 0.35;
+  return [c, Math.log10(3.6) - 0.045 * (c - 20) + (hash(k * 9.1) - 0.5) * 0.035];
+});
+function sceneScaling(A, u, o = {}) {
+  const beats = u / PER, gx = 260, gy = 260, gw = 1400, gh = 600;
+  const zoom = o.zoom ?? smooth(seg(beats, 16, 20));
+  const cMin = 20, cMax = lerp(26, 32, zoom);
+  const X = c => gx + (c - cMin) / (cMax - cMin) * gw;
+  const Y = l => gy + gh * (1 - (l - 0) / (Math.log10(4.2) - 0));
+  rect(gx, gy + gh, gw, 3, DIM); rect(gx, gy, 3, gh, DIM);
+  for (let c = 20; c <= Math.floor(cMax); c++) {
+    const x = X(c);
+    rect(x - 1, gy + gh, 2, 14, DIM);
+    if (c % (zoom > 0.5 ? 2 : 1) === 0) pw(`1e${c}`, x, gy + gh + 46, 24, { align: 'center', c: FAINT });
+  }
+  for (const l of [1, 2, 3, 4]) { const y = Y(Math.log10(l)); rect(gx - 14, y - 1, 14, 2, DIM); pw(String(l), gx - 24, y + 8, 24, { align: 'right', c: FAINT }); }
+  txt('SCALING', gx, gy - 40, 46, { w: 700, c: AMBER });
+  pw('COMPUTE (FLOP)', gx + gw, gy + gh + 92, 26, { align: 'right', c: DIM });
+  pw('LOSS', gx - 24, gy - 16, 26, { align: 'right', c: DIM });
+  const shown = o.all ? 32 : clamp(Math.floor(beats) + 1, 0, 32);
+  // Fit line to the points so far, then the dashed extrapolation once the axis opens up.
+  const lastC = SC_PTS[Math.max(0, shown - 1)][0];
+  cx.beginPath(); cx.moveTo(X(20), Y(Math.log10(3.6))); cx.lineTo(X(lastC), Y(Math.log10(3.6) - 0.045 * (lastC - 20))); stroke(AMBER, 3, 0.8);
+  if (zoom > 0) {
+    cx.setLineDash([14, 12]); cx.beginPath();
+    cx.moveTo(X(lastC), Y(Math.log10(3.6) - 0.045 * (lastC - 20)));
+    const ce = lerp(lastC, cMax, zoom);
+    cx.lineTo(X(ce), Y(Math.log10(3.6) - 0.045 * (ce - 20))); stroke(AMBER, 3, 0.6); cx.setLineDash([]);
+  }
+  for (let k = 0; k < shown; k++) {
+    const [c, l] = SC_PTS[k], fresh = k === shown - 1 ? A.kick : 0;
+    cx.beginPath(); cx.arc(X(c), Y(l), 8 + 8 * fresh, 0, Math.PI * 2); cx.fillStyle = fresh > 0.3 ? CORE : AMBER; cx.fill();
+  }
+  if (shown > 0 && zoom < 0.2) {
+    const [c, l] = SC_PTS[shown - 1];
+    pw('you are here', X(c) + 22, Y(l) - 22, 26, { c: CORE, a: blink(A.t, 1.5) ? 1 : 0.5 });
+  }
+  // The right axis and the red curve.
+  const redIn = o.red ?? seg(beats, 18, 30);
+  if (redIn > 0) {
+    rect(gx + gw - 3, gy, 3, gh, REC, redIn);
+    for (const v of [0, 50, 100]) pw(`${v}%`, gx + gw + 18, gy + gh * (1 - v / 100) + 8, 24, { c: REC, a: redIn });
+    pw('P(DOOM)', gx + gw + 18, gy - 16, 26, { c: REC, a: redIn });
+    cx.beginPath();
+    const cEnd = lerp(20, cMax, redIn);
+    for (let c = 20; c <= cEnd; c += 0.05) {
+      const v = 100 / (1 + Math.exp(-(c - 28.4) * 1.5)), x = X(c), y = gy + gh * (1 - v / 100);
+      if (c === 20) cx.moveTo(x, y); else cx.lineTo(x, y);
+    }
+    stroke(REC, 4.5);
+  }
+}
+
+function polarScope(A, cxp, cyp, R, amp, n, rot, color, alpha, ch, lw = 3) {
+  cx.beginPath();
+  const t0 = A.t - n / SCOPE_SR;
+  for (let k = 0; k <= n; k++) {
+    const s = scopeAt(t0 + k / SCOPE_SR, ch), ang = rot + (k / n) * Math.PI * 2;
+    const r = R + amp * s;
+    const x = cxp + Math.cos(ang) * r, y = cyp + Math.sin(ang) * r;
+    if (k === 0) cx.moveTo(x, y); else cx.lineTo(x, y);
+  }
+  stroke(color, lw, alpha);
+}
+function radialSpectrum(A, cxp, cyp, R, len, n, color, alpha = 1) {
+  for (let k = 0; k < n; k++) {
+    const m = k < n / 2 ? k : n - 1 - k;
+    const v = spec(A.i, 2 + m * (NB - 4) / (n / 2 - 1)), ang = -Math.PI / 2 + (k / n) * Math.PI * 2;
+    const r0 = R, r1 = R + 8 + len * v;
+    cx.beginPath(); cx.moveTo(cxp + Math.cos(ang) * r0, cyp + Math.sin(ang) * r0); cx.lineTo(cxp + Math.cos(ang) * r1, cyp + Math.sin(ang) * r1);
+    stroke(v > 0.75 ? CORE : color, 6, alpha);
+  }
+}
+function eye(A, u, o = {}) {
+  const X0 = o.x ?? 960, Y0 = o.y ?? 540, sc = o.scale ?? 1;
+  // Blink at the end of every four bars.
+  const lb = u / BAR, ph = lb % 4;
+  const open = o.open ?? (ph > 3.82 ? 1 - Math.sin(clamp((ph - 3.82) / 0.18) * Math.PI) * 0.95 : 1);
+  cx.save();
+  cx.beginPath();
+  const hw = 700 * sc, hh = 470 * sc * open;
+  cx.moveTo(X0 - hw, Y0); cx.quadraticCurveTo(X0, Y0 - hh * 1.35, X0 + hw, Y0); cx.quadraticCurveTo(X0, Y0 + hh * 1.35, X0 - hw, Y0);
+  cx.closePath();
+  stroke(DIM, 4, 0.9 * (o.a ?? 1));
+  cx.clip();
+  const R = (250 + 36 * A.sub) * sc, rot = -Math.PI / 2 + u * 0.35;
+  radialSpectrum(A, X0, Y0, R + 110 * sc, 130 * sc, 96, AMBER, o.a ?? 1);
+  polarScope(A, X0, Y0, R + 40 * sc, 110 * sc, 900, rot, CORE, 0.95 * (o.a ?? 1), 0, 3);
+  polarScope(A, X0, Y0, R - 30 * sc, 80 * sc, 900, -rot * 1.3, AMBER, 0.8 * (o.a ?? 1), 1, 2.5);
+  const pr = (110 + 70 * A.sub) * sc;
+  cx.beginPath(); cx.arc(X0, Y0, pr, 0, Math.PI * 2); cx.fillStyle = '#000'; cx.fill(); stroke(CORE, 4, o.a ?? 1);
+  cx.restore();
+  if (o.readout !== false) odometer(pdoom(A.t), X0, Y0 + 30 * sc, 86 * sc, { c: A.pd > 50 ? HOT : CORE, a: open > 0.5 ? 1 : 0 });
+}
+function sceneEye(A, u) { eye(A, u); }
+
+// Blue Ridge ridgelines, cut from the grove's own USGS relief.
+const RID = (() => { const d = u8(window.RIDGES.data); return { n: window.RIDGES.lines, m: window.RIDGES.points, d }; })();
+function ridgeY(line, xi) {
+  const l0 = Math.floor(line), l1 = Math.min(RID.n - 1, l0 + 1), f = line - l0;
+  const a = RID.d[Math.min(RID.n - 1, l0) * RID.m + xi], b = RID.d[l1 * RID.m + xi];
+  return lerp(a, b, f) / 255;
+}
+function ridges(A, o) {
+  const { x0 = 240, x1 = 1680, yTop = 380, pitch = 17, lines = 36, amp = 150, scroll = 0, pulse = 0, front = 0, alpha = 1, color = AMBER } = o;
+  const env = xn => 0.16 + 0.84 * Math.exp(-Math.pow((xn - 0.5) / 0.24, 2));
+  let frontLine = null;
+  for (let j = 0; j < lines; j++) {
+    const base = yTop + j * pitch, src = clamp(j + scroll, 0, RID.n - 1.001);
+    const wave = pulse * Math.exp(-Math.pow((j - front) / 3.5, 2));
+    const pts = [];
+    for (let xi = 0; xi < RID.m; xi += 2) {
+      const xn = xi / (RID.m - 1);
+      pts.push([lerp(x0, x1, xn), base - amp * (1 + wave) * env(xn) * ridgeY(src, xi)]);
+    }
+    cx.beginPath(); cx.moveTo(pts[0][0], pts[0][1]);
+    for (const [x, y] of pts) cx.lineTo(x, y);
+    cx.lineTo(x1, H + 10); cx.lineTo(x0, H + 10); cx.closePath();
+    cx.fillStyle = '#000'; cx.fill();
+    cx.beginPath(); cx.moveTo(pts[0][0], pts[0][1]);
+    for (const [x, y] of pts) cx.lineTo(x, y);
+    stroke(wave > 0.25 ? CORE : color, 2.6, alpha * (0.4 + 0.6 * j / (lines - 1)));
+    if (j === lines - 1) frontLine = pts;
+  }
+  return frontLine;
+}
+function lineYAt(pts, x) {
+  for (let k = 1; k < pts.length; k++) if (pts[k][0] >= x) { const [xa, ya] = pts[k - 1], [xb, yb] = pts[k]; return lerp(ya, yb, (x - xa) / (xb - xa)); }
+  return pts[pts.length - 1][1];
+}
+const STARS = Array.from({ length: 170 }, (_, k) => [hash(k * 1.7) * W, 60 + hash(k * 3.3) * 360, hash(k * 9.9)]);
+function sceneRidges(A, u) {
+  const dur = bar(59) - bar(48), k = u / dur;
+  for (const [x, y, s] of STARS) {
+    const tw = 0.35 + 0.65 * (0.5 + 0.5 * Math.sin(A.t * (1.3 + s * 3) + s * 40));
+    rect(x, y, 3, 3, CORE, tw * (0.25 + 0.5 * s) * (0.7 + 0.5 * A.high));
+  }
+  // The moon slowly opens into a ring: the eye is coming back.
+  const ring = smooth(seg(u / BAR, 8.5, 10.8));
+  const mx = 1480, my = 210, mr = 66;
+  cx.beginPath(); cx.arc(mx, my, mr, 0, Math.PI * 2); cx.fillStyle = CORE; cx.globalAlpha = 0.95; cx.fill(); cx.globalAlpha = 1;
+  if (ring > 0) {
+    cx.beginPath(); cx.arc(mx, my, mr * 0.86 * ring, 0, Math.PI * 2); cx.fillStyle = '#000'; cx.fill();
+    polarScope(A, mx, my, mr * 1.3, 28 * ring, 500, u, AMBER, ring, 0, 2);
+  }
+  const front = 35 - ((u / BAR) % 2) * 20;
+  const pts = ridges(A, { scroll: k * 7, pulse: 0.35 * A.sub, front, lines: 36 });
+  const dx = 520, fy = lineYAt(pts, dx + CORGI_W * 2.5);
+  const lookUp = Math.floor(A.bf * 2) % 2 && A.sub > 0.5;
+  corgi(dx, fy + 6, 5, lookUp ? CORGI_WAG : CORGI_STAND);
+  pw('BLUE RIDGE, NC   USGS 3DEP', 960, 1040, 24, { align: 'center', c: FAINT });
+}
+
+function sceneRiser(A, u) {
+  const b = clamp(Math.floor(u / PER), 0, 3), n = [1, 2, 4, 8][b];
+  const cw = 1700 / n, ch = 860 / n;
+  for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) {
+    const x = 110 + c * cw + cw / 2, y = 150 + r * ch + ch * 0.72, size = Math.min(ch * 0.8, cw * 0.28);
+    odometer(0, x, y, size, { scramble: A.t * (1 + hash(r * 9 + c)) + r * 3 + c, c: (r + c + b) % 3 ? CORE : HOT });
+  }
+}
+
+const MONTAGE = [0, 1, 5, 2, 0, 4, 6, 3, 0, 1, 5, 2, 0, 4, 6, 3, 5, 0, 7, 0, 6, 0, 5, 0];
+function sceneMontage(A, u) {
+  const beats = u / PER;
+  const cut = beats < 16 ? Math.floor(beats) : 16 + Math.floor((beats - 16) / 2);
+  const cutAt = cut < 16 ? cut : 16 + (cut - 16) * 2;
+  const lu = (beats - cutAt) * PER, panel = MONTAGE[clamp(cut, 0, MONTAGE.length - 1)];
+  if (panel === 0) sceneReadout(A, lu);
+  else if (panel === 1) {
+    pw('NEXT-TOKEN DISTRIBUTION   T = 0.8', 160, 196, 30, { c: OSD });
+    txt('> the forecast is', 160, 316, 76, { c: CORE });
+    const c = [' doom', ' bloom', ' boom', ' gloom', ' zoom', ' fine'], p = [0.93, 0.02, 0.018, 0.015, 0.01, 0.007];
+    c.forEach((s, r) => {
+      const y = 470 + r * 92, v = p[r] * (r ? 0.6 + 0.8 * spec(A.i, 8 + r * 6) : 1);
+      txt(s.replace(/^ /, '␣'), 600, y, 50, { align: 'right', c: r ? DIM : CORE });
+      rect(640, y - 42, 980, 46, DEEP, 0.7); rect(640, y - 42, 980 * v, 46, r ? AMBER : HOT);
+      pw((v * 100).toFixed(1) + '%', 640 + 980 * v + 18, y - 6, 32, { c: r ? DIM : CORE });
+    });
+  } else if (panel === 2) sceneAttention(A, lu, { hot: true });
+  else if (panel === 3) {
+    txt('P(DOOM) vs STEP', 240, 176, 44, { w: 700, c: HOT });
+    cx.beginPath();
+    for (let px = 0; px <= 1440; px += 4) { const x = px / 1440, y = 890 - 680 * (1 - lossAt(x) / 3.2) * (0.3 + 0.7 * x); if (!px) cx.moveTo(240 + px, y); else cx.lineTo(240 + px, y); }
+    stroke(HOT, 4);
+    rect(240, 890, 1440, 3, DIM); rect(240, 210, 3, 680, DIM);
+  } else if (panel === 4) sceneScaling(A, 30 * PER, { zoom: 1, all: true, red: 1 });
+  else if (panel === 5) eye(A, lu + (cut % 3) * BAR * 0.5);
+  else if (panel === 6) {
+    txt('CLUSTER', 160, 150, 46, { w: 700, c: HOT });
+    nodeGrid(A, 176, 214, 32, 16, 46, 512, { hot: 0.5 });
+  } else ridges(A, { scroll: 2, pulse: 0.8 * A.kick, front: 20, lines: 36, color: HOT });
+}
+
+const fb = document.createElement('canvas'); fb.width = CW; fb.height = CH;
+const fbTmp = document.createElement('canvas'); fbTmp.width = CW; fbTmp.height = CH;
+let fbFresh = true;
+function sceneFeedback(A, u) {
+  // Video feedback: last frame, shrunk and turned, under this frame. Copies nest into a corridor.
+  const g = fb.getContext('2d'), tg = fbTmp.getContext('2d');
+  if (fbFresh || u < 0.5 / FPS) { g.setTransform(1, 0, 0, 1, 0, 0); g.fillStyle = '#000'; g.fillRect(0, 0, CW, CH); fbFresh = false; }
+  tg.setTransform(1, 0, 0, 1, 0, 0); tg.drawImage(fb, 0, 0);
+  const lb = Math.floor(u / BAR), dir = lb % 2 ? -1 : 1;
+  const z = 0.91 - 0.035 * A.kick, rot = dir * (0.018 + 0.01 * A.sub);
+  g.setTransform(1, 0, 0, 1, 0, 0); g.fillStyle = '#000'; g.fillRect(0, 0, CW, CH);
+  g.save(); g.translate(CW / 2, CH / 2); g.rotate(rot); g.scale(z, z); g.translate(-CW / 2, -CH / 2);
+  g.globalAlpha = 0.93; g.drawImage(fbTmp, 0, 0); g.restore();
+  // This frame's window, hollow, so the older copies show through it.
+  paintOver(g, () => {
+    const bw = 1180, bh = 660, x = 960 - bw / 2, y = 540 - bh / 2;
+    cx.beginPath(); cx.roundRect(x, y, bw, bh, 22); stroke(A.pd > 90 ? HOT : CORE, 6);
+    const copies = Math.pow(2, Math.floor(u / PER) + 1);
+    rect(x + 30, y - 26, 520, 52, '#000');
+    pw('./train --self', x + 48, y + 12, 36, { c: OSD });
+    rect(x + bw - 450, y + bh - 26, 420, 52, '#000');
+    pw(`copies ${copies > 1e9 ? '2^' + (Math.floor(u / PER) + 1) : copies.toLocaleString('en-US')}`, x + bw - 48, y + bh + 12, 36, { align: 'right', c: CORE });
+    polarScope(A, 960, 540, 150 + 40 * A.sub, 70, 700, u, AMBER, 0.9, 0, 3);
+  });
+  cx.drawImage(fb, 0, 0, W, H);
+}
+function paintOver(ctx2, fn) {
+  const keep = cx; cx = ctx2; cx.save(); cx.setTransform(CW / W, 0, 0, CH / H, 0, 0); fn(); cx.restore(); cx = keep;
+}
+
+function scenePause(A, u) {
+  sceneReadout(A, u, { pd: 97 });
+  pw('PAUSE ‖', 72, 120, 64, { c: OSD });
+  pw('C90 SP  TRACKING', 72, 176, 30, { c: OSD, a: 0.7 });
+}
+
+function sceneFinal(A, u) {
+  const lb = u / BAR;
+  eye(A, u, { y: 420, scale: 0.72, readout: false, a: 0.75, open: 1 });
+  const pts = ridges(A, { yTop: 740, pitch: 15, lines: 18, amp: 110, scroll: 18 + lb, pulse: 0.5 * A.sub, front: 17 - (lb % 1) * 17, color: A.pd > 95 ? HOT : AMBER });
+  txt('P(DOOM)', 960, 330, 120, { w: 700, align: 'center', c: HOT });
+  cx.save(); const k = 1 + 0.035 * A.kick; cx.translate(960, 560); cx.scale(k, k); cx.translate(-960, -560);
+  odometer(pdoom(A.t), 960, 640, 330, { c: CORE }); cx.restore();
+  const bark = A.beatInBar === 0 && A.bf < 0.55;
+  const dx = 250, fy = lineYAt(pts, dx + CORGI_W * 3);
+  corgi(dx, fy + 6, 6, bark ? CORGI_BARK : (Math.floor(A.bf * 4) % 2 ? CORGI_WAG : CORGI_STAND));
+  if (bark) {
+    cx.beginPath(); cx.roundRect(dx + CORGI_W * 6 - 20, fy - 210, 190, 74, 12); cx.fillStyle = '#000'; cx.fill(); stroke(CORE, 3);
+    pw('WOOF', dx + CORGI_W * 6 + 75, fy - 158, 44, { align: 'center', c: CORE });
+  }
+}
+
+function sceneEnd(A, u, still) {
+  const size = 108, x0 = 200, x1 = Math.max(1290, x0 + measure('P(WALKIES)', size, 700) + measure('100.0%', size, 700) + 90);
+  txt('P(DOOM)', x0, 440, size, { w: 700, c: DIM });
+  odometer(99.9, x1, 440, size, { align: 'right', c: HOT });
+  txt('P(WALKIES)', x0, 600, size, { w: 700, c: CORE });
+  txt('100.0%', x1, 600, size, { w: 700, align: 'right', c: CORE });
+  const wag = !still && Math.floor(u * 8) % 2;
+  corgi(x1 + 90, 630, 9, wag ? CORGI_WAG : CORGI_STAND);
+  pw(`music: ${SONG}   ·   picture: Degauss + Phosphor Wake on a C90 tube`, 960, 860, 28, { align: 'center', c: DIM });
+}
+
+// --- the edit ----------------------------------------------------------------------------------------
+const SCENES = [
+  ['title', 0, sceneTitle], ['boot', bar(2), sceneBoot], ['loss', bar(8), sceneLoss], ['softmax', bar(12), sceneSoftmax],
+  ['readout', bar(20), sceneReadout], ['attention', bar(28), sceneAttention], ['scaling', bar(32), sceneScaling],
+  ['eye', bar(40), sceneEye], ['ridges', bar(48), sceneRidges], ['riser', bar(59), sceneRiser], ['montage', bar(60), sceneMontage],
+  ['feedback', bar(68), sceneFeedback], ['pause', bar(75), scenePause], ['final', bar(76), sceneFinal], ['end', bar(END_BAR), sceneEnd]
+];
+const STATUS = { boot: 'good boy', loss: 'watching', softmax: 'watching', readout: 'ears up', attention: 'sniffing', scaling: 'alert',
+                 eye: 'growling', montage: 'BARKING', feedback: 'confused' };
+function sceneAt(t) { let k = 0; while (k + 1 < SCENES.length && t >= SCENES[k + 1][1]) k++; return k; }
+const T_OFF = CUT_X ? 138.75 : 140.35;                 // power-off, after the last hit has rung out
+
+function drawScene(A) {
+  cx.setTransform(1, 0, 0, 1, 0, 0);
+  cx.fillStyle = '#000'; cx.fillRect(0, 0, CW, CH);
+  cx.setTransform(S, 0, 0, S, 0, 0);
+  const k = sceneAt(A.t), [name, t0, fn] = SCENES[k];
+  if (name !== 'feedback') fbFresh = true;
+  fn(A, A.t - t0);
+  const bigReadout = ['title', 'readout', 'riser', 'pause', 'final', 'end'].includes(name);
+  if (!['title', 'pause', 'end', 'riser'].includes(name)) {
+    osd(A, { readout: !bigReadout, dog: !['ridges', 'final'].includes(name), status: STATUS[name],
+             statusC: name === 'montage' ? HOT : undefined, bark: name === 'montage' && A.beatInBar % 2 === 0 && A.bf < 0.5 });
+  }
+  if (name === 'ridges') pw('watchdogd: all quiet', 72, 1000, 28, { c: DIM });
+}
+
+// --- tube parameters over time ----------------------------------------------------------------------
+const GHOST = 0.12;
+function tube(A) {
+  const t = A.t, name = SCENES[sceneAt(t)][0];
+  const P = { sx: 1, sy: 1, vis: 1, lineW: 0, lineI: 0, dotI: 0, flash: 0, magnet: 0, wob: 0, phase: 0, stat: 0,
+              persist: 0.55, bright: 1, ghost: 0, tint: 0, jit: 0, band: -3, bandAmt: 0 };
+  if (t < 0.5) {                                          // power-on: dot, line, picture
+    P.persist = 0.8;
+    if (t < 0.1) { P.vis = 0; P.dotI = lerp(0.45, 1.1, t / 0.1); }
+    else if (t < 0.22) { P.vis = 0; const k = easeOut((t - 0.1) / 0.12); P.lineW = k; P.lineI = 1.3; P.dotI = 1.1 * (1 - k); }
+    else {
+      const k = clamp((t - 0.22) / 0.2);
+      P.sy = Math.max(0.004, easeOutBack(k)); P.lineW = 1; P.lineI = 1.3 * (1 - clamp(k * 2.5));
+      P.bright = 1 + 1.2 * (1 - k);
+      if (t > 0.3) P.flash = 0.42 * Math.exp(-(t - 0.3) * 13);
+    }
+  }
+  const d0 = bar(0);                                      // the title is magnetised until the first downbeat degausses it
+  P.magnet = t < d0 ? smooth(seg(t, 0.3, 0.55)) : Math.pow(Math.max(0, 1 - (t - d0) / 1.2), 2);
+  const degauss = (at, amt, len) => {
+    if (t < at || t >= at + len) return;
+    const d = t - at;
+    P.wob = Math.max(P.wob, amt * Math.exp(-d * 2.2) * smooth(clamp(d / 0.04)) * (1 - smooth(seg(d, len * 0.65, len))));
+    P.phase = d * Math.PI * 2 * 5.4;
+    P.flash += 0.3 * amt * Math.exp(-d * 11);
+    P.persist = Math.max(P.persist, 0.82);
+  };
+  degauss(d0, 1, 2.0);
+  for (const b of [24, 64, 76]) { const c = bar(b); if (t >= c && t < c + 2.4) P.magnet = Math.max(P.magnet, 0.7 * Math.pow(1 - (t - c) / 2.4, 2)); }
+  for (let k = 1; k < SCENES.length; k++) {                // channel flips at the cuts
+    const c = SCENES[k][1];
+    if (t >= c - 0.02 && t < c + 0.06 && !['pause', 'end'].includes(SCENES[k][0])) P.stat = Math.max(P.stat, 0.75 * (1 - clamp((t - c + 0.02) / 0.08)));
+  }
+  const persist = { title: 0.6, eye: 0.8, ridges: 0.72, riser: 0.5, montage: 0.45, feedback: 0.6, final: 0.66 };
+  P.persist = Math.max(P.persist, persist[name] ?? 0.55);
+  if (name === 'montage' && A.bf * PER < 1.5 / FPS) P.stat = Math.max(P.stat, 0.28);
+  if (['readout', 'final', 'montage'].includes(name) && A.beatInBar === 0) P.flash += 0.07 * A.kick;
+  if (name === 'loss' && t >= bar(11) + 3 * PER && t < bar(11) + 3 * PER + 0.3) P.flash += 0.3 * Math.exp(-(t - bar(11) - 3 * PER) * 12);
+  if (name === 'riser') {                                  // the riser shakes the tube apart
+    const k = seg(t, bar(59), bar(60));
+    P.wob = 0.55 * k * k; P.phase = t * Math.PI * 2 * 3.1; P.stat = Math.max(P.stat, 0.18 * k);
+  }
+  degauss(bar(60), 0.7, 1.6);
+  if (t >= bar(60) && t < bar(60) + 0.4) P.flash += 0.5 * Math.exp(-(t - bar(60)) * 9);
+  P.tint = smooth(seg(pdoom(t), 30, 99));
+  if (name === 'end') P.tint = 0.25;
+  if (name === 'pause') {                                  // VCR pause: the field judders, a tracking band crawls
+    const u = t - bar(75);
+    P.jit = (hash(Math.floor(t * 30)) - 0.5) * 0.012;
+    P.band = lerp(-1.1, 0.9, (u * 0.6) % 1); P.bandAmt = 1; P.persist = 0.3; P.tint = 0.1;
+  }
+  if (t >= T_OFF) {                                        // power-off: line, dot, afterglow
+    const d = t - T_OFF;
+    P.persist = 0.78; P.magnet = 0;
+    P.ghost = GHOST * smooth(seg(d, 0.12, 0.26));
+    if (d < 0.12) { const k = d / 0.12; P.sy = lerp(1, 0.004, easeIn(k)); P.bright = 1 + 1.6 * k; P.lineW = 1; P.lineI = 1.4 * k; }
+    else if (d < 0.24) { const k = (d - 0.12) / 0.12; P.vis = 0; P.lineW = 1 - easeIn(k); P.lineI = 1.4; P.dotI = 1.1 * k; }
+    else { P.vis = 0; P.dotI = lerp(1.1, 0.0, clamp((d - 0.24) / 0.95)); P.ghost *= 1 - smooth(seg(d, 0.6, 1.2)); }
+  }
+  return P;
+}
+
+// --- WebGL2 picture tube -----------------------------------------------------------------------------
+const glc = document.getElementById('gl');
+const gl = glc.getContext('webgl2', { preserveDrawingBuffer: true, antialias: false });
+const VS = `#version 300 es
+in vec2 a; void main() { gl_Position = vec4(a, 0.0, 1.0); }`;
+const FS_TUBE = `#version 300 es
+precision highp float;
+uniform sampler2D uScene, uPrev, uGhost;
+uniform vec2 uRes;
+uniform float uTime, uSx, uSy, uVis, uLineW, uLineI, uDotI, uFlash, uMagnet, uWob, uPhase, uStatic, uPersist, uBright, uGhostA, uSeed;
+uniform float uTint, uJit, uBand, uBandAmt;
+out vec4 frag;
+float hash(vec2 p) { p = fract(p * vec2(123.34, 456.21)); p += dot(p, p + 45.32); return fract(p.x * p.y); }
+vec3 hue(vec3 c, float a) {
+  float Y = dot(c, vec3(0.299, 0.587, 0.114));
+  float I = dot(c, vec3(0.596, -0.274, -0.322));
+  float Q = dot(c, vec3(0.211, -0.523, 0.312));
+  float h = atan(Q, I) + a, ch = length(vec2(I, Q));
+  I = ch * cos(h); Q = ch * sin(h);
+  return vec3(Y + 0.956 * I + 0.621 * Q, Y - 0.272 * I - 0.647 * Q, Y - 1.106 * I + 1.703 * Q);
+}
+void main() {
+  vec2 uv = gl_FragCoord.xy / uRes;
+  float asp = uRes.x / uRes.y;
+  vec2 p = uv * 2.0 - 1.0;
+  vec2 pc = p * (1.0 + vec2(0.03, 0.05) * dot(p, p));          // curved glass
+  vec2 e = (abs(pc) - vec2(0.962, 0.952)) * vec2(asp, 1.0);
+  float edge = length(max(e + 0.1, 0.0)) - 0.1;
+  float mask = 1.0 - smoothstep(-0.014, 0.004, edge);
+  float w = uWob;
+  vec2 q = pc;                                                   // the degauss field bends the raster
+  q.x += w * (0.05 * sin(q.y * 3.1 + uPhase) + 0.024 * sin(q.y * 7.3 - uPhase * 1.7));
+  q.y += w * 0.048 * sin(q.x * 2.6 - uPhase * 1.2);
+  q *= vec2(1.0 + w * 0.05 * sin(uPhase * 0.9), 1.0 - w * 0.05 * sin(uPhase * 1.1));
+  q.y += uJit;
+  q /= vec2(max(uSx, 1e-3), max(uSy, 1e-3));
+  vec2 cuv = vec2(q.x * 0.5 + 0.5, 0.5 - q.y * 0.5);
+  float band = exp(-pow((q.y - uBand) / 0.06, 2.0)) * uBandAmt;  // VCR tracking band
+  cuv.x += band * (hash(vec2(floor(gl_FragCoord.y / 3.0), uSeed)) - 0.5) * 0.05;
+  float inside = step(0.0, cuv.x) * step(cuv.x, 1.0) * step(0.0, cuv.y) * step(cuv.y, 1.0);
+  vec2 ca = pc * vec2(0.0014, 0.0018) * (1.0 + w * 6.0) + vec2(w * 0.006 * sin(uPhase * 1.3), 0.0);
+  vec3 col = vec3(texture(uScene, cuv + ca).r, texture(uScene, cuv).g, texture(uScene, cuv - ca).b);
+  vec3 glow = textureLod(uScene, cuv, 3.0).rgb * 0.5 + textureLod(uScene, cuv, 4.5).rgb * 0.55 + textureLod(uScene, cuv, 6.0).rgb * 0.55;
+  col = (col + glow * 0.8) * inside * uVis;
+  float field = uMagnet * (1.7 * sin(pc.x * 2.3 + 0.8) * cos(pc.y * 1.9 - 0.5) + 0.9 * sin(pc.x * 4.1 - pc.y * 3.3 + uTime * 0.9));
+  field += w * 3.4 * sin(uPhase * 0.7 + pc.x * 2.2 + pc.y * 1.6);  // purity blotches
+  vec3 purity = 0.5 + 0.5 * cos(field * 1.3 + vec3(0.0, 2.1, 4.2));
+  col = max(hue(col, field), 0.0) * mix(vec3(1.0), purity * 1.6, clamp(uMagnet + w * 1.5, 0.0, 1.0) * 0.55) * uBright;
+  col *= mix(vec3(1.0), vec3(1.1, 0.6, 0.52), uTint);           // the amber runs hot as P(DOOM) climbs
+  vec2 guv = vec2(pc.x * 0.5 + 0.5, 0.5 - pc.y * 0.5);           // afterglow of the last picture
+  col += textureLod(uGhost, guv, 1.6).rgb * vec3(1.0, 0.74, 0.5) * uGhostA;
+  float lx = 1.0 - smoothstep(uLineW - 0.03, uLineW + 0.03, abs(p.x));
+  float yPix = p.y * uRes.y * 0.5;
+  col += vec3(1.0, 0.93, 0.82) * uLineI * lx * (exp(-pow(yPix / 2.6, 2.0)) + 0.4 * exp(-pow(yPix / 16.0, 2.0)));
+  float dr = length(p * uRes * 0.5);
+  col += vec3(1.0, 0.95, 0.88) * uDotI * (1.5 * exp(-pow(dr / 8.0, 2.0)) + 0.45 * exp(-pow(dr / 42.0, 2.0)));
+  col *= 0.87 + 0.13 * cos(gl_FragCoord.y * 3.14159265 / 3.0);  // scanlines, 6 px pitch
+  float n = hash(gl_FragCoord.xy + vec2(uSeed * 17.0, uSeed * 31.0));
+  col += uFlash * vec3(1.0, 0.94, 0.84) * mask;
+  col = mix(col, vec3(n * 0.95), clamp(uStatic + band * 0.55, 0.0, 1.0) * mask);
+  col += (n - 0.5) * 0.03 * mask;
+  col += vec3(0.02, 0.017, 0.014) * mask;                       // phosphor black is never black
+  col += vec3(0.022, 0.024, 0.026) * (1.0 - smoothstep(0.0, 0.75, length((pc - vec2(-0.55, 0.6)) * vec2(0.8, 1.7)))) * mask;
+  col *= mix(1.0, 1.0 - smoothstep(0.5, 1.7, length(pc * vec2(0.9, 1.0))), 0.55);
+  col *= mask;
+  col = max(col, texture(uPrev, uv).rgb * uPersist);             // phosphor persistence
+  frag = vec4(col, 1.0);
+}`;
+const FS_COPY = `#version 300 es
+precision highp float;
+uniform sampler2D uSrc; uniform vec2 uRes; out vec4 frag;
+void main() { frag = vec4(texture(uSrc, gl_FragCoord.xy / uRes).rgb, 1.0); }`;
+
+function program(fs) {
+  const p = gl.createProgram();
+  for (const [type, src] of [[gl.VERTEX_SHADER, VS], [gl.FRAGMENT_SHADER, fs]]) {
+    const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s);
+    if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s));
+    gl.attachShader(p, s);
+  }
+  gl.bindAttribLocation(p, 0, 'a'); gl.linkProgram(p);
+  if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p));
+  return p;
+}
+const progTube = program(FS_TUBE), progCopy = program(FS_COPY);
+const loc = (prog, name) => gl.getUniformLocation(prog, name);
+gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
+gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+
+function mipTexture() {
+  const tex = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, tex);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  return tex;
+}
+function upload(tex, canvas) {
+  gl.bindTexture(gl.TEXTURE_2D, tex);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, canvas);
+  gl.generateMipmap(gl.TEXTURE_2D);
+}
+const sceneTex = mipTexture(), ghostTex = mipTexture();
+const targets = [0, 1].map(() => {
+  const tex = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, tex);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, W, H, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+  const fbo = gl.createFramebuffer();
+  gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
+  return { tex, fb: fbo };
+});
+let cur = 0;
+
+function frame(i) {
+  const A = audio(i);
+  A.pd = pdoom(A.t);
+  const P = tube(A);
+  drawScene(A);
+  gl.viewport(0, 0, W, H);
+  gl.activeTexture(gl.TEXTURE0); upload(sceneTex, scene);
+  const prev = targets[cur], next = targets[1 - cur];
+  gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, prev.tex);
+  gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, ghostTex);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, next.fb);
+  gl.useProgram(progTube);
+  gl.uniform1i(loc(progTube, 'uScene'), 0);
+  gl.uniform1i(loc(progTube, 'uPrev'), 1);
+  gl.uniform1i(loc(progTube, 'uGhost'), 2);
+  gl.uniform2f(loc(progTube, 'uRes'), W, H);
+  const u = { uTime: A.t, uSx: P.sx, uSy: P.sy, uVis: P.vis, uLineW: P.lineW, uLineI: P.lineI, uDotI: P.dotI, uFlash: P.flash,
+              uMagnet: P.magnet, uWob: P.wob, uPhase: P.phase, uStatic: P.stat, uPersist: P.persist, uBright: P.bright,
+              uGhostA: P.ghost, uSeed: (i % 97) + 1, uTint: P.tint, uJit: P.jit, uBand: P.band, uBandAmt: P.bandAmt };
+  for (const [name, v] of Object.entries(u)) gl.uniform1f(loc(progTube, name), v);
+  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  gl.useProgram(progCopy);
+  gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, next.tex);
+  gl.uniform1i(loc(progCopy, 'uSrc'), 0);
+  gl.uniform2f(loc(progCopy, 'uRes'), W, H);
+  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+  cur = 1 - cur;
+}
+
+// A seek starts from a clean tube and replays the preceding frames, so trails and
+// feedback look as they do in sequential playback.
+let lastFrame = -1;
+function renderFrame(i) {
+  if (i !== lastFrame + 1) {
+    for (const t of targets) { gl.bindFramebuffer(gl.FRAMEBUFFER, t.fb); gl.clearColor(0, 0, 0, 1); gl.clear(gl.COLOR_BUFFER_BIT); }
+    fbFresh = true;
+    for (let j = Math.max(0, i - 40); j < i; j++) frame(j);
+  }
+  frame(i);
+  lastFrame = i;
+}
+window.__frames = OUT_FRAMES;
+window.__fps = FPS;
+window.__render = (i, type = 'image/jpeg', quality = 0.93) => { renderFrame(i); return glc.toDataURL(type, quality); };
+
+// --- boot -------------------------------------------------------------------------------------------
+window.__ready = false;
+Promise.all([document.fonts.load('400 40px Degauss'), document.fonts.load('700 40px Degauss'), document.fonts.load('400 40px "Phosphor Wake"')]).then(() => {
+  if (!document.fonts.check('700 40px Degauss') || !document.fonts.check('400 40px "Phosphor Wake"')) throw new Error('fonts did not load');
+  const ghost = document.createElement('canvas'); ghost.width = CW; ghost.height = CH;
+  paint(ghost, () => sceneEnd(audio(Math.round(bar(83) * FPS)), 0, true));
+  gl.activeTexture(gl.TEXTURE2); upload(ghostTex, ghost);
+  const t = new URLSearchParams(location.search).get('t');
+  if (t !== null) renderFrame(Math.round(Number(t) * FPS));
+  window.__ready = true;
+});
+</script>
+</body>
+</html>

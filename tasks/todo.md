@@ -635,3 +635,18 @@ Review/proof: the 74,541-byte standalone HTML contains one inline script, no ext
 Not verified: physical iOS/Android hardware, Safari/Firefox, OS-reserved browser edge gestures, and mobile-hardware frame rate. Headless FPS is a bounded sample, not a universal performance claim. SVG billboard depth remains an intentional 2.5D approximation. No existing game file was inspected before Lumenroot was complete. Proof artifacts remain local under `/tmp/lumenroot-proof` and are not committed.
 
 Release: commit `1052857` contains only the standalone game and its gallery tile. It was pushed to `origin/main`; local HEAD and the remote main SHA both resolved to `105285768a86aaf2765e14bcdaa2738d1cc725dc` before this task-record update.
+
+# P(DOOM), C90 transfer (music video)
+
+Goal: a new video for the AI-generated song "Upping My P(doom)" (supplied as a 141.6 s MP4), in the grove's own style: the Degauss amber tube, Degauss + Phosphor Wake type, in-engine frame-stepped rendering, language-model imagery, Blue Ridge relief, and Dobby as `watchdogd`.
+Project: Personal / The Grove. Pipeline in `videos/p-doom/`; the song, its decoded audio and the renders stay out of git.
+Constraints: no lyrics on screen; cuts on the song's own beat grid; the song's audio untouched in the full cut.
+- [x] Analyse the song: 145.196 bpm, ±4 ms steady; bar 0 at 1.085 s; section map from per-bar sub/mid energy and novelty.
+- [x] Cut 44 ridge profiles from the `utils/contours` USGS relief.
+- [x] Build `video.html` (15 scenes, 16:9 tube shader with P(DOOM) tint, pause band, 2D video feedback) and `render.mjs` (frames piped to ffmpeg).
+- [x] Review stills of every scene; fix loss-cliff scale, LED/OSD and header collisions, end-card spacing, PNG-over-CDP stall.
+- [x] Full render, mid-beat contact sheet, stream/sync checks; X-length cut.
+
+Review/proof: `analyze.py` finds 145.196 bpm, with every 20 s window within ±4 ms of the global grid. The first per-beat tracker landed half a beat off (179 ms residual) and was replaced by a global period-and-phase search. The full render is 8494 frames at 29 ms/frame, 246 s wall time. `out/p-doom-c90.mp4` is H.264 High 1920x1080 at 60 fps in BT.709, 141.567 s, with the song's AAC stream copied (141.547 s, both streams start at 0), 300.1 MB at 17 Mbit/s. A contact sheet sampled mid-beat every three bars shows each scene where the plan puts it, and P(DOOM) rises monotonically from 0.5% to 99.9%. Folding the output file's own bass-onset flux over beat phase puts kicks +14.5 ms from the grid. The montage's per-beat cut transitions peak at -10.3 ms, because the static starts a frame early by design. The picture therefore leads the sound by about 25 ms, 1.5 frames. `out/p-doom-c90-x.mp4` is 139.900 s and 299.1 MB, under X's 2:20 and 512 MB limits. Its end card arrives at bar 82 (136.6 s), power-off is at 138.75 s, and the audio fades over the last 0.7 s. Stills were reviewed at every scene; fixes covered the loss-cliff scale, LED/OSD and header collisions, and end-card spacing. PNG stills over CDP stalled above about 4 MB and are now pulled in 1 MB slices.
+
+Not verified: playback on X itself (it re-encodes), phone-sized viewing of the small OSD text, and a human listen-through for feel. The song's creator is not credited by name; `SONG` in `video.html` holds the title only. The renders, stills, and `analysis/` (which carries a copy of the song's audio) are local and gitignored.
