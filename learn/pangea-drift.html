@@ -1,0 +1,1123 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="description" content="An interactive colour-ASCII atlas of continental drift: watch Pangaea break apart from 250 million years ago to today, rendered from the Young et al. (2018) plate reconstruction model. Pan, zoom and scrub time with mouse, touch or keyboard.">
+<title>Pangaea to Present — An Interactive ASCII Atlas</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    --sans: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  }
+  html[data-theme="dark"] {
+    --bg: #05070c;
+    --panel: rgba(10, 15, 24, 0.82);
+    --panel-solid: #0a0f18;
+    --edge: rgba(120, 190, 230, 0.16);
+    --edge-hi: rgba(140, 210, 255, 0.34);
+    --ink: #dbe7f2;
+    --ink-dim: #8aa2b8;
+    --ink-faint: #5a7186;
+    --accent: #6fd3ff;
+    --accent-2: #ffc46b;
+    --shadow: 0 18px 50px -18px rgba(0, 0, 0, 0.9);
+  }
+  html[data-theme="light"] {
+    --bg: #f6f1e5;
+    --panel: rgba(252, 250, 244, 0.9);
+    --panel-solid: #fbf8f0;
+    --edge: rgba(60, 80, 100, 0.22);
+    --edge-hi: rgba(30, 60, 90, 0.4);
+    --ink: #17222e;
+    --ink-dim: #4a5c6e;
+    --ink-faint: #6b7d8e;
+    --accent: #0d6f9c;
+    --accent-2: #a4570a;
+    --shadow: 0 18px 44px -20px rgba(40, 50, 60, 0.55);
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html, body { height: 100%; }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--sans);
+    overflow: hidden;
+    overscroll-behavior: none;
+    -webkit-font-smoothing: antialiased;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  #stage { position: fixed; inset: 0; }
+  /* A <canvas> is a replaced element: with position:inset the intrinsic buffer
+     size wins over the containing block, so width/height are set explicitly. */
+  #ascii {
+    position: absolute; left: 0; top: 0;
+    display: block;
+    touch-action: none;
+    cursor: grab;
+    image-rendering: pixelated;
+  }
+  #ascii.dragging { cursor: grabbing; }
+
+  /* scanline + vignette overlays */
+  .veil { position: absolute; inset: 0; pointer-events: none; }
+  #scan {
+    opacity: .5;
+    background: repeating-linear-gradient(to bottom,
+      rgba(0,0,0,0) 0 2px, rgba(0,0,0,.16) 2px 3px);
+    mix-blend-mode: multiply;
+  }
+  html[data-theme="light"] #scan { opacity: .22; mix-blend-mode: multiply; }
+  #vig {
+    background: radial-gradient(ellipse at 50% 45%, transparent 52%, rgba(0,0,0,.42) 100%);
+  }
+  html[data-theme="light"] #vig {
+    background: radial-gradient(ellipse at 50% 45%, transparent 52%, rgba(80,70,50,.26) 100%);
+  }
+  #grain {
+    opacity: .05; mix-blend-mode: overlay;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+
+  /* ------------------------------------------------------------ chrome */
+  .ui { position: absolute; z-index: 5; }
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--edge);
+    border-radius: 10px;
+    box-shadow: var(--shadow);
+    backdrop-filter: blur(9px) saturate(1.1);
+    -webkit-backdrop-filter: blur(9px) saturate(1.1);
+  }
+
+  /* top-left: identity + theme */
+  #brand { top: 14px; left: 14px; padding: 10px 13px; max-width: min(60vw, 380px); }
+  #brand h1 {
+    font-family: var(--mono); font-size: .82rem; font-weight: 600;
+    letter-spacing: .16em; text-transform: uppercase; color: var(--ink);
+  }
+  #brand p { font-size: .68rem; color: var(--ink-faint); margin-top: 3px; letter-spacing: .04em; }
+
+  /* top-right: readouts */
+  #hud { top: 14px; right: 14px; padding: 10px 12px; text-align: right; }
+  #hud .age {
+    font-family: var(--mono); font-size: 1.5rem; font-weight: 600;
+    line-height: 1; letter-spacing: -.01em; color: var(--accent-2);
+    font-variant-numeric: tabular-nums;
+  }
+  #hud .age small { font-size: .6em; color: var(--ink-faint); letter-spacing: .1em; margin-left: .25em; }
+  #hud .era { font-size: .66rem; color: var(--ink-dim); margin-top: 5px; letter-spacing: .06em; text-transform: uppercase; }
+  #hud .sub { font-family: var(--mono); font-size: .62rem; color: var(--ink-faint); margin-top: 3px; }
+
+  /* bottom transport */
+  #transport {
+    left: 50%; transform: translateX(-50%); bottom: 14px;
+    width: min(720px, calc(100vw - 28px));
+    padding: 11px 14px 12px;
+  }
+  .scrub { position: relative; height: 30px; margin: 0 0 8px; }
+  .scrub input[type=range] {
+    position: absolute; inset: 0; width: 100%; height: 100%;
+    -webkit-appearance: none; appearance: none; background: none; margin: 0; cursor: ew-resize;
+  }
+  .scrub input[type=range]::-webkit-slider-runnable-track {
+    height: 6px; border-radius: 3px;
+    background: linear-gradient(90deg, var(--edge) 0%, var(--edge) 100%);
+  }
+  .scrub input[type=range]::-moz-range-track { height: 6px; border-radius: 3px; background: var(--edge); }
+  .scrub input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none; width: 14px; height: 22px; margin-top: -8px;
+    border-radius: 3px; background: var(--accent-2); border: 0;
+    box-shadow: 0 0 0 1px rgba(0,0,0,.4), 0 0 14px -2px var(--accent-2);
+  }
+  .scrub input[type=range]::-moz-range-thumb {
+    width: 14px; height: 22px; border-radius: 3px; background: var(--accent-2); border: 0;
+  }
+  .ticks { position: absolute; left: 0; right: 0; top: 21px; height: 9px; pointer-events: none; }
+  .ticks i { position: absolute; top: 0; width: 1px; height: 4px; background: var(--edge-hi); }
+  .ticks b {
+    position: absolute; top: 4px; transform: translateX(-50%);
+    font-family: var(--mono); font-size: .54rem; color: var(--ink-faint);
+    letter-spacing: .06em; white-space: nowrap;
+  }
+
+  .row { display: flex; align-items: center; gap: 8px; }
+  button, .btn {
+    font-family: var(--mono); font-size: .72rem; letter-spacing: .06em;
+    color: var(--ink-dim); background: transparent;
+    border: 1px solid var(--edge); border-radius: 7px;
+    padding: 6px 9px; cursor: pointer; user-select: none;
+    transition: color .15s, border-color .15s, background .15s;
+  }
+  button:hover, .btn:hover { color: var(--ink); border-color: var(--edge-hi); background: rgba(127,200,255,.07); }
+  button:focus-visible, .btn:focus-visible, input:focus-visible {
+    outline: 2px solid var(--accent); outline-offset: 2px;
+  }
+  button[aria-pressed="true"] { color: #06121a; background: var(--accent); border-color: var(--accent); font-weight: 600; }
+  html[data-theme="light"] button[aria-pressed="true"] { color: #fbf8f0; background: var(--accent); }
+  #play { min-width: 74px; font-weight: 600; }
+  .spacer { flex: 1; }
+  .speed { display: flex; gap: 4px; }
+  #speedLabel {
+    font-family: var(--mono); font-size: .64rem; color: var(--ink-faint);
+    align-self: center; padding-right: 2px;
+  }
+
+  /* chapter card */
+  #chapter {
+    left: 14px; bottom: 106px; width: min(400px, calc(100vw - 28px));
+    padding: 14px 15px 13px; display: none;
+  }
+  #chapter.on { display: block; }
+  #chapter .kicker {
+    font-family: var(--mono); font-size: .6rem; letter-spacing: .2em;
+    text-transform: uppercase; color: var(--accent);
+  }
+  #chapter h2 {
+    font-family: var(--mono); font-size: 1.02rem; font-weight: 600;
+    margin: 5px 0 3px; color: var(--ink); letter-spacing: -.01em;
+  }
+  #chapter .when {
+    font-family: var(--mono); font-size: .64rem; color: var(--accent-2); letter-spacing: .1em;
+  }
+  #chapter p { font-size: .78rem; line-height: 1.62; color: var(--ink-dim); margin-top: 8px; }
+  #chapter .nav { display: flex; align-items: center; gap: 6px; margin-top: 12px; }
+  #chapter .dots { display: flex; gap: 4px; margin-right: auto; }
+  #chapter .dots i {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--edge); border: 0; padding: 0; cursor: pointer;
+  }
+  #chapter .dots i[aria-current="true"] { background: var(--accent); width: 16px; border-radius: 3px; }
+
+  /* labels over the map */
+  #labels { position: absolute; inset: 0; pointer-events: none; z-index: 3; overflow: hidden; }
+  .lab {
+    position: absolute; transform: translate(-50%, -50%);
+    font-family: var(--mono); font-size: .62rem; letter-spacing: .12em;
+    text-transform: uppercase; white-space: nowrap;
+    color: var(--ink); opacity: .82;
+    text-shadow: 0 0 5px var(--bg), 0 0 12px var(--bg), 0 0 22px var(--bg);
+  }
+  .lab.minor { font-size: .54rem; color: var(--ink-dim); letter-spacing: .08em; opacity: .72; }
+  .lab::before {
+    content: ''; position: absolute; left: 50%; top: 50%;
+    width: 3px; height: 3px; margin: -1.5px 0 0 -1.5px;
+    background: var(--accent-2); border-radius: 50%; opacity: .9;
+  }
+  .lab span { display: block; transform: translateY(9px); }
+
+  /* legend */
+  #legend {
+    right: 14px; bottom: 106px; padding: 10px 12px; max-width: 190px;
+  }
+  #legend .h {
+    font-family: var(--mono); font-size: .56rem; letter-spacing: .18em;
+    text-transform: uppercase; color: var(--ink-faint); margin-bottom: 7px;
+  }
+  #legend ul { list-style: none; display: grid; grid-template-columns: 1fr 1fr; gap: 2px 8px; }
+  #legend li { display: flex; align-items: center; gap: 5px; font-size: .6rem; color: var(--ink-dim); }
+  #legend i { width: 9px; height: 9px; border-radius: 2px; flex: none; }
+
+  /* side buttons */
+  #tools { top: 50%; right: 14px; transform: translateY(-50%); display: flex; flex-direction: column; gap: 5px; }
+  #tools button { width: 34px; height: 34px; padding: 0; font-size: .8rem; display: grid; place-items: center; }
+
+  /* modal */
+  .modal {
+    position: fixed; inset: 0; z-index: 20; display: none;
+    place-items: center; padding: 20px;
+    background: color-mix(in srgb, var(--bg) 78%, transparent);
+    backdrop-filter: blur(4px);
+  }
+  .modal.on { display: grid; }
+  .modal .card {
+    max-width: 660px; max-height: 84vh; overflow: auto; padding: 20px 22px;
+  }
+  .modal h2 { font-family: var(--mono); font-size: 1rem; letter-spacing: .04em; margin-bottom: 12px; }
+  .modal h3 {
+    font-family: var(--mono); font-size: .68rem; letter-spacing: .16em; text-transform: uppercase;
+    color: var(--accent); margin: 16px 0 6px;
+  }
+  .modal p, .modal li { font-size: .78rem; line-height: 1.65; color: var(--ink-dim); }
+  .modal ul { padding-left: 18px; }
+  .modal a { color: var(--accent); }
+  .modal .close { float: right; }
+  kbd {
+    font-family: var(--mono); font-size: .68rem; border: 1px solid var(--edge);
+    border-bottom-width: 2px; border-radius: 4px; padding: 1px 5px; color: var(--ink);
+    background: rgba(127,200,255,.06); white-space: nowrap;
+  }
+  .keys { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 5px 16px; }
+  .keys div { font-size: .74rem; color: var(--ink-dim); display: flex; gap: 8px; align-items: center; }
+  .table { width: 100%; border-collapse: collapse; margin-top: 6px; }
+  .table td, .table th { text-align: left; font-size: .72rem; padding: 4px 6px; border-bottom: 1px solid var(--edge); color: var(--ink-dim); }
+  .table th { font-family: var(--mono); font-size: .6rem; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-faint); }
+
+  #boot {
+    position: fixed; inset: 0; z-index: 30; display: grid; place-items: center;
+    background: var(--bg); color: var(--ink-dim);
+    font-family: var(--mono); font-size: .72rem; letter-spacing: .18em; text-transform: uppercase;
+    transition: opacity .5s ease;
+  }
+  #boot.gone { opacity: 0; pointer-events: none; }
+
+  @media (max-width: 860px) {
+    #legend { display: none; }
+    #chapter { bottom: 118px; width: min(340px, calc(100vw - 28px)); }
+    #chapter p { font-size: .74rem; }
+  }
+  @media (max-width: 620px) {
+    #brand p { display: none; }
+    #transport { padding: 9px 10px 10px; }
+    .speed { display: none; }
+    #tools { top: 108px; transform: none; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    #boot, button { transition: none; }
+  }
+</style>
+</head>
+<body>
+
+<div id="stage">
+  <canvas id="ascii"></canvas>
+  <div id="labels"></div>
+  <div class="veil" id="grain"></div>
+  <div class="veil" id="scan"></div>
+  <div class="veil" id="vig"></div>
+</div>
+
+<div class="ui card" id="brand">
+  <h1>Pangaea &rarr; Present</h1>
+  <p>Colour-ASCII plate reconstruction &middot; Young et al. 2018</p>
+</div>
+
+<div class="ui card" id="hud">
+  <div class="age" id="ageOut">0<small>MA</small></div>
+  <div class="era" id="eraOut">Present day</div>
+  <div class="sub" id="zoomOut">1 cell = &mdash;</div>
+</div>
+
+<div class="ui card" id="tools">
+  <button id="zoomIn" title="Zoom in (+)" aria-label="Zoom in">+</button>
+  <button id="zoomOut" title="Zoom out (-)" aria-label="Zoom out">&minus;</button>
+  <button id="res" title="ASCII resolution (Z)" aria-label="Toggle ASCII resolution">&#9646;</button>
+  <button id="home" title="Reset view (0)" aria-label="Reset view">&#8962;</button>
+  <button id="tourBtn" title="Guided tour (G)" aria-label="Guided tour">&#9654;</button>
+  <button id="aboutBtn" title="How to read this (?)" aria-label="About">?</button>
+</div>
+
+<div class="ui card" id="chapter">
+  <div class="kicker" id="chKicker">Chapter</div>
+  <h2 id="chTitle">&nbsp;</h2>
+  <div class="when" id="chWhen">&nbsp;</div>
+  <p id="chBody">&nbsp;</p>
+  <div class="nav">
+    <div class="dots" id="chDots"></div>
+    <button id="chPrev" aria-label="Previous chapter">&larr;</button>
+    <button id="chNext" aria-label="Next chapter">&rarr;</button>
+    <button id="chClose" aria-label="Close chapter">Close</button>
+  </div>
+</div>
+
+<div class="ui card" id="legend">
+  <div class="h">Continents</div>
+  <ul id="legendList"></ul>
+</div>
+
+<div class="ui card" id="transport">
+  <div class="scrub">
+    <input id="time" type="range" min="0" max="250" step="0.5" value="250"
+           aria-label="Time, millions of years before present">
+    <div class="ticks" id="ticks"></div>
+  </div>
+  <div class="row">
+    <button id="play" aria-label="Play or pause">&#9654; Play</button>
+    <button id="rev" title="Reverse time (R)" aria-label="Reverse direction">&#9664;|</button>
+    <div class="speed" id="speed"></div>
+    <span id="speedLabel">3 Myr/s</span>
+    <div class="spacer"></div>
+    <button id="tourBtn2" aria-label="Guided tour">Guided tour</button>
+    <button id="themeBtn" aria-label="Toggle light and dark theme">&#9789; Dark</button>
+  </div>
+</div>
+
+<div class="modal" id="about" role="dialog" aria-modal="true" aria-labelledby="aboutTitle">
+  <div class="card">
+    <button class="close" id="aboutClose" aria-label="Close">Close</button>
+    <h2 id="aboutTitle">How to read this</h2>
+
+    <h3>What you are looking at</h3>
+    <p>
+      Every glyph is one grid cell of the Earth. Each cell is coloured by which
+      continent's crust sits on it and stamped with a character whose density
+      tracks how far inland you are, so coastlines read as edges, continental
+      interiors as solid mass, and the seafloor as depth bands computed from
+      distance to the nearest coast. Landmasses are the present-day coastlines
+      carried backwards by the finite rotations of the plate they belong to.
+    </p>
+
+    <h3>Where the data comes from</h3>
+    <p id="srcCite"></p>
+    <p>
+      The rotation model is built on Müller et al. (2016),
+      Domeier &amp; Torsvik (2014) and Matthews et al. (2016). Coastline geometry is the
+      model's own present-day coastline layer, simplified to 0.18&deg; of a degree.
+    </p>
+
+    <h3>What is exact and what is not</h3>
+    <ul>
+      <li>
+        <b>Exact:</b> at 0 Ma the reconstruction is the modern world, identically.
+        Plates stay rigid, and the North Atlantic opens to the correct geometry &mdash;
+        Boston sits against Africa's west margin by 200 Ma, with the Pangaea-closure
+        pole at 64.3&deg;N, 14.7&deg;W.
+      </li>
+      <li>
+        <b>Africa is the reference.</b> Every rotation is composed relative to plate 701
+        and Africa is held at its present position, which is the frame published
+        paleogeographic maps use.
+      </li>
+      <li>
+        <b>True polar wander is excluded on purpose.</b> The source model also ships
+        hotspot-frame and longitude-shift corrections; those are a frame correction,
+        not continental drift, so they are not applied.
+      </li>
+      <li>
+        <b>Deep time is approximate.</b> The published animation reconstructs
+        topological plate polygons with half-stage spreading. This atlas reduces the
+        same rotations to rigid coastlines, which cannot reproduce every plate at
+        250&ndash;330 Ma. The time range stops at 250 Ma, the best-constrained window and
+        the one this tutorial is about. Treat pre-Cretaceous positions of plates
+        outside the North Atlantic as indicative, not authoritative.
+      </li>
+    </ul>
+
+    <h3>Controls</h3>
+    <div class="keys">
+      <div><kbd>Space</kbd> play / pause</div>
+      <div><kbd>R</kbd> reverse time</div>
+      <div><kbd>&larr;</kbd><kbd>&rarr;</kbd><kbd>&uarr;</kbd><kbd>&darr;</kbd> pan</div>
+      <div><kbd>+</kbd><kbd>&minus;</kbd> zoom</div>
+      <div><kbd>0</kbd> reset view</div>
+      <div><kbd>Z</kbd> ASCII resolution</div>
+      <div><kbd>G</kbd> guided tour</div>
+      <div><kbd>[</kbd><kbd>]</kbd> slower / faster</div>
+      <div><kbd>,</kbd> jump to earlier time</div>
+      <div><kbd>.</kbd> jump to later time</div>
+      <div><kbd>T</kbd> light / dark</div>
+      <div><kbd>F</kbd> fullscreen</div>
+      <div><kbd>?</kbd> this panel</div>
+    </div>
+    <p style="margin-top:10px">
+      Mouse: drag to pan, wheel to zoom toward the cursor. Touch: one finger pans,
+      two fingers pinch to zoom. Both work anywhere on the map.
+    </p>
+
+    <h3>Sources</h3>
+    <ul id="srcList"></ul>
+    <p style="margin-top:14px">
+      <a href="index.html">&larr; Back to Learn</a>
+    </p>
+  </div>
+</div>
+
+<div id="boot">loading plate model&hellip;</div>
+
+<script type="module">
+import { decodeAtlas, rotationAt, placePoint, Land } from './pangea-engine.js';
+import { SOURCE, GROUPS, STATS } from './pangea-plate-data.js';
+
+const $ = id => document.getElementById(id);
+const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
+const REDUCED = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+/* ===================================================================== data */
+const atlas = decodeAtlas();
+const MAX_MA = 250;
+const land = new Land(atlas, 0.5);
+const shelf = new Land(atlas, 1.5);        // coarse grid, only used for depth bands
+
+/* ================================================================== camera */
+/* The camera stores the LATITUDE SPAN it shows, and derives the degrees-per-cell
+ * from the row count. Fixing degrees-per-cell instead made the world overflow the
+ * grid whenever the font or window changed, wasting a third of the rows on empty
+ * space above the pole. */
+const cam = { lon: 0, lat: 0, span: 170 };
+let CELL_LAT = cam.span / 80;                 // degrees of latitude per cell
+const refreshCell = () => { CELL_LAT = cam.span / Math.max(8, GRIDH); };
+
+/* ================================================================== palette */
+const LAND_HUE = {
+  dark: ['#7fd48a', '#ef8a55', '#e8c46a', '#8fc7ef', '#c3a6ef', '#f2a0c0',
+         '#e0b878', '#7fe0d0', '#cfe8f7', '#a8d98a', '#b8b0e8'],
+  light: ['#1f7a44', '#a8410f', '#96701a', '#1c5f8c', '#5b3f96', '#a83a63',
+          '#8a5a15', '#0f6f66', '#4a7f9c', '#4d7a1e', '#4a418f'],
+};
+const hue = (i) => LAND_HUE[theme][i % LAND_HUE[theme].length];
+const THEMES = {
+  dark: {
+    bg: '#05070c', abyss: '#070d16', deep: '#0b1727', mid: '#102437', shallow: '#17374f',
+    shelf: '#1e4a63', coast: '#4fbfe8', grid: '#16283a', ice: '#dce9f5', desert: '#c9a35e', rim: '#eaf7ff',
+  },
+  light: {
+    bg: '#f4eee0', abyss: '#7ba3c4', deep: '#5a8bb0', mid: '#3f739c', shallow: '#2b5e8a',
+    shelf: '#1d4f79', coast: '#0d3a5c', grid: '#8ba0b0', ice: '#31536b', desert: '#8a6416', rim: '#fffdf5',
+  },
+};
+let theme = (localStorage.getItem('pangea-theme')
+  || (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark'));
+if (!THEMES[theme]) theme = 'dark';
+
+/* glyph ramps, light -> heavy */
+const RAMP_A = ' .:-=+*xXoO0#%@';   // 15 steps, sparse -> dense
+const RAMP_LEN = RAMP_A.length;
+const RAMP_B = ' \u2591\u2592\u2593\u2588'; // 5 steps, blocky
+const ICE = ' .,;:o*#@%';
+
+/* =================================================================== atlas */
+let atlasCanvas, actx, cellW, cellH, GRIDW, GRIDH, DPR;
+let sprite = {};   // key -> {sx, sy}
+let variantsRef = [];
+let ATLASW = 40, COLS = 40;
+
+/** Build one tinted glyph atlas: every (variant, glyph) pair is rasterised once,
+ *  so the per-frame cost is a drawImage per cell with no fillStyle churn. */
+function buildGlyphAtlas(fontPx) {
+  const c = document.createElement('canvas');
+  const g = c.getContext('2d');
+  g.font = `${fontPx}px ${getComputedStyle(document.body).getPropertyValue('--mono')}`;
+  const adv = g.measureText('M').width;
+  cellW = Math.max(3, Math.round(adv));
+  cellH = Math.max(4, Math.round(fontPx * 1.16));
+  const T = THEMES[theme];
+
+  /* Variant order must match the V_* constants: 11 groups x 5 shades, then
+   * 6 ocean depth bands, then ice, graticule, desert. */
+  const variants = variantsRef = [];
+  GROUPS.forEach((gr, i) => {
+    for (let s = 0; s < 5; s++) variants.push({ col: shade(hue(i), theme === 'dark' ? 0.6 + s * 0.11 : 0.78 + s * 0.06) });
+  });
+  for (const c of [T.abyss, T.deep, T.mid, T.shallow, T.shelf, T.coast]) variants.push({ col: c });
+  variants.push({ col: T.ice });
+  variants.push({ col: T.grid });
+  variants.push({ col: T.desert });
+  variants.push({ col: T.rim });
+  const GL = RAMP_A.length;
+
+  const n = variants.length * GL;
+  const rows = Math.ceil(n / COLS);
+  c.width = COLS * cellW; c.height = rows * cellH;
+  g.font = `${fontPx}px ${getComputedStyle(document.body).getPropertyValue('--mono')}`;
+  g.textBaseline = 'alphabetic';
+  g.textAlign = 'left';
+  let cell = 0;
+  for (let vi = 0; vi < variants.length; vi++) {
+    const v = variants[vi];
+    for (let k = 0; k < GL; k++) {
+      const sx = (cell % COLS) * cellW, sy = ((cell / COLS) | 0) * cellH;
+      g.fillStyle = v.col;
+      g.fillText(RAMP_A[k], sx + (cellW - adv) / 2, sy + cellH - cellH * 0.22);
+      sprite[`${vi}|${k}`] = { sx, sy };   // key on the VARIANT, not the sprite slot
+      cell++;
+    }
+  }
+  atlasCanvas = c;
+}
+
+const V_OCEAN = GROUPS.length * 5;   // 55  - 6 ocean depth bands follow
+const V_ICE = V_OCEAN + 6;           // 61
+const V_GRID = V_ICE + 1;            // 62
+const V_DESERT = V_GRID + 1;         // 63
+const COAST = V_DESERT + 1;           // shoreline highlight
+
+function shade(hex, f) {
+  const n = parseInt(hex.slice(1), 16);
+  const r = clamp(Math.round(((n >> 16) & 255) * f), 0, 255);
+  const g = clamp(Math.round(((n >> 8) & 255) * f), 0, 255);
+  const b = clamp(Math.round((n & 255) * f), 0, 255);
+  return `rgb(${r},${g},${b})`;
+}
+
+/* deterministic value noise so texture never shimmers between frames */
+function hash2(x, y) {
+  let h = (x * 374761393 + y * 668265263) | 0;
+  h = (h ^ (h >> 13)) * 1274126177;
+  return ((h ^ (h >> 16)) >>> 0) / 4294967296;
+}
+
+/* ================================================================== canvas */
+const cv = $('ascii');
+const ctx = cv.getContext('2d', { alpha: false });
+
+function resize() {
+  DPR = Math.min(window.devicePixelRatio || 1, 2);
+  const w = window.innerWidth, h = window.innerHeight;
+  cv.style.width = w + 'px';
+  cv.style.height = h + 'px';
+  cv.width = Math.round(w * DPR);
+  cv.height = Math.round(h * DPR);
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  const fontPx = pickFont(h);
+  cv.dataset.font = String(fontPx);
+  buildGlyphAtlas(fontPx);
+  GRIDW = Math.floor(w / cellW);
+  GRIDH = Math.floor(h / cellH);
+  cv.style.width = (GRIDW * cellW) + 'px';
+  cv.style.height = (GRIDH * cellH) + 'px';
+  cv.width = GRIDW * cellW * DPR;
+  cv.height = GRIDH * cellH * DPR;
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  ctx.textBaseline = 'alphabetic';
+  ctx.fillStyle = THEMES[theme].bg;
+  ctx.fillRect(0, 0, GRIDW * cellW, GRIDH * cellH);
+  refreshCell();
+  lastRasterMa = NaN;
+  dirty = true;
+}
+
+/* Resolution is the whole point of ASCII art, so aim high on the row count and
+ * let the user zoom for detail. Z cycles these three steps. */
+const FONT_STEPS = [10, 8, 13];
+let fontStep = 0;
+function pickFont(h) {
+  let f = FONT_STEPS[fontStep];
+  while (f > 8 && Math.floor(h / Math.round(f * 1.16)) < 30) {
+    fontStep = (fontStep + 1) % FONT_STEPS.length;
+    f = FONT_STEPS[fontStep];
+  }
+  return f;
+}
+
+/* =================================================================== state */
+let ma = 250;
+let playing = false;
+let speed = 3;            // Myr per second
+let dir = -1;             // time runs backwards toward the present
+let lastT = 0;
+let dirty = true;
+let lastRasterMa = NaN;
+let follow = null;
+let chapter = -1;
+let anim = null;
+
+/* ================================================================== render */
+function ensureRaster() {
+  if (ma === lastRasterMa) return;
+  lastRasterMa = ma;
+  const visible = Math.abs(cam.span);                  // degrees of latitude on screen
+  land.setResolution(clamp(visible / (GRIDW * 3), 0.12, 0.5));
+  land.rasterize(ma);
+  shelf.rasterize(ma);
+}
+
+function render() {
+  ctx.fillStyle = THEMES[theme].bg;
+  ctx.fillRect(0, 0, GRIDW * cellW, GRIDH * cellH);
+  ensureRaster();
+
+  const g = land.group, res = land.res, gw = land.w, gh = land.h;
+  const sD = shelf.dist, sres = shelf.res, sgw = shelf.w, sgh = shelf.h;
+  const dLat = CELL_LAT;
+  const last = RAMP_A.length - 1;
+  const step = Math.max(1, Math.round(1.2 / res));
+  const G = 30;                       // graticule spacing in degrees
+
+  for (let j = 0; j < GRIDH; j++) {
+    const lat = cam.lat + (GRIDH / 2 - j - 0.5) * dLat;
+    if (lat > 89.9 || lat < -89.9) continue;
+    const cl = Math.cos(lat * Math.PI / 180) || 1e-6;
+    const dLon = dLat / cl;
+    const lon0 = cam.lon - (GRIDW / 2) * dLon;
+    const rowY = j * cellH;
+    const absLat = Math.abs(lat);
+    const polar = absLat > 55;
+    const desert = absLat > 17 && absLat < 33;
+    const onLatLine = Math.abs(lat / G - Math.round(lat / G)) < (dLat * 0.5) / G;
+    const gy = Math.floor((90 - lat) / res);
+    if (gy < 0 || gy >= gh) continue;
+    let sy = Math.floor((90 - lat) / sres);
+    if (sy < 0 || sy >= sgh) sy = 0;
+
+    for (let i = 0; i < GRIDW; i++) {
+      const lon = lon0 + (i + 0.5) * dLon;
+      let x = Math.floor((lon + 180) / res) % gw; if (x < 0) x += gw;
+      const gv = g[gy * gw + x];
+
+      let variant, ink;
+      if (gv) {
+        let solid = 0;
+        for (let bb = -1; bb <= 1; bb++) for (let aa = -1; aa <= 1; aa++) {
+          const yy = gy + bb * step, xx = (x + aa * step + gw) % gw;
+          if (yy >= 0 && yy < gh && g[yy * gw + xx]) solid++;
+        }
+        const inland = solid / 9;
+        const nz = hash2(i >> 1, j >> 1);
+        const nz2 = hash2(i + 977, j - 313);
+        // sparse at the coast, dense inland: the silhouette does the work
+        ink = clamp(3 + Math.round(inland * (last - 2) + nz * 1.4), 2, last);
+        variant = (gv - 1) * 5 + clamp(Math.round(inland * 4 + nz2 * 0.8), 0, 4);
+        if (polar) variant = V_ICE;
+        else if (desert && nz > 0.45) variant = V_DESERT;
+      } else {
+        let sx = Math.floor((lon + 180) / sres) % sgw; if (sx < 0) sx += sgw;
+        const dist = sD[sy * sgw + sx];
+        const band = clamp(5 - Math.floor(dist * 0.5), 0, 5);
+        variant = V_OCEAN + band;
+        // open ocean stays nearly empty so the land reads cleanly; the rim glows
+        ink = band >= 5 ? (hash2(i, j) > 0.4 ? 3 : 2)
+             : band === 4 ? 1
+             : band === 3 ? (hash2(i, j) > 0.6 ? 1 : 0)
+             : 0;
+      }
+      if (onLatLine || Math.abs(lon / G - Math.round(lon / G)) < (dLon * 0.5) / G) {
+        variant = V_GRID;
+        ink = onLatLine ? 4 : 2;
+      }
+      const sp = sprite[variant + '|' + ink];
+      if (!sp) continue;
+      ctx.drawImage(atlasCanvas, sp.sx, sp.sy, cellW, cellH, i * cellW, rowY, cellW, cellH);
+    }
+  }
+  drawCoastline();
+  placeLabels();
+}
+
+/** A crisp shoreline pass drawn straight from the raster, on top of the glyphs. */
+function drawCoastline() {
+  const g = land.group, gw = land.w, gh = land.h, res = land.res, dLat = CELL_LAT;
+  const sp = sprite[COAST + '|' + (RAMP_A.length - 2)];
+  if (!sp) return;
+  const step = 1;                       // a true one-cell shoreline
+  ctx.save();
+  ctx.globalAlpha = 0.95;
+  for (let j = 0; j < GRIDH; j++) {
+    const lat = cam.lat + (GRIDH / 2 - j - 0.5) * dLat;
+    if (lat > 89.9 || lat < -89.9) continue;
+    const cl = Math.cos(lat * Math.PI / 180) || 1e-6;
+    const dLon = dLat / cl;
+    const lon0 = cam.lon - (GRIDW / 2) * dLon;
+    const yy = Math.floor((90 - lat) / res);
+    if (yy < 0 || yy >= gh) continue;
+    for (let i = 0; i < GRIDW; i++) {
+      const lon = lon0 + (i + 0.5) * dLon;
+      let x = Math.floor((lon + 180) / res) % gw; if (x < 0) x += gw;
+      if (!g[yy * gw + x]) continue;
+      if ((yy + step < gh && g[(yy + step) * gw + x]) ||
+          (yy - step >= 0 && g[(yy - step) * gw + x]) ||
+          g[yy * gw + ((x - step + gw) % gw)] || g[yy * gw + ((x + step) % gw)]) {
+        ctx.drawImage(atlasCanvas, sp.sx, sp.sy, cellW, cellH, i * cellW, j * cellH, cellW, cellH);
+      }
+    }
+  }
+  ctx.restore();
+}
+
+/* ================================================================== labels */
+const labelBox = $('labels');
+const labelEls = [];
+atlas.labels.forEach(l => {   // decoded: each anchor carries its plateIndex
+  if (!(l.plateIndex >= 0)) return;
+  const el = document.createElement('div');
+  el.className = 'lab' + (l.name.length > 14 ? ' minor' : '');
+  el.innerHTML = '<span>' + l.name + '</span>';
+  labelBox.appendChild(el);
+  labelEls.push({ el, l, p: [0, 0] });
+});
+const MINOR = new Set(['Amazonia', 'Congo', 'Sahara', 'Beringia', 'California', 'Cuba',
+  'Sri Lanka', 'Sakhalin', 'Tasmania', 'Falklands', 'Australia N', 'Papua', 'Himalaya']);
+
+const _lp = [0, 0];
+function placeLabels() {
+  const W = GRIDW * cellW, H = GRIDH * cellH;
+  // use the same degrees-per-cell as the render loop, taken at the label's own
+  // latitude, so labels track the plate even when it is near the pole
+  for (let k = 0; k < labelEls.length; k++) {
+    const { el, l } = labelEls[k];
+    if (!(l.plateIndex >= 0)) { el.style.display = 'none'; continue; }
+    placePoint(atlas, l.plateIndex, l.lon, l.lat, ma, _lp);
+    const cl = Math.cos(_lp[1] * Math.PI / 180) || 1e-6;
+    const dLon = CELL_LAT / cl;
+    let dx = _lp[0] - cam.lon;
+    while (dx > 180) dx -= 360;
+    while (dx < -180) dx += 360;
+    const x = (GRIDW / 2 + dx / dLon) * cellW;
+    const y = (GRIDH / 2 - (_lp[1] - cam.lat) / CELL_LAT) * cellH;
+    const minor = MINOR.has(l.name);
+    if (!isFinite(x) || !isFinite(y) || x < -30 || x > W + 30 || y < -14 || y > H + 14 || Math.abs(dx) > 200) {
+      el.style.display = 'none';
+    } else {
+      el.style.display = 'block';
+      el.style.left = Math.round(x) + 'px';
+      el.style.top = Math.round(y) + 'px';
+      el.style.opacity = (minor ? 0.5 : 0.66) + (k % 3) * 0.09;
+    }
+  }
+}
+
+/* ================================================================== input */
+let drag = null;
+cv.addEventListener('pointerdown', e => {
+  cv.setPointerCapture(e.pointerId);
+  drag = { id: e.pointerId, x: e.clientX, y: e.clientY, px: e.clientX, py: e.clientY, moved: 0, id2: null, d0: 0 };
+  cv.classList.add('dragging');
+});
+cv.addEventListener('pointermove', e => {
+  if (!drag || e.pointerId !== drag.id) return;
+  if (drag.id2 !== null) return;
+  const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+  drag.moved += Math.abs(dx) + Math.abs(dy);
+  cam.lon -= (dx / cellW) * (CELL_LAT / Math.max(0.2, Math.cos(cam.lat * Math.PI / 180)));
+  cam.lat = clamp(cam.lat + (dy / cellH) * CELL_LAT, -85, 85);
+  drag.x = e.clientX; drag.y = e.clientY;
+  follow = null;
+  dirty = true;
+});
+const endDrag = e => { if (drag && e.pointerId === drag.id) { drag = null; cv.classList.remove('dragging'); } };
+cv.addEventListener('pointerup', endDrag);
+cv.addEventListener('pointercancel', endDrag);
+
+cv.addEventListener('wheel', e => {
+  e.preventDefault();
+  zoomAt(e.clientX, e.clientY, Math.exp((e.deltaY > 0 ? 1 : -1) * 0.14));
+}, { passive: false });
+
+/* two-finger pinch: a second pointer turns the drag into a pinch */
+cv.addEventListener('pointerdown', e => {
+  if (!drag) return;
+  if (e.pointerId !== drag.id) {
+    const a = pointers.get(drag.id);
+    drag.id2 = e.pointerId;
+    drag.d0 = a ? Math.hypot(a.x - e.clientX, a.y - e.clientY) : 0;
+    drag.px = a ? (a.x + e.clientX) / 2 : e.clientX;
+    drag.py = a ? (a.y + e.clientY) / 2 : e.clientY;
+  }
+});
+cv.addEventListener('pointermove', e => {
+  if (!drag || drag.id2 === null || e.pointerId !== drag.id2) return;
+  const a = pointers.get(drag.id), b = pointers.get(e.pointerId);
+  if (!a || !b) return;
+  const dist = Math.hypot(a.x - b.x, a.y - b.y);
+  if (drag.d0 > 0) zoomAt((a.x + b.x) / 2, (a.y + b.y) / 2, drag.d0 / dist);
+  drag.d0 = dist;
+  const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
+  cam.lon -= (mx - drag.px) / cellW * (CELL_LAT / Math.max(0.2, Math.cos(cam.lat * Math.PI / 180)));
+  cam.lat = clamp(cam.lat + (my - drag.py) / cellH * CELL_LAT, -85, 85);
+  drag.px = mx; drag.py = my; drag.x = mx; drag.y = my;
+  follow = null; dirty = true;
+});
+const pointers = new Map();
+cv.addEventListener('pointerdown', e => pointers.set(e.pointerId, { x: e.clientX, y: e.clientY }));
+cv.addEventListener('pointermove', e => {
+  if (pointers.has(e.pointerId)) pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+});
+cv.addEventListener('pointerup', e => { pointers.delete(e.pointerId); if (drag) { drag.id2 = null; drag.d0 = 0; } });
+cv.addEventListener('pointercancel', e => pointers.delete(e.pointerId));
+cv.addEventListener('pointerleave', e => pointers.delete(e.pointerId));
+
+function zoomAt(px, py, k) {
+  const before = screenToGeo(px, py);
+  cam.span = clamp(cam.span * k, 6, 400);
+  refreshCell();
+  const after = screenToGeo(px, py);
+  cam.lon += before[0] - after[0];
+  cam.lat = clamp(cam.lat + before[1] - after[1], -85, 85);
+  while (cam.lon > 180) cam.lon -= 360;
+  while (cam.lon < -180) cam.lon += 360;
+  follow = null;
+  dirty = true;
+}
+function screenToGeo(px, py) {
+  const dLon = CELL_LAT / Math.max(0.2, Math.cos(cam.lat * Math.PI / 180));
+  const r = cv.getBoundingClientRect();
+  const i = (px - r.left) / cellW, j = (py - r.top) / cellH;
+  return [cam.lon - (GRIDW / 2 - i) * dLon, cam.lat - (j - GRIDH / 2) * CELL_LAT];
+}
+
+window.addEventListener('keydown', e => {
+  // typing guard: never steal keys from a text field or a modifier chord
+  const t = e.target;
+  if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) {
+    if (e.key !== 'Escape') return;
+  }
+  if (e.metaKey || e.ctrlKey || e.altKey) return;
+  const k = e.key;
+  const dLon = CELL_LAT / Math.max(0.2, Math.cos(cam.lat * Math.PI / 180));
+  let used = true;
+  switch (k) {
+    case ' ': togglePlay(); break;
+    case 'ArrowLeft': case 'a': case 'A': cam.lon -= dLon * 3; break;
+    case 'ArrowRight': case 'd': case 'D': cam.lon += dLon * 3; break;
+    case 'ArrowUp': case 'w': case 'W': cam.lat = clamp(cam.lat + CELL_LAT * 3, -85, 85); break;
+    case 'ArrowDown': case 's': case 'S': cam.lat = clamp(cam.lat - CELL_LAT * 3, -85, 85); break;
+    case '+': case '=': zoomCentre(0.8); break;
+    case '-': case '_': zoomCentre(1.25); break;
+    case '0': resetView(); break;
+    case 'z': case 'Z': fontStep = (fontStep + 1) % FONT_STEPS.length; resize(); break;
+    case 'r': case 'R': flipDir(); break;
+    case 'g': case 'G': chapter < 0 ? openChapter(0) : closeChapter(); break;
+    case 't': case 'T': toggleTheme(); break;
+    case 'f': case 'F': toggleFullscreen(); break;
+    case '?': case '/': toggleAbout(); break;
+    case '[': setSpeed(speed / 1.6); break;
+    case ']': setSpeed(speed * 1.6); break;
+    case ',': setMa(ma + 10); break;
+    case '.': setMa(ma - 10); break;
+    case 'Escape': closeAll(); break;
+    default: used = false;
+  }
+  if (used) { e.preventDefault(); follow = null; dirty = true; }
+});
+function zoomCentre(k) {
+  zoomAt(cv.getBoundingClientRect().left + GRIDW * cellW / 2,
+    cv.getBoundingClientRect().top + GRIDH * cellH / 2, k);
+}
+
+/* ================================================================== time */
+function setMa(v) {
+  ma = clamp(v, 0, MAX_MA);
+  $('time').value = ma;
+  $('ageOut').innerHTML = (ma < 0.05 ? '0' : ma.toFixed(ma < 10 ? 1 : 0)) + '<small>MA</small>';
+  $('eraOut').textContent = eraFor(ma);
+  const d = CELL_LAT;
+  $('zoomOut').textContent = '1 cell = ' + (d * 60 < 1 ? (d * 60).toFixed(1) + ' min'
+    : d < 1 ? (d * 60).toFixed(0) + "' " + d.toFixed(2) + '°' : d.toFixed(1) + '°');
+  dirty = true;
+  const c = CHAPTERS.findIndex(x => Math.abs(x.ma - ma) < 0.6);
+  if (c >= 0 && c !== chapter && chapter >= 0) showChapterBody(c);
+}
+const ERAS = [
+  [250, 200, 'Pangaea'], [200, 145, 'Early rifting'], [145, 100, 'The Atlantic opens'],
+  [100, 66, 'Two oceans, one giant landmass'], [66, 36, 'Late Cretaceous'],
+  [36, 23, 'Paleogene'], [23, 5.3, 'Neogene'], [5.3, 0, 'Quaternary'],
+];
+function eraFor(v) { for (const [a, b, n] of ERAS) if (v > b && v <= a) return n; return 'Present day'; }
+
+function togglePlay() { playing = !playing; $('play').innerHTML = playing ? '&#10073;&#10073; Pause' : '&#9654; Play'; }
+function flipDir() { dir *= -1; $('rev').setAttribute('aria-pressed', String(dir < 0)); }
+const SPEEDS = [1, 3, 8, 20, 50, 120];
+function setSpeed(v) { speed = clamp(v, 0.5, 240); $('speedLabel').textContent = speed < 10 ? speed.toFixed(1) + ' Myr/s' : speed.toFixed(0) + ' Myr/s'; }
+function resetView() { cam.lon = 0; cam.lat = 5; cam.span = 170; refreshCell(); follow = null; dirty = true; }
+
+/* ================================================================ chapters */
+const CHAPTERS = [
+  { ma: 250, lon: 10, lat: 8, span: 150, era: 'Late Triassic', title: 'One continent',
+    body: 'Every landmass is gathered into Pangaea, ringed by one ocean. The supercontinent is assembled from Laurentia in the north and Gondwana in the south, with a huge embayment &mdash; the Tethys &mdash; cutting east into its core. Mountain belts run where continents collided to build it, and ice caps sit on the southern reaches of Gondwana.' },
+  { ma: 200, lon: -20, lat: 12, span: 120, era: 'Early Jurassic', title: 'The first cracks',
+    body: 'Pangaea comes apart along a rift that opens between North America and Africa. The Central Atlantic is a narrow, shallow sea at first. The Tethys is widening in the east, and enormous flood-basalt eruptions &mdash; the Central Atlantic Magmatic Province &mdash; coincide with the end of the Triassic.' },
+  { ma: 150, lon: -20, lat: 6, span: 150, era: 'Late Jurassic', title: 'The Atlantic widens',
+    body: 'Iberia has rotated away from North America, opening the Bay of Biscay. A first seaway appears between Africa and South America, and India is pulling north away from Madagascar. A single carbonate platform stretches unbroken from one end of the Tethys to the other, and the oceans are far warmer than today.' },
+  { ma: 100, lon: -10, lat: 0, span: 175, era: 'Early Cretaceous', title: 'Two oceans, one landmass',
+    body: 'The South Atlantic is now an ocean. The Tethys has narrowed to a remnant, but Africa, Arabia, India and Asia are still stitched together along its margins. Dinosaurs walk from what is now Brazil to what is now China. The Paraná&ndash;Etendeka flood basalts erupt as the South Atlantic opens.' },
+  { ma: 66, lon: -20, lat: 5, span: 180, era: 'K&ndash;Pg boundary', title: 'The Cretaceous ends',
+    body: 'The Deccan Traps erupt as India crosses the equator, and an impact ends the Cretaceous. North America has nearly reached its present distance from Africa, though Greenland is still attached to Europe. Australia has begun to slide north off Antarctica.' },
+  { ma: 50, lon: 40, lat: 25, span: 100, era: 'Eocene', title: 'India strikes Asia',
+    body: 'The leading edge of India, still moving north at several centimetres a year, reaches the southern margin of Asia and the first collision begins. Shallow marine conditions still cover the collision zone. The Atlantic and Indian oceans are both wide open, and the Tethys is nearly gone.' },
+  { ma: 34, lon: 0, lat: -35, span: 150, era: 'Oligocene', title: 'A warm world, then a cold one',
+    body: 'Antarctica is fully circumpolar: the Drake Passage and Tasmanian seaways are open, and the Circumpolar Current isolates it. Warm surface currents still keep the continent ice-free. The Drake Passage is also a carbon dioxide sink, and the Eocene greenhouse is about to end.' },
+  { ma: 20, lon: 60, lat: 20, span: 110, era: 'Miocene', title: 'The ice takes hold',
+    body: 'East Antarctica glaciates and the ice sheet grows to the present scale. The uplift of the Himalaya and the Tibetan Plateau, driven by India continuing to drive into Asia, is stripping carbon from the atmosphere. The Tethys has closed completely.' },
+  { ma: 0, lon: -30, lat: 15, span: 180, era: 'Present day', title: 'The modern world',
+    body: 'The Atlantic, Indian, Pacific and Southern oceans are all in place. Australia is clear of Antarctica, India is part of Asia and the Himalaya are the highest mountains on Earth, the Isthmus of Panama links the continents of the Americas, and Africa is the only continent whose shape has barely changed since 250 Ma.' },
+];
+
+function openChapter(i) {
+  chapter = clamp(i, 0, CHAPTERS.length - 1);
+  const c = CHAPTERS[chapter];
+  $('chDots').innerHTML = CHAPTERS.map((_, k) =>
+    `<i role="button" tabindex="0" data-k="${k}" aria-label="Chapter ${k + 1}"></i>`).join('');
+  $('chapter').classList.add('on');
+  showChapterBody(chapter);
+  anim = null;
+  goTo(c.ma, c.lon, c.lat, c.span);
+}
+function showChapterBody(i) {
+  chapter = i;
+  const c = CHAPTERS[i];
+  $('chKicker').textContent = `Chapter ${i + 1} / ${CHAPTERS.length}`;
+  $('chTitle').textContent = c.title;
+  $('chWhen').textContent = `${c.era} · ${c.ma} Ma`;
+  $('chBody').textContent = c.body;
+  [...$('chDots').children].forEach((d, k) => d.setAttribute('aria-current', String(k === i)));
+}
+function closeChapter() { chapter = -1; $('chapter').classList.remove('on'); }
+function goTo(m, lon, lat, span) {
+  const from = { ma, lon: cam.lon, lat: cam.lat, span: cam.span };
+  const apply = v => { cam.lon = v.lon; cam.lat = v.lat; cam.span = v.span; refreshCell(); };
+  if (REDUCED) { ma = m; apply({ lon, lat, span }); setMa(m); return; }
+  anim = { from, to: { ma: m, lon, lat, span }, apply, t0: performance.now(), dur: 1500 };
+  playing = false;
+  $('play').innerHTML = '&#9654; Play';
+}
+
+/* ================================================================== theme */
+function applyTheme() {
+  document.documentElement.dataset.theme = theme;
+  localStorage.setItem('pangea-theme', theme);
+  $('themeBtn').innerHTML = theme === 'dark' ? '&#9789; Dark' : '&#9788; Light';
+  buildGlyphAtlas(parseInt(cv.dataset.font || '10', 10));
+  lastRasterMa = NaN;
+  dirty = true;
+}
+function toggleTheme() { theme = theme === 'dark' ? 'light' : 'dark'; applyTheme(); }
+function toggleFullscreen() {
+  if (document.fullscreenElement) document.exitFullscreen();
+  else document.documentElement.requestFullscreen?.();
+}
+function closeAll() {
+  $('about').classList.remove('on');
+  closeChapter();
+}
+function toggleAbout() { $('about').classList.toggle('on'); }
+
+/* =================================================================== boot */
+$('time').addEventListener('input', e => { ma = parseFloat(e.target.value); setMa(ma); });
+$('play').addEventListener('click', togglePlay);
+$('rev').addEventListener('click', flipDir);
+$('zoomIn').addEventListener('click', () => zoomCentre(0.72));
+$('zoomOut').addEventListener('click', () => zoomCentre(1.38));
+$('home').addEventListener('click', resetView);
+$('res').addEventListener('click', () => { fontStep = (fontStep + 1) % FONT_STEPS.length; resize(); });
+$('themeBtn').addEventListener('click', toggleTheme);
+$('aboutBtn').addEventListener('click', toggleAbout);
+$('aboutClose').addEventListener('click', closeAll);
+$('tourBtn').addEventListener('click', () => openChapter(chapter < 0 ? 0 : (chapter + 1) % CHAPTERS.length));
+$('tourBtn2').addEventListener('click', () => openChapter(chapter < 0 ? 0 : (chapter + 1) % CHAPTERS.length));
+$('chNext').addEventListener('click', () => openChapter(Math.min(chapter + 1, CHAPTERS.length - 1)));
+$('chPrev').addEventListener('click', () => openChapter(Math.max(chapter - 1, 0)));
+$('chClose').addEventListener('click', closeChapter);
+$('chDots').addEventListener('click', e => {
+  const k = e.target.dataset.k; if (k !== undefined) openChapter(+k);
+});
+$('speed').innerHTML = '';
+const speedEls = SPEEDS.slice(1, 5).map(v => {
+  const b = document.createElement('button');
+  b.textContent = v >= 10 ? v : v;
+  b.setAttribute('aria-pressed', String(v === speed));
+  b.addEventListener('click', () => {
+    setSpeed(v);
+    [...$('speed').children].forEach(x => x.setAttribute('aria-pressed', 'false'));
+    b.setAttribute('aria-pressed', 'true');
+  });
+  $('speed').appendChild(b);
+  return b;
+});
+
+$('legendList').innerHTML = GROUPS.slice(0, 10).map((g, i) =>
+  `<li><i style="background:${hue(i)}"></i>${g.name}</li>`).join('');
+
+$('srcCite').innerHTML =
+  `Rotations and geometry from <b>${SOURCE.citation}</b> — ` +
+  `<a href="${SOURCE.doi}" target="_blank" rel="noreferrer">doi:10.1016/j.gsf.2017.11.003</a>. ` +
+  `Data released under ${SOURCE.license} (${SOURCE.data}). ` +
+  `Reference plate: ${SOURCE.referencePlate}.`;
+$('srcList').innerHTML = [
+  `<a href="${SOURCE.doi}" target="_blank" rel="noreferrer">Young et al. 2018, Geoscience Frontiers 9(1) 199&ndash;270</a>`,
+  '<a href="https://doi.org/10.1146/annurev-earth-060115-012211" target="_blank" rel="noreferrer">Müller et al. 2016, Annu. Rev. Earth Planet. Sci. 44, 423&ndash;452</a>',
+  '<a href="https://doi.org/10.1016/j.gsf.2014.01.002" target="_blank" rel="noreferrer">Domeier &amp; Torsvik 2014, Geosci. Front. 5(3), 303&ndash;350</a>',
+  '<a href="https://doi.org/10.1016/j.gloplacha.2016.10.002" target="_blank" rel="noreferrer">Matthews et al. 2016, Global Planet. Change 146, 226&ndash;250</a>',
+  '<a href="https://zenodo.org/records/10525370" target="_blank" rel="noreferrer">Zenodo 10525370 &mdash; the plate model files</a>',
+  '<a href="https://www.gplates.org/" target="_blank" rel="noreferrer">GPlates &mdash; plate reconstruction software</a>',
+].map(s => `<li>${s}</li>`).join('');
+
+{
+  const ticks = [];
+  for (const t of [250, 200, 150, 100, 66, 50, 34, 20, 5, 0]) {
+    const p = (1 - t / MAX_MA) * 100;
+    ticks.push(`<i style="left:${p}%"></i><b style="left:${p}%">${t}</b>`);
+  }
+  $('ticks').innerHTML = ticks.join('');
+  $('time').value = ma;
+  $('time').max = MAX_MA;
+}
+
+let resizeT;
+window.addEventListener('resize', () => {
+  clearTimeout(resizeT);
+  resizeT = setTimeout(resize, 120);
+});
+
+/* =================================================================== loop */
+function frame(ts) {
+  const dt = Math.min(0.05, (ts - lastT) / 1000 || 0);
+  lastT = ts;
+
+  if (anim) {
+    const f = clamp((ts - anim.t0) / anim.dur, 0, 1);
+    const e = f < 0.5 ? 4 * f * f * f : 1 - Math.pow(-2 * f + 2, 3) / 2;
+    ma = anim.from.ma + (anim.to.ma - anim.from.ma) * e;
+    anim.apply({
+      lon: anim.from.lon + (anim.to.lon - anim.from.lon) * e,
+      lat: anim.from.lat + (anim.to.lat - anim.from.lat) * e,
+      span: anim.from.span * Math.pow(anim.to.span / anim.from.span, e),
+    });
+    setMa(ma);
+    if (f >= 1) anim = null;
+  } else if (playing) {
+    setMa(ma + dir * speed * dt);
+    if (ma <= 0 || ma >= MAX_MA) { ma = clamp(ma, 0, MAX_MA); }
+  }
+
+  if (follow !== null) {
+    const out = [0, 0];
+    placePoint(atlas, follow, cam.lon, cam.lat, ma, out);
+    cam.lon = out[0];
+    while (cam.lon > 180) cam.lon -= 360;
+    while (cam.lon < -180) cam.lon += 360;
+    dirty = true;
+  }
+
+  if (dirty) { render(); dirty = playing || !!anim || follow !== null; }
+  requestAnimationFrame(frame);
+}
+
+function start() {
+  resize();
+  applyTheme();
+  setMa(ma);
+  render();
+  $('boot').classList.add('gone');
+  setTimeout(() => $('boot').remove(), 600);
+  openChapter(0);
+  anim = null;
+  setMa(CHAPTERS[0].ma);
+  cam.lon = CHAPTERS[0].lon; cam.lat = CHAPTERS[0].lat; cam.span = CHAPTERS[0].span; refreshCell();
+  lastT = performance.now();
+  requestAnimationFrame(frame);
+}
+/* Deterministic test hook: the render loop is otherwise unreachable from a
+ * headless driver, and the repo's own lessons say time-integrated state has to
+ * be steppable to be measurable. */
+window.__pg = {
+  atlas, land, shelf, cam, sprite, placePoint, get variants() { return variantsRef; },
+  get cell() { return { cellW, cellH, GRIDW, GRIDH, d: cam.d, lon: cam.lon, lat: cam.lat }; },
+  RAMP_LEN, GROUPS, get ma() { return ma; },
+  setMa, render, step(dt) { setMa(ma + dir * speed * dt); render(); },
+  labels() {
+    return labelEls.slice(0, 4).map(({ el, l }) => ({ n: l.name, x: el.style.left, y: el.style.top, d: el.style.display }));
+  },
+  stats() {
+    let n = 0; for (let i = 0; i < land.group.length; i++) if (land.group[i]) n++;
+    return {
+      grid: [GRIDW, GRIDH], cell: [cellW, cellH], font: +cv.dataset.font,
+      res: land.res, rasterMa: land.ma, rasterLand: n,
+      rasterW: land.w, rasterH: land.h, polys: atlas.polys.length,
+      sprites: Object.keys(sprite).length, atlasSize: [atlasCanvas.width, atlasCanvas.height],
+      d: CELL_LAT, span: cam.span, lon: cam.lon, lat: cam.lat,
+    };
+  },
+};
+
+if (document.fonts && document.fonts.ready) {
+  document.fonts.ready.then(start).catch(start);
+} else {
+  start();
+}
+</script>
+</body>
+</html>
