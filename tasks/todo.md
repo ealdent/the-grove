@@ -760,3 +760,34 @@ Evidence: /private/tmp/after-sun-proof/report.json and responsive PNGs in that d
 Not verified: physical phones/tablets, Safari/Firefox, mobile hardware performance, human listening assessment of optional synthesized ambience. Low residual risk for this self-contained static game.
 
 Release: game commit `da7e7b53c769074fe12ed14941d6d4d7a28f1c12` was created from the reviewed files and pushed with `git push origin HEAD:refs/heads/main`. `git ls-remote origin refs/heads/main` returned that exact SHA. Commit scope: the new game, its gallery index tile, and this appended task packet. This documentation checkpoint closes the plan; the final live Pages check is reported in the chat. Public game URL: https://ealdent.github.io/the-grove/svg-forest/gpt-6.1-sol-max-svg-forest.html.
+
+## Pearlwatch — GPT-6.1 Sol / Max (2026-09-29)
+
+Goal: Ship an original standalone tower-defense game and gallery entry, then commit and push to main.
+Project: Moon Dog Atlas / personal the-grove.
+Artifact: tower-def/gpt-6.1-sol-max-tower-def.html.
+Constraints: No dependencies, installation, external assets, or network requests; no previous games or chats as creative references. Preserve unrelated work.
+Non-goals: Multiplayer, backend, accounts, external libraries.
+Proof: Real browser play at desktop/mobile sizes; no browser errors or network dependencies; all 24 waves, randomized route invariants, five towers and four upgrades, victory/defeat/replay, pause and sound controls, gallery attribution/order.
+
+- [x] Develop original lore, visual language, mechanics, and acceptance criteria before implementation (tasks/pearlwatch-design.md).
+- [x] Implement the standalone HTML, inline artwork, audio, simulation, and responsive interface.
+- [x] Add the GPT-6.1 Sol / Max tile to the gallery in alphabetical order.
+- [x] Run browser playtests and deterministic balance/invariant checks; fix observed defects.
+- [x] Complete skeptical review and record proof and remaining limitations.
+- [ ] Commit only this task's files; integrate and push to main; verify remote ancestry.
+
+### Review
+Implementation and verification complete. Original lore was written in `tasks/pearlwatch-design.md` before the game. No other game artifacts or previous chats were used as creative references. Current-run metadata identified `gpt-6.1-sol` with `max` effort; filename, author metadata, visible attribution, and gallery agree.
+
+- Standalone artifact: all CSS, JavaScript, SVG, Canvas artwork, and synthesized audio are inline. Syntax check passed; no external asset URLs or network APIs.
+- Browser: local `file://` page in macOS Google Chrome, using the bundled Playwright runtime. No login or account is involved. 50 visible-UI assertions passed: mouse and keyboard placement, affordability/refits/refunds, live spawn counter, pause, Rinse, explicit intermission, notebook pause/restore, sound control, new-channel confirmation, touch placement, terminal loss, replay, and local notebook persistence.
+- Responsive: widths 320, 360, 390, 768, 1024, 1440; no horizontal overflow, correct Canvas backing-store dimensions, unchanged logical route through resizing. Touch emulation passed at 390x844 / DPR 2.
+- Random routes: 1,000 seeds; 191 distinct centerlines; 41–54 sockets; route lengths 1707.5–2727.5. Endpoints, bounds, non-intersection, and socket clearance all passed.
+- Combat: five earned-credit complete campaigns (seeds 17, 101, 2026, 987654, 4294967295), all 24 tides won with 24 root integrity. All five tool types reached base plus four refits. Additional isolated tool checks proved every tool fired and dealt damage. Binding, vapor, shields, split children, bosses, Rinse reset, intermission waiting, and victory freeze were observed in the deterministic browser pass.
+- Skeptical review found three defects, all corrected and retested: stale spawn counter, inspector focus lost on income updates, and attack audio using incompatible clocks. Scheduling retest emitted 13 tones for 13 shots after a preparation delay.
+- Temporary verification drivers: `/tmp/pearlwatch-ui-proof.cjs`, `/tmp/pearlwatch-core-proof.cjs`, `/tmp/pearlwatch-balance.cjs`. Reports: `/tmp/pearlwatch-ui-proof.json`, `/tmp/pearlwatch-core-proof.json`.
+- Screenshots inspected: `/tmp/pearlwatch-intro.png`, `/tmp/pearlwatch-combat.png`, `/tmp/pearlwatch-mobile.png`, `/tmp/pearlwatch-mobile-combat.png`.
+- Gallery: one GPT-6.1 Sol / Max / OpenAI tile, all prior cards preserved, all 50 cards sorted by model.
+- Not verified: Safari/Firefox, physical phones, or audible output from speakers. Chrome audio scheduling and controls were verified. Balance evidence covers the named seeds rather than every possible player strategy.
+- Publication: pending commit, integration of the two newer upstream commits, and push to main. Upstream additions are in `svg-forest/` and a separate task-plan section; they will be preserved.
