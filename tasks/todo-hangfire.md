@@ -49,7 +49,7 @@ expansion. The crowd is ash, faces turned up. The player arrives a few seconds l
 - [x] responsive + touch verification (390x844, 844x390, 820x1180, 1280x720), fps, console clean
 - [x] index tile (alphabetical by model), memory notes
 - [x] independent review findings addressed (12 findings, all fixed and re-tested)
-- [ ] signed commit, push (blocked until 1Password approves the SSH signing request)
+- [x] signed commit and push (c9a8b2d; the first signing attempts were refused until 1Password was approved)
 
 ## Review
 
@@ -86,5 +86,5 @@ Not verified:
 Risks:
   sprites are billboards, so looking almost straight up right beside a tall prop shows the flat sprite (the ending steps you back)
 Next:
-  signed commit + push once 1Password approves the signing request
+  none. Pushed to main as c9a8b2d.
 ```
