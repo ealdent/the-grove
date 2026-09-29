@@ -708,3 +708,55 @@ Goal: per Jason, fill the Chinese Room with books and ticker tape to match Searl
 Review/proof: `out/p-doom-c90-v5.mp4` is 8494 frames, 141.567 s, AAC copied, 309.3 MB. `out/p-doom-c90-v5-x.mp4` is 139.900 s and 309.3 MB. Six-frame strips show the surges on screen: 3.0 → 11.3% through the first chorus, 21.8 → 27.8% in the second hook, 44.4 → 51.8% on the corner readout during the fall, and 74.0 → 82.1% in the fourth hook. Rates run 4-11 %/s during surges against 0.2-0.6 %/s between them. The strips also show the ticker tape scrolling, the curve-to-black-hole transition with the lensed arc, and the Omega streams.
 
 Not verified: a watch-through with sound, and X's re-encode.
+
+
+# After the Sun — GPT-6.1 Sol / Max SVG exploration (2026-09-29)
+
+Goal: deliver an original single-file first-person exploration game, add its alphabetized gallery tile, commit and push to main.
+Project: Moon Dog Atlas / personal The Grove.
+Repo: /Users/jason/.codex/worktrees/3ae1/the-grove.
+Artifact: svg-forest/gpt-6.1-sol-max-svg-forest.html.
+Constraints: all world graphics and rendering use inline SVG; no canvas, WebGL, external assets or dependencies. Do not inspect any other svg-forest games until the new game is finished. Preserve unrelated work.
+Non-goals: framework, backend, paid assets, combat.
+Proof: browser keyboard and drag movement; simultaneous two-pointer mobile movement/turning and release/cancel; responsive portrait/landscape/tablet/desktop; finite transforms and bounded streaming/pooling; console/network checks; independent code review; scoped commit and verified remote main.
+Assumption: this run is GPT-6.1 Sol at Max effort, confirmed from current session metadata.
+
+## Lore — completed before visual design or implementation
+
+The sun did not explode. It went quietly, at the end of an ordinary afternoon. The orchard keepers caught its last light in seven seed bells and planted them in the salt flats. Hundreds of years later the seeds have become copper crown trees. Each tree keeps one small piece of an afternoon alive: warmth on a doorstep, a shadow on a table, the colour of a hand held against the sky.
+
+You are a duskkeeper, sent into the orchard when the seed bells begin to answer one another. Nobody has asked you to bring the sun back. Your task is to find what its light remembers. The orchard has no fence and no final tree. Beyond every grove, another grove has learned how to glow.
+
+Crown trees split into many black branches and cradle amber leaves, like broken stained glass. Ribbed shrines were built around the old seed bells, with bone-white arches protecting tiny suspended suns. Low lantern reeds gather fallen warmth from the copper salt. Sail-like dusk rays carry embers between groves; they have no eyes, because the orchard remembers the way for them. The dead sun remains in the sky as a dark disk surrounded by its last thin ring of fire.
+
+Seven fragments, found by lingering beside different seed shrines, gradually reveal that the keepers were preserving ordinary kindness rather than celestial power. After all seven, the invitation is simply to keep walking and let the orchard grow.
+
+## Plan / acceptance
+
+- [x] Confirm rules, clean Git state, model/effort; invent the original backstory before design.
+- [x] Build the complete SVG orchard with sky, perspective ground, crown trees, lantern reeds, shrines and dusk rays; bounded world generation and SVG reuse.
+- [x] Implement frame-independent keyboard/drag controls, subtle walking bob, independently captured mobile joysticks, motion preference, pause and seven discoverable memories.
+- [x] Playtest the finished standalone game at desktop, tablet and phone sizes; verify controls, depth, offline behavior and streaming limits.
+- [x] Read only the gallery index after the game is finished; add one alphabetically sorted GPT-6.1 Sol / Max tile.
+- [x] Complete a skeptical independent review, fix findings and record evidence here.
+- [ ] Commit only the authorized files, push to main without force, and verify remote SHA.
+
+## Review / results
+
+Changed: a 50 KB standalone SVG world with copper crown trees, amber lantern reeds, bone-white seed shrines, salt crystals and drifting dusk rays. Seven discovered memories persist locally. An exact-silhouette foliage LOD removes fine strokes from trees beyond 32 metres to reduce SVG paint cost. Game design and implementation were completed in isolation before opening the gallery index. The new gallery tile is GPT-6.1 Sol / Max, alphabetized after GPT-6 Sol; all 36 existing cards are byte-identical.
+
+Proof: `node --check /private/tmp/after-the-sun-script.js` passed (the script was extracted from the new HTML). `node /private/tmp/after-sun-proof/verify.cjs` passed all 50 browser assertions on the finished artifact. Browser: isolated Google Chrome on macOS driven by bundled Playwright, plus a visible Codex in-app browser smoke test of the game and gallery filter/link. Test URL: http://127.0.0.1:8769/svg-forest/gpt-6.1-sol-max-svg-forest.html?test=1&proof=3. No authentication required.
+
+Observed: keyboard forward/back and turning, combined keys, mouse drag and capture release, subtle bob, pause/resume and modal movement blocking, all seven discoveries and reload persistence, return to the first bell, motion-off stillness and OS reduced motion. CDP-generated browser touch events gave distinct pointer IDs 2 and 3, simultaneous walking/turning, releasing one finger kept the other active, cancellation cleared the remaining input, capture survived dragging outside a pad, and pause cleared held touches. These were browser touch events under mobile emulation, not a physical-device test.
+
+Responsive screenshots inspected at 320×568, 390×844, 844×390 and 768×1024; layout assertions also passed at 430×932, 1024×768, 1440×900, 1920×1080 and 2560×1440. No document overflow or toolbar/brand overlap. The phone viewport scale stayed 1; touch action and overscroll prevention are configured. Standalone offline file URL opened and entered the orchard successfully. Browser exceptions, console errors and failed asset requests: zero; game external requests: zero.
+
+Bounded streaming: 260 positions, including negative and distant coordinates, retained exactly 121 chunks and 1,452 SVG elements. Maximum observed generated props: 1,393; visible sprites: 165 of a fixed 240-slot pool, plus 160 floor slots. All transforms/attributes remained finite.
+
+Performance: original full foliage measured 33.3 ms median / 50 ms p95 while walking and turning. After the distant-foliage LOD, a 180-frame sustained movement sample after 1.5 seconds of warmup measured 16.7 ms median and p95, with 0.777 ms mean / 1.3 ms maximum JavaScript render CPU. This is a desktop Chrome measurement, not a guarantee for mobile hardware.
+
+Evidence: /private/tmp/after-sun-proof/report.json and responsive PNGs in that directory. Skeptical independent review caught chunk-range popping, incomplete reduced-motion handling and landscape title spacing; these were fixed and retested. Final independent gallery/LOD review approved: exact model/effort/href and placement, all 36 old cards preserved, matching leaf silhouettes/gradients/transforms, resolved SVG references, and no release blockers.
+
+Not verified: physical phones/tablets, Safari/Firefox, mobile hardware performance, human listening assessment of optional synthesized ambience. Low residual risk for this self-contained static game.
+
+Release: awaiting scoped commit, normal fast-forward push to main, remote SHA and Pages checks.
