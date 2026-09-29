@@ -775,7 +775,7 @@ Proof: Real browser play at desktop/mobile sizes; no browser errors or network d
 - [x] Add the GPT-6.1 Sol / Max tile to the gallery in alphabetical order.
 - [x] Run browser playtests and deterministic balance/invariant checks; fix observed defects.
 - [x] Complete skeptical review and record proof and remaining limitations.
-- [ ] Commit only this task's files; integrate and push to main; verify remote ancestry.
+- [x] Commit only this task's files; integrate and push to main; verify remote ancestry.
 
 ### Review
 Implementation and verification complete. Original lore was written in `tasks/pearlwatch-design.md` before the game. No other game artifacts or previous chats were used as creative references. Current-run metadata identified `gpt-6.1-sol` with `max` effort; filename, author metadata, visible attribution, and gallery agree.
@@ -790,4 +790,4 @@ Implementation and verification complete. Original lore was written in `tasks/pe
 - Screenshots inspected: `/tmp/pearlwatch-intro.png`, `/tmp/pearlwatch-combat.png`, `/tmp/pearlwatch-mobile.png`, `/tmp/pearlwatch-mobile-combat.png`.
 - Gallery: one GPT-6.1 Sol / Max / OpenAI tile, all prior cards preserved, all 50 cards sorted by model.
 - Not verified: Safari/Firefox, physical phones, or audible output from speakers. Chrome audio scheduling and controls were verified. Balance evidence covers the named seeds rather than every possible player strategy.
-- Publication: pending commit, integration of the two newer upstream commits, and push to main. Upstream additions are in `svg-forest/` and a separate task-plan section; they will be preserved.
+- Publication: game commit `8bbe106dc87678a5f080714c5c6a9a6e2deec4c9` was pushed to `origin/main`; `ls-remote` confirmed the same head. The two newer upstream commits in `svg-forest/` and their complete task-plan section were preserved. The tested game SHA-256 stayed `5a5cb954f053595c1c08536b49d824cf5aaead4cc9c464fad42c6778d766b738`. Only the four planned task files changed.
