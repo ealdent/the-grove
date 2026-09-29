@@ -739,7 +739,7 @@ Seven fragments, found by lingering beside different seed shrines, gradually rev
 - [x] Playtest the finished standalone game at desktop, tablet and phone sizes; verify controls, depth, offline behavior and streaming limits.
 - [x] Read only the gallery index after the game is finished; add one alphabetically sorted GPT-6.1 Sol / Max tile.
 - [x] Complete a skeptical independent review, fix findings and record evidence here.
-- [ ] Commit only the authorized files, push to main without force, and verify remote SHA.
+- [x] Commit only the authorized files, push to main without force, and verify remote SHA.
 
 ## Review / results
 
@@ -759,4 +759,4 @@ Evidence: /private/tmp/after-sun-proof/report.json and responsive PNGs in that d
 
 Not verified: physical phones/tablets, Safari/Firefox, mobile hardware performance, human listening assessment of optional synthesized ambience. Low residual risk for this self-contained static game.
 
-Release: awaiting scoped commit, normal fast-forward push to main, remote SHA and Pages checks.
+Release: game commit `da7e7b53c769074fe12ed14941d6d4d7a28f1c12` was created from the reviewed files and pushed with `git push origin HEAD:refs/heads/main`. `git ls-remote origin refs/heads/main` returned that exact SHA. Commit scope: the new game, its gallery index tile, and this appended task packet. This documentation checkpoint closes the plan; the final live Pages check is reported in the chat. Public game URL: https://ealdent.github.io/the-grove/svg-forest/gpt-6.1-sol-max-svg-forest.html.
