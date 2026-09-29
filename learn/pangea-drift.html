@@ -294,13 +294,13 @@
 
 <div class="ui card" id="brand">
   <h1>Pangaea &rarr; Present</h1>
-  <p>Colour-ASCII plate reconstruction &middot; Young et al. 2018</p>
+  <p>Colour-ASCII globe &middot; Young et al. 2018 plate reconstruction</p>
 </div>
 
 <div class="ui card" id="hud">
   <div class="age" id="ageOut">0<small>MA</small></div>
   <div class="era" id="eraOut">Present day</div>
-  <div class="sub" id="zoomOut">1 cell = &mdash;</div>
+  <div class="sub" id="hudView">view &mdash;</div>
 </div>
 
 <div class="ui card" id="tools">
@@ -354,12 +354,28 @@
 
     <h3>What you are looking at</h3>
     <p>
-      Every glyph is one grid cell of the Earth. Each cell is coloured by which
+      A globe, drawn entirely in characters. It is an
+      <b>orthographic projection</b>: you are looking straight down the axis of
+      the Earth from space, and the horizon is the bright ring around the disc.
+      Drag to spin it; the far side of the planet is genuinely out of sight, not
+      faded out.
+    </p>
+    <p>
+      Every glyph is one patch of the Earth's surface. Cells are laid out on
+      concentric <i>rings of constant solid angle</i> rather than on a flat
+      lat/lon grid, which is why they stay square on the ground and squeeze
+      towards the limb instead of shearing. Each is coloured by which
       continent's crust sits on it and stamped with a character whose density
       tracks how far inland you are, so coastlines read as edges, continental
-      interiors as solid mass, and the seafloor as depth bands computed from
-      distance to the nearest coast. Landmasses are the present-day coastlines
-      carried backwards by the finite rotations of the plate they belong to.
+      interiors as solid mass, and the seafloor as depth bands measured from
+      distance to the nearest coast. The highlight towards the top-left is a
+      fixed specular sheen, added so the disc reads as a lit sphere; it is a
+      lighting effect, not a solar terminator.
+    </p>
+    <p>
+      Because the projection is orthographic, area near the limb is compressed,
+      so the disc is foreshortened rather than equal-area. Read the geography,
+      not the areas.
     </p>
 
     <h3>Where the data comes from</h3>
@@ -402,8 +418,8 @@
     <div class="keys">
       <div><kbd>Space</kbd> play / pause</div>
       <div><kbd>R</kbd> reverse time</div>
-      <div><kbd>&larr;</kbd><kbd>&rarr;</kbd><kbd>&uarr;</kbd><kbd>&darr;</kbd> pan</div>
-      <div><kbd>+</kbd><kbd>&minus;</kbd> zoom</div>
+      <div><kbd>&larr;</kbd><kbd>&rarr;</kbd><kbd>&uarr;</kbd><kbd>&darr;</kbd> spin the globe</div>
+      <div><kbd>+</kbd><kbd>&minus;</kbd> zoom in / out</div>
       <div><kbd>0</kbd> reset view</div>
       <div><kbd>Z</kbd> ASCII resolution</div>
       <div><kbd>G</kbd> guided tour</div>
@@ -415,8 +431,11 @@
       <div><kbd>?</kbd> this panel</div>
     </div>
     <p style="margin-top:10px">
-      Mouse: drag to pan, wheel to zoom toward the cursor. Touch: one finger pans,
-      two fingers pinch to zoom. Both work anywhere on the map.
+      Mouse: drag to spin the globe, wheel to zoom (the point under the cursor
+      stays put). Touch: one finger spins, two fingers pinch to zoom. Both work
+      anywhere on the disc. <kbd>Z</kbd> cycles the character size, which is the
+      resolution control &mdash; smaller characters mean more of the planet per
+      character cell.
     </p>
 
     <h3>Sources</h3>
@@ -444,13 +463,74 @@ const land = new Land(atlas, 0.5);
 const shelf = new Land(atlas, 1.5);        // coarse grid, only used for depth bands
 
 /* ================================================================== camera */
-/* The camera stores the LATITUDE SPAN it shows, and derives the degrees-per-cell
- * from the row count. Fixing degrees-per-cell instead made the world overflow the
- * grid whenever the font or window changed, wasting a third of the rows on empty
- * space above the pole. */
-const cam = { lon: 0, lat: 0, span: 170 };
-let CELL_LAT = cam.span / 80;                 // degrees of latitude per cell
-const refreshCell = () => { CELL_LAT = cam.span / Math.max(8, GRIDH); };
+/* The map is an ORTHOGRAPHIC GLOBE: a sphere seen from a camera pointing at
+ * (lon, lat) with an angular radius of `theta` degrees. You can spin it.
+ *
+ * Cells are sampled on concentric rings of constant solid angle rather than on
+ * a rectangular lat/lon grid. That matters for the look: a rectangular grid
+ * shears towards the corners, whereas ring sampling keeps the glyphs square on
+ * the surface and lets them foreshorten towards the limb, which is what makes a
+ * field of characters read as a ball rather than a warped map.
+ *
+ *   screen radius fraction  rho = sin(gamma) / sin(theta)
+ *   inverse (cell -> lon/lat) is the standard inverse orthographic, written out
+ *   in terms of the ring angle gamma and the ring azimuth az:
+ *       lat = asin( cos(g) sin(phi0) + cos(az) sin(g) cos(phi0) )
+ *       lon = lam0 + atan2( sin(az) sin(g), cos(phi0) cos(g) - cos(az) sin(phi0) sin(g) )
+ *   (Check: at az=0, phi0=0 this returns lat = gamma, lon = lam0. Correct.) */
+const cam = { lon: 0, lat: 12, theta: 90 };
+const D2R = Math.PI / 180;
+const TAU = Math.PI * 2;
+
+const disc = () => {
+  const W = GRIDW * cellW, H = GRIDH * cellH;
+  const R = Math.max(8, Math.min(W / 2 - cellH, H / 2 - cellH * 3));
+  return { W, H, cx: W / 2, cy: H / 2 - cellH * 1.6, R, theta: cam.theta * D2R, sinT: Math.sin(cam.theta * D2R) || 1e-6 };
+};
+
+/** lon/lat -> {x, y} in pixels, or null if the point is over the horizon. */
+function project(lon, lat) {
+  const d = disc();
+  const dLon = lon * D2R - cam.lon * D2R;
+  const cl = Math.cos(lat * D2R), sl = Math.sin(lat * D2R);
+  const cp = Math.cos(cam.lat * D2R), sp = Math.sin(cam.lat * D2R);
+  const xo = cl * Math.sin(dLon);
+  const yo = cp * sl - sp * cl * Math.cos(dLon);
+  const facing = sp * sl + cp * cl * Math.cos(dLon);        // cos(angular distance)
+  if (facing <= 0.008) return null;                          // past the limb
+  const rho = Math.sqrt(xo * xo + yo * yo) / d.sinT;
+  if (rho > 1.06) return null;
+  const az = Math.atan2(xo, yo);
+  return { x: d.cx + d.R * rho * Math.sin(az), y: d.cy - d.R * rho * Math.cos(az), rho, az, d };
+}
+
+/** pixels -> {lon, lat}, or null when the pixel is off the disc. */
+function unproject(px, py) {
+  const d = disc();
+  const X = (px - d.cx) / d.R, Y = (d.cy - py) / d.R;         // Y is north-positive
+  const rho = Math.hypot(X, Y);
+  if (rho > 1) return null;
+  const sg = rho * d.sinT, cg = Math.sqrt(Math.max(0, 1 - sg * sg));
+  const lam0 = cam.lon * D2R, phi0 = cam.lat * D2R;
+  const sp = Math.sin(phi0), cp = Math.cos(phi0);
+  if (rho < 1e-9) return { lon: cam.lon, lat: cam.lat };
+  const lat = Math.asin(clamp(cg * sp + (Y / rho) * sg * cp, -1, 1));
+  const lon = lam0 + Math.atan2(X * sg, rho * cp * cg - Y * sp * sg);
+  return { lon: ((lon / D2R + 540) % 360) - 180, lat: lat / D2R };
+}
+
+/* Two scale facts, both linear near the centre of the disc where an
+ * orthographic projection behaves like a tangent plane at R/sin(theta) pixels
+ * per radian:
+ *   dGamma      - degrees of arc one ROW of cells covers
+ *   ringCells() - how many cells fit around a ring at a given sin(gamma)
+ * Getting ringCells wrong is invisible in the maths and glaring on screen: the
+ * first version counted arc on the SPHERE, which is foreshortened, so the outer
+ * rings came out three cells wide and the globe rendered as a handful of
+ * scattered marks. It has to count cells along the PROJECTED ring. */
+const dGamma = () => (cellH * (Math.sin(cam.theta * D2R) || 1e-6) / disc().R) / D2R;
+const cellAngle = () => dGamma();
+const ringCells = (d, sg) => Math.max(1, Math.round(TAU * d.R * sg / (d.sinT * cellW)));
 
 /* ================================================================== palette */
 const LAND_HUE = {
@@ -464,10 +544,12 @@ const THEMES = {
   dark: {
     bg: '#05070c', abyss: '#070d16', deep: '#0b1727', mid: '#102437', shallow: '#17374f',
     shelf: '#1e4a63', coast: '#4fbfe8', grid: '#16283a', ice: '#dce9f5', desert: '#c9a35e', rim: '#eaf7ff',
+    body: ['#0d1a2b', '#0a1322', '#050a12', '#12304a'],
   },
   light: {
     bg: '#f4eee0', abyss: '#7ba3c4', deep: '#5a8bb0', mid: '#3f739c', shallow: '#2b5e8a',
     shelf: '#1d4f79', coast: '#0d3a5c', grid: '#8ba0b0', ice: '#31536b', desert: '#8a6416', rim: '#fffdf5',
+    body: ['#e8e2d2', '#dbd6c6', '#c9c6bd', '#ffffff'],
   },
 };
 let theme = (localStorage.getItem('pangea-theme')
@@ -576,7 +658,6 @@ function resize() {
   ctx.textBaseline = 'alphabetic';
   ctx.fillStyle = THEMES[theme].bg;
   ctx.fillRect(0, 0, GRIDW * cellW, GRIDH * cellH);
-  refreshCell();
   lastRasterMa = NaN;
   dirty = true;
 }
@@ -610,10 +691,46 @@ let anim = null;
 function ensureRaster() {
   if (ma === lastRasterMa) return;
   lastRasterMa = ma;
-  const visible = Math.abs(cam.span);                  // degrees of latitude on screen
-  land.setResolution(clamp(visible / (GRIDW * 3), 0.12, 0.5));
+  // resolve the coastlines a little finer than one screen cell, so the raster
+  // never becomes the thing that limits the zoom
+  land.setResolution(clamp(2.5 * cellAngle(), 0.08, 0.4));
   land.rasterize(ma);
   shelf.rasterize(ma);
+}
+
+let _bodyKey = '', _body = null, _halo = null;
+
+/* The characters alone are too sparse to read as a solid ball: open ocean is
+ * deliberately near-blank so the land stays legible. Painting a shaded disc
+ * underneath gives the sphere a body, and a soft halo outside the limb makes it
+ * sit in space rather than on a flat sheet. */
+function paintBody(d) {
+  const T = THEMES[theme];
+  const key = theme + ':' + Math.round(d.R) + ':' + Math.round(d.cx) + ':' + Math.round(d.cy);
+  if (key !== _bodyKey) {
+    _bodyKey = key;
+    const [b0, b1, b2, hl] = T.body;
+    const g = ctx.createRadialGradient(d.cx - d.R * 0.34, d.cy - d.R * 0.38, d.R * 0.04, d.cx, d.cy, d.R);
+    g.addColorStop(0, hl);
+    g.addColorStop(0.28, b0);
+    g.addColorStop(0.78, b1);
+    g.addColorStop(1, b2);
+    _body = g;
+    const o = ctx.createRadialGradient(d.cx, d.cy, d.R * 0.94, d.cx, d.cy, d.R * 1.16);
+    o.addColorStop(0, theme === 'dark' ? 'rgba(80,180,235,0.20)' : 'rgba(70,120,160,0.16)');
+    o.addColorStop(1, 'rgba(0,0,0,0)');
+    _halo = o;
+  }
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(d.cx, d.cy, d.R, 0, TAU);
+  ctx.fillStyle = _body;
+  ctx.fill();
+  ctx.fillStyle = _halo;
+  ctx.beginPath();
+  ctx.arc(d.cx, d.cy, d.R * 1.16, 0, TAU);
+  ctx.fill();
+  ctx.restore();
 }
 
 function render() {
@@ -621,101 +738,141 @@ function render() {
   ctx.fillRect(0, 0, GRIDW * cellW, GRIDH * cellH);
   ensureRaster();
 
+  const d = disc();
+  paintBody(d);
   const g = land.group, res = land.res, gw = land.w, gh = land.h;
   const sD = shelf.dist, sres = shelf.res, sgw = shelf.w, sgh = shelf.h;
-  const dLat = CELL_LAT;
   const last = RAMP_A.length - 1;
   const step = Math.max(1, Math.round(1.2 / res));
-  const G = 30;                       // graticule spacing in degrees
+  const G = 30;                                  // graticule spacing, degrees
+  const dAng = cellAngle();
+  const phi0 = cam.lat * D2R, lam0 = cam.lon * D2R;
+  const sinPhi0 = Math.sin(phi0), cosPhi0 = Math.cos(phi0);
 
-  for (let j = 0; j < GRIDH; j++) {
-    const lat = cam.lat + (GRIDH / 2 - j - 0.5) * dLat;
-    if (lat > 89.9 || lat < -89.9) continue;
-    const cl = Math.cos(lat * Math.PI / 180) || 1e-6;
-    const dLon = dLat / cl;
-    const lon0 = cam.lon - (GRIDW / 2) * dLon;
-    const rowY = j * cellH;
-    const absLat = Math.abs(lat);
-    const polar = absLat > 55;
-    const desert = absLat > 17 && absLat < 33;
-    const onLatLine = Math.abs(lat / G - Math.round(lat / G)) < (dLat * 0.5) / G;
-    const gy = Math.floor((90 - lat) / res);
-    if (gy < 0 || gy >= gh) continue;
-    let sy = Math.floor((90 - lat) / sres);
-    if (sy < 0 || sy >= sgh) sy = 0;
+  const nRings = clamp(Math.round(cam.theta / dAng), 3, 200);
+  const dGam = cam.theta / nRings;
 
-    for (let i = 0; i < GRIDW; i++) {
-      const lon = lon0 + (i + 0.5) * dLon;
+  const put = (px, py, variant, ink, alpha) => {
+    const sp = sprite[variant + '|' + clamp(ink, 0, last)];
+    if (!sp) return;
+    const ci = Math.floor(px / cellW), rj = Math.floor(py / cellH);
+    if (ci < 0 || rj < 0 || ci >= GRIDW || rj >= GRIDH) return;
+    if (alpha !== undefined) { ctx.globalAlpha = alpha; }
+    ctx.drawImage(atlasCanvas, sp.sx, sp.sy, cellW, cellH, ci * cellW, rj * cellH, cellW, cellH);
+    if (alpha !== undefined) ctx.globalAlpha = 1;
+  };
+
+  for (let j = 0; j < nRings; j++) {
+    const gam = (j + 0.5) * dGam * D2R;
+    const sg = Math.sin(gam), cg = Math.cos(gam);
+    const rho = sg / d.sinT;
+    const nCell = ringCells(d, sg);
+    for (let i = 0; i < nCell; i++) {
+      const az = ((i + 0.5) / nCell) * TAU;
+      const sa = Math.sin(az), ca = Math.cos(az);
+      const px = d.cx + d.R * rho * sa;
+      const py = d.cy - d.R * rho * ca;
+
+      const lat = Math.asin(clamp(cg * sinPhi0 + ca * sg * cosPhi0, -1, 1)) / D2R;
+      const lon = lam0 + Math.atan2(sa * sg, cosPhi0 * cg - ca * sinPhi0 * sg) / D2R;
+
       let x = Math.floor((lon + 180) / res) % gw; if (x < 0) x += gw;
-      const gv = g[gy * gw + x];
+      const gy = Math.floor((90 - lat) / res);
+      if (gy < 0 || gy >= gh) continue;
+      let sy = Math.floor((90 - lat) / sres);
+      if (sy < 0 || sy >= sgh) sy = 0;
 
+      const nz = hash2(i + j * 131, j * 17 + i);
+      const nz2 = hash2(i * 5 + 977, j * 11 - 313);
+      const absLat = Math.abs(lat);
+      // limb shading: a sphere brightens towards its edge, which is the single
+      // cue that turns a disc of characters into a ball
+      const limb = rho * rho;
       let variant, ink;
+
+      const gv = g[gy * gw + x];
       if (gv) {
-        let solid = 0;
+        let solid = 0, coast = 0;
         for (let bb = -1; bb <= 1; bb++) for (let aa = -1; aa <= 1; aa++) {
           const yy = gy + bb * step, xx = (x + aa * step + gw) % gw;
-          if (yy >= 0 && yy < gh && g[yy * gw + xx]) solid++;
+          if (yy >= 0 && yy < gh && g[yy * gw + xx]) solid++; else coast++;
         }
         const inland = solid / 9;
-        const nz = hash2(i >> 1, j >> 1);
-        const nz2 = hash2(i + 977, j - 313);
-        // sparse at the coast, dense inland: the silhouette does the work
-        ink = clamp(3 + Math.round(inland * (last - 2) + nz * 1.4), 2, last);
+        ink = clamp(3 + Math.round(inland * (last - 2) + nz * 1.4 - limb * 1.2), 2, last);
         variant = (gv - 1) * 5 + clamp(Math.round(inland * 4 + nz2 * 0.8), 0, 4);
-        if (polar) variant = V_ICE;
-        else if (desert && nz > 0.45) variant = V_DESERT;
+        if (absLat > 55) variant = V_ICE;
+        else if (absLat > 17 && absLat < 33 && nz > 0.45) variant = V_DESERT;
+        if (coast) { variant = COAST; ink = last - 1 - Math.round(limb * 2); }
       } else {
         let sx = Math.floor((lon + 180) / sres) % sgw; if (sx < 0) sx += sgw;
         const dist = sD[sy * sgw + sx];
         const band = clamp(5 - Math.floor(dist * 0.5), 0, 5);
         variant = V_OCEAN + band;
-        // open ocean stays nearly empty so the land reads cleanly; the rim glows
-        ink = band >= 5 ? (hash2(i, j) > 0.4 ? 3 : 2)
+        // specular sheen: a fixed highlight on the "sunlit" side of the sphere
+        let off = Math.abs(((az - (-0.95) + Math.PI * 3) % TAU) - Math.PI);
+        const glint = Math.exp(-Math.pow(off / 0.55, 2)) * (1 - rho);
+        ink = band >= 5 ? (nz > 0.4 ? 3 : 2)
              : band === 4 ? 1
-             : band === 3 ? (hash2(i, j) > 0.6 ? 1 : 0)
+             : band === 3 ? (nz > 0.6 ? 1 : 0)
              : 0;
+        if (band <= 4) {
+          const g2 = glint * (band <= 1 ? 3 : 2);
+          if (g2 > 0.6) { variant = V_OCEAN + Math.min(5, band + 2); ink = Math.round(g2); }
+        }
+        ink += limb > 0.86 ? 1 : 0;
       }
-      if (onLatLine || Math.abs(lon / G - Math.round(lon / G)) < (dLon * 0.5) / G) {
-        variant = V_GRID;
-        ink = onLatLine ? 4 : 2;
+      // the graticule rides in the same pass, so it curves over the sphere
+      if (Math.abs(lat / G - Math.round(lat / G)) < (dAng * 0.55) / G ||
+          Math.abs(lon / G - Math.round(lon / G)) < (dAng * 0.55) / G) {
+        variant = V_GRID; ink = 3;
       }
-      const sp = sprite[variant + '|' + ink];
-      if (!sp) continue;
-      ctx.drawImage(atlasCanvas, sp.sx, sp.sy, cellW, cellH, i * cellW, rowY, cellW, cellH);
+      put(px, py, variant, ink);
     }
   }
-  drawCoastline();
+
+  drawLimb(d);
   placeLabels();
 }
 
-/** A crisp shoreline pass drawn straight from the raster, on top of the glyphs. */
-function drawCoastline() {
-  const g = land.group, gw = land.w, gh = land.h, res = land.res, dLat = CELL_LAT;
-  const sp = sprite[COAST + '|' + (RAMP_A.length - 2)];
-  if (!sp) return;
-  const step = 1;                       // a true one-cell shoreline
-  ctx.save();
-  ctx.globalAlpha = 0.95;
-  for (let j = 0; j < GRIDH; j++) {
-    const lat = cam.lat + (GRIDH / 2 - j - 0.5) * dLat;
-    if (lat > 89.9 || lat < -89.9) continue;
-    const cl = Math.cos(lat * Math.PI / 180) || 1e-6;
-    const dLon = dLat / cl;
-    const lon0 = cam.lon - (GRIDW / 2) * dLon;
-    const yy = Math.floor((90 - lat) / res);
-    if (yy < 0 || yy >= gh) continue;
-    for (let i = 0; i < GRIDW; i++) {
-      const lon = lon0 + (i + 0.5) * dLon;
-      let x = Math.floor((lon + 180) / res) % gw; if (x < 0) x += gw;
-      if (!g[yy * gw + x]) continue;
-      if ((yy + step < gh && g[(yy + step) * gw + x]) ||
-          (yy - step >= 0 && g[(yy - step) * gw + x]) ||
-          g[yy * gw + ((x - step + gw) % gw)] || g[yy * gw + ((x + step) % gw)]) {
-        ctx.drawImage(atlasCanvas, sp.sx, sp.sy, cellW, cellH, i * cellW, j * cellH, cellW, cellH);
-      }
+/** The horizon itself: a bright ring plus two rings of atmosphere outside it. */
+function drawLimb(d) {
+  const dAng = cellAngle();
+  const rings = [
+    { k: 1.05, v: V_OCEAN + 4, a: theme === 'dark' ? 0.13 : 0.18, i: 1 },
+  ];
+  for (const r of rings) {
+    const gam = d.theta * r.k;
+    if (gam >= Math.PI / 2) continue;
+    const sg = Math.sin(gam), cg = Math.cos(gam);
+    const rho = sg / d.sinT;
+    const nCell = ringCells(d, sg);
+    for (let i = 0; i < nCell; i++) {
+      const az = ((i + 0.5) / nCell) * TAU;
+      const sp = sprite[r.v + '|' + r.i];
+      if (!sp) continue;
+      const px = d.cx + d.R * rho * Math.sin(az);
+      const py = d.cy - d.R * rho * Math.cos(az);
+      const ci = Math.floor(px / cellW), rj = Math.floor(py / cellH);
+      if (ci < 0 || rj < 0 || ci >= GRIDW || rj >= GRIDH) continue;
+      ctx.globalAlpha = r.a;
+      ctx.drawImage(atlasCanvas, sp.sx, sp.sy, cellW, cellH, ci * cellW, rj * cellH, cellW, cellH);
     }
   }
-  ctx.restore();
+  ctx.globalAlpha = 1;
+  // the hard edge of the disc
+  const gam = d.theta, sg = Math.sin(gam);
+  const rho = sg / d.sinT;
+  const nCell = ringCells(d, sg);
+  const sp = sprite[COAST + '|' + (RAMP_A.length - 1)];
+  if (!sp) return;
+  for (let i = 0; i < nCell; i++) {
+    const az = ((i + 0.5) / nCell) * TAU;
+    const px = d.cx + d.R * rho * Math.sin(az);
+    const py = d.cy - d.R * rho * Math.cos(az);
+    const ci = Math.floor(px / cellW), rj = Math.floor(py / cellH);
+    if (ci < 0 || rj < 0 || ci >= GRIDW || rj >= GRIDH) continue;
+    ctx.drawImage(atlasCanvas, sp.sx, sp.sy, cellW, cellH, ci * cellW, rj * cellH, cellW, cellH);
+  }
 }
 
 /* ================================================================== labels */
@@ -733,30 +890,22 @@ const MINOR = new Set(['Amazonia', 'Congo', 'Sahara', 'Beringia', 'California', 
   'Sri Lanka', 'Sakhalin', 'Tasmania', 'Falklands', 'Australia N', 'Papua', 'Himalaya']);
 
 const _lp = [0, 0];
+const FOLLOW = Object.fromEntries(atlas.labels.map(l => [l.plateIndex, l]));
+
 function placeLabels() {
-  const W = GRIDW * cellW, H = GRIDH * cellH;
-  // use the same degrees-per-cell as the render loop, taken at the label's own
-  // latitude, so labels track the plate even when it is near the pole
   for (let k = 0; k < labelEls.length; k++) {
     const { el, l } = labelEls[k];
     if (!(l.plateIndex >= 0)) { el.style.display = 'none'; continue; }
     placePoint(atlas, l.plateIndex, l.lon, l.lat, ma, _lp);
-    const cl = Math.cos(_lp[1] * Math.PI / 180) || 1e-6;
-    const dLon = CELL_LAT / cl;
-    let dx = _lp[0] - cam.lon;
-    while (dx > 180) dx -= 360;
-    while (dx < -180) dx += 360;
-    const x = (GRIDW / 2 + dx / dLon) * cellW;
-    const y = (GRIDH / 2 - (_lp[1] - cam.lat) / CELL_LAT) * cellH;
+    const p = project(_lp[0], _lp[1]);
+    if (!p) { el.style.display = 'none'; continue; }   // over the horizon
     const minor = MINOR.has(l.name);
-    if (!isFinite(x) || !isFinite(y) || x < -30 || x > W + 30 || y < -14 || y > H + 14 || Math.abs(dx) > 200) {
-      el.style.display = 'none';
-    } else {
-      el.style.display = 'block';
-      el.style.left = Math.round(x) + 'px';
-      el.style.top = Math.round(y) + 'px';
-      el.style.opacity = (minor ? 0.5 : 0.66) + (k % 3) * 0.09;
-    }
+    el.style.display = 'block';
+    el.style.left = Math.round(p.x) + 'px';
+    el.style.top = Math.round(p.y) + 'px';
+    // fade towards the limb, the way the glyphs do
+    const fade = 0.34 + (1 - p.rho) * 0.5;
+    el.style.opacity = (minor ? fade * 0.72 : fade) + (k % 3) * 0.07;
   }
 }
 
@@ -772,8 +921,11 @@ cv.addEventListener('pointermove', e => {
   if (drag.id2 !== null) return;
   const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
   drag.moved += Math.abs(dx) + Math.abs(dy);
-  cam.lon -= (dx / cellW) * (CELL_LAT / Math.max(0.2, Math.cos(cam.lat * Math.PI / 180)));
-  cam.lat = clamp(cam.lat + (dy / cellH) * CELL_LAT, -85, 85);
+  // dragging across the disc's diameter sweeps ~175 degrees of longitude, the
+  // rate that makes a globe feel like a solid ball under the finger
+  const k = 175 / disc().R;
+  cam.lon = wrapLon(cam.lon - dx * k);
+  cam.lat = clamp(cam.lat + dy * k, -89.5, 89.5);
   drag.x = e.clientX; drag.y = e.clientY;
   follow = null;
   dirty = true;
@@ -806,8 +958,9 @@ cv.addEventListener('pointermove', e => {
   if (drag.d0 > 0) zoomAt((a.x + b.x) / 2, (a.y + b.y) / 2, drag.d0 / dist);
   drag.d0 = dist;
   const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
-  cam.lon -= (mx - drag.px) / cellW * (CELL_LAT / Math.max(0.2, Math.cos(cam.lat * Math.PI / 180)));
-  cam.lat = clamp(cam.lat + (my - drag.py) / cellH * CELL_LAT, -85, 85);
+  const k = 175 / disc().R;
+  cam.lon = wrapLon(cam.lon - (mx - drag.px) * k);
+  cam.lat = clamp(cam.lat + (my - drag.py) * k, -89.5, 89.5);
   drag.px = mx; drag.py = my; drag.x = mx; drag.y = my;
   follow = null; dirty = true;
 });
@@ -820,23 +973,23 @@ cv.addEventListener('pointerup', e => { pointers.delete(e.pointerId); if (drag) 
 cv.addEventListener('pointercancel', e => pointers.delete(e.pointerId));
 cv.addEventListener('pointerleave', e => pointers.delete(e.pointerId));
 
+const wrapLon = v => ((v + 540) % 360) - 180;
+
 function zoomAt(px, py, k) {
-  const before = screenToGeo(px, py);
-  cam.span = clamp(cam.span * k, 6, 400);
-  refreshCell();
-  const after = screenToGeo(px, py);
-  cam.lon += before[0] - after[0];
-  cam.lat = clamp(cam.lat + before[1] - after[1], -85, 85);
-  while (cam.lon > 180) cam.lon -= 360;
-  while (cam.lon < -180) cam.lon += 360;
+  const r = cv.getBoundingClientRect();
+  // remember what is under the cursor, zoom, then rotate it back under the
+  // cursor: on a globe that is the interaction people expect from a map
+  const before = unproject(px - r.left, py - r.top);
+  cam.theta = clamp(cam.theta * k, 6, 90);
+  if (before) {
+    const after = unproject(px - r.left, py - r.top);
+    if (after) {
+      cam.lon = wrapLon(cam.lon + before.lon - after.lon);
+      cam.lat = clamp(cam.lat + before.lat - after.lat, -89.5, 89.5);
+    }
+  }
   follow = null;
   dirty = true;
-}
-function screenToGeo(px, py) {
-  const dLon = CELL_LAT / Math.max(0.2, Math.cos(cam.lat * Math.PI / 180));
-  const r = cv.getBoundingClientRect();
-  const i = (px - r.left) / cellW, j = (py - r.top) / cellH;
-  return [cam.lon - (GRIDW / 2 - i) * dLon, cam.lat - (j - GRIDH / 2) * CELL_LAT];
 }
 
 window.addEventListener('keydown', e => {
@@ -847,14 +1000,14 @@ window.addEventListener('keydown', e => {
   }
   if (e.metaKey || e.ctrlKey || e.altKey) return;
   const k = e.key;
-  const dLon = CELL_LAT / Math.max(0.2, Math.cos(cam.lat * Math.PI / 180));
+  const spin = 8;
   let used = true;
   switch (k) {
     case ' ': togglePlay(); break;
-    case 'ArrowLeft': case 'a': case 'A': cam.lon -= dLon * 3; break;
-    case 'ArrowRight': case 'd': case 'D': cam.lon += dLon * 3; break;
-    case 'ArrowUp': case 'w': case 'W': cam.lat = clamp(cam.lat + CELL_LAT * 3, -85, 85); break;
-    case 'ArrowDown': case 's': case 'S': cam.lat = clamp(cam.lat - CELL_LAT * 3, -85, 85); break;
+    case 'ArrowLeft': case 'a': case 'A': cam.lon = wrapLon(cam.lon - spin); break;
+    case 'ArrowRight': case 'd': case 'D': cam.lon = wrapLon(cam.lon + spin); break;
+    case 'ArrowUp': case 'w': case 'W': cam.lat = clamp(cam.lat + spin * 0.6, -89.5, 89.5); break;
+    case 'ArrowDown': case 's': case 'S': cam.lat = clamp(cam.lat - spin * 0.6, -89.5, 89.5); break;
     case '+': case '=': zoomCentre(0.8); break;
     case '-': case '_': zoomCentre(1.25); break;
     case '0': resetView(); break;
@@ -879,14 +1032,17 @@ function zoomCentre(k) {
 }
 
 /* ================================================================== time */
+function updateHud() {
+  $('hudView').textContent = 'view ' + (cam.theta * 2).toFixed(0) + ' \u00b0 \u00b7 1 cell = '
+    + cellAngle().toFixed(2) + ' \u00b0';
+}
+
 function setMa(v) {
   ma = clamp(v, 0, MAX_MA);
   $('time').value = ma;
   $('ageOut').innerHTML = (ma < 0.05 ? '0' : ma.toFixed(ma < 10 ? 1 : 0)) + '<small>MA</small>';
   $('eraOut').textContent = eraFor(ma);
-  const d = CELL_LAT;
-  $('zoomOut').textContent = '1 cell = ' + (d * 60 < 1 ? (d * 60).toFixed(1) + ' min'
-    : d < 1 ? (d * 60).toFixed(0) + "' " + d.toFixed(2) + '°' : d.toFixed(1) + '°');
+  updateHud();
   dirty = true;
   const c = CHAPTERS.findIndex(x => Math.abs(x.ma - ma) < 0.6);
   if (c >= 0 && c !== chapter && chapter >= 0) showChapterBody(c);
@@ -902,27 +1058,27 @@ function togglePlay() { playing = !playing; $('play').innerHTML = playing ? '&#1
 function flipDir() { dir *= -1; $('rev').setAttribute('aria-pressed', String(dir < 0)); }
 const SPEEDS = [1, 3, 8, 20, 50, 120];
 function setSpeed(v) { speed = clamp(v, 0.5, 240); $('speedLabel').textContent = speed < 10 ? speed.toFixed(1) + ' Myr/s' : speed.toFixed(0) + ' Myr/s'; }
-function resetView() { cam.lon = 0; cam.lat = 5; cam.span = 170; refreshCell(); follow = null; dirty = true; }
+function resetView() { cam.lon = 0; cam.lat = 12; cam.theta = 90; follow = null; dirty = true; }
 
 /* ================================================================ chapters */
 const CHAPTERS = [
-  { ma: 250, lon: 10, lat: 8, span: 150, era: 'Late Triassic', title: 'One continent',
+  { ma: 250, lon: 10, lat: 8, theta: 78, era: 'Late Triassic', title: 'One continent',
     body: 'Every landmass is gathered into Pangaea, ringed by one ocean. The supercontinent is assembled from Laurentia in the north and Gondwana in the south, with a huge embayment &mdash; the Tethys &mdash; cutting east into its core. Mountain belts run where continents collided to build it, and ice caps sit on the southern reaches of Gondwana.' },
-  { ma: 200, lon: -20, lat: 12, span: 120, era: 'Early Jurassic', title: 'The first cracks',
+  { ma: 200, lon: -20, lat: 12, theta: 62, era: 'Early Jurassic', title: 'The first cracks',
     body: 'Pangaea comes apart along a rift that opens between North America and Africa. The Central Atlantic is a narrow, shallow sea at first. The Tethys is widening in the east, and enormous flood-basalt eruptions &mdash; the Central Atlantic Magmatic Province &mdash; coincide with the end of the Triassic.' },
-  { ma: 150, lon: -20, lat: 6, span: 150, era: 'Late Jurassic', title: 'The Atlantic widens',
+  { ma: 150, lon: -20, lat: 6, theta: 78, era: 'Late Jurassic', title: 'The Atlantic widens',
     body: 'Iberia has rotated away from North America, opening the Bay of Biscay. A first seaway appears between Africa and South America, and India is pulling north away from Madagascar. A single carbonate platform stretches unbroken from one end of the Tethys to the other, and the oceans are far warmer than today.' },
-  { ma: 100, lon: -10, lat: 0, span: 175, era: 'Early Cretaceous', title: 'Two oceans, one landmass',
+  { ma: 100, lon: -10, lat: 0, theta: 90, era: 'Early Cretaceous', title: 'Two oceans, one landmass',
     body: 'The South Atlantic is now an ocean. The Tethys has narrowed to a remnant, but Africa, Arabia, India and Asia are still stitched together along its margins. Dinosaurs walk from what is now Brazil to what is now China. The Paraná&ndash;Etendeka flood basalts erupt as the South Atlantic opens.' },
-  { ma: 66, lon: -20, lat: 5, span: 180, era: 'K&ndash;Pg boundary', title: 'The Cretaceous ends',
+  { ma: 66, lon: -20, lat: 5, theta: 90, era: 'K&ndash;Pg boundary', title: 'The Cretaceous ends',
     body: 'The Deccan Traps erupt as India crosses the equator, and an impact ends the Cretaceous. North America has nearly reached its present distance from Africa, though Greenland is still attached to Europe. Australia has begun to slide north off Antarctica.' },
-  { ma: 50, lon: 40, lat: 25, span: 100, era: 'Eocene', title: 'India strikes Asia',
+  { ma: 50, lon: 40, lat: 25, theta: 46, era: 'Eocene', title: 'India strikes Asia',
     body: 'The leading edge of India, still moving north at several centimetres a year, reaches the southern margin of Asia and the first collision begins. Shallow marine conditions still cover the collision zone. The Atlantic and Indian oceans are both wide open, and the Tethys is nearly gone.' },
-  { ma: 34, lon: 0, lat: -35, span: 150, era: 'Oligocene', title: 'A warm world, then a cold one',
+  { ma: 34, lon: 0, lat: -35, theta: 80, era: 'Oligocene', title: 'A warm world, then a cold one',
     body: 'Antarctica is fully circumpolar: the Drake Passage and Tasmanian seaways are open, and the Circumpolar Current isolates it. Warm surface currents still keep the continent ice-free. The Drake Passage is also a carbon dioxide sink, and the Eocene greenhouse is about to end.' },
-  { ma: 20, lon: 60, lat: 20, span: 110, era: 'Miocene', title: 'The ice takes hold',
+  { ma: 20, lon: 60, lat: 20, theta: 48, era: 'Miocene', title: 'The ice takes hold',
     body: 'East Antarctica glaciates and the ice sheet grows to the present scale. The uplift of the Himalaya and the Tibetan Plateau, driven by India continuing to drive into Asia, is stripping carbon from the atmosphere. The Tethys has closed completely.' },
-  { ma: 0, lon: -30, lat: 15, span: 180, era: 'Present day', title: 'The modern world',
+  { ma: 0, lon: -30, lat: 15, theta: 90, era: 'Present day', title: 'The modern world',
     body: 'The Atlantic, Indian, Pacific and Southern oceans are all in place. Australia is clear of Antarctica, India is part of Asia and the Himalaya are the highest mountains on Earth, the Isthmus of Panama links the continents of the Americas, and Africa is the only continent whose shape has barely changed since 250 Ma.' },
 ];
 
@@ -934,7 +1090,7 @@ function openChapter(i) {
   $('chapter').classList.add('on');
   showChapterBody(chapter);
   anim = null;
-  goTo(c.ma, c.lon, c.lat, c.span);
+  goTo(c.ma, c.lon, c.lat, c.theta);
 }
 function showChapterBody(i) {
   chapter = i;
@@ -946,11 +1102,11 @@ function showChapterBody(i) {
   [...$('chDots').children].forEach((d, k) => d.setAttribute('aria-current', String(k === i)));
 }
 function closeChapter() { chapter = -1; $('chapter').classList.remove('on'); }
-function goTo(m, lon, lat, span) {
-  const from = { ma, lon: cam.lon, lat: cam.lat, span: cam.span };
-  const apply = v => { cam.lon = v.lon; cam.lat = v.lat; cam.span = v.span; refreshCell(); };
-  if (REDUCED) { ma = m; apply({ lon, lat, span }); setMa(m); return; }
-  anim = { from, to: { ma: m, lon, lat, span }, apply, t0: performance.now(), dur: 1500 };
+function goTo(m, lon, lat, theta) {
+  const from = { ma, lon: cam.lon, lat: cam.lat, theta: cam.theta };
+  const apply = v => { cam.lon = wrapLon(v.lon); cam.lat = v.lat; cam.theta = v.theta; };
+  if (REDUCED) { ma = m; apply({ lon, lat, theta }); setMa(m); return; }
+  anim = { from, to: { ma: m, lon, lat, theta }, apply, t0: performance.now(), dur: 1500 };
   playing = false;
   $('play').innerHTML = '&#9654; Play';
 }
@@ -1051,10 +1207,12 @@ function frame(ts) {
     const f = clamp((ts - anim.t0) / anim.dur, 0, 1);
     const e = f < 0.5 ? 4 * f * f * f : 1 - Math.pow(-2 * f + 2, 3) / 2;
     ma = anim.from.ma + (anim.to.ma - anim.from.ma) * e;
+    // fly the short way round the planet
+    const dLon = wrapLon(wrapLon(anim.to.lon) - wrapLon(anim.from.lon));
     anim.apply({
-      lon: anim.from.lon + (anim.to.lon - anim.from.lon) * e,
+      lon: anim.from.lon + dLon * e,
       lat: anim.from.lat + (anim.to.lat - anim.from.lat) * e,
-      span: anim.from.span * Math.pow(anim.to.span / anim.from.span, e),
+      theta: anim.from.theta * Math.pow(anim.to.theta / anim.from.theta, e),
     });
     setMa(ma);
     if (f >= 1) anim = null;
@@ -1064,15 +1222,17 @@ function frame(ts) {
   }
 
   if (follow !== null) {
-    const out = [0, 0];
-    placePoint(atlas, follow, cam.lon, cam.lat, ma, out);
-    cam.lon = out[0];
-    while (cam.lon > 180) cam.lon -= 360;
-    while (cam.lon < -180) cam.lon += 360;
+    // ride a continent: hold its anchor at the centre of the disc
+    const f = FOLLOW[follow];
+    if (f) {
+      placePoint(atlas, follow, f.lon, f.lat, ma, _lp);
+      cam.lon = wrapLon(_lp[0]);
+      cam.lat = clamp(_lp[1], -89.5, 89.5);
+    }
     dirty = true;
   }
 
-  if (dirty) { render(); dirty = playing || !!anim || follow !== null; }
+  if (dirty) { updateHud(); render(); dirty = playing || !!anim || follow !== null; }
   requestAnimationFrame(frame);
 }
 
@@ -1086,7 +1246,7 @@ function start() {
   openChapter(0);
   anim = null;
   setMa(CHAPTERS[0].ma);
-  cam.lon = CHAPTERS[0].lon; cam.lat = CHAPTERS[0].lat; cam.span = CHAPTERS[0].span; refreshCell();
+  cam.lon = CHAPTERS[0].lon; cam.lat = CHAPTERS[0].lat; cam.theta = CHAPTERS[0].theta;
   lastT = performance.now();
   requestAnimationFrame(frame);
 }
@@ -1095,7 +1255,7 @@ function start() {
  * be steppable to be measurable. */
 window.__pg = {
   atlas, land, shelf, cam, sprite, placePoint, get variants() { return variantsRef; },
-  get cell() { return { cellW, cellH, GRIDW, GRIDH, d: cam.d, lon: cam.lon, lat: cam.lat }; },
+  get cell() { return { cellW, cellH, GRIDW, GRIDH, d: cellAngle(), theta: cam.theta, lon: cam.lon, lat: cam.lat }; },
   RAMP_LEN, GROUPS, get ma() { return ma; },
   setMa, render, step(dt) { setMa(ma + dir * speed * dt); render(); },
   labels() {
@@ -1108,7 +1268,7 @@ window.__pg = {
       res: land.res, rasterMa: land.ma, rasterLand: n,
       rasterW: land.w, rasterH: land.h, polys: atlas.polys.length,
       sprites: Object.keys(sprite).length, atlasSize: [atlasCanvas.width, atlasCanvas.height],
-      d: CELL_LAT, span: cam.span, lon: cam.lon, lat: cam.lat,
+      d: cellAngle(), theta: cam.theta, lon: cam.lon, lat: cam.lat,
     };
   },
 };

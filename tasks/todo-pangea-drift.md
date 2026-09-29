@@ -133,6 +133,47 @@ served over `python3 -m http.server` (never `file://`), cache disabled:
 10. **Engine scoping.** `Land.rasterize` destructured `atlas` from `this.atlas` (a
     property that does not exist on the atlas) instead of reading `this.atlas`.
 
+## Second pass: flat map -> rotatable globe
+
+The map is now an **orthographic globe** rather than a flat equirectangular
+sheet, and can be spun.
+
+- Cells are sampled on concentric **rings of constant solid angle**, not on a
+  rectangular lat/lon grid, so glyphs stay square on the ground and foreshorten
+  towards the limb instead of shearing towards the corners.
+- The camera is `(lon, lat, theta)` where `theta` is the view's angular radius
+  (6-90 degrees). Dragging across the disc's diameter sweeps ~175 degrees of
+  longitude. Wheel zooms **about the cursor**: the point under the pointer is
+  unprojected, the radius changes, and the globe is rotated to put it back.
+- The far side of the planet is genuinely culled, not faded. Labels hide when
+  they cross the horizon.
+- The graticule is evaluated per cell from the projected lat/lon, so it curves
+  over the sphere for free.
+- Added a shaded disc under the glyphs plus an outer halo. Without it the globe
+  does not read as a sphere: open ocean is deliberately near-blank so the land
+  stays legible, and a field of sparse characters looks like noise, not a ball.
+
+Verified (headless Chrome, DPR 1 and DPR 2, 0 page errors, 60.9 fps animating):
+whole globe at 78 deg, spin -70 deg, zoom to 7.8 deg with the cursor anchored,
+tilt to 55 deg latitude, time scrub 250/200/100/0 Ma, 24 labels placed and
+culled, both themes, About panel 3519 chars. DPR 2: 2400x1512 buffer for a
+1200x756 CSS box, `scaleOk: true`.
+
+### Bugs fixed in this pass
+
+11. **Duplicate DOM id `zoomOut`.** The HUD readout and the zoom-out button both
+    used it, so `getElementById` returned the readout and the button's click
+    handler was bound to a `<div>`. The zoom-out button did nothing.
+12. **Ring cell count used the wrong circle.** `nCell` measured arc on the
+    sphere, which is foreshortened, so the outer rings came out three cells wide
+    and the globe rendered as a handful of scattered marks. It has to count
+    cells along the PROJECTED ring: `2*PI*R*sin(gamma)/(sin(theta)*cellW)`.
+13. **`dGamma` was inverted** and missing its radian-to-degree conversion, so
+    `cellAngle()` reported 3109 degrees and the raster resolution clamped to its
+    floor.
+14. **HUD went stale.** It was only written from `setMa`, so zooming left the old
+    view angle on screen. It now refreshes on every camera change.
+
 ## Not verified
 
 - Physical touch on iOS/Android hardware. Chrome touch emulation was used for the

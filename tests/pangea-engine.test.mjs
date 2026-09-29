@@ -286,7 +286,7 @@ test('the page names its source, licence and the limits of the model', async () 
 
 test('the page exposes both themes, the controls and reduced-motion support', async () => {
   const html = await readFile(new URL('../learn/pangea-drift.html', import.meta.url), 'utf8');
-  for (const id of ['ascii', 'time', 'play', 'rev', 'speed', 'themeBtn', 'res', 'home',
+  for (const id of ['ascii', 'time', 'play', 'rev', 'speed', 'themeBtn', 'res', 'home', 'hudView',
     'about', 'chapter', 'labels', 'legend']) {
     assert.ok(html.includes(`id="${id}"`), `missing #${id}`);
   }
