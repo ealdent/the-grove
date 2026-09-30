@@ -186,3 +186,36 @@ culled, both themes, About panel 3519 chars. DPR 2: 2400x1512 buffer for a
   limitation above; this is a property of the published model reduced to rigid
   coastlines, not of the rendering.
 
+
+## Review / proof — perspective-globe completion (2026-09-30)
+
+### Bug found and fixed
+The uncommitted perspective-camera rewrite had been left with a dead page: the
+declarations `labelBox`, `labelEls`, `MINOR` and `_lp` were deleted while the
+globe-aware `placeLabels()` was still called from `render()` and still read them.
+Every frame threw a `ReferenceError`, and because the throw landed as a rejected
+promise from `document.fonts.ready.then(start)` it never reached `window.onerror` —
+so a plain error listener reported a clean page. Verified symptom: the canvas was
+empty and only the boot screen ("LOADING PLATE MODEL…") was visible.
+
+Fixed by restoring the four declarations ahead of `FOLLOW`, and by adding greedy
+label collision avoidance (a globe converges every plate towards the sub-camera
+point, so un-nudged labels stacked on top of each other).
+
+### Measured
+- Boots: boot element removed, no page errors, `window.__pg.stats()` live.
+- Frame cost: 60.0 fps idle, 60.1 fps animating (headless Chrome, 1600x950).
+- DPR 2: canvas buffer 2880x1800 against a 1440x900 CSS box and a 1440x900
+  `getBoundingClientRect()` — ratio exactly 2.000, no scaling bug.
+- Time: scrub to 250/200/100/0 Ma all correct; play 250 -> 243.5 Ma in 2.2 s at
+  3 Myr/s; reverse 243.5 -> 249 Ma; era label tracks.
+- Camera: drag pans, wheel moves altitude 36 Mm -> 3 Mm, cell size updates.
+- Theme: toggles and persists (`localStorage pangea-theme`).
+- Guided tour, About panel (3519 chars), legend, transport all present.
+- `node --test tests/pangea-engine.test.mjs` — 15/15 pass.
+
+### Not verified
+- Physical iOS/Android touch; pinch was driven only through CDP pointer events.
+- The perspective camera's horizon-blend at extreme zoom-out was reviewed by eye
+  only, not measured against a reference projection.
+- Deep-time accuracy limits are unchanged and are stated in the page's About panel.
