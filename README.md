@@ -70,6 +70,7 @@ A collection of games, tools, and experiments built with AI — hosted on GitHub
 
 *AI-generated on-rails action variants*
 
+- **[Vanitas](rail-shooter/fable-5.1-xhigh-rail-shooter.html)** — You are a candle flame loose on an endless Dutch still-life table at night. Burn the flies, slip the roemers and the rolling walnuts, and outrun the mouse, the lobster, the skull — and the hand with the snuffer. (*Fable 5.1 xhigh*)
 - **[Actias](rail-shooter/fable-5-ultra-rail-shooter.html)** — You are the last luna moth, seven nights old, flying the drowned road to the Moon. Snuff the lying lights, slip the webs and wires — and do not trust the lighthouse. (*Fable 5 Ultra*)
 - **[Gildwake](rail-shooter/gpt-5.6-sol-ultra-rail-shooter.html)** — Ride a restoration brush across a falling porcelain world — bind living cobalt with gold, dodge unbreakable relief, and outrun the fracture. (*GPT-5.6 Sol Ultra*)
 - **[Weftrunner](rail-shooter/opus-5-ultra-rail-shooter.html)** — The world is a cloth on the Great Loom. Fly the weft toward the Beam, stitch down the moths eating it, and outrun the unravelling closing from behind. (*Opus 5 Ultra*)
