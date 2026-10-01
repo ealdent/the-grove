@@ -845,7 +845,7 @@ Plan check-in: lore is specified before implementation; user explicitly authoriz
 - [x] Integrate procedural chamber score, tactile sound feedback and complete pause/mute/restart/end flows.
 - [x] Prove direct-file rendering, input, progression, collision, boss, outcome flows, audio signal and measured frame performance.
 - [x] Independent skeptical review and corrections; integrate precisely attributed gallery tile.
-- [ ] Commit only task files, preserve concurrent upstream work, push origin main and verify exact remote commit.
+- [x] Commit only task files, preserve concurrent upstream work, push origin main and verify exact remote commit.
 
 ## Review and proof
 
@@ -861,4 +861,6 @@ Evidence: `/private/tmp/seamwake-proof/ui.json`, `native-campaign.json`, `native
 
 Not verified: Safari/Firefox, other GPUs, subjective human listening, a full human-earned victory. WebGL2 and browser hardware acceleration are required; audio begins on a gesture. Automated campaign wins prove solvability, not a human playtest.
 
-Release: implementation and proof complete; commit, upstream reconciliation and origin/main verification are the remaining steps.
+Release: game commit `a7ced2e9036794bdbb4c860f0b6382a3ccc54ec6` was pushed to `origin/main`; immediate `ls-remote` matched the local commit and the worktree was clean. Rebase preserved the concurrent upstream gallery work. Final game SHA-256: `55f800ae053c27ff4c8aa49f41d797bd90101592bf0bed5288f8320069d8db69`. GitHub Pages build completed. A direct public HTML read matches the game byte-for-byte. Native published Chrome proof passes title rendering, advancing flight, audible procedural output and pause/zero output, with no application errors or failed application requests. The browser response adds a hosting script; its aborted request is recorded separately in `/private/tmp/seamwake-proof/published.json`, and excluding only that addition for comparison produces the same application hash.
+
+Public game: https://ealdent.github.io/the-grove/rail-shooter/gpt-6.1-sol-max-rail-shooter.html. The preview has been queued in this chat. This documentation checkpoint records the completed release; game bytes remain unchanged.
