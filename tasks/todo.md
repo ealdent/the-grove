@@ -807,7 +807,7 @@ Plan and proof contract: tasks/gutter-saint-design.md.
 - [x] Playtest actual file in Chrome; verify states, controls, collisions, sound output, frame times, console/network and responsive layout.
 - [x] Add one exact-attribution gallery tile; preserve prior gallery cards.
 - [x] Perform skeptical independent review, fix defects, document proof and limitations.
-- [ ] Commit scoped files and push to origin main; verify remote head and live page.
+- [x] Commit scoped files and push to origin main; verify remote head and live page.
 
 ## Review and proof
 Changed: a 68 KB original standalone game with inline WebGL2 instancing, liquid wine shader, distorted scenery reflections, lit silver/gold/porcelain meshes, flame bloom, three courses and a four-type enemy roster. The enlarged fork-crowned Host has three visible tells and attack patterns. Includes analog mouse and accelerated keyboard flight, assisted forward wax volleys, solid fork obstacles, close-shave rewards, chargeable flares, score/combo/best, defeat/victory, pause/mute/retry, focus-loss pause and procedural chamber music/effects. Lore was written in tasks/gutter-saint-design.md before implementation. No prior rail-shooter game source was read.
@@ -826,4 +826,4 @@ Skeptical independent deep-code-review approved the final version. It found and 
 
 Not verified: Safari/Firefox, physical mobile hardware (keyboard/mouse desktop scope), subjective human audio listening, and a full human-earned victory. Automated campaign completion is simulation proof. No external assets, accounts, build tools or services are required by the game. WebGL2/hardware acceleration is required; unsupported/context-loss states show a recovery screen.
 
-Release: origin/main was fetched before committing and had no intervening changes. Planned commit scope is exactly the game, gallery tile, this task record and the design document. Remote push and live Pages verification follow.
+Release: game commit `0845042e151e880caa0b9cd4486bf0656c0c6fce` was pushed to origin/main; ls-remote confirmed the exact SHA and the worktree was clean. Commit scope: game, gallery tile, task record and design document. GitHub Pages build/deployment run `36798737849` succeeded. The published URL loaded and started in the visible Codex browser; the score advanced, keyboard pause opened correctly, and its console reported no warnings/errors. The title is left open ready to play. Public URL: https://ealdent.github.io/the-grove/rail-shooter/gpt-6-astra-max-rail-shooter.html. Final game SHA-256: `e7d53ef20a16e6fa80fcb2396c3d208ce45115cfdbb5bac5fe40409aabaa2fe4`. This documentation-only checkpoint closes the release record.
