@@ -47,8 +47,8 @@ in the room (a cold window at the back-left gives every far thing a blue rim).
 - [x] UI: framed title + plaque, HUD, banners, pause, game over → plaque, high score
 - [x] Main loop, adaptive render scale, visibility pause, reduced motion
 - [x] Verify: CDP harness (fps, console, playthrough bot, screenshots per stage/boss, controls)
-- [ ] Independent review agent
-- [ ] Index tile, commit, push
+- [x] Independent review agent
+- [x] Index tile, commit, push
 
 ## Review notes
 
@@ -63,5 +63,7 @@ Proof (all with headless Chrome via a CDP harness unless noted):
 - Visual review: atlas quadrants, controlled frozen scenes for all three stages, popups, surface transition seam, onboarding hint, 1280x720 and 1920x1080 layouts, title/pause/over screens.
 
 Not verified: a human play session (difficulty tuned from a bot that reacts every frame); Firefox/Safari rendering (built for current desktop browsers, WebGL2 required).
+
+Independent review (second commit): the reviewer found that seven boss attacks (mouse tail, lobster snaps, sweep and antennae, the painter's brush) were declared 1.5-3.5 units ahead of the flame's plane and could never connect; `checkHazards` now meets a hazard whose plane lies within 3.6 units ahead in x/y. Also fixed from the review: swept crossing tests for enemies, obstacles, enemy shots and pickups (no tunnelling at the 50 ms frame clamp or in deep loops), no scoring or grazes outside play, autofire no longer sticks when the mouse button is released off-window, the stage-1 hem is periodic in the 256-unit scroll wrap, the Hand's entry no longer depends on a first-frame equality, a warm screen flash on boss death, `?stage=`/`?scale=` guard against NaN, and unused helpers/sprites removed. Re-verified with a hazard harness that uses the game's real collision test (every hazard connects), the reviewer's tunnelling harness (26/26 passes at every frame rate), the full flow test and a stage 2 soak through the Lobster.
 
 Note: while this was being built, another session pushed "Gutter Saint" (GPT-6 Astra), also a candle carried along a banquet table. The themes converged independently; VANITAS leans on vanitas painting iconography (chiaroscuro, the Fates-free memento mori: skull, hourglass, snuffer, the painter's hand, the varnish, the framed plaque).

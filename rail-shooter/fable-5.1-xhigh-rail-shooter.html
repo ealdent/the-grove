@@ -204,12 +204,9 @@ const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
 const smoothstep = (a, b, x) => { const t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
 const easeOut = t => 1 - (1 - t) * (1 - t);
-const easeIn = t => t * t;
 const easeInOut = t => t < 0.5 ? 2 * t * t : 1 - (-2 * t + 2) * (-2 * t + 2) / 2;
 const rand = (a = 1, b) => b === undefined ? Math.random() * a : a + Math.random() * (b - a);
-const randi = (a, b) => Math.floor(rand(a, b + 1));
 const pick = arr => arr[(Math.random() * arr.length) | 0];
-const sgn = v => v < 0 ? -1 : 1;
 const fmt = n => Math.round(n).toLocaleString('en-US');
 const approach = (v, target, rate, dt) => v + (target - v) * (1 - Math.exp(-rate * dt));
 const dist2 = (ax, ay, bx, by) => (ax - bx) * (ax - bx) + (ay - by) * (ay - by);
@@ -580,7 +577,7 @@ void main(){
     float lod = fwidth(w.x) + fwidth(w.y);
     float design = (p.z < uEdge) ? uSurfA : uSurfB;
     float hw = clothHalfFor(design);
-    float edgeWave = design < 0.5 ? (sin(w.y * 0.5) * 0.22 + sin(w.y * 1.7) * 0.06) : 0.0;
+    float edgeWave = design < 0.5 ? (sin(w.y * PZ * 20.0) * 0.22 + sin(w.y * PZ * 70.0) * 0.06) : 0.0;
     float ce = hw + edgeWave;
     float ax = abs(w.x);
     float clothMask = smoothstep(0.06, -0.06, ax - ce);
@@ -850,10 +847,6 @@ defSprite('glow', 128, 128, (ctx, w, h) => {
   ctx.fillStyle = rgrad(ctx, 64, 64, 64, [[0, 'rgba(255,255,255,1)'], [0.18, 'rgba(255,255,255,0.55)'], [0.5, 'rgba(255,255,255,0.12)'], [1, 'rgba(255,255,255,0)']]);
   ctx.fillRect(0, 0, w, h);
 });
-defSprite('soft', 64, 64, (ctx, w, h) => {
-  ctx.fillStyle = rgrad(ctx, 32, 32, 32, [[0, 'rgba(255,255,255,1)'], [0.4, 'rgba(255,255,255,0.5)'], [1, 'rgba(255,255,255,0)']]);
-  ctx.fillRect(0, 0, w, h);
-});
 defSprite('dot', 32, 32, (ctx, w, h) => {
   ctx.fillStyle = rgrad(ctx, 16, 16, 16, [[0, 'rgba(255,255,255,1)'], [0.3, 'rgba(255,255,255,0.9)'], [0.6, 'rgba(255,255,255,0.25)'], [1, 'rgba(255,255,255,0)']]);
   ctx.fillRect(0, 0, w, h);
@@ -869,9 +862,9 @@ defSprite('streak', 128, 32, (ctx, w, h) => {
   ctx.globalCompositeOperation = 'destination-in';
   ctx.fillStyle = rgrad(ctx, 64, 16, 64, [[0, 'rgba(0,0,0,1)'], [0.7, 'rgba(0,0,0,1)'], [1, 'rgba(0,0,0,0)']]); ctx.fillRect(0, 0, w, h);
 });
-defSprite('thread', 16, 64, (ctx, w, h) => {
-  // vertical soft line (silk, tail segments)
-  const g = lgrad(ctx, 0, 0, w, 0, [[0, 'rgba(255,255,255,0)'], [0.35, 'rgba(255,255,255,1)'], [0.65, 'rgba(255,255,255,1)'], [1, 'rgba(255,255,255,0)']]);
+defSprite('thread', 64, 16, (ctx, w, h) => {
+  // a soft line for segments: u runs along the segment, v across it
+  const g = lgrad(ctx, 0, 0, 0, h, [[0, 'rgba(255,255,255,0)'], [0.35, 'rgba(255,255,255,1)'], [0.65, 'rgba(255,255,255,1)'], [1, 'rgba(255,255,255,0)']]);
   ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
 });
 defSprite('spark', 32, 32, (ctx, w, h) => {
@@ -972,10 +965,9 @@ defSprite('paint', 128, 128, (ctx, w, h) => {
   ctx.closePath(); ctx.fill();
   glint(ctx, 50, 46, 12, 7, -0.5, 0.35);
 });
-defSprite('sandgrain', 16, 16, (ctx, w, h) => { ctx.fillStyle = '#d9b26a'; circ(ctx, 8, 8, 6); ctx.fill(); glint(ctx, 6, 6, 2, 1.5, 0, 0.6); });
 
 // ---- text glyphs for popups ----
-const GLYPHS = '0123456789+×';
+const GLYPHS = '0123456789+';
 for (const ch of GLYPHS) {
   defSprite('g_' + ch, 40, 56, (ctx, w, h) => {
     ctx.font = 'italic 700 46px "Iowan Old Style","Palatino Linotype",Palatino,Georgia,serif';
@@ -2020,10 +2012,10 @@ const G = {
   state: 'boot', time: 0, dist: 0, score: 0, chain: 0, chainT: 0, mult: 1,
   speed: 30, baseSpeed: 30, stage: 1, stageT: 0, loop: 0, wick: 3,
   invuln: 0, hitstop: 0, slow: 1, flash: 0, flashCol: [1, 1, 1], dmg: 0,
-  power: 0, boss: null, bossPhase: 'none', god: !!PARAMS.get('god'),
+  power: 0, boss: null, god: !!PARAMS.get('god'),
   rng: makeRng(+(PARAMS.get('seed') || (Date.now() & 0xffffff))),
   stats: { kills: 0, grazes: 0, bosses: 0, maxChain: 0 },
-  fps: 60, quality: 1,
+  fps: 60,
 };
 const W = { enemies: [], obstacles: [], shots: [], eshots: [], particles: [], popups: [], pickups: [], decor: [], hazards: [] };
 const rr = (a, b) => a + G.rng() * (b - a);
@@ -2103,12 +2095,14 @@ function burst(x, y, z, o) {
 }
 function popup(x, y, z, text, big) { W.popups.push({ x, y, z: Math.max(z, 2.5), text: String(text), t: 0, life: 1.1, big: !!big }); }
 function addScore(v, x, y, z, big) {
+  if (G.state !== 'playing') return;
   const val = Math.round(v * G.mult);
   G.score += val;
   if (x !== undefined) popup(x, y, z, '+' + val, big);
   UI.scoreBump();
 }
 function addChain() {
+  if (G.state !== 'playing') return;
   G.chain++; G.chainT = 2.2;
   G.stats.maxChain = Math.max(G.stats.maxChain, G.chain);
   G.mult = Math.min(8, 1 + Math.floor(G.chain / 5));
@@ -2169,15 +2163,17 @@ function updateEnemies(dt) {
       case 'roll': { e.x += e.vx * dt; e.rot -= (spd + e.vz) * dt / (e.k.size * 0.5); e.y = e.k.size * 0.42 + Math.abs(Math.sin(e.t * (p.hop || 6))) * (p.h || 0.5); if (Math.abs(e.x) > 8.5) e.vx = -e.vx; break; }
       case 'bubble': e.y += 0.35 * dt; e.x += Math.sin(e.t * 1.6 + e.anim) * 0.5 * dt; e.vz = spd * 0.35; break;
     }
+    const pz = e.z;
     e.z -= (spd + e.vz) * dt;
+    const crossing = e.z < 1.1 && pz > -1.1;
     if (e.k.flying && e.y < 0.25 && e.bhv !== 'descend') e.y = 0.25;
     if (e.k.frames > 1) e.frame = e.bhv === 'turret' ? (e.open ? 1 : 0) : Math.floor((e.t * (e.k.fps || 10) + e.anim * 10) % e.k.frames);
     // reach the flame?
-    if (e.z < 1.1 && e.z > -1.1 && !e.k.harmless) {
+    if (crossing && !e.k.harmless) {
       const d = Math.hypot(e.x - P.x, e.y - P.y);
       if (d < e.r + P.r) { playerHit('enemy'); killEnemy(e, false); }
       else if (!e.grazed && d < e.r + P.r + 0.7) { e.grazed = true; graze(e.x, e.y, e.z, false); }
-    } else if (e.z < 1.1 && e.z > -1.1 && e.k.harmless && !e.grazed) {
+    } else if (crossing && e.k.harmless && !e.grazed) {
       const d = Math.hypot(e.x - P.x, e.y - P.y);
       if (d < e.r + P.r) { e.grazed = true; killEnemy(e, true); }
     }
@@ -2185,6 +2181,7 @@ function updateEnemies(dt) {
   }
 }
 function graze(x, y, z, glass) {
+  if (G.state !== 'playing') return;
   G.stats.grazes++;
   addChain();
   addScore(50, x, y + 0.6, z);
@@ -2198,9 +2195,10 @@ function updateObstacles(dt) {
   for (let i = W.obstacles.length - 1; i >= 0; i--) {
     const o = W.obstacles[i];
     o.t += dt;
+    const pz = o.z;
     o.z -= spd * dt;
     if (o.k.rolling) { o.x += o.vx * dt; o.rot -= spd * dt / (o.h * 0.5); if (Math.abs(o.x) > 8) o.vx = -o.vx; }
-    if (o.z < 1.2 && o.z > -1.2) {
+    if (o.z < 1.2 && pz > -1.2) {
       const dx = Math.abs(P.x - o.x);
       if (dx < o.hw + P.r && P.y - P.r < o.h) { playerHit('obstacle'); o.grazed = true; }
       else if (!o.grazed && dx < o.hw + P.r + 0.6 && P.y - P.r < o.h + 0.7) { o.grazed = true; graze(o.x, Math.min(P.y, o.h), o.z, !!o.k.glass); }
@@ -2235,9 +2233,9 @@ function updateEShots(dt) {
   const spd = G.speed;
   for (let i = W.eshots.length - 1; i >= 0; i--) {
     const s = W.eshots[i];
-    s.t += dt; s.x += s.vx * dt; s.y += s.vy * dt; s.z += s.vz * dt; s.rot += s.vrot * dt;
+    s.t += dt; const pz = s.z; s.x += s.vx * dt; s.y += s.vy * dt; s.z += s.vz * dt; s.rot += s.vrot * dt;
     if (s.grav) { s.vy -= s.grav * dt; if (s.bounce && s.y < s.size * 0.5) { s.y = s.size * 0.5; s.vy = Math.abs(s.vy) * 0.6; } }
-    if (s.z < 1.1 && s.z > -1.1 && !s.harmless) { if (Math.hypot(s.x - P.x, s.y - P.y) < s.r + P.r) { playerHit('shot'); s.dead = true; } }
+    if (s.z < 1.1 && pz > -1.1 && !s.harmless) { if (Math.hypot(s.x - P.x, s.y - P.y) < s.r + P.r) { playerHit('shot'); s.dead = true; } }
     if (s.dead || s.z < Z_GONE || s.t > s.life || s.y < -1) W.eshots.splice(i, 1);
   }
 }
@@ -2259,9 +2257,9 @@ function updatePickups(dt) {
   const spd = G.speed;
   for (let i = W.pickups.length - 1; i >= 0; i--) {
     const k = W.pickups[i];
-    k.t += dt; k.z -= spd * dt;
+    k.t += dt; const pz = k.z; k.z -= spd * dt;
     if (k.z < 6) { k.x += (P.x - k.x) * 2.5 * dt; k.y += (P.y - k.y) * 2.5 * dt; }
-    if (k.z < 1.2 && k.z > -1.2 && Math.hypot(k.x - P.x, k.y - P.y) < 0.9) {
+    if (k.z < 1.2 && pz > -1.2 && Math.hypot(k.x - P.x, k.y - P.y) < 0.9) {
       if (k.kind === 'wax') { if (G.wick < 3) { G.wick++; UI.wick(G.wick, false); } addScore(300, k.x, k.y, k.z); popup(k.x, k.y + 0.9, k.z, 'WICK'); SFX.wick(k.x); }
       else { G.power = Math.max(G.power, 14); addScore(200, k.x, k.y, k.z); popup(k.x, k.y + 0.9, k.z, 'EMBERS'); SFX.pickup(k.x); }
       burst(k.x, k.y, k.z, { n: 14, spr: 'dot', speed: 3, life: 0.6, size: 0.14, r: 1, g: 0.9, b: 0.6, add: true });
@@ -2274,7 +2272,10 @@ function updatePickups(dt) {
 function checkHazards() {
   for (const h of W.hazards) {
     const ax = h.ax, ay = h.ay, az = h.az, bx = h.bx - ax, by = h.by - ay, bz = h.bz - az;
-    const px = P.x - ax, py = P.y - ay, pz = 0 - az;
+    // the flame is a column of air just ahead of z = 0: a hazard whose plane lies within reach is met in x/y
+    const zlo = Math.min(h.az, h.bz), zhi = Math.max(h.az, h.bz);
+    const fz = (zlo <= 3.6 && zhi >= -1.2) ? clamp(0, zlo, zhi) : 0;
+    const px = P.x - ax, py = P.y - ay, pz = fz - az;
     const l2 = bx * bx + by * by + bz * bz || 1e-6;
     const t = clamp((px * bx + py * by + pz * bz) / l2, 0, 1);
     const d = Math.hypot(px - bx * t, py - by * t, pz - bz * t);
@@ -2291,7 +2292,7 @@ const STAGES = [null,
   { name: 'VANITAS', kicker: 'III · memento mori', note: 'the skull, the hourglass, the snuffed candle; the painter is nearly done', surf: 2, speed: 42, dur: 92, boss: 'skull', bossName: 'THE SKULL', bossNote: 'it has watched every flame on this table go out' },
   { name: 'THE VARNISH', kicker: 'IV · the painter’s hand', note: 'the last layer is drying. he wants his candle back.', surf: 2, speed: 46, dur: 40, boss: 'hand', bossName: 'THE HAND', bossNote: 'with the snuffer' },
 ];
-const DIR = { phase: 'run', phaseT: 0, beatT: 2, obsT: 3, decorT: 2, onboarding: false, script: [], edgeDist: 1e12, intensity: 0, hinted: {}, lastForm: '' };
+const DIR = { phase: 'run', phaseT: 0, beatT: 2, obsT: 3, decorT: 2, onboarding: false, edgeDist: 1e12, intensity: 0, hinted: {}, lastForm: '' };
 
 // ---- formations ----
 const FORMS = {
@@ -2462,6 +2463,7 @@ function spawnBoss(kind) {
     x: 0, y: d.y, z: 72, r: d.r, t: 0, st: 0, state: 'enter', phase: 1, flash: 0, lock: [0, 1.5], tell: 0, flip: 1, rot: 0, sy: 1, frame: 0, pat: '', alpha: 1, glow: 0.15, jaw: 0.1, parts: {}, fx: {} };
   B.maxHp = B.hp;
   if (kind === 'lobster') { B.parts.l = { x: -2.7, y: 1.5, z: 0, open: 0 }; B.parts.r = { x: 2.7, y: 1.5, z: 0, open: 0 }; }
+  if (kind === 'hand') { B.y = 11; B.z = 20; }
   G.boss = B;
   UI.boss(B.name, 1);
   return B;
@@ -2479,6 +2481,7 @@ function bossDie(B) {
   B.alive = false; B.dying = true; B.dieT = 0; B.vulnerable = false;
   W.hazards.length = 0;
   G.slow = 0.3; G.slowT = 1.1;
+  G.flash = 0.55; G.flashCol = [1, 0.85, 0.6];
   SFX.bossDie(); addShake(1.2);
   G.stats.bosses++;
   addScore(2500 * G.stage * (G.loop + 1), B.x, B.y + 1, B.z, true);
@@ -2625,7 +2628,7 @@ const BOSS_UPDATE = {
     const spd = G.speed;
     const home = () => { B.x = approach(B.x, P.x * 0.5, 1.5, dt); B.y = approach(B.y, 4.6 + Math.sin(B.t * 1.5) * 0.2, 2.5, dt); B.z = approach(B.z, 20, 2.5, dt); B.rot = approach(B.rot, Math.sin(B.t * 1.2) * 0.05, 3, dt); B.flat = false; };
     switch (B.state) {
-      case 'enter': B.y = approach(B.y, 4.6, 1.2, dt); B.z = 20; if (B.st === dt) B.y = 11; if (B.st > 2.5) { setState(B, 'idle'); B.vulnerable = true; SFX.roar('hand'); } break;
+      case 'enter': B.y = approach(B.y, 4.6, 1.2, dt); B.z = 20; if (B.st > 2.5) { setState(B, 'idle'); B.vulnerable = true; SFX.roar('hand'); } break;
       case 'idle': B.vulnerable = true; home(); B.glow = approach(B.glow, 0, 4, dt);
         if (B.st > (B.phase === 2 ? 0.6 : 0.9)) { const pats = B.phase === 2 ? ['snuff', 'wipe2', 'flick', 'press', 'smoke', 'snuff'] : ['snuff', 'wipe', 'flick', 'press', 'snuff']; let p = rpick(pats); if (p === B.pat && G.rng() < 0.7) p = rpick(pats); B.pat = p; setState(B, p); }
         break;
@@ -2658,7 +2661,7 @@ const BOSS_UPDATE = {
         else if (B.st > 1.1) setState(B, 'idle');
         break;
       case 'press':
-        if (B.st < 0.9) { B.vulnerable = true; B.tell = B.st / 0.9; B.x = approach(B.x, P.x, 3, dt); B.y = approach(B.y, 3.5, 4, dt); B.z = approach(B.z, 14, 4, dt); B.lock = [B.x, 0]; }
+        if (B.st < 0.9) { B.vulnerable = true; B.tell = B.st / 0.9; B.x = approach(B.x, P.x, 3, dt); B.y = approach(B.y, 3.5, 4, dt); B.z = approach(B.z, 14, 4, dt); }
         else if (B.st < 1.15) { B.vulnerable = true; B.tell = 0; B.flat = true; B.y = 0.05; if (!B.fx.sl) { B.fx.sl = 1; SFX.snuff(B.x); addShake(1.0); burst(B.x, 0.3, B.z, { n: 18, spr: 'dot', speed: 4, life: 0.5, size: 0.14, r: 0.8, g: 0.7, b: 0.55, flat: true }); } }
         else if (B.st < 2.2) { B.vulnerable = true; B.flat = true; B.y = 0.05; const t = (B.st - 1.15) / 1.05; B.z = lerp(14, -6, t); hz(B.x - 2.3, 0.5, B.z, B.x + 2.3, 0.5, B.z, 0.9, 'hand'); }
         else if (B.st < 2.3) { B.flat = false; B.z = 20; B.y = 2; }
@@ -2720,8 +2723,8 @@ function drawBoss(B) {
 
 // ---- 60-player.js ----
 // ---------------- the flame: input, movement, camera, juice ----------------
-const P = { x: 0, y: 1.5, vx: 0, vy: 0, r: 0.42, fireT: 0, heat: 0, bend: 0, seed: 0.37, firing: false, trailT: 0, size: 1, gutter: 0, auto: false, autoT: 0 };
-const INPUT = { keys: Object.create(null), mouseX: 0, mouseY: 0, mouseT: 1e9, mouseDown: false, usingMouse: false, anyKey: false, moved: false, fired: false, rose: false };
+const P = { x: 0, y: 1.5, vx: 0, vy: 0, r: 0.42, fireT: 0, heat: 0, bend: 0, seed: 0.37, firing: false, trailT: 0, size: 1, auto: false, autoT: 0 };
+const INPUT = { keys: Object.create(null), mouseX: 0, mouseY: 0, mouseDown: false, usingMouse: false, moved: false, fired: false, rose: false };
 const SHAKE = { amt: 0, x: 0, y: 0, roll: 0, t: 0 };
 const REDUCED_MOTION = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
@@ -2729,7 +2732,7 @@ function initInput() {
   const isGameKey = k => ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Space', 'KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyZ', 'KeyX'].includes(k);
   window.addEventListener('keydown', e => {
     if (e.repeat) { if (isGameKey(e.code)) e.preventDefault(); return; }
-    INPUT.keys[e.code] = true; INPUT.anyKey = true;
+    INPUT.keys[e.code] = true;
     if (isGameKey(e.code)) { e.preventDefault(); INPUT.usingMouse = false; }
     onKey(e.code, e);
   });
@@ -2738,12 +2741,13 @@ function initInput() {
   window.addEventListener('mousemove', e => {
     const dx = e.clientX - INPUT.mouseX, dy = e.clientY - INPUT.mouseY;
     INPUT.mouseX = e.clientX; INPUT.mouseY = e.clientY;
-    if (Math.abs(dx) + Math.abs(dy) > 1) { INPUT.mouseT = 0; INPUT.usingMouse = true; }
+    if (Math.abs(dx) + Math.abs(dy) > 1) INPUT.usingMouse = true;
+    if (!(e.buttons & 1)) INPUT.mouseDown = false;
   });
+  document.addEventListener('pointerup', () => { INPUT.mouseDown = false; });
   window.addEventListener('mousedown', e => { if (e.button === 0) { INPUT.mouseDown = true; onClick(e); } });
   window.addEventListener('mouseup', e => { if (e.button === 0) INPUT.mouseDown = false; });
   window.addEventListener('contextmenu', e => e.preventDefault());
-  window.addEventListener('mouseleave', () => { INPUT.mouseDown = false; });
 }
 const keyDown = (...codes) => codes.some(c => INPUT.keys[c]);
 
@@ -2754,7 +2758,6 @@ function updatePlayer(dt) {
   if (keyDown('ArrowRight', 'KeyD')) ix += 1;
   if (keyDown('ArrowUp', 'KeyW')) iy += 1;
   if (keyDown('ArrowDown', 'KeyS')) iy -= 1;
-  INPUT.mouseT += dt;
   let tvx, tvy;
   if (P.auto && P.autoMode === 'bot' && G.state === 'playing') {
     tvx = clamp(((P.botTx === undefined ? 0 : P.botTx) - P.x) * 6, -MAXV, MAXV); tvy = clamp(((P.botTy === undefined ? 1.6 : P.botTy) - P.y) * 6, -MAXV, MAXV);
@@ -3216,7 +3219,7 @@ function startRun() {
   P.auto = !!PARAMS.get('auto'); P.autoMode = 'bot'; P.x = 0; P.y = 1.5; P.vx = P.vy = 0; P.size = 1; P.heat = 0; P.bend = 0;
   INPUT.fired = INPUT.moved = INPUT.rose = false;
   VIEW.dark = 0; VIEW.desat = 0; VIEW.dmg = 0;
-  const st = clamp(+(PARAMS.get('stage') || 1), 1, 4);
+  const st = clamp(+(PARAMS.get('stage')) || 1, 1, 4);
   directorStart(st);
   G.speed = st > 1 ? G.baseSpeed : 22;
   UI.title(false); UI.hideOver(); UI.playing(true); UI.wick(3, false); UI.boss(null); UI.pause(false); UI.hint('');
@@ -3368,7 +3371,7 @@ function render() {
   UI.init();
   if (!GL_OK) { UI.nogl(); return; }
   try { initGL(); } catch (err) { console.error(err); UI.nogl(); return; }
-  if (PARAMS.get('scale')) R.scale = clamp(+PARAMS.get('scale'), 0.3, 1);
+  if (PARAMS.get('scale')) R.scale = clamp(+PARAMS.get('scale') || 1, 0.3, 1);
   resizeGL();
   const ac = buildAtlas(); uploadAtlas(ac);
   if (PARAMS.get('atlas')) { document.body.innerHTML = ''; document.body.style.background = '#2a2a2a'; document.body.style.overflow = 'auto'; ac.style.width = ac.style.height = '2048px'; document.body.appendChild(ac); return; }
