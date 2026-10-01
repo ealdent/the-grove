@@ -827,3 +827,38 @@ Skeptical independent deep-code-review approved the final version. It found and 
 Not verified: Safari/Firefox, physical mobile hardware (keyboard/mouse desktop scope), subjective human audio listening, and a full human-earned victory. Automated campaign completion is simulation proof. No external assets, accounts, build tools or services are required by the game. WebGL2/hardware acceleration is required; unsupported/context-loss states show a recovery screen.
 
 Release: game commit `0845042e151e880caa0b9cd4486bf0656c0c6fce` was pushed to origin/main; ls-remote confirmed the exact SHA and the worktree was clean. Commit scope: game, gallery tile, task record and design document. GitHub Pages build/deployment run `36798737849` succeeded. The published URL loaded and started in the visible Codex browser; the score advanced, keyboard pause opened correctly, and its console reported no warnings/errors. The title is left open ready to play. Public URL: https://ealdent.github.io/the-grove/rail-shooter/gpt-6-astra-max-rail-shooter.html. Final game SHA-256: `e7d53ef20a16e6fa80fcb2396c3d208ce45115cfdbb5bac5fe40409aabaa2fe4`. This documentation-only checkpoint closes the release record.
+
+---
+
+# SEAMWAKE — GPT-6.1 Sol / Max rail shooter
+
+Goal: Ship an original, complete Space Harrier descendant in one offline HTML file.
+Project: The Grove / Moon Dog Atlas personal work.
+Files: `rail-shooter/gpt-6.1-sol-max-rail-shooter.html`, `rail-shooter/index.html`, `tasks/seamwake-design.md`, `tests/rail-shooter/seamwake.cjs`, this task section.
+Constraints: No external assets/dependencies/build; behind-the-back free flight, forward projectiles, approaching enemies, indestructible ground hazards, escalating stages, boss tells, score/restart, procedural music and sound.
+Plan check-in: lore is specified before implementation; user explicitly authorized build, gallery integration, commit and push to origin main. Proceed within that scope.
+
+- [x] Create independent world logic, art direction, three environmental phases, enemy families and boss tells before coding.
+- [x] Verify precise current-run model/effort and safe gallery/release conventions.
+- [x] Implement raw WebGL2 textile landscape, cinematic title and animated moth/needle flight.
+- [x] Implement bounded gameplay, authored escalation, near misses, backstitch pulse and multi-pattern Unpicker.
+- [x] Integrate procedural chamber score, tactile sound feedback and complete pause/mute/restart/end flows.
+- [x] Prove direct-file rendering, input, progression, collision, boss, outcome flows, audio signal and measured frame performance.
+- [x] Independent skeptical review and corrections; integrate precisely attributed gallery tile.
+- [ ] Commit only task files, preserve concurrent upstream work, push origin main and verify exact remote commit.
+
+## Review and proof
+
+Implemented a 103,038-byte offline WebGL2 textile flight game with instanced curved moth/porcelain/brass geometry, folded embroidered cloth, material lighting, cast shadows, atmospheric fog and bloom. Three environments change terrain material, scenery, weather, score arrangement, enemies and attack density. Automatic aimed stitching, free mouse/keyboard flight, planted needle/thimble hazards, near misses, multiplier, charged backstitch, stage repairs, living-shears boss with three tells and faster second phase, animated thread-break death, dawn victory, high score and immediate replay.
+
+Native Chrome / ANGLE Metal / Apple M5 Pro at 1440×900: 27 UI assertions pass, including actual keyboard/pointer input, inactive-screen keyboard focus, pause freeze, exact paused/muted audio silence, mute persistence, restart/Enter behavior, focus-loss pause, three environments, boss, loss/replay, victory/replay and graphics errors. Only the direct file URL was requested by the game; no external assets. A 500-frame boss sample averages 16.666 ms (60.00 fps), median 16.7 ms, p95 16.8 ms, worst 16.8 ms; all instance data finite. This is bounded device-specific proof.
+
+Independent skeptical deep-code-review found and reproduced crossing-time collision errors, fixed Comb-gap rotation, stale Unwind targeting, invisible modal pointer/focus interception, hostile meshes persisting after victory and muted musical-state loss. All corrected. Retained dependency-free regressions: `node tests/rail-shooter/seamwake.cjs` passes 13 scenarios plus ordinary-input campaigns at 60 and 30 simulation steps per second; wins at 129.08 / 129.57 game seconds with 3 / 5 lives. Only pointer/Space inputs are sent; health, actors, timers, score and progression are never overridden in campaign proof.
+
+A separate native-browser accelerated campaign also wins with normal input handlers and checks finite rendered reach snapshots; stationary flight loses at 59.22 game seconds. Native procedural audio recording captures eight seconds from the output graph, without a microphone: measured analyser signal, bounded voices, no clipping; FFmpeg mean -26.3 dB, peak -13.4 dB on the initial capture. Graphics context loss shows the recovery screen and zero audio; reload recovers. Gallery model filtering and tile launch pass, and every prior card is preserved byte-for-byte.
+
+Evidence: `/private/tmp/seamwake-proof/ui.json`, `native-campaign.json`, `native-audio.webm`, and title/phase/boss/death/end/gallery screenshots; independent review in `/private/tmp/seamwake-review-results.json` and `seamwake-review-campaign.json`. Regression proof is retained in the repository.
+
+Not verified: Safari/Firefox, other GPUs, subjective human listening, a full human-earned victory. WebGL2 and browser hardware acceleration are required; audio begins on a gesture. Automated campaign wins prove solvability, not a human playtest.
+
+Release: implementation and proof complete; commit, upstream reconciliation and origin/main verification are the remaining steps.
