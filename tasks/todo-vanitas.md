@@ -52,4 +52,16 @@ in the room (a cold window at the back-left gives every far thing a blue rim).
 
 ## Review notes
 
-(filled in at the end)
+Shipped as `rail-shooter/fable-5.1-xhigh-rail-shooter.html` (211 KB, raw WebGL2, no libraries), commit a759d20.
+
+Proof (all with headless Chrome via a CDP harness unless noted):
+- Autopilot soak with god mode, 420 s: stage 1 → Mouse → stage 2 → Lobster → stage 3 → Skull → the Varnish → Hand → loop into "the second sitting"; every boss pattern state observed; zero console errors or exceptions.
+- Autopilot soak without god mode, 240 s: lost one wick in stage 2 and one in stage 3, reached stage 3 alive.
+- Real GPU (Browser pane, Apple M5 Pro, ANGLE Metal): 120 fps at 2560x1440, worst frame gap 9.3 ms; adaptive render scale stays at 1.0.
+- Flow: title → Space starts; WASD/arrows and mouse both move the flame; Space/click fire; P and Escape pause (AudioContext suspends, panel shows, Resume button works); M mutes and persists; three hits → dying → game over plaque with stats; new best stored in localStorage; Space restarts with reset state; Back to the frame returns to the title with the best line; R restarts from pause.
+- Audio: context running, chaconne scheduler at 92 BPM, master-bus RMS never silent during play, SFX peaks register, mute drops RMS to 0.00003; fly buzz pans by x and pitches by species.
+- Visual review: atlas quadrants, controlled frozen scenes for all three stages, popups, surface transition seam, onboarding hint, 1280x720 and 1920x1080 layouts, title/pause/over screens.
+
+Not verified: a human play session (difficulty tuned from a bot that reacts every frame); Firefox/Safari rendering (built for current desktop browsers, WebGL2 required).
+
+Note: while this was being built, another session pushed "Gutter Saint" (GPT-6 Astra), also a candle carried along a banquet table. The themes converged independently; VANITAS leans on vanitas painting iconography (chiaroscuro, the Fates-free memento mori: skull, hourglass, snuffer, the painter's hand, the varnish, the framed plaque).
