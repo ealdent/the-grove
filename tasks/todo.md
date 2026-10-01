@@ -791,3 +791,39 @@ Implementation and verification complete. Original lore was written in `tasks/pe
 - Gallery: one GPT-6.1 Sol / Max / OpenAI tile, all prior cards preserved, all 50 cards sorted by model.
 - Not verified: Safari/Firefox, physical phones, or audible output from speakers. Chrome audio scheduling and controls were verified. Balance evidence covers the named seeds rather than every possible player strategy.
 - Publication: game commit `8bbe106dc87678a5f080714c5c6a9a6e2deec4c9` was pushed to `origin/main`; `ls-remote` confirmed the same head. The two newer upstream commits in `svg-forest/` and their complete task-plan section were preserved. The tested game SHA-256 stayed `5a5cb954f053595c1c08536b49d824cf5aaead4cc9c464fad42c6778d766b738`. Only the four planned task files changed.
+
+# Gutter Saint — GPT-6 Astra / Max rail shooter (2026-09-30)
+
+Goal: ship an original complete Space Harrier descendant in a standalone offline HTML, add its gallery tile, commit and push to origin main.
+Project: Moon Dog Atlas / personal The Grove.
+Repo: /Users/jason/.codex/worktrees/3d2c/the-grove.
+Artifact: rail-shooter/gpt-6-astra-max-rail-shooter.html.
+Constraints: lore before code; single self-contained file; no external assets; fluid flight, forward shooting, solid obstacles, three courses, multi-pattern boss, score and procedural audio. Preserve unrelated work.
+Non-goals: backend, installation, touch support, external art/libraries.
+Plan and proof contract: tasks/gutter-saint-design.md.
+
+- [x] Verify clean starting Git state and exact current model/effort; develop original world and detailed acceptance criteria.
+- [x] Build and integrate complete rendering, combat, three courses, boss, interface and procedural sound.
+- [x] Playtest actual file in Chrome; verify states, controls, collisions, sound output, frame times, console/network and responsive layout.
+- [x] Add one exact-attribution gallery tile; preserve prior gallery cards.
+- [x] Perform skeptical independent review, fix defects, document proof and limitations.
+- [ ] Commit scoped files and push to origin main; verify remote head and live page.
+
+## Review and proof
+Changed: a 68 KB original standalone game with inline WebGL2 instancing, liquid wine shader, distorted scenery reflections, lit silver/gold/porcelain meshes, flame bloom, three courses and a four-type enemy roster. The enlarged fork-crowned Host has three visible tells and attack patterns. Includes analog mouse and accelerated keyboard flight, assisted forward wax volleys, solid fork obstacles, close-shave rewards, chargeable flares, score/combo/best, defeat/victory, pause/mute/retry, focus-loss pause and procedural chamber music/effects. Lore was written in tasks/gutter-saint-design.md before implementation. No prior rail-shooter game source was read.
+
+Attribution: current session metadata confirms gpt-6-astra / max. Filename, author metadata, visible title attribution, gallery href, data-model, data-effort and badge agree. Six existing gallery cards are byte-identical; one card was added beside the other GPT entry.
+
+Browser proof (live-ui-proof): isolated macOS Google Chrome, desktop, no account required. Standalone URL: file:///Users/jason/.codex/worktrees/3d2c/the-grove/rail-shooter/gpt-6-astra-max-rail-shooter.html?test=1. `node /private/tmp/gutter-saint-proof/verify.cjs` passed 30 assertions covering actual mouse/keyboard/arrow flight, Space flare, audio unlock, pause/resume and stationary camera, mute/unmute including the wet signal, restart, twin-shot boss victory, multi-bullet defeat, retry, saved best after reload, return-to-title reset, focus-loss pause and 800x600 through 1920x1080 layouts. Screenshots inspected for title, combat, all courses, boss, terminal states, pause and smaller layout. Zero browser exceptions/console errors and no remote game assets. The gallery filter and normal non-test launch path passed `node /private/tmp/gutter-saint-proof/final.cjs` at http://127.0.0.1:8784/rail-shooter/index.html.
+
+Performance: 500-frame 1440x900 Chrome sample, median 8.3 ms / p95 9.3 ms. Final boss live sample after resizing its model: median 8.3 ms / p95 9.2 ms, finite instance data, no exceptions. This is measured desktop performance, not a universal device guarantee.
+
+Audio proof: actual post-master analyser signal RMS 0.0240 / peak 0.0635; paused and muted output RMS and peak both zero. Captured twelve seconds across four arrangements through Web Audio's output graph, without microphone input. FFmpeg measured mean -30.5 dB, peak -13.3 dB, integrated -28.0 LUFS; >4 kHz band mean -59.6 dB. No clipping in this sample. Audio is procedural and starts on the play gesture. Human listening assessment remains unverified.
+
+Simulation proof: independent ordinary-input controllers exercised the original pointer handlers with no actor, health, score, charge or timer overrides. On final source, three sine controllers completed all courses and all boss tells at 158.1–158.6 seconds with 1–5 health. A separate predictive controller won at 156.25 seconds with 147 kills, 22 close shaves and 15 naturally charged flares. Stationary input died at 30.55 seconds. Observed maxima across controllers: enemies 11, bullets 27, shots 22, particles 198. Targeted tests cover forward/incoming swept collisions, solid fork hits, safe overflight, forks surviving flare, final-hit end flow, pause stability and finite bounded rendering buffers. Scripts: /private/tmp/review-gutter.js, /private/tmp/review-gutter-campaign.js, /private/tmp/review-gutter-final-render.js and /private/tmp/gutter-saint-proof/campaign.cjs. Reports/screenshots/audio: /private/tmp/gutter-saint-proof/.
+
+Skeptical independent deep-code-review approved the final version. It found and helped reproduce two terminal-hit array mutation exceptions, camera drift when paused during shake, and retained victory flash on return to title; all fixed and retested. Final rendering review also checked reflection state restoration and that boss scaling cannot leak into player geometry. Syntax and git diff --check pass.
+
+Not verified: Safari/Firefox, physical mobile hardware (keyboard/mouse desktop scope), subjective human audio listening, and a full human-earned victory. Automated campaign completion is simulation proof. No external assets, accounts, build tools or services are required by the game. WebGL2/hardware acceleration is required; unsupported/context-loss states show a recovery screen.
+
+Release: origin/main was fetched before committing and had no intervening changes. Planned commit scope is exactly the game, gallery tile, this task record and the design document. Remote push and live Pages verification follow.
