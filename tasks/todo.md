@@ -864,3 +864,19 @@ Not verified: Safari/Firefox, other GPUs, subjective human listening, a full hum
 Release: game commit `a7ced2e9036794bdbb4c860f0b6382a3ccc54ec6` was pushed to `origin/main`; immediate `ls-remote` matched the local commit and the worktree was clean. Rebase preserved the concurrent upstream gallery work. Final game SHA-256: `55f800ae053c27ff4c8aa49f41d797bd90101592bf0bed5288f8320069d8db69`. GitHub Pages build completed. A direct public HTML read matches the game byte-for-byte. Native published Chrome proof passes title rendering, advancing flight, audible procedural output and pause/zero output, with no application errors or failed application requests. The browser response adds a hosting script; its aborted request is recorded separately in `/private/tmp/seamwake-proof/published.json`, and excluding only that addition for comparison produces the same application hash.
 
 Public game: https://ealdent.github.io/the-grove/rail-shooter/gpt-6.1-sol-max-rail-shooter.html. The preview has been queued in this chat. This documentation checkpoint records the completed release; game bytes remain unchanged.
+
+---
+
+# Pangea navigation correction — 2026-10-02
+
+Goal: make globe navigation smooth and predictable with mouse, trackpad, touch, and keyboard.
+
+Plan check-in: the user authorized this correction. Preserve the ASCII art, plate reconstruction, and guided tour; fix camera input and interruptions with focused regression checks.
+
+- [x] Reproduce broken pinch, stepped wheel zoom, ineffective vertical dragging, and tour/input conflicts.
+- [x] Consolidate gesture tracking, implement responsive globe panning and anchored smooth zoom, and let manual input interrupt camera animations.
+- [x] Verify real browser gestures, camera math, existing Pangea engine tests, and record limitations.
+
+Review: consolidated pointer state fixes native pinch and either-finger handoff; direct sphere picking anchors both-axis drag and eased wheel zoom without the old 124–249px drift. Wheel magnitude/units and zero deltas work correctly; held keys use elapsed time and clear on release/blur. Manual input interrupts guided flights, chapter dots support Enter/Space, reduced motion applies immediately, and culled labels no longer linger. Corrected the camera's mirrored east/west basis and the outdated projection help text.
+
+Validation: `node --test tests/pangea-engine.test.mjs tests/pangea-navigation.test.mjs` passes 26 tests. Real Chromium mouse/wheel/CDP touch checks pass at 1600×950 and a 390×844 mobile viewport, including camera anchoring, both touch release handoffs, tour interruption, keyboard guards, reset/zoom, label culling, native chapter-dot keyboard activation, and reduced motion, with zero page errors. Frozen-baseline/current render medians are 10.3/10.4ms on the same 266×79 grid; no universal FPS claim. Evidence: `/tmp/pangea-navigation-{baseline,browser,accessibility}-report.json` and desktop/mobile screenshots. Physical iOS/Android, Safari/Firefox, and publication were not tested.

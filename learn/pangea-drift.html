@@ -188,11 +188,11 @@
   #chapter p { font-size: .78rem; line-height: 1.62; color: var(--ink-dim); margin-top: 8px; }
   #chapter .nav { display: flex; align-items: center; gap: 6px; margin-top: 12px; }
   #chapter .dots { display: flex; gap: 4px; margin-right: auto; }
-  #chapter .dots i {
+  #chapter .dots button {
     width: 6px; height: 6px; border-radius: 50%;
     background: var(--edge); border: 0; padding: 0; cursor: pointer;
   }
-  #chapter .dots i[aria-current="true"] { background: var(--accent); width: 16px; border-radius: 3px; }
+  #chapter .dots button[aria-current="true"] { background: var(--accent); width: 16px; border-radius: 3px; }
 
   /* labels over the map */
   #labels { position: absolute; inset: 0; pointer-events: none; z-index: 3; overflow: hidden; }
@@ -355,16 +355,15 @@
     <h3>What you are looking at</h3>
     <p>
       A globe, drawn entirely in characters. It is an
-      <b>orthographic projection</b>: you are looking straight down the axis of
-      the Earth from space, and the horizon is the bright ring around the disc.
+      <b>perspective view from orbit</b>: zoom brings you closer to the surface,
+      and the bright horizon rises into view as you approach low orbit.
       Drag to spin it; the far side of the planet is genuinely out of sight, not
       faded out.
     </p>
     <p>
-      Every glyph is one patch of the Earth's surface. Cells are laid out on
-      concentric <i>rings of constant solid angle</i> rather than on a flat
-      lat/lon grid, which is why they stay square on the ground and squeeze
-      towards the limb instead of shearing. Each is coloured by which
+      Every glyph samples the Earth's surface along a ray from the camera.
+      The screen stays a regular character grid while geography curves and
+      compresses towards the limb. Each is coloured by which
       continent's crust sits on it and stamped with a character whose density
       tracks how far inland you are, so coastlines read as edges, continental
       interiors as solid mass, and the seafloor as depth bands measured from
@@ -373,8 +372,7 @@
       lighting effect, not a solar terminator.
     </p>
     <p>
-      Because the projection is orthographic, area near the limb is compressed,
-      so the disc is foreshortened rather than equal-area. Read the geography,
+      Area near the limb is compressed, so this view is not equal-area. Read the geography,
       not the areas.
     </p>
 
@@ -418,7 +416,7 @@
     <div class="keys">
       <div><kbd>Space</kbd> play / pause</div>
       <div><kbd>R</kbd> reverse time</div>
-      <div><kbd>&larr;</kbd><kbd>&rarr;</kbd><kbd>&uarr;</kbd><kbd>&darr;</kbd> spin the globe</div>
+      <div><kbd>&larr;</kbd><kbd>&rarr;</kbd><kbd>&uarr;</kbd><kbd>&darr;</kbd> hold to rotate the globe</div>
       <div><kbd>+</kbd><kbd>&minus;</kbd> zoom in / out</div>
       <div><kbd>0</kbd> reset view</div>
       <div><kbd>Z</kbd> ASCII resolution</div>
@@ -433,7 +431,8 @@
     <p style="margin-top:10px">
       Mouse: drag to spin the globe, wheel to zoom (the point under the cursor
       stays put). Touch: one finger spins, two fingers pinch to zoom. Both work
-      anywhere on the disc. <kbd>Z</kbd> cycles the character size, which is the
+      anywhere on the disc, and manual navigation interrupts a guided flight.
+      <kbd>Z</kbd> cycles the character size, which is the
       resolution control &mdash; smaller characters mean more of the planet per
       character cell.
     </p>
@@ -451,6 +450,7 @@
 <script type="module">
 import { decodeAtlas, rotationAt, placePoint, Land } from './pangea-engine.js';
 import { SOURCE, GROUPS, STATS } from './pangea-plate-data.js';
+import { cameraState, rayHit, project, screenToGeo as geoAt, createNavigation, wrapLon } from './pangea-navigation.js';
 
 const $ = id => document.getElementById(id);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
@@ -477,48 +477,12 @@ const shelf = new Land(atlas, 1.5);        // coarse grid, only used for depth b
  * continuous parameter takes you from a small globe to a horizon shot with the
  * planet filling the lower four fifths of the frame.
  *
- * Dragging changes `lon` (spin) and a pitch bias (tilt); the wheel changes `z`.
+ * Dragging rotates longitude and latitude while holding the picked surface
+ * under the pointer; wheel input smoothly changes `z` about that point.
  */
 const cam = { lon: 10, lat: 12, z: 0.52, pitchBias: 0 };
-const D2R = Math.PI / 180, TAU = Math.PI * 2;
-const FOV_Y = 55 * D2R;
-const DIST_FAR = 42, DIST_NEAR = 1.045;
-const HORIZON_FROM_TOP = 0.20;
-const clamp01 = v => v < 0 ? 0 : v > 1 ? 1 : v;
-const smoothstep = (a, b, v) => { const t = clamp01((v - a) / (b - a)); return t * t * (3 - 2 * t); };
-const wrapLon = v => ((v + 540) % 360) - 180;
-
-const camState = () => {
-  const W = GRIDW * cellW, H = GRIDH * cellH;
-  const dist = DIST_FAR * Math.pow(DIST_NEAR / DIST_FAR, cam.z);
-  const dip = Math.acos(1 / dist);                       // horizon below horizontal
-  // angle of the horizon above the view axis, for a horizon 20% from the top
-  const hz = Math.atan(2 * (0.5 - HORIZON_FROM_TOP) * Math.tan(FOV_Y / 2));
-  const t = smoothstep(0.44, 0.98, cam.z);              // globe -> horizon blend
-  const look = clamp((1 - t) * (90 * D2R) + t * (dip - hz) + cam.pitchBias * D2R,
-    0.015, 89.6 * D2R);
-
-  const la = cam.lat * D2R, lo = cam.lon * D2R, cl = Math.cos(la);
-  const N = [cl * Math.cos(lo), cl * Math.sin(lo), Math.sin(la)];                     // zenith
-  const Nth = [-Math.sin(la) * Math.cos(lo), -Math.sin(la) * Math.sin(lo), Math.cos(la)];
-  const Est = [-Math.sin(lo), Math.cos(lo), 0];
-  const C = [N[0] * dist, N[1] * dist, N[2] * dist];
-  const sl = Math.sin(look), cz = Math.cos(look);
-  const zc = [N[0] * -sl + Nth[0] * cz, N[1] * -sl + Nth[1] * cz, N[2] * -sl + Nth[2] * cz];
-  const hint = [N[0] * cz + Nth[0] * sl, N[1] * cz + Nth[1] * sl, N[2] * cz + Nth[2] * sl];
-  let xc = [hint[1] * zc[2] - hint[2] * zc[1],
-            hint[2] * zc[0] - hint[0] * zc[2],
-            hint[0] * zc[1] - hint[1] * zc[0]];
-  const xl = Math.hypot(xc[0], xc[1], xc[2]) || 1;
-  xc = [xc[0] / xl, xc[1] / xl, xc[2] / xl];
-  const yc = [zc[1] * xc[2] - zc[2] * xc[1],
-              zc[2] * xc[0] - zc[0] * xc[2],
-              zc[0] * xc[1] - zc[1] * xc[0]];
-  const tanY = Math.tan(FOV_Y / 2);
-  return { W, H, dist, dip, look, C, zc, xc, yc, N, Nth, Est, tanY, tanX: tanY * (W / H),
-    // apparent radius of the disc on screen, in pixels
-    discPx: (H / 2) * Math.tan(Math.asin(Math.min(1, 1 / dist))) / tanY };
-};
+const D2R = Math.PI / 180;
+const camState = () => cameraState(cam, GRIDW * cellW, GRIDH * cellH);
 
 /** Angular size of one cell where it is largest, i.e. straight below the camera. */
 const cellAngle = () => {
@@ -526,39 +490,6 @@ const cellAngle = () => {
   const halfDeg = 2 * Math.atan(cellH / Math.max(4, S.discPx) * Math.tan(Math.asin(Math.min(1, 1 / S.dist)))) / D2R;
   return Math.max(0.002, halfDeg);
 };
-
-/** Screen pixel -> lon/lat, or null where the ray misses the planet. */
-function rayHit(S, px, py) {
-  const ndcX = (2 * px / S.W - 1) * S.tanX;
-  const ndcY = (1 - 2 * py / S.H) * S.tanY;
-  let dx = S.xc[0] * ndcX + S.yc[0] * ndcY + S.zc[0];
-  let dy = S.xc[1] * ndcX + S.yc[1] * ndcY + S.zc[1];
-  let dz = S.xc[2] * ndcX + S.yc[2] * ndcY + S.zc[2];
-  const dl = Math.hypot(dx, dy, dz) || 1;
-  dx /= dl; dy /= dl; dz /= dl;
-  const b = S.C[0] * dx + S.C[1] * dy + S.C[2] * dz;
-  const c = S.C[0] * S.C[0] + S.C[1] * S.C[1] + S.C[2] * S.C[2] - 1;
-  const disc = b * b - c;
-  if (disc < 0) return { dir: [dx, dy, dz] };                 // open space
-  const t = -b - Math.sqrt(disc);
-  if (t <= 0) return { dir: [dx, dy, dz] };
-  return { t, x: S.C[0] + t * dx, y: S.C[1] + t * dy, z: S.C[2] + t * dz, dir: [dx, dy, dz] };
-}
-
-/** lon/lat -> screen pixel, or null if over the horizon or behind the camera. */
-function project(S, lon, lat) {
-  const la = lat * D2R, lo = lon * D2R, cl = Math.cos(la);
-  const px = cl * Math.cos(lo), py = cl * Math.sin(lo), pz = Math.sin(la);
-  if (px * S.C[0] + py * S.C[1] + pz * S.C[2] <= 1.0000001) return null;   // far side
-  const vx = px - S.C[0], vy = py - S.C[1], vz = pz - S.C[2];
-  const vz2 = vx * S.zc[0] + vy * S.zc[1] + vz * S.zc[2];
-  if (vz2 <= 1e-6) return null;
-  const a = (vx * S.xc[0] + vy * S.xc[1] + vz * S.xc[2]) / vz2;
-  const b = (vx * S.yc[0] + vy * S.yc[1] + vz * S.yc[2]) / vz2;
-  const ndcX = a / S.tanX, ndcY = b / S.tanY;
-  if (Math.abs(ndcX) > 1.4 || Math.abs(ndcY) > 1.4) return null;
-  return { x: (ndcX * 0.5 + 0.5) * S.W, y: (0.5 - ndcY * 0.5) * S.H, ndcX, ndcY, elev: 1 - ndcY };
-}
 
 /* ================================================================== palette */
 const LAND_HUE = {
@@ -870,6 +801,7 @@ const FOLLOW = Object.fromEntries(atlas.labels.map(l => [l.plateIndex, l]));
 function placeLabels() {
   const S = camState();
   labelBoxes.length = 0;
+  for (const { el } of labelEls) el.style.display = 'none';
   // facing the camera first, and majors ahead of minors, so the labels that
   // survive a collision are the ones you actually wanted
   const cand = [];
@@ -901,102 +833,53 @@ function placeLabels() {
 }
 
 /* ================================================================== input */
-let drag = null;
+const navigation = createNavigation(cam, {
+  size: () => [GRIDW * cellW, GRIDH * cellH],
+  onStart() { anim = null; follow = null; dirty = true; },
+  onChange() { dirty = true; },
+  reducedMotion: REDUCED,
+});
+const localPoint = e => {
+  const r = cv.getBoundingClientRect();
+  return { x: (e.clientX - r.left) * GRIDW * cellW / r.width,
+    y: (e.clientY - r.top) * GRIDH * cellH / r.height };
+};
 cv.addEventListener('pointerdown', e => {
+  if (e.pointerType === 'mouse' && e.button !== 0) return;
+  e.preventDefault();
+  const p = localPoint(e);
+  navigation.begin(e.pointerId, p.x, p.y);
   cv.setPointerCapture(e.pointerId);
-  drag = { id: e.pointerId, x: e.clientX, y: e.clientY, px: e.clientX, py: e.clientY, moved: 0, id2: null, d0: 0 };
   cv.classList.add('dragging');
 });
 cv.addEventListener('pointermove', e => {
-  if (!drag || e.pointerId !== drag.id) return;
-  if (drag.id2 !== null) return;
-  const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
-  drag.moved += Math.abs(dx) + Math.abs(dy);
-  // parallax: the surface moves further under your finger the closer you are,
-  // so the spin rate scales with 1/dist the way a real globe behaves
-  const S = camState();
-  const k = (FOV_Y / D2R) / Math.max(1, GRIDH * cellH) / S.dist;
-  cam.lon = wrapLon(cam.lon - dx * k);
-  cam.pitchBias = clamp(cam.pitchBias + dy * k * 1.15, -34, 30);
-  drag.x = e.clientX; drag.y = e.clientY;
-  follow = null;
-  dirty = true;
+  const p = localPoint(e);
+  navigation.move(e.pointerId, p.x, p.y);
 });
-const endDrag = e => { if (drag && e.pointerId === drag.id) { drag = null; cv.classList.remove('dragging'); } };
-cv.addEventListener('pointerup', endDrag);
-cv.addEventListener('pointercancel', endDrag);
-
+const endPointer = e => {
+  navigation.end(e.pointerId);
+  cv.classList.toggle('dragging', navigation.active);
+};
+cv.addEventListener('pointerup', endPointer);
+cv.addEventListener('pointercancel', endPointer);
+cv.addEventListener('lostpointercapture', endPointer);
 cv.addEventListener('wheel', e => {
   e.preventDefault();
-  zoomAt(e.clientX, e.clientY, Math.exp((e.deltaY > 0 ? 1 : -1) * 0.14));
+  const p = localPoint(e);
+  navigation.wheel(p.x, p.y, e.deltaY, e.deltaMode);
 }, { passive: false });
+const clearNavigation = () => { navigation.clear(); cv.classList.remove('dragging'); };
+window.addEventListener('blur', clearNavigation);
+document.addEventListener('visibilitychange', () => { if (document.hidden) clearNavigation(); });
 
-/* two-finger pinch: a second pointer turns the drag into a pinch */
-cv.addEventListener('pointerdown', e => {
-  if (!drag) return;
-  if (e.pointerId !== drag.id) {
-    const a = pointers.get(drag.id);
-    drag.id2 = e.pointerId;
-    drag.d0 = a ? Math.hypot(a.x - e.clientX, a.y - e.clientY) : 0;
-    drag.px = a ? (a.x + e.clientX) / 2 : e.clientX;
-    drag.py = a ? (a.y + e.clientY) / 2 : e.clientY;
-  }
+function screenToGeo(x, y) { return geoAt(cam, GRIDW * cellW, GRIDH * cellH, x, y); }
+const movementKey = key => ({ ArrowLeft: 'left', a: 'left', A: 'left',
+  ArrowRight: 'right', d: 'right', D: 'right', ArrowUp: 'up', w: 'up', W: 'up',
+  ArrowDown: 'down', s: 'down', S: 'down' })[key];
+window.addEventListener('keyup', e => {
+  const key = movementKey(e.key);
+  if (key) navigation.key(key, false);
 });
-cv.addEventListener('pointermove', e => {
-  if (!drag || drag.id2 === null || e.pointerId !== drag.id2) return;
-  const a = pointers.get(drag.id), b = pointers.get(e.pointerId);
-  if (!a || !b) return;
-  const dist = Math.hypot(a.x - b.x, a.y - b.y);
-  if (drag.d0 > 0) zoomAt((a.x + b.x) / 2, (a.y + b.y) / 2, drag.d0 / dist);
-  drag.d0 = dist;
-  const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
-  const k = (FOV_Y / D2R) / Math.max(1, GRIDH * cellH) / camState().dist;
-  cam.lon = wrapLon(cam.lon - (mx - drag.px) * k);
-  cam.pitchBias = clamp(cam.pitchBias + (my - drag.py) * k * 1.15, -34, 30);
-  drag.px = mx; drag.py = my; drag.x = mx; drag.y = my;
-  follow = null; dirty = true;
-});
-const pointers = new Map();
-cv.addEventListener('pointerdown', e => pointers.set(e.pointerId, { x: e.clientX, y: e.clientY }));
-cv.addEventListener('pointermove', e => {
-  if (pointers.has(e.pointerId)) pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
-});
-cv.addEventListener('pointerup', e => { pointers.delete(e.pointerId); if (drag) { drag.id2 = null; drag.d0 = 0; } });
-cv.addEventListener('pointercancel', e => pointers.delete(e.pointerId));
-cv.addEventListener('pointerleave', e => pointers.delete(e.pointerId));
-
-/** Screen pixel -> lon/lat, or null where the ray misses the planet. */
-function screenToGeo(px, py) {
-  const S = camState();
-  const hit = rayHit(S, px, py);
-  if (hit.t === undefined) return null;
-  return { lon: Math.atan2(hit.y, hit.x) / D2R, lat: Math.asin(hit.z < -1 ? -1 : hit.z > 1 ? 1 : hit.z) / D2R };
-}
-
-function zoomAt(px, py, k) {
-  const r = cv.getBoundingClientRect();
-  // remember what is under the cursor, move the camera in, then rotate that
-  // point back under the cursor: on a globe that is the interaction people
-  // expect from a map
-  const bx = px - r.left, by = py - r.top;
-  const before = screenToGeo(bx, by);
-  cam.z = clamp(cam.z - Math.log(k) * 0.5, 0, 1);
-  const after = screenToGeo(bx, by);
-  if (before && after) {
-    // angular error, resolved onto the local east/north tangents
-    const S = camState();
-    const u = v => { const la = v.lat * D2R, lo = v.lon * D2R, c = Math.cos(la);
-      return [c * Math.cos(lo), c * Math.sin(lo), Math.sin(la)]; };
-    const a = u(before), b = u(after);
-    const e = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
-    const de = (e[0] * S.Est[0] + e[1] * S.Est[1] + e[2] * S.Est[2]) / D2R;
-    const dn = (e[0] * S.Nth[0] + e[1] * S.Nth[1] + e[2] * S.Nth[2]) / D2R;
-    cam.lon = wrapLon(cam.lon - de);
-    cam.lat = clamp(cam.lat + dn, -89.5, 89.5);
-  }
-  follow = null;
-  dirty = true;
-}
 
 window.addEventListener('keydown', e => {
   // typing guard: never steal keys from a text field or a modifier chord
@@ -1006,14 +889,14 @@ window.addEventListener('keydown', e => {
   }
   if (e.metaKey || e.ctrlKey || e.altKey) return;
   const k = e.key;
-  const spin = (FOV_Y / D2R) / 40;
+  if ($('about').classList.contains('on') && k !== 'Escape') return;
+  if ((k === ' ' || k === 'Enter') && t?.closest('button, a, select')) return;
+  const movement = movementKey(k);
+  if (movement) { e.preventDefault(); navigation.key(movement, true); return; }
+  if (e.repeat) return;
   let used = true;
   switch (k) {
     case ' ': togglePlay(); break;
-    case 'ArrowLeft': case 'a': case 'A': cam.lon = wrapLon(cam.lon - spin); break;
-    case 'ArrowRight': case 'd': case 'D': cam.lon = wrapLon(cam.lon + spin); break;
-    case 'ArrowUp': case 'w': case 'W': cam.pitchBias = clamp(cam.pitchBias + spin * 0.8, -34, 30); break;
-    case 'ArrowDown': case 's': case 'S': cam.pitchBias = clamp(cam.pitchBias - spin * 0.8, -34, 30); break;
     case '+': case '=': zoomCentre(0.8); break;
     case '-': case '_': zoomCentre(1.25); break;
     case '0': resetView(); break;
@@ -1032,10 +915,7 @@ window.addEventListener('keydown', e => {
   }
   if (used) { e.preventDefault(); follow = null; dirty = true; }
 });
-function zoomCentre(k) {
-  zoomAt(cv.getBoundingClientRect().left + GRIDW * cellW / 2,
-    cv.getBoundingClientRect().top + GRIDH * cellH / 2, k);
-}
+function zoomCentre(k) { navigation.zoomBy(k); }
 
 /* ================================================================== time */
 function updateHud() {
@@ -1062,11 +942,11 @@ const ERAS = [
 ];
 function eraFor(v) { for (const [a, b, n] of ERAS) if (v > b && v <= a) return n; return 'Present day'; }
 
-function togglePlay() { playing = !playing; $('play').innerHTML = playing ? '&#10073;&#10073; Pause' : '&#9654; Play'; }
+function togglePlay() { anim = null; playing = !playing; $('play').innerHTML = playing ? '&#10073;&#10073; Pause' : '&#9654; Play'; }
 function flipDir() { dir *= -1; $('rev').setAttribute('aria-pressed', String(dir < 0)); }
 const SPEEDS = [1, 3, 8, 20, 50, 120];
 function setSpeed(v) { speed = clamp(v, 0.5, 240); $('speedLabel').textContent = speed < 10 ? speed.toFixed(1) + ' Myr/s' : speed.toFixed(0) + ' Myr/s'; }
-function resetView() { cam.lon = 10; cam.lat = 12; cam.z = 0.52; cam.pitchBias = 0; follow = null; dirty = true; }
+function resetView() { anim = null; navigation.stop(); cam.lon = 10; cam.lat = 12; cam.z = 0.52; cam.pitchBias = 0; follow = null; dirty = true; }
 
 /* ================================================================ chapters */
 const CHAPTERS = [
@@ -1094,7 +974,7 @@ function openChapter(i) {
   chapter = clamp(i, 0, CHAPTERS.length - 1);
   const c = CHAPTERS[chapter];
   $('chDots').innerHTML = CHAPTERS.map((_, k) =>
-    `<i role="button" tabindex="0" data-k="${k}" aria-label="Chapter ${k + 1}"></i>`).join('');
+    `<button type="button" data-k="${k}" aria-label="Chapter ${k + 1}"></button>`).join('');
   $('chapter').classList.add('on');
   showChapterBody(chapter);
   anim = null;
@@ -1109,14 +989,15 @@ function showChapterBody(i) {
   $('chBody').textContent = c.body;
   [...$('chDots').children].forEach((d, k) => d.setAttribute('aria-current', String(k === i)));
 }
-function closeChapter() { chapter = -1; $('chapter').classList.remove('on'); }
+function closeChapter() { anim = null; chapter = -1; $('chapter').classList.remove('on'); }
 function goTo(m, lon, lat, z) {
+  navigation.stop(); follow = null;
+  playing = false;
+  $('play').innerHTML = '&#9654; Play';
   const from = { ma, lon: cam.lon, lat: cam.lat, z: cam.z, pitchBias: cam.pitchBias };
   const apply = v => { cam.lon = wrapLon(v.lon); cam.lat = v.lat; cam.z = v.z; cam.pitchBias = v.pitchBias || 0; };
   if (REDUCED) { ma = m; apply({ lon, lat, z }); setMa(m); return; }
   anim = { from, to: { ma: m, lon, lat, z }, apply, t0: performance.now(), dur: 1600 };
-  playing = false;
-  $('play').innerHTML = '&#9654; Play';
 }
 
 /* ================================================================== theme */
@@ -1137,10 +1018,10 @@ function closeAll() {
   $('about').classList.remove('on');
   closeChapter();
 }
-function toggleAbout() { $('about').classList.toggle('on'); }
+function toggleAbout() { clearNavigation(); $('about').classList.toggle('on'); }
 
 /* =================================================================== boot */
-$('time').addEventListener('input', e => { ma = parseFloat(e.target.value); setMa(ma); });
+$('time').addEventListener('input', e => { anim = null; ma = parseFloat(e.target.value); setMa(ma); });
 $('play').addEventListener('click', togglePlay);
 $('rev').addEventListener('click', flipDir);
 $('zoomIn').addEventListener('click', () => zoomCentre(0.72));
@@ -1210,6 +1091,7 @@ window.addEventListener('resize', () => {
 function frame(ts) {
   const dt = Math.min(0.05, (ts - lastT) / 1000 || 0);
   lastT = ts;
+  navigation.step(dt);
 
   if (anim) {
     const f = clamp((ts - anim.t0) / anim.dur, 0, 1);
@@ -1266,7 +1148,7 @@ window.__pg = {
   atlas, land, shelf, cam, sprite, placePoint, get variants() { return variantsRef; },
   get cell() { const S = camState(); return { cellW, cellH, GRIDW, GRIDH, d: cellAngle(), dist: S.dist, z: cam.z, pitch: S.look / D2R, lon: cam.lon, lat: cam.lat, discPx: Math.round(S.discPx) }; },
   RAMP_LEN, GROUPS, get ma() { return ma; },
-  setMa, render, step(dt) { setMa(ma + dir * speed * dt); render(); },
+  setMa, render, screenToGeo, project: (lon, lat) => project(camState(), lon, lat), step(dt) { setMa(ma + dir * speed * dt); render(); },
   labels() {
     return labelEls.slice(0, 4).map(({ el, l }) => ({ n: l.name, x: el.style.left, y: el.style.top, d: el.style.display }));
   },
