@@ -4,7 +4,7 @@ import { readFile } from 'node:fs/promises';
 import {
   decodeAtlas, rotationAt, placePoint, angularDistance, Land,
 } from '../learn/pangea-engine.js';
-import { SOURCE, STATS, PLATE_IDS } from '../learn/pangea-plate-data.js';
+import { SOURCE, STATS, PLATE_IDS, GROUPS } from '../learn/pangea-plate-data.js';
 
 const atlas = decodeAtlas();
 const plate = id => atlas.plateIndex.get(id);
@@ -90,8 +90,10 @@ test('land under named regions uses the corresponding legend colour family', () 
   land.rasterize(0);
   const families = {
     Africa: 'Africa', Madagascar: 'Africa', Sahara: 'Africa', Congo: 'Africa',
-    Beringia: 'Eurasia', 'New Zealand': 'Zealandia / Pacific',
-    Antarctica: 'Antarctica', Japan: 'Eurasia', Indonesia: 'SE Asia / Pacific',
+    Beringia: 'Asia', 'New Zealand': 'SE Asia / Pacific',
+    Antarctica: 'Antarctica', Japan: 'Asia', Indonesia: 'SE Asia / Pacific',
+    Europe: 'Europe', Iberia: 'Europe', 'British Isles': 'Europe', Siberia: 'Asia',
+    India: 'India', Himalaya: 'India', Arabia: 'Arabia', Greenland: 'North America',
   };
   for (const [name, family] of Object.entries(families)) {
     const label = atlas.labels.find(l => l.name === name);
@@ -180,7 +182,7 @@ test('every major plate accumulates divergence from Africa monotonically', () =>
   }
 });
 
-test('North America opens the North Atlantic to its published geometry', () => {
+test('North America closes the Central Atlantic to the Pangaea fit', () => {
   // Checked against the published Young et al. (2018) animation: at 200 Ma the
   // east coast of North America sits against the west margin of Africa.
   // net rotation monotonicity is asserted in the previous test; here we only
@@ -317,7 +319,7 @@ test('the distance transform puts zero exactly on the coast', () => {
 
 test('the page names its source, licence and the limits of the model', async () => {
   const html = await readFile(new URL('../learn/pangea-drift.html', import.meta.url), 'utf8');
-  assert.match(SOURCE.citation, /Young et al\. \(2018\)/);
+  assert.match(SOURCE.citation, /Young et al\. \(2019\)/);
   assert.match(SOURCE.license, /CC BY 4\.0/);
   assert.match(SOURCE.referencePlate, /Africa/);
 
@@ -329,13 +331,17 @@ test('the page names its source, licence and the limits of the model', async () 
   assert.match(SOURCE.alsoCite.join(' '), /Muller et al\. \(2016\)/);
   assert.match(html, /Zenodo/);
   assert.match(html, /id="srcCite"/);
-  assert.match(SOURCE.doi, /gsf\.2017\.11\.003/);
+  assert.match(SOURCE.doi, /gsf\.2018\.05\.011/);   // Young et al. 2019, Geosci. Front. 10(3)
   assert.match(html, /\$\{SOURCE\.doi\}|SOURCE\.doi/);
   // the modelling choices a reader must know about
-  assert.match(html, /True polar wander is excluded/i);
+  assert.match(html, /Africa is the reference frame/i);
+  assert.match(html, /not palaeolatitude/i);
   assert.match(html, /deep time is approximate/i);
-  assert.match(html, /half-stage spreading/i);
-  assert.match(html, /Africa is the reference/i);
+  assert.match(html, /rigid\s+present-day coastlines/i);
+  // the citations the page shows must be the real ones (the first DOI once pointed at an unrelated paper)
+  assert.match(html, /Young et al\. 2019, Geoscience Frontiers 10\(3\), 989&ndash;1013/);
+  assert.match(html, /Annu\. Rev\. Earth Planet\. Sci\. 44, 107&ndash;138/);
+  assert.match(SOURCE.alsoCite.join(' '), /44, 107-138/);
   // every outbound link is safe
   const blanks = [...html.matchAll(/<a\b[^>]*target="_blank"[^>]*>/g)].map(m => m[0]);
   assert.ok(blanks.length >= 4, 'expected primary-source links');
@@ -376,4 +382,78 @@ test('the Learn hub lists the lesson alphabetically with its shader shell', asyn
     html.indexOf('</div>', pangaea) + 6);
   assert.match(shell, /class="tile-shader"/);
   assert.match(shell, /Open lesson/);
+});
+
+/* ======================================================== data corrections */
+
+test('colour groups follow present-day geography', () => {
+  const land = new Land(atlas, 0.25);
+  land.rasterize(0);
+  const name = (lon, lat) => { const g = land.groupAt(lon, lat); return g ? GROUPS[g - 1].name : 'sea'; };
+  const expect = {
+    'North America': [[-87.6, 41.9], [-99.1, 19.4], [-42.5, 72], [-150, 64]],
+    'South America': [[-47.9, -15.8], [-58.4, -34.6], [-59, -51.7]],
+    Africa: [[31.2, 30], [15.3, -4.3], [36.8, -1.3], [47, -19]],
+    Europe: [[2.3, 48.9], [-3.7, 40.4], [37.6, 55.8], [-18.5, 65]],
+    Asia: [[116.4, 39.9], [139.7, 35.7], [51.4, 35.7], [91.1, 29.7], [129.7, 62], [-175, 66]],
+    India: [[77.2, 28.6]],
+    Arabia: [[46.7, 24.7]],
+    Australia: [[134, -25], [147.3, -42.9]],
+    Antarctica: [[0, -89], [106.8, -78.5], [-63, -70], [-20, -78]],   // pole, Vostok, the Peninsula, Coats Land
+    'SE Asia / Pacific': [[113.5, 0.5], [101, 15], [172.5, -42], [121.5, 16.8]],
+  };
+  for (const [want, pts] of Object.entries(expect)) {
+    for (const [lon, lat] of pts) assert.equal(name(lon, lat), want, `(${lon}, ${lat}) should be ${want}`);
+  }
+  const used = new Set(atlas.polys.map(p => p.group));
+  assert.equal(used.size, GROUPS.length, 'every colour family is used and none is out of range');
+  for (const g of used) assert.ok(g >= 0 && g < GROUPS.length, `group ${g} has no name`);
+});
+
+test('the South Pole is inside Antarctica, not a hole in the raster', () => {
+  const land = new Land(atlas, 0.25);
+  land.rasterize(0);
+  let n = 0, t = 0;
+  for (let lat = -89.875; lat < -85; lat += 0.25) for (let lon = -179.875; lon < 180; lon += 0.25) { t++; if (land.groupAt(lon, lat)) n++; }
+  assert.ok(n / t > 0.98, `polar cap land fraction ${(n / t).toFixed(3)}`);
+});
+
+test('the Weddell-to-Greenwich sector of Antarctica is land', () => {
+  const land = new Land(atlas, 0.25);
+  land.rasterize(0);
+  // Dronning Maud Land and Coats Land: the generated data had lost this half of the main ring
+  for (const [lon, lat] of [[0, -75], [-10, -76], [-20, -78], [-30, -80], [-40, -82], [5, -80], [-15, -73]]) {
+    assert.equal(land.groupAt(lon, lat) ? GROUPS[land.groupAt(lon, lat) - 1].name : 'sea', 'Antarctica', `(${lon}, ${lat})`);
+  }
+  // and the Weddell Sea itself is still sea
+  assert.equal(land.groupAt(-40, -72), 0, 'the Weddell Sea must stay sea');
+});
+
+test('the guided tour and the HUD use real geological names and plain text', async () => {
+  const html = await readFile(new URL('../learn/pangea-drift.html', import.meta.url), 'utf8');
+  const eras = new Function('return ' + html.match(/const ERAS = (\[[\s\S]*?\]);/)[1])();
+  assert.equal(eras[0][0], 250);
+  assert.equal(eras[eras.length - 1][1], 0);
+  for (let i = 1; i < eras.length; i++) assert.equal(eras[i][0], eras[i - 1][1], `era table has a gap before ${eras[i][2]}`);
+  const byName = Object.fromEntries(eras.map(([a, b, n]) => [n, [a, b]]));
+  assert.deepEqual(byName.Triassic, [250, 201.4]);
+  assert.deepEqual(byName.Cretaceous, [145, 66]);
+  assert.deepEqual(byName.Quaternary, [2.6, 0]);
+  const chapters = new Function('return ' + html.match(/const CHAPTERS = (\[[\s\S]*?\n\]);/)[1])();
+  assert.ok(chapters.length >= 8);
+  for (const c of chapters) {
+    // the card is filled with textContent, so an entity here would show up literally
+    assert.doesNotMatch(c.body + c.era + c.title, /&[a-z]+;/, `chapter ${c.ma} contains a raw HTML entity`);
+    assert.ok(c.ma >= 0 && c.ma <= 250);
+  }
+  assert.equal(chapters.find(c => c.ma === 250).era, 'Early Triassic');
+  assert.match(chapters.find(c => c.ma === 250).body, /no polar ice/);
+  // the time slider runs past -> present left to right, so its value is inverted
+  assert.match(html, /setMa\(MAX_MA - parseFloat\(e\.target\.value\)\)/);
+  assert.match(html, /aria-valuetext/);
+});
+
+test('the README lists the lesson', async () => {
+  const readme = await readFile(new URL('../README.md', import.meta.url), 'utf8');
+  assert.match(readme, /\(learn\/pangea-drift\.html\)/);
 });
