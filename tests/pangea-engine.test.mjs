@@ -26,6 +26,8 @@ test('the atlas decodes completely and every polygon is well formed', () => {
   let verts = 0;
   for (const p of atlas.polys) {
     assert.ok(p.pts.length >= 6, 'polygon needs at least 3 vertices');
+    assert.ok(Number.isInteger(p.group) && p.group >= 0 && p.group < atlas.groups.length,
+      `polygon group ${p.group} needs a distinct land colour family`);
     assert.equal(plate(PLATE_IDS[p.plate]), p.plate, 'polygon plate index in range');
     for (let k = 0; k < p.pts.length; k += 2) {
       assert.ok(p.pts[k] >= -180.01 && p.pts[k] <= 180.01, 'lon in range');
@@ -41,6 +43,62 @@ test('every label anchor is attached to a plate the dataset knows about', () => 
   for (const l of atlas.labels) {
     assert.ok(atlas.plateIndex.has(l.plate), `label ${l.name} -> unknown plate ${l.plate}`);
     assert.ok(l.plateIndex >= 0, `label ${l.name} did not resolve to a plate index`);
+  }
+});
+
+test('every label stays inside its assigned plate coastline throughout reconstruction', () => {
+  // Work in the polygon's original geographic coordinates, keeping polygons
+  // that cross the date line continuous around the point being checked.
+  const wrap = lon => ((lon + 180) % 360 + 360) % 360 - 180;
+  const contains = (polygon, lon, lat) => {
+    const points = polygon.pts, n = points.length / 2;
+    let inside = false;
+    for (let i = 0, j = n - 1; i < n; j = i++) {
+      const ax = wrap(points[i * 2] - lon), ay = points[i * 2 + 1];
+      const bx = wrap(points[j * 2] - lon), by = points[j * 2 + 1];
+      if ((ay > lat) !== (by > lat) && 0 < ax + (bx - ax) * (lat - ay) / (by - ay)) {
+        inside = !inside;
+      }
+    }
+    return inside;
+  };
+  const degrees = Math.PI / 180;
+  const rotation = new Float64Array(9);
+  for (const label of atlas.labels) {
+    const polygons = atlas.polys.filter(p => p.plate === label.plateIndex);
+    assert.ok(polygons.some(p => contains(p, label.lon, label.lat)),
+      `${label.name} is outside the coastlines of its assigned plate ${label.plate}`);
+    for (const ma of atlas.times) {
+      const [lon, lat] = placePoint(atlas, label.plateIndex, label.lon, label.lat, ma, [0, 0]);
+      const point = [Math.cos(lat * degrees) * Math.cos(lon * degrees),
+        Math.cos(lat * degrees) * Math.sin(lon * degrees), Math.sin(lat * degrees)];
+      rotationAt(atlas, label.plateIndex, ma, rotation);
+      // Invert the rigid plate rotation to check the reconstructed anchor
+      // against its actual coastline, rather than another fragment's colour.
+      const local = [0, 1, 2].map(k => point[0] * rotation[k]
+        + point[1] * rotation[k + 3] + point[2] * rotation[k + 6]);
+      const localLon = Math.atan2(local[1], local[0]) / degrees;
+      const localLat = Math.asin(Math.max(-1, Math.min(1, local[2]))) / degrees;
+      assert.ok(polygons.some(p => contains(p, localLon, localLat)),
+        `${label.name} left its plate coastline at ${ma} Ma`);
+    }
+  }
+});
+
+test('land under named regions uses the corresponding legend colour family', () => {
+  const land = new Land(atlas, 0.2);
+  land.rasterize(0);
+  const families = {
+    Africa: 'Africa', Madagascar: 'Africa', Sahara: 'Africa', Congo: 'Africa',
+    Beringia: 'Eurasia', 'New Zealand': 'Zealandia / Pacific',
+    Antarctica: 'Antarctica', Japan: 'Eurasia', Indonesia: 'SE Asia / Pacific',
+  };
+  for (const [name, family] of Object.entries(families)) {
+    const label = atlas.labels.find(l => l.name === name);
+    const position = placePoint(atlas, label.plateIndex, label.lon, label.lat, 0, [0, 0]);
+    const group = land.groupAt(...position);
+    assert.ok(group > 0, `${name}'s visible anchor must be on land`);
+    assert.equal(atlas.groups[group - 1].name, family, `${name}'s land colour must match its legend`);
   }
 });
 

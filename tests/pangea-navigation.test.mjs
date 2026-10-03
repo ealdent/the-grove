@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  anchorCamera, cameraState, createNavigation, panCamera, project, screenToGeo,
+  anchorCamera, cameraState, createNavigation, panCamera, project, rayHit, screenToGeo, sphereSpan, surfaceCellAngle,
 } from '../learn/pangea-navigation.js';
 
 const W = 1600, H = 950;
@@ -17,6 +17,64 @@ test('east projects right and north projects up in the globe view', () => {
   assert.ok(project(state, -10, 0).x < centre.x);
   assert.ok(project(state, 0, 10).y < centre.y);
   assert.ok(project(state, 0, -10).y > centre.y);
+});
+
+test('the distant globe is centred and the zoomed limb leaves 20% space above the planet', () => {
+  for (const [width, height] of [[W, H], [390, 840]]) {
+    for (const z of [0, 0.3, 0.5, 0.65]) {
+      const state = cameraState(camera(z), width, height);
+      const centre = project(state, 10, 12);
+      assert.ok(Math.hypot(centre.x - width / 2, centre.y - height / 2) < 1e-9);
+      assert.equal(state.look, Math.PI / 2);
+    }
+    for (const z of [0.72, 0.8, 0.9, 1]) {
+      const state = cameraState(camera(z), width, height);
+      assert.ok(Math.abs(state.horizonY / height - 0.2) < 1e-12);
+      assert.equal(rayHit(state, width / 2, height * 0.2 - 0.1).t, undefined);
+      assert.ok(rayHit(state, width / 2, height * 0.2 + 0.1).t > 0);
+    }
+    let previous = cameraState(camera(0.5), width, height).horizonY;
+    for (let z = 0.501; z <= 1; z += 0.001) {
+      const next = cameraState(camera(z), width, height).horizonY;
+      assert.ok(next <= previous + 1e-8, 'the limb rises smoothly without falling back down');
+      assert.ok(previous - next < height * 0.003, 'the transition has no framing jump');
+      previous = next;
+    }
+  }
+});
+
+test('the solid ocean silhouette matches sphere picking through globe and horizon views', () => {
+  for (const [width, height] of [[W, H], [390, 840]]) {
+    for (const z of [0, 0.5, 0.7, 0.8, 1]) {
+      const state = cameraState(camera(z), width, height);
+      for (let y = 0; y <= height; y += 13) {
+        const span = sphereSpan(state, y);
+        for (let x = 0; x <= width; x += 17) {
+          const inside = Boolean(span && x > span.left && x < span.right);
+          assert.equal(rayHit(state, x, y).t !== undefined, inside, `silhouette at ${z}, ${x}, ${y}`);
+        }
+      }
+    }
+  }
+});
+
+test('projected label elevation measures surface visibility rather than screen position', () => {
+  const state = cameraState(camera(0.5), W, H);
+  const north = project(state, 10, 42), south = project(state, 10, -18);
+  assert.ok(Math.abs(north.elev - south.elev) < 1e-12, 'equally distant anchors fade equally');
+  assert.ok(Math.abs(project(state, 10, 12).elev - 1) < 2e-8);
+  const latitude = 12 - state.dip * 180 / Math.PI + 0.001;
+  assert.ok(project(state, 10, latitude).elev < 0.001, 'near-limb labels fade at the physical horizon');
+});
+
+test('surface cell footprint shrinks with zoom so coastlines can gain detail', () => {
+  let previous = 180;
+  for (const z of [0, 0.5, 0.65, 0.8, 0.9, 1]) {
+    const angle = surfaceCellAngle(cameraState(camera(z), W, H), 12);
+    assert.ok(angle > 0 && angle < previous);
+    previous = angle;
+  }
+  assert.ok(previous < 0.15, 'near-orbit glyphs require a finer geographic raster');
 });
 
 function expectAnchor(cam, anchor, point, message = 'picked surface point follows the pointer') {
@@ -50,10 +108,10 @@ test('dragging moves the surface in both axes without tilting the camera', () =>
 });
 
 test('wheel zoom keeps the picked world point stationary throughout easing and the horizon transition', () => {
-  for (const z of [0.5, 0.65, 0.8]) {
+  for (const z of [0.5, 0.65, 0.7, 0.8, 0.95]) {
     for (const delta of [-60, 60]) {
       const cam = camera(z), nav = navigation(cam);
-      const point = { x: 800, y: 600 };
+      const point = { x: 800, y: 550 };
       const anchor = screenToGeo(cam, W, H, point.x, point.y);
       nav.wheel(point.x, point.y, delta);
       assert.equal(cam.z, z, 'ordinary zoom begins on the next animation frame');
@@ -65,6 +123,24 @@ test('wheel zoom keeps the picked world point stationary throughout easing and t
       assert.equal(nav.step(1 / 60), false, 'easing stops after reaching its target');
     }
   }
+});
+
+test('unreachable limb and polar zoom anchors never override the required framing', () => {
+  for (const initial of [{ ...camera(0.5) }, { ...camera(0.8), lat: 89 }]) {
+    const cam = { ...initial }, nav = navigation(cam);
+    nav.wheel(800, 600, 240);
+    settle(nav);
+    assert.equal(cam.pitchBias, 0);
+    assert.ok(Object.values(cam).every(Number.isFinite));
+    const state = cameraState(cam, W, H);
+    if (cam.z >= 0.72) assert.ok(Math.abs(state.horizonY / H - 0.2) < 1e-12);
+    else assert.ok(state.horizonY < H / 2, 'zoom-out retains a centred globe above its lower limb');
+  }
+  const cam = { ...camera(0.9), lat: 89 }, nav = navigation(cam);
+  nav.wheel(800, 550, -120);
+  settle(nav);
+  assert.equal(cam.pitchBias, 0);
+  assert.ok(Math.abs(cameraState(cam, W, H).horizonY / H - 0.2) < 1e-12);
 });
 
 test('zero wheel input is inert and wheel magnitude and units determine the zoom amount', () => {

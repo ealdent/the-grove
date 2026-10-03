@@ -450,7 +450,7 @@
 <script type="module">
 import { decodeAtlas, rotationAt, placePoint, Land } from './pangea-engine.js';
 import { SOURCE, GROUPS, STATS } from './pangea-plate-data.js';
-import { cameraState, rayHit, project, screenToGeo as geoAt, createNavigation, wrapLon } from './pangea-navigation.js';
+import { cameraState, sphereSpan, surfaceCellAngle, rayHit, project, screenToGeo as geoAt, createNavigation, wrapLon } from './pangea-navigation.js';
 
 const $ = id => document.getElementById(id);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
@@ -471,8 +471,8 @@ const shelf = new Land(atlas, 1.5);        // coarse grid, only used for depth b
  *   dip    = acos(1/dist) is how far below the horizon the limb actually is
  *
  * At `look` = 90 the camera stares straight down and the planet is a centred
- * disc. As `dist` falls the disc grows, and `look` is blended towards
- * `dip - HZ`, which puts the horizon at HZ above the view axis - i.e. 20% down
+ * disc. As `dist` falls the disc grows, and `look` eases towards
+ * `dip + HZ`, which puts the horizon at HZ above the view axis - i.e. 20% down
  * from the top of the screen - the way the limb looks from low orbit. One
  * continuous parameter takes you from a small globe to a horizon shot with the
  * planet filling the lower four fifths of the frame.
@@ -484,12 +484,8 @@ const cam = { lon: 10, lat: 12, z: 0.52, pitchBias: 0 };
 const D2R = Math.PI / 180;
 const camState = () => cameraState(cam, GRIDW * cellW, GRIDH * cellH);
 
-/** Angular size of one cell where it is largest, i.e. straight below the camera. */
-const cellAngle = () => {
-  const S = camState();
-  const halfDeg = 2 * Math.atan(cellH / Math.max(4, S.discPx) * Math.tan(Math.asin(Math.min(1, 1 / S.dist)))) / D2R;
-  return Math.max(0.002, halfDeg);
-};
+/** Geographic footprint of a central cell, measured on the same visible sphere. */
+const cellAngle = () => Math.max(0.002, surfaceCellAngle(camState(), cellH));
 
 /* ================================================================== palette */
 const LAND_HUE = {
@@ -501,12 +497,12 @@ const LAND_HUE = {
 const hue = (i) => LAND_HUE[theme][i % LAND_HUE[theme].length];
 const THEMES = {
   dark: {
-    bg: '#05070c', abyss: '#070d16', deep: '#0b1727', mid: '#102437', shallow: '#17374f',
-    shelf: '#1e4a63', coast: '#4fbfe8', grid: '#16283a', ice: '#dce9f5', desert: '#c9a35e', rim: '#eaf7ff',
+    bg: '#05070c', ocean: '#144967', abyss: '#498aaf', deep: '#5196ba', mid: '#59a2c4', shallow: '#62afcf',
+    shelf: '#76c1d9', coast: '#4fbfe8', grid: '#345f7c', ice: '#dce9f5', desert: '#c9a35e', rim: '#eaf7ff',
     star: '#cfe4ff',
   },
   light: {
-    bg: '#f4eee0', abyss: '#7ba3c4', deep: '#5a8bb0', mid: '#3f739c', shallow: '#2b5e8a',
+    bg: '#f4eee0', ocean: '#c4dce7', abyss: '#7ba3c4', deep: '#5a8bb0', mid: '#3f739c', shallow: '#2b5e8a',
     shelf: '#1d4f79', coast: '#0d3a5c', grid: '#8ba0b0', ice: '#31536b', desert: '#8a6416', rim: '#fffdf5',
     star: '#6c7f92',
   },
@@ -523,13 +519,14 @@ const ICE = ' .,;:o*#@%';
 
 /* =================================================================== atlas */
 let atlasCanvas, actx, cellW, cellH, GRIDW, GRIDH, DPR;
+const glyphPatterns = new Map();
 let sprite = {};   // key -> {sx, sy}
 let variantsRef = [];
 let ATLASW = 40, COLS = 40;
 
-/** Build one tinted glyph atlas: every (variant, glyph) pair is rasterised once,
- *  so the per-frame cost is a drawImage per cell with no fillStyle churn. */
+/** Rasterize each tinted glyph once; repeated cells can then share a pattern. */
 function buildGlyphAtlas(fontPx) {
+  glyphPatterns.clear();
   const c = document.createElement('canvas');
   const g = c.getContext('2d');
   g.font = `${fontPx}px ${getComputedStyle(document.body).getPropertyValue('--mono')}`;
@@ -650,11 +647,15 @@ let anim = null;
 
 /* ================================================================== render */
 function ensureRaster() {
-  if (ma === lastRasterMa) return;
+  // Refresh paused coastlines when zoom needs a finer grid. Discrete levels
+  // avoid allocating and rasterizing a new world grid on every eased frame.
+  const desired = clamp(2.5 * cellAngle(), 0.03, 0.4);
+  const resolution = [0.03, 0.05, 0.1, 0.2, 0.4].filter(r => r <= desired).at(-1);
+  if (ma === lastRasterMa && land.res === resolution) return;
   lastRasterMa = ma;
   // resolve the coastlines a little finer than one screen cell, so the raster
   // never becomes the thing that limits the zoom
-  land.setResolution(clamp(2.5 * cellAngle(), 0.03, 0.4));
+  land.setResolution(resolution);
   land.rasterize(ma);
   shelf.rasterize(ma);
 }
@@ -663,6 +664,30 @@ function hash3(x, y, z) {
   let h = (x * 374761393 + y * 668265263 + z * 2147483647) | 0;
   h = Math.imul(h ^ (h >>> 13), 1274126177);
   return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+}
+
+let oceanShape, oceanShapeKey;
+function paintOcean(S) {
+  const key = [S.W, S.H, S.dist, S.look].join('|');
+  if (key !== oceanShapeKey) {
+    const rows = [];
+    for (let y = 0; y <= S.H; y++) {
+      const span = sphereSpan(S, y);
+      if (span) rows.push({ y, left: Math.max(-1, span.left), right: Math.min(S.W + 1, span.right) });
+    }
+    oceanShape = new Path2D();
+    if (rows.length) {
+      oceanShape.moveTo(rows[0].left, rows[0].y);
+      for (const row of rows) oceanShape.lineTo(row.right, row.y);
+      for (let i = rows.length - 1; i >= 0; i--) oceanShape.lineTo(rows[i].left, rows[i].y);
+      oceanShape.closePath();
+    }
+    oceanShapeKey = key;
+  }
+  // Blank glyph gaps still belong to Earth. A continuous blue silhouette keeps
+  // the full globe visible, including the ocean opposite the supercontinent.
+  ctx.fillStyle = THEMES[theme].ocean;
+  ctx.fill(oceanShape);
 }
 
 /* One ray per character cell. A cell that hits the sphere is coloured by the
@@ -675,6 +700,7 @@ function render() {
   ensureRaster();
 
   const S = camState();
+  paintOcean(S);
   const g = land.group, res = land.res, gw = land.w, gh = land.h;
   const sD = shelf.dist, sres = shelf.res, sgw = shelf.w, sgh = shelf.h;
   const last = RAMP_A.length - 1;
@@ -683,12 +709,40 @@ function render() {
   const dAng = cellAngle();
   const starsOn = theme === 'dark';
 
+  // Inland runs often repeat the same glyph hundreds of times. Tile those in
+  // one draw while preserving the atlas's exact filtering at device resolution.
+  // Fractional display scales use native cell blits to retain their filtering.
+  const canTile = Number.isInteger(DPR);
+  let runKey = null, runLength = 0, runX = 0, runY = 0, runSprite;
+  const flushRun = () => {
+    if (!runLength) return;
+    if (runLength === 1 || !canTile) {
+      for (let i = 0; i < runLength; i++) ctx.drawImage(atlasCanvas, runSprite.sx, runSprite.sy,
+        cellW, cellH, runX + i * cellW, runY, cellW, cellH);
+    } else {
+      let pattern = glyphPatterns.get(runKey);
+      if (!pattern) {
+        const glyph = document.createElement('canvas');
+        glyph.width = cellW * DPR; glyph.height = cellH * DPR;
+        glyph.getContext('2d').drawImage(atlasCanvas, runSprite.sx, runSprite.sy,
+          cellW, cellH, 0, 0, glyph.width, glyph.height);
+        pattern = ctx.createPattern(glyph, 'repeat');
+        pattern.setTransform(new DOMMatrix().scale(1 / DPR));
+        glyphPatterns.set(runKey, pattern);
+      }
+      ctx.fillStyle = pattern;
+      ctx.fillRect(runX, runY, runLength * cellW, cellH);
+    }
+    runLength = 0; runKey = null;
+  };
+
   for (let j = 0; j < GRIDH; j++) {
     for (let i = 0; i < GRIDW; i++) {
       const px = (i + 0.5) * cellW, py = (j + 0.5) * cellH;
       const hit = rayHit(S, px, py);
 
       if (hit.t === undefined) {                       // open space
+        flushRun();
         if (!starsOn) continue;
         const d = hit.dir;
         const h1 = hash3(Math.round(d[0] * 150), Math.round(d[1] * 150), Math.round(d[2] * 150));
@@ -710,7 +764,7 @@ function render() {
 
       let x = Math.floor((lon + 180) / res) % gw; if (x < 0) x += gw;
       const gy = Math.floor((90 - lat) / res);
-      if (gy < 0 || gy >= gh) continue;
+      if (gy < 0 || gy >= gh) { flushRun(); continue; }
       let sy = Math.floor((90 - lat) / sres);
       if (sy < 0 || sy >= sgh) sy = 0;
 
@@ -738,16 +792,16 @@ function render() {
         const band = clamp(5 - Math.floor(dist * 0.5), 0, 5);
         variant = V_OCEAN + band;
         ink = band >= 5 ? (nz2 > 0.4 ? 3 : 2)
-             : band === 4 ? 1
-             : band === 3 ? (nz2 > 0.6 ? 1 : 0)
-             : 0;
+             : band === 4 ? 2
+             : band === 3 ? (nz2 > 0.6 ? 2 : 1)
+             : (nz2 > 0.75 ? 2 : 1);
         // a fixed sheen on the "sunlit" side, and a lift towards the limb
         const rel = Math.atan2(hit.dir[0] * S.xc[0] + hit.dir[1] * S.xc[1] + hit.dir[2] * S.xc[2],
           hit.dir[0] * S.yc[0] + hit.dir[1] * S.yc[1] + hit.dir[2] * S.yc[2]);
         const glint = Math.exp(-Math.pow((rel + 0.85) / 0.7, 2)) * (0.25 + 0.75 * elev);
         if (band <= 4 && glint > 0.55) {
           variant = V_OCEAN + Math.min(5, band + 2);
-          ink = Math.round(glint * 3);
+          ink = Math.max(1, Math.round(glint * 3));
         }
         if (elev < 0.09) ink += 1;
       }
@@ -758,10 +812,13 @@ function render() {
       // a hard, bright edge exactly at the horizon
       if (elev < 0.012) { variant = COAST; ink = last; }
 
-      const sp = sprite[variant + '|' + clamp(ink, 0, last)];
-      if (!sp) continue;
-      ctx.drawImage(atlasCanvas, sp.sx, sp.sy, cellW, cellH, px - cellW / 2, py - cellH / 2, cellW, cellH);
+      const key = variant + '|' + clamp(ink, 0, last), sp = sprite[key];
+      if (!sp) { flushRun(); continue; }
+      if (runKey !== key) flushRun();
+      if (!runLength) { runKey = key; runX = i * cellW; runY = j * cellH; runSprite = sp; }
+      runLength++;
     }
+    flushRun();
   }
   placeLabels();
 }
@@ -810,7 +867,7 @@ function placeLabels() {
     if (!(l.plateIndex >= 0)) continue;
     placePoint(atlas, l.plateIndex, l.lon, l.lat, ma, _lp);
     const p = project(S, _lp[0], _lp[1]);
-    if (!p || p.elev <= 0.04) continue;                 // over the horizon
+    if (!p || p.elev <= 0.04 || p.x < 0 || p.x > S.W || p.y < 0 || p.y > S.H) continue;
     cand.push({ k, p, minor: MINOR.has(l.name), len: l.name.length });
   }
   cand.sort((a, b) => (a.minor - b.minor) || (b.p.elev - a.p.elev));
@@ -822,8 +879,8 @@ function placeLabels() {
     if (!labelFits(c.p.x, y, w, h)) { el.style.display = 'none'; continue; }
     labelBoxes.push({ x: c.p.x, y, w, h });
     el.style.display = 'block';
-    el.style.left = Math.round(c.p.x) + 'px';
-    el.style.top = Math.round(c.p.y) + 'px';
+    el.style.left = c.p.x + 'px';
+    el.style.top = c.p.y + 'px';
     el.style.opacity = (c.minor ? 0.26 : 0.40) + c.p.elev * 0.5;
   }
   for (let k = 0; k < labelEls.length; k++) {
@@ -1053,7 +1110,7 @@ const speedEls = SPEEDS.slice(1, 5).map(v => {
   return b;
 });
 
-$('legendList').innerHTML = GROUPS.slice(0, 10).map((g, i) =>
+$('legendList').innerHTML = GROUPS.map((g, i) =>
   `<li><i style="background:${hue(i)}"></i>${g.name}</li>`).join('');
 
 $('srcCite').innerHTML =

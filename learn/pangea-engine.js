@@ -17,7 +17,7 @@
  *  today.  Times are Ma before present; 0 is the present day.
  */
 
-import { TIMES, PLATE_IDS, COORD_BLOB, ROT_BLOB, GROUPS, LABELS, STATS } from './pangea-plate-data.js';
+import { TIMES, PLATE_IDS, COORD_BLOB, ROT_BLOB, GROUPS, COLOR_GROUP_OVERRIDES, LABELS, STATS } from './pangea-plate-data.js';
 
 const DEG = Math.PI / 180;
 const B64 = new Int16Array(128).fill(-1);
@@ -37,8 +37,9 @@ export function decodeAtlas() {
   const polys = [];
   let i = 0;
   while (i < COORD_BLOB.length) {
-    const group = B64[COORD_BLOB.charCodeAt(i)];
+    const encodedGroup = B64[COORD_BLOB.charCodeAt(i)];
     const plate = b64pair(COORD_BLOB, i + 1);
+    const group = COLOR_GROUP_OVERRIDES[PLATE_IDS[plate]] ?? encodedGroup;
     const count = b64pair(COORD_BLOB, i + 3);
     i += 5;
     const pts = new Float32Array(count * 2);

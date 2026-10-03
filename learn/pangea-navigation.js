@@ -9,10 +9,12 @@ export function cameraState(cam, W, H) {
   const dist = DIST_FAR * Math.pow(DIST_NEAR / DIST_FAR, cam.z);
   const dip = Math.acos(1 / dist);
   const hz = Math.atan(0.6 * Math.tan(FOV_Y / 2));
-  const t = clamp((cam.z - 0.44) / (0.98 - 0.44), 0, 1);
-  const blend = t * t * (3 - 2 * t);
-  const look = clamp((1 - blend) * Math.PI / 2 + blend * (dip - hz) + cam.pitchBias * D2R,
-    0.015, 89.6 * D2R);
+  // Keep the distant globe centred. As its limb reaches 20% from the top,
+  // smoothly tilt below the limb so that further zoom leaves 80% planet below.
+  // Looking above the limb (dip - hz) instead puts it near the screen's bottom.
+  const tilt = Math.PI / 2 - (dip + hz), ease = 2 * D2R;
+  const easedTilt = tilt <= -ease ? 0 : tilt >= ease ? tilt : (tilt + ease) ** 2 / (4 * ease);
+  const look = clamp(Math.PI / 2 - easedTilt + cam.pitchBias * D2R, 0.015, Math.PI / 2);
   const la = cam.lat * D2R, lo = cam.lon * D2R, cl = Math.cos(la);
   const N = [cl * Math.cos(lo), cl * Math.sin(lo), Math.sin(la)];
   const Nth = [-Math.sin(la) * Math.cos(lo), -Math.sin(la) * Math.sin(lo), Math.cos(la)];
@@ -24,7 +26,27 @@ export function cameraState(cam, W, H) {
   const xc = Est;
   const tanY = Math.tan(FOV_Y / 2);
   return { W, H, dist, dip, look, C, zc, xc, yc, N, Nth, Est, tanY, tanX: tanY * W / H,
+    horizonY: H / 2 * (1 - Math.tan(look - dip) / tanY),
     discPx: H / 2 * Math.tan(Math.asin(1 / dist)) / tanY };
+}
+
+// Exact perspective silhouette at a screen row. It shares the sphere/ray
+// intersection used by glyphs, keeping a solid ocean base inside the limb.
+export function sphereSpan(S, py) {
+  const y = (1 - 2 * py / S.H) * S.tanY;
+  const toward = -Math.sin(S.look) + y * Math.cos(S.look);
+  const x2 = S.dist * S.dist / (S.dist * S.dist - 1) * toward * toward - 1 - y * y;
+  if (toward >= 0 || x2 < 0) return null;
+  const half = S.W / 2 * Math.sqrt(x2) / S.tanX;
+  return { left: S.W / 2 - half, right: S.W / 2 + half };
+}
+
+export function surfaceCellAngle(S, cellH) {
+  const a = rayHit(S, S.W / 2, (S.H - cellH) / 2);
+  const b = rayHit(S, S.W / 2, (S.H + cellH) / 2);
+  if (a.t === undefined || b.t === undefined) return 180;
+  const cross = Math.hypot(a.y * b.z - a.z * b.y, a.z * b.x - a.x * b.z, a.x * b.y - a.y * b.x);
+  return Math.atan2(cross, a.x * b.x + a.y * b.y + a.z * b.z) / D2R;
 }
 
 export function rayHit(S, px, py) {
@@ -54,7 +76,9 @@ export function project(S, lon, lat) {
   const ndcX = v.reduce((sum, value, i) => sum + value * S.xc[i], 0) / depth / S.tanX;
   const ndcY = v.reduce((sum, value, i) => sum + value * S.yc[i], 0) / depth / S.tanY;
   if (Math.abs(ndcX) > 1.4 || Math.abs(ndcY) > 1.4) return null;
-  return { x: (ndcX + 1) * S.W / 2, y: (1 - ndcY) * S.H / 2, ndcX, ndcY, elev: 1 - ndcY };
+  const facing = p.reduce((sum, value, i) => sum + value * S.N[i], 0);
+  const elev = 1 - Math.acos(clamp(facing, 0, 1)) / S.dip;
+  return { x: (ndcX + 1) * S.W / 2, y: (1 - ndcY) * S.H / 2, ndcX, ndcY, elev };
 }
 
 export function screenToGeo(cam, W, H, x, y) {
@@ -103,13 +127,9 @@ export function panCamera(cam, W, H, from, to) {
 }
 
 function zoomCamera(cam, W, H, z, anchor, point) {
-  const before = cameraState(cam, W, H);
   cam.z = clamp(z, 0, 1);
-  if (anchorCamera(cam, W, H, anchor, point.x, point.y) || !anchor) return;
-  // The automatic low-orbit tilt can move a picked point above the new limb.
-  // Retain the previous viewing angle when that happens, within the tilt bounds.
-  const after = cameraState(cam, W, H);
-  cam.pitchBias = clamp(cam.pitchBias + (before.look - after.look) / D2R, -34, 30);
+  // Anchor reachable surface points by orbiting, without changing the horizon
+  // framing when a zoom-out or polar anchor cannot occupy the requested pixel.
   anchorCamera(cam, W, H, anchor, point.x, point.y);
 }
 

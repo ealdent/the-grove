@@ -880,3 +880,19 @@ Plan check-in: the user authorized this correction. Preserve the ASCII art, plat
 Review: consolidated pointer state fixes native pinch and either-finger handoff; direct sphere picking anchors both-axis drag and eased wheel zoom without the old 124–249px drift. Wheel magnitude/units and zero deltas work correctly; held keys use elapsed time and clear on release/blur. Manual input interrupts guided flights, chapter dots support Enter/Space, reduced motion applies immediately, and culled labels no longer linger. Corrected the camera's mirrored east/west basis and the outdated projection help text.
 
 Validation: `node --test tests/pangea-engine.test.mjs tests/pangea-navigation.test.mjs` passes 26 tests. Real Chromium mouse/wheel/CDP touch checks pass at 1600×950 and a 390×844 mobile viewport, including camera anchoring, both touch release handoffs, tour interruption, keyboard guards, reset/zoom, label culling, native chapter-dot keyboard activation, and reduced motion, with zero page errors. Frozen-baseline/current render medians are 10.3/10.4ms on the same 266×79 grid; no universal FPS claim. Evidence: `/tmp/pangea-navigation-{baseline,browser,accessibility}-report.json` and desktop/mobile screenshots. Physical iOS/Android, Safari/Firefox, and publication were not tested.
+
+---
+
+# Pangea horizon, labels, and ocean contrast
+
+Goal: keep the zoomed horizon at 20% from the top, align geographic labels with the globe, and make the initial Earth visibly round against space. Continue the authorized commit and push to origin/main.
+
+- [x] Derive and verify camera framing and label anchor geometry.
+- [x] Correct zoom framing, label placement, and ocean/space contrast.
+- [x] Verify math, desktop/mobile rendering and navigation; commit and push.
+
+Review: corrected the horizon angle and removed zoom's persistent tilt fallback. The distant globe stays centered; low-orbit views hold the center limb at 20% from the top. A perspective-correct blue ocean silhouette and brighter ocean glyphs preserve a round Earth in both themes. Labels use physical horizon visibility and precise projected positions; corrected fourteen offshore or incorrectly attached anchors, restored the missing Pacific color family, and corrected regional color classifications so the legend agrees with land. Paused zoom now refines the coastline raster when needed.
+
+Validation: `node --test tests/pangea-engine.test.mjs tests/pangea-navigation.test.mjs` passes 33 tests, including all 31 label anchors at all 37 reconstruction samples. Cache-disabled Chromium desktop/mobile checks cover both themes, initial and zoomed views, native drag/wheel/pinch handoffs, keyboard controls, tour interruption, reset, reduced motion and label culling, with zero page exceptions. Horizon measurements match 20%; label marker centers match projected positions within 0.02px. Evidence: `/tmp/pangea-horizon-production-visual-report.json`, `/tmp/pangea-horizon-regression-browser-report.json` and `/tmp/pangea-horizon-accessibility-report.json`.
+
+Rendering: repeated glyph runs share device-resolution patterns. Matched maximum-zoom samples improve from 43.7ms to 4.2ms at DPR 1 and 61.9ms to 4.2ms at DPR 2 while preserving pixels; fractional display scales retain native cell drawing for accurate filtering. The pattern cache clears on font, theme and resize changes. `/tmp/pangea-batch-production-report.json` records 28 pixel-exact comparisons at DPR 1/2/1.25/1.5, including theme/font/resize checks. These are Chromium measurements, not a universal frame-rate claim. Physical mobile hardware, Safari and Firefox remain unverified.
