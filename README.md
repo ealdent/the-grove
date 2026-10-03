@@ -27,6 +27,7 @@ A collection of games, tools, and experiments built with AI — hosted on GitHub
 - **[The Loom That Ate the Dawn](time-loop/gpt-5.6-sol-ultra-time-loop-puzzle.html)** — Finish a dead weaver's last dawn beside Woven Figures made from your prior footfalls. Hold treadles, seat boat-shuttles, and protect every older stitch from a Snarl. (*GPT-5.6 Sol Ultra*)
 - **[Paradox Vault](time-loop/paradox-vault.html)** — Rob a vault by cooperating with your past selves. Every loop, your old inputs replay beside you — move one box they depended on and history tears open. (*Opus 5 High*)
 - **[The Standing Salt](time-loop/opus5-ultra-time-loop-puzzle.html)** — Walk a 1670s salt-pan alone, beside four shifts of hardened salt repeating your earlier work exactly. Weight the tread-boards, shoulder the loaves, carry the mother to the crib. Contradict what you already did and the salt slakes. (*Opus 5 Ultra*)
+- **[True of Voice](time-loop/opus-5.5-max-time-loop-puzzle.html)** — Walk the hours of the night a dead tomb-painter once drew on kings' walls, beside clay shabti that repeat every turning you have already spent. Weigh the balance pans, shove the bull-weights, carry the parts of yourself to each gate. Contradict what Thoth wrote and Apep swallows the hour. (*Opus 5.5 Max*)
 
 ### [Tower Defense](tower-def/)
 
