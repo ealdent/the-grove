@@ -1,0 +1,1274 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="description" content="Quire: a first-person walk through a country folded from one unbound book. Pure SVG.">
+<meta name="theme-color" content="#0a0d2b">
+<title>Quire: a country folded from one book</title>
+<style>
+:root {
+  --ink: #0a0d2b;
+  --cream: #fff0d2;
+  --gold: #ffd27a;
+  --ui-line: rgba(255, 226, 168, 0.3);
+  --stick: clamp(116px, 30vmin, 178px);
+  /* palette: folded paper under a dusk sky */
+  --pine-l: #4f8f83; --pine-d: #2a5a5e;
+  --stone-l: #a48d86; --stone-d: #6e5a66;
+  --wall-l: #f7ecd6; --wall-d: #dcc6a2; --door: #3a2a36;
+  --roof-l: #a45c6b; --roof-d: #6e3a4c;
+  --lamp: #ffd27a;
+  --stem: #6a9462; --petal-l: #f7b8ab; --petal-d: #d97d8e;
+  --crane-l: #fbf5e6; --crane-d: #d6c6a6;
+  --fold-l: #efdcb0; --fold-m: #e0c594; --fold-d: #c9a477;
+  --crease: #8a6a4c;
+  --ridge-fl: #7e6ca2; --ridge-fd: #5f5088;
+  --near-fl: #4b3f74; --near-fd: #342d58;
+  --moon-rim: #c8a673;
+}
+* { box-sizing: border-box; }
+html, body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: var(--ink);
+  overscroll-behavior: none;
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+}
+#stage {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  touch-action: none;
+}
+body.grab #stage { cursor: grabbing; }
+#view {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+/* ground and sky layers */
+.fold-l { fill: var(--fold-l); stroke: var(--fold-l); stroke-width: 0.7px; stroke-linejoin: round; }
+.fold-m { fill: var(--fold-m); stroke: var(--fold-m); stroke-width: 0.7px; stroke-linejoin: round; }
+.fold-d { fill: var(--fold-d); stroke: var(--fold-d); stroke-width: 0.7px; stroke-linejoin: round; }
+#creases { fill: none; stroke: var(--crease); stroke-opacity: 0.45; stroke-width: 1.2px; }
+.rf-l { fill: var(--ridge-fl); stroke: var(--ridge-fl); }
+.rf-d { fill: var(--ridge-fd); stroke: var(--ridge-fd); }
+.rn-l { fill: var(--near-fl); stroke: var(--near-fl); }
+.rn-d { fill: var(--near-fd); stroke: var(--near-fd); }
+.rf-l, .rf-d, .rn-l, .rn-d { stroke-width: 0.5px; stroke-linejoin: round; }
+.stem { fill: none; stroke: var(--stem); stroke-width: 0.06; stroke-linecap: round; }
+.tw { animation: twinkle 3.8s ease-in-out infinite; animation-delay: var(--d, 0s); }
+@keyframes twinkle { 0%, 100% { opacity: 0.35; } 50% { opacity: 1; } }
+
+/* lanterns breathe; --glow and --ad are set per <use> from script */
+.halo {
+  opacity: var(--glow, 0.4);
+  transform-box: fill-box;
+  transform-origin: 50% 50%;
+  animation: breathe 6.5s ease-in-out infinite;
+  animation-delay: var(--ad, 0s);
+}
+@keyframes breathe {
+  0%, 100% { transform: scale(0.92); }
+  50% { transform: scale(1.08); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .halo, .tw { animation: none; }
+}
+
+/* HUD (never takes pointer events; only the intro and the sticks do) */
+#hud { position: fixed; inset: 0; pointer-events: none; z-index: 5; }
+.hud-l {
+  position: absolute;
+  left: max(16px, env(safe-area-inset-left));
+  top: max(14px, env(safe-area-inset-top));
+  color: var(--cream);
+  font-family: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.6);
+  line-height: 1.35;
+  padding: 8px 12px;
+  border-radius: 12px;
+  background: rgba(10, 13, 43, 0.38);
+}
+.hud-l .title { font-size: 20px; letter-spacing: 0.22em; text-transform: uppercase; color: var(--gold); }
+.hud-l .sub { font-size: 13px; font-style: italic; opacity: 0.85; }
+.hud-l .tally { font-size: 13px; margin-top: 4px; opacity: 0.9; }
+.hud-l .tally b { color: var(--gold); font-weight: 600; }
+#hint {
+  position: absolute;
+  left: 50%;
+  bottom: max(14px, env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  white-space: nowrap;
+  font-family: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+  font-size: 13px;
+  color: rgba(255, 240, 215, 0.92);
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.6);
+  background: rgba(10, 13, 43, 0.45);
+  padding: 4px 12px;
+  border-radius: 999px;
+  transition: opacity 1.4s ease;
+}
+#hint.faded { opacity: 0; }
+body.touch #hint { display: none; }
+
+#toast {
+  position: fixed;
+  left: 50%;
+  top: 15%;
+  width: min(560px, calc(100% - 32px));
+  transform: translate(-50%, -8px);
+  z-index: 6;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.6s ease, transform 0.6s ease;
+  padding: 14px 18px;
+  border-radius: 12px;
+  background: rgba(18, 14, 36, 0.72);
+  border: 1px solid var(--ui-line);
+  color: #fff1d6;
+  font-family: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+  font-style: italic;
+  font-size: 16px;
+  line-height: 1.45;
+  text-align: center;
+}
+#toast.show { opacity: 1; transform: translate(-50%, 0); }
+#toast .lbl {
+  display: block;
+  font-style: normal;
+  font-size: 11px;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: var(--gold);
+  margin-bottom: 4px;
+}
+
+/* virtual sticks: HTML overlays, touch only, one pointer id each */
+.stick {
+  position: fixed;
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 18px);
+  width: var(--stick);
+  height: var(--stick);
+  border-radius: 50%;
+  z-index: 7;
+  display: none;
+  touch-action: none;
+}
+#joyL { left: calc(env(safe-area-inset-left, 0px) + 16px); }
+#joyR { right: calc(env(safe-area-inset-right, 0px) + 16px); }
+body.touch.playing .stick { display: block; }
+.stick .ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 236, 206, 0.38);
+  background: radial-gradient(circle, rgba(255, 236, 206, 0.12) 0%, rgba(255, 236, 206, 0.05) 62%, rgba(255, 236, 206, 0) 74%);
+}
+.stick .knob {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 42%;
+  height: 42%;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  background: radial-gradient(circle at 40% 35%, rgba(255, 250, 236, 0.95), rgba(255, 220, 160, 0.62));
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+}
+.stick.on .knob { box-shadow: 0 0 0 6px rgba(255, 236, 206, 0.14), 0 4px 14px rgba(0, 0, 0, 0.35); }
+
+/* intro: lore and controls, shown until the player opens the fold */
+#intro {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  display: grid;
+  place-items: center;
+  padding: max(14px, env(safe-area-inset-top)) 16px max(14px, env(safe-area-inset-bottom));
+  background: radial-gradient(120% 90% at 50% 40%, rgba(10, 13, 43, 0.25), rgba(10, 13, 43, 0.8));
+  transition: opacity 0.7s ease;
+}
+#intro.gone { opacity: 0; pointer-events: none; }
+#intro[hidden] { display: none; }
+body:not(.playing) #hud { visibility: hidden; }
+.card {
+  width: min(620px, 100%);
+  max-height: calc(100vh - 28px);
+  max-height: calc(100dvh - 28px);
+  overflow: auto;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
+  padding: clamp(18px, 4vmin, 30px);
+  border-radius: 16px;
+  background: linear-gradient(180deg, rgba(28, 24, 56, 0.9), rgba(16, 13, 34, 0.9));
+  border: 1px solid var(--ui-line);
+  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.45);
+  color: #f4e8d2;
+  font-family: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+  font-size: 16px;
+  line-height: 1.55;
+}
+.card p { margin: 0 0 0.85em; }
+.card .eyebrow { font-size: 12px; letter-spacing: 0.22em; text-transform: uppercase; color: var(--gold); margin: 0 0 6px; }
+.card h1 {
+  margin: 0 0 2px;
+  font-weight: 400;
+  font-size: clamp(40px, 10vmin, 68px);
+  letter-spacing: 0.2em;
+  line-height: 1.05;
+  color: #ffe2a8;
+}
+.card .sub { font-style: italic; color: #e9d7b8; margin-bottom: 1.1em; }
+.card kbd {
+  display: inline-block;
+  min-width: 1.5em;
+  padding: 0 0.35em;
+  border-radius: 5px;
+  border: 1px solid var(--ui-line);
+  background: rgba(255, 236, 206, 0.08);
+  font-family: inherit;
+  font-size: 0.9em;
+  text-align: center;
+}
+.card .keys-touch { display: none; }
+body.touch .card .keys-desk { display: none; }
+body.touch .card .keys-touch { display: block; }
+.go {
+  appearance: none;
+  border: 0;
+  margin-top: 0.4em;
+  padding: 12px 24px;
+  border-radius: 999px;
+  font: inherit;
+  font-size: 17px;
+  letter-spacing: 0.04em;
+  color: #2a1d2c;
+  background: var(--gold);
+  box-shadow: 0 6px 22px rgba(255, 210, 122, 0.35);
+  cursor: pointer;
+}
+.go:focus-visible { outline: 3px solid #fff3d6; outline-offset: 3px; }
+</style>
+</head>
+<body>
+<main id="stage" aria-label="Quire: a first-person walk through a folded country">
+  <svg id="view" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="A dusk landscape of folded paper: pines, stones, lantern shrines, lilies and cranes under a pinhole sky">
+    <defs>
+      <linearGradient id="gSky" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="0" y2="400">
+        <stop offset="0" stop-color="#090c2a"/>
+        <stop offset="0.45" stop-color="#1d2152"/>
+        <stop offset="0.76" stop-color="#553d70"/>
+        <stop offset="0.92" stop-color="#b56a7f"/>
+        <stop offset="1" stop-color="#f4ad80"/>
+      </linearGradient>
+      <linearGradient id="gGround" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#dcc08f"/>
+        <stop offset="1" stop-color="#8f6d4d"/>
+      </linearGradient>
+      <linearGradient id="gMist" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#f4b58c" stop-opacity="0"/>
+        <stop offset="0.7" stop-color="#f4b58c" stop-opacity="0.78"/>
+        <stop offset="1" stop-color="#f4b58c" stop-opacity="0"/>
+      </linearGradient>
+      <radialGradient id="gMoon" cx="0.38" cy="0.36" r="0.72">
+        <stop offset="0" stop-color="#fffbef"/>
+        <stop offset="0.7" stop-color="#f1dfb9"/>
+        <stop offset="1" stop-color="#dcc08c"/>
+      </radialGradient>
+      <radialGradient id="gHalo">
+        <stop offset="0" style="stop-color:var(--lamp)" stop-opacity="1"/>
+        <stop offset="0.3" style="stop-color:var(--lamp)" stop-opacity="0.5"/>
+        <stop offset="1" style="stop-color:var(--lamp)" stop-opacity="0"/>
+      </radialGradient>
+      <radialGradient id="gCore">
+        <stop offset="0" stop-color="#fffdf2"/>
+        <stop offset="0.55" style="stop-color:var(--lamp)"/>
+        <stop offset="1" style="stop-color:var(--lamp)" stop-opacity="0.6"/>
+      </radialGradient>
+
+      <!-- props: base at (0, 0), up is negative y, units are world metres -->
+      <g id="p-pine">
+        <path style="fill:var(--pine-l)" d="M0 -2.9L-1.25 -1.2H0ZM0 -3.6L-1 -2H0ZM0 -4.3L-0.72 -2.8H0Z"/>
+        <path style="fill:var(--pine-d)" d="M0 -2.9V-1.2H1.25ZM0 -3.6V-2H1ZM0 -4.3V-2.8H0.72ZM-0.11 -1.2V0H0.11V-1.2Z"/>
+      </g>
+      <g id="p-stone">
+        <path style="fill:var(--stone-l)" d="M-0.56 0L-0.42 -0.5L0.04 -0.66L0.02 0Z"/>
+        <path style="fill:var(--stone-d)" d="M0.02 0L0.04 -0.66L0.56 -0.32L0.58 0Z"/>
+      </g>
+      <g id="p-shrine">
+        <path style="fill:var(--stone-d)" d="M-1.12 0H1.12L0.98 -0.24H-0.98Z"/>
+        <path style="fill:var(--wall-l)" d="M-0.8 -0.24H0V-1.6H-0.8Z"/>
+        <path style="fill:var(--wall-d)" d="M0 -0.24H0.8V-1.6H0Z"/>
+        <path style="fill:var(--door)" d="M-0.26 -0.24V-0.96Q0 -1.24 0.26 -0.96V-0.24Z"/>
+        <circle class="halo" cx="0" cy="-0.8" r="0.95" fill="url(#gHalo)"/>
+        <circle cx="0" cy="-0.78" r="0.15" fill="url(#gCore)"/>
+        <path style="fill:var(--roof-l)" d="M-1.46 -1.6H0V-1.92H-0.98Z"/>
+        <path style="fill:var(--roof-d)" d="M0 -1.6H1.46L0.98 -1.92H0Z"/>
+        <path style="fill:var(--roof-l)" d="M-0.98 -1.92H0V-2.24H-0.64Z"/>
+        <path style="fill:var(--roof-d)" d="M0 -1.92H0.98L0.64 -2.24H0Z"/>
+        <path style="fill:var(--roof-d)" d="M-0.05 -2.24L0 -2.72L0.05 -2.24Z"/>
+      </g>
+      <g id="p-lily">
+        <path class="stem" d="M0 0Q0.07 -0.6 0 -1.22"/>
+        <circle class="halo" cx="0" cy="-1.5" r="0.6" fill="url(#gHalo)"/>
+        <path style="fill:var(--petal-l)" d="M0 -1.22L-0.44 -1.7L-0.04 -1.5Z"/>
+        <path style="fill:var(--petal-d)" d="M0 -1.22L0.44 -1.7L0.04 -1.5Z"/>
+        <path style="fill:var(--petal-l)" d="M0 -1.22L-0.2 -1.84L0.2 -1.84Z"/>
+        <circle cx="0" cy="-1.5" r="0.1" fill="url(#gCore)"/>
+      </g>
+      <g id="p-crane">
+        <path style="fill:var(--crane-l)" d="M0 -0.02L-0.9 -0.3L-0.2 0.1Z"/>
+        <path style="fill:var(--crane-d)" d="M0 -0.02L0.9 -0.3L0.2 0.1Z"/>
+        <path style="fill:var(--crane-l)" d="M-0.12 0.06L0 -0.12L0.12 0.06L0 0.22Z"/>
+        <path style="fill:var(--crane-d)" d="M-0.05 -0.1L0.05 -0.1L0.15 -0.4L0.03 -0.33Z"/>
+        <path style="fill:var(--crane-d)" d="M-0.1 0.18L0 0.46L0.1 0.18Z"/>
+      </g>
+    </defs>
+
+    <rect id="sky" x="0" y="0" width="1" height="1" fill="url(#gSky)"/>
+    <g id="stars"></g>
+    <g id="moon">
+      <circle r="1" fill="url(#gMoon)"/>
+      <path d="M-0.86 0.2Q-0.2 -0.14 0.9 -0.34" fill="none" style="stroke:var(--moon-rim)" stroke-width="0.05" stroke-opacity="0.8"/>
+      <path d="M-0.34 -0.62Q0.12 -0.12 0.3 0.7" fill="none" style="stroke:var(--moon-rim)" stroke-width="0.04" stroke-opacity="0.6"/>
+    </g>
+    <path id="ridge-far-l" class="rf-l" d=""/>
+    <path id="ridge-far-d" class="rf-d" d=""/>
+    <path id="ridge-near-l" class="rn-l" d=""/>
+    <path id="ridge-near-d" class="rn-d" d=""/>
+    <rect id="ground" x="0" y="0" width="1" height="1" fill="url(#gGround)"/>
+    <path id="fold-l" class="fold-l" d=""/>
+    <path id="fold-m" class="fold-m" d=""/>
+    <path id="fold-d" class="fold-d" d=""/>
+    <path id="creases" d=""/>
+    <g id="props"></g>
+    <rect id="mist" x="0" y="0" width="1" height="1" fill="url(#gMist)"/>
+  </svg>
+
+  <div id="hud" aria-hidden="true">
+    <div class="hud-l">
+      <div class="title">Quire</div>
+      <div class="sub">Folio I · the crease road</div>
+      <div class="tally">Margins restored <b id="count">0</b></div>
+    </div>
+    <div id="hint" class="hint-desk">WASD or arrows walk · ← → or Q E turn · drag to look</div>
+  </div>
+  <div id="toast" role="status" aria-live="polite"><span class="lbl">Margin restored</span><span id="toast-text"></span></div>
+  <div id="joyL" class="stick" aria-hidden="true"><div class="ring"></div><div class="knob"></div></div>
+  <div id="joyR" class="stick" aria-hidden="true"><div class="ring"></div><div class="knob"></div></div>
+</main>
+
+<section id="intro" role="dialog" aria-modal="true" aria-labelledby="intro-title">
+  <div class="card scroll">
+    <p class="eyebrow">svg-forest · a folded country</p>
+    <h1 id="intro-title">Quire</h1>
+    <p class="sub">A country folded from one unbound book.</p>
+    <p>When the Tide came for Halden, the Scrivener did the only thing a scrivener could. She folded the whole land into a quire, one stack of sheets, and pressed it shut. Rivers became ridges. Forests became stacked green paper. The last cranes were folded from spare margins to keep watch over the creases.</p>
+    <p>The book has been closed for a thousand years. At dusk the creases warm and soften, and a walker can open the country a few steps at a time. You are a Folio: a page-walker with a bone folder and a lantern.</p>
+    <p>Light the shrines along the margins to restore what the Tide tried to erase. There is no last page. The walk is the sentence.</p>
+    <p class="keys-desk">Walk with <kbd>W</kbd> <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd> or the arrows. Turn with <kbd>←</kbd> <kbd>→</kbd> or <kbd>Q</kbd> <kbd>E</kbd>. Drag the mouse to look.</p>
+    <p class="keys-touch">Left stick walks. Right stick turns. Both thumbs at once.</p>
+    <button id="begin" class="go" type="button">Open the fold</button>
+  </div>
+</section>
+
+<script>
+(() => {
+  'use strict';
+
+  // Quire: a first-person walk through a country folded from one unbound book.
+  // Engine: a pinhole projection writes world points into an SVG viewBox the size of the window.
+  // Ground is world-fixed accordion folds plus creases, clipped to the near plane.
+  // Props are pooled <use> nodes, one per visible prop. Their DOM order follows radial distance,
+  // reconciled with a longest-increasing-subsequence diff so only out-of-order nodes move.
+  // Moving an attached <use> is the expensive part, so the diff keeps moves to a handful per frame.
+
+  // ── tuning ────────────────────────────────────────────────────────────────
+  const NS = 'http://www.w3.org/2000/svg';
+  const EYE = 1.6;          // eye height, world units
+  const NEAR = 0.25;        // near clip for ground and sky geometry
+  const PROP_NEAR = 0.6;    // props closer than this are not drawn
+  const PLAYER_R = 0.35;    // walker collision radius
+  const CELL = 9;           // prop cell size
+  const FOLD_W = 1.6;       // typical width of an accordion fold
+  const CREASE = 3;         // spacing of the horizontal creases
+  const FLOCK = 70;         // crane flock cell size
+  const WALK = 3.1, STRAFE = 2.4, TURN = 2.3;   // units/s and rad/s
+  const CLEAR = 6.5;        // no props this close to the spawn point
+  const RIDGE_N = 80, RIDGE_SPAN = 1.35;
+  const STAR_N = 130;
+  const MAXN = 2048;
+  const MOON_AZ = 2.35, MOON_EL = 0.5;
+
+  const T_PINE = 0, T_STONE = 1, T_SHRINE = 2, T_LILY = 3, T_CRANE = 4;
+  // w, h: half-width and height in world units, used for culling. solid: collision radius.
+  const TYPES = [
+    { id: 'p-pine', w: 1.3, h: 4.35, solid: 0.7 },
+    { id: 'p-stone', w: 0.6, h: 0.7, solid: 0.42 },
+    { id: 'p-shrine', w: 1.5, h: 2.75, solid: 1.15 },
+    { id: 'p-lily', w: 0.5, h: 1.85, solid: 0 },
+    { id: 'p-crane', w: 0.95, h: 0.9, solid: 0 },
+  ];
+  // far: draw distance. cells: prop window radius in cells. cap: maximum <use> nodes.
+  const QUALITY = [
+    { far: 38, cells: 5, cap: 150 },
+    { far: 50, cells: 6, cap: 230 },
+    { far: 62, cells: 7, cap: 330 },
+  ];
+  const LORE = [
+    'The margin remembers what the page was made to forget.',
+    'Every crease is a road someone walked once, then folded shut behind them.',
+    'A crane folded from a spoiled sheet still knows the way home.',
+    'Here a river was pressed flat and called a valley.',
+    'The Scrivener left no last page. She said the walk was the sentence.',
+    'Nothing is lost while a fold can still be opened.',
+    'The Tide cannot read, so the book was hidden in paper.',
+    'Lantern-lilies bloom where a sheet was once damp with rain.',
+    'Someone stopped here to unfold their own name, and kept walking.',
+    'The lamps burn the color of the hour the book was closed.',
+    'Pines are stacked sentences. Their needles are only commas.',
+    'You are not the first Folio to light this margin.',
+  ];
+
+  // ── helpers ───────────────────────────────────────────────────────────────
+  const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
+  const smooth = (v, a, b) => { const t = clamp((v - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
+  const fmix = (h) => {
+    h ^= h >>> 16; h = Math.imul(h, 0x85ebca6b);
+    h ^= h >>> 13; h = Math.imul(h, 0xc2b2ae35);
+    h ^= h >>> 16; return h >>> 0;
+  };
+  // Mix each input before combining. A plain XOR of linear terms maps (i, j) and (-i, -j) to the same
+  // hash for about a third of cells, which duplicates the mirrored cell's props.
+  const hash2 = (i, j, s) => fmix(fmix((i | 0) ^ Math.imul(s | 0, 0x9e3779b9)) ^ fmix((j | 0) + 0x632be5ab));
+  const unit = (h) => h / 4294967296;
+  const cellKey = (i, j) => (i + 0x100000) * 0x200000 + (j + 0x100000);   // unique far beyond any walk
+  function rng(seed) {
+    let a = seed >>> 0;
+    return () => {
+      a = (a + 0x6d2b79f5) | 0;
+      let t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+  function vnoise(x, z) {
+    const xi = Math.floor(x), zi = Math.floor(z), fx = x - xi, fz = z - zi;
+    const u = fx * fx * (3 - 2 * fx), v = fz * fz * (3 - 2 * fz);
+    const a = unit(hash2(xi, zi, 0x51ed)), b = unit(hash2(xi + 1, zi, 0x51ed));
+    const c = unit(hash2(xi, zi + 1, 0x51ed)), d = unit(hash2(xi + 1, zi + 1, 0x51ed));
+    return a + (b - a) * u + (c - a) * v + (a - b - c + d) * u * v;
+  }
+  // Ridge elevations in radians of azimuth. Periodic in a, so the range wraps seamlessly.
+  const ridgeFar = (a) => 0.1 + 0.045 * Math.sin(3 * a + 1.1) + 0.03 * Math.sin(7 * a + 2.3) + 0.012 * Math.sin(17 * a + 0.4);
+  const ridgeNear = (a) => 0.05 + 0.03 * Math.sin(2 * a + 4.0) + 0.02 * Math.sin(5 * a + 0.9) + 0.008 * Math.sin(13 * a + 1.7);
+  // Fold boundaries jitter around a regular grid, so folds have uneven widths without drifting.
+  const foldX = (k) => k * FOLD_W + (unit(hash2(k, 0x9d, 0xf01)) - 0.5) * FOLD_W * 0.6;
+
+  // ── DOM ───────────────────────────────────────────────────────────────────
+  const $ = (id) => document.getElementById(id);
+  const svg = $('view'), starsG = $('stars'), moonG = $('moon'), layer = $('props');
+  const skyRect = $('sky'), skyGrad = $('gSky'), groundRect = $('ground'), mistRect = $('mist');
+  const ridgeFarL = $('ridge-far-l'), ridgeFarD = $('ridge-far-d');
+  const ridgeNearL = $('ridge-near-l'), ridgeNearD = $('ridge-near-d');
+  const foldL = $('fold-l'), foldM = $('fold-m'), foldD = $('fold-d'), creases = $('creases');
+  const hudCount = $('count'), toast = $('toast'), toastText = $('toast-text'), hint = $('hint');
+  const intro = $('intro'), beginBtn = $('begin'), stage = $('stage');
+  const stickEl = { L: $('joyL'), R: $('joyR') };
+  const coarse = matchMedia('(pointer: coarse)').matches;
+  const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  document.body.classList.toggle('touch', coarse);
+  // A touch laptop has a fine primary pointer. Switch to touch controls the first time a finger lands.
+  window.addEventListener('pointerdown', (e) => {
+    if (e.pointerType === 'touch') document.body.classList.add('touch');
+  }, { passive: true });
+
+  const params = new URLSearchParams(location.search);
+  let quality = coarse ? 1 : 2;
+  if (params.has('q')) {
+    const q = parseInt(params.get('q'), 10);
+    if (q >= 0 && q <= 2) quality = q;
+  }
+  const adaptive = params.get('adapt') !== '0';
+
+  // ── state ─────────────────────────────────────────────────────────────────
+  const S = { px: 0, pz: 0, yaw: 0, pitch: 0, t: 0, phase: 0, amt: 0 };
+  let lastGood = null;
+  const look = { yaw: 0, pitch: 0 };             // accumulated from mouse drag, applied in update()
+  const keys = Object.create(null);
+  const joy = { L: { id: null, x: 0, y: 0 }, R: { id: null, x: 0, y: 0 } };
+  let playing = false;
+  let restored = 0;
+
+  // projection and camera. These are set in update() and read by every projection.
+  let W = 1, H = 1, FOC = 1, PX = 0, PY = 0, HZ = 0;
+  let camX = 0, camY = EYE, camZ = 0;
+  let SY = 0, CSY = 1, SP = 0, CP = 1;
+  let RX = 0, RY = 0, RD = 1;                    // outputs of projectDir()
+
+  const cells = new Map(), flocks = new Map();
+  const litSet = new Set();                      // shrine keys already restored (survives cell eviction)
+  let propList = [], birdList = [];
+  let curCI = NaN, curCJ = NaN, curR = -1, curFI = NaN, curFJ = NaN;
+
+  const free = TYPES.map(() => []);              // released nodes, per type
+  let nodeCount = 0;
+  let order = [];                                // visible nodes in DOM order, as last reconciled
+  const visBuf = [];
+  const seqBuf = new Int32Array(MAXN), lisTails = new Int32Array(MAXN), lisPrev = new Int32Array(MAXN);
+  const markBuf = new Uint8Array(MAXN);
+
+  const STAR_EL = [];
+  const starAz = new Float64Array(STAR_N), starEl = new Float64Array(STAR_N), starOn = new Uint8Array(STAR_N);
+
+  // clipping scratch: A = input polygon in camera space, B = clipped output
+  const AX = new Float64Array(8), AV = new Float64Array(8), AD = new Float64Array(8);
+  const BX = new Float64Array(16), BV = new Float64Array(16), BD = new Float64Array(16);
+
+  const stats = { vis: 0, moves: 0, nodes: 0, cells: 0, props: 0, dom: 0, ms: 0, quality, restored: 0 };
+
+  // ── projection ────────────────────────────────────────────────────────────
+  // Direction vector (dx, dy, dz) into screen space. Depth is in RD, and the result is only valid when RD > 0.
+  // Yaw turns about the vertical axis (positive turns right). Pitch tilts about the camera's right axis.
+  function projectDir(dx, dy, dz) {
+    const xc = dx * CSY - dz * SY;
+    const z0 = dx * SY + dz * CSY;
+    const d = z0 * CP + dy * SP;
+    const v = dy * CP - z0 * SP;
+    RD = d;
+    const k = FOC / (d > 1e-6 ? d : 1e-6);
+    RX = PX + xc * k;
+    RY = PY - v * k;
+    return d > 0;
+  }
+
+  // Ground point (x, 0, z) into camera space, stored at scratch index i.
+  function toCam(x, z, i) {
+    const dx = x - camX, dz = z - camZ, dy = -camY;
+    const z0 = dx * SY + dz * CSY;
+    AX[i] = dx * CSY - dz * SY;
+    AD[i] = z0 * CP + dy * SP;
+    AV[i] = dy * CP - z0 * SP;
+  }
+
+  // Sutherland-Hodgman clip of a camera-space polygon against the near plane, then SVG path data.
+  function clipPoly(n) {
+    let m = 0;
+    for (let i = 0; i < n; i++) {
+      const j = i + 1 < n ? i + 1 : 0;
+      const di = AD[i] - NEAR, dj = AD[j] - NEAR;
+      if (di >= 0) { BX[m] = AX[i]; BV[m] = AV[i]; BD[m] = AD[i]; m++; }
+      if ((di >= 0) !== (dj >= 0)) {
+        const t = di / (di - dj);
+        BX[m] = AX[i] + (AX[j] - AX[i]) * t;
+        BV[m] = AV[i] + (AV[j] - AV[i]) * t;
+        BD[m] = NEAR; m++;
+      }
+    }
+    if (m < 3) return '';
+    let s = '';
+    for (let i = 0; i < m; i++) {
+      const k = FOC / BD[i];
+      s += (i ? 'L' : 'M') + (PX + BX[i] * k).toFixed(1) + ' ' + (PY - BV[i] * k).toFixed(1);
+    }
+    return s + 'Z';
+  }
+
+  // Segment from camera-space points 0 and 1, clipped to the near plane, as path data.
+  function segPath() {
+    const d0 = AD[0] - NEAR, d1 = AD[1] - NEAR;
+    if (d0 < 0 && d1 < 0) return '';
+    let x0 = AX[0], v0 = AV[0], e0 = AD[0], x1 = AX[1], v1 = AV[1], e1 = AD[1];
+    if (d0 < 0 || d1 < 0) {
+      const t = d0 / (d0 - d1);
+      const xi = AX[0] + (AX[1] - AX[0]) * t, vi = AV[0] + (AV[1] - AV[0]) * t;
+      if (d0 < 0) { x0 = xi; v0 = vi; e0 = NEAR; } else { x1 = xi; v1 = vi; e1 = NEAR; }
+    }
+    const k0 = FOC / e0, k1 = FOC / e1;
+    return 'M' + (PX + x0 * k0).toFixed(1) + ' ' + (PY - v0 * k0).toFixed(1) +
+           'L' + (PX + x1 * k1).toFixed(1) + ' ' + (PY - v1 * k1).toFixed(1);
+  }
+
+  // ── world ─────────────────────────────────────────────────────────────────
+  const litKeyFor = (ci, cj) => ci + ':' + cj;
+
+  function makeProp(t, x, z, s, f, seed, key) {
+    const p = {
+      key, t, x, y: 0, z, s, f, flap: 1,
+      solid: TYPES[t].solid, lit: false, node: null,
+      ad: (seed % 650) / 100, li: seed % LORE.length, d2: 0,
+    };
+    if (t === T_SHRINE && key && litSet.has(key)) p.lit = true;
+    return p;
+  }
+
+  function makeCell(ci, cj) {
+    const seed = hash2(ci, cj, 0x2f17);
+    const r = rng(seed);
+    const ox = ci * CELL, oz = cj * CELL;
+    const forest = smooth(vnoise((ox + CELL / 2) / 34, (oz + CELL / 2) / 34), 0.4, 0.68);
+    const props = [];
+    const n = 1 + (r() < 0.55 ? 1 : 0) + (r() < 0.2 + 0.5 * forest ? 1 : 0);
+    for (let k = 0; k < n; k++) {
+      const x = ox + r() * CELL, z = oz + r() * CELL;
+      const roll = r(), sc = 0.8 + r() * 0.6, f = r() < 0.5 ? 1 : -1;
+      if (Math.hypot(x, z) < CLEAR) continue;
+      const t = roll < 0.45 + 0.4 * forest ? T_PINE : roll < 0.84 ? T_STONE : T_LILY;
+      props.push(makeProp(t, x, z, sc, f, hash2(ci, cj, 0x100 + k), null));
+    }
+    // one shrine in about 1 cell in 23. The opening shrine below takes the (0, 1) slot.
+    const sh = hash2(ci, cj, 0x7a11);
+    if (sh % 23 === 0 && !(ci === 0 && cj === 1)) {
+      const x = ox + CELL / 2 + (r() - 0.5) * 3, z = oz + CELL / 2 + (r() - 0.5) * 3;
+      if (Math.hypot(x, z) > CLEAR) props.push(makeProp(T_SHRINE, x, z, 1, 1, sh, litKeyFor(ci, cj)));
+    }
+    // the opening shrine sits straight into the first view
+    if (ci === 0 && cj === 1) props.push(makeProp(T_SHRINE, 4, 13, 1, 1, 0x1a2b, litKeyFor(0, 1)));
+    return { props };
+  }
+
+  function makeFlock(fi, fj) {
+    const seed = hash2(fi, fj, 0xc4a9);
+    if (seed % 100 >= 60) return [];
+    const r = rng(seed);
+    const cx = fi * FLOCK + 10 + r() * (FLOCK - 20);
+    const cz = fj * FLOCK + 10 + r() * (FLOCK - 20);
+    const cy = 11 + r() * 6;
+    const n = 3 + Math.floor(r() * 3);
+    const rad = 5 + r() * 6;
+    const w = (0.12 + r() * 0.1) * (r() < 0.5 ? -1 : 1);
+    const birds = [];
+    for (let k = 0; k < n; k++) {
+      const b = makeProp(T_CRANE, 0, 0, 0.9 + r() * 0.5, 1, hash2(fi, fj, 0x500 + k), null);
+      b.cx = cx; b.cy = cy; b.cz = cz;
+      b.rad = rad * (0.9 + r() * 0.2);
+      b.w = w * (0.9 + r() * 0.2);
+      b.a0 = (k * 2 * Math.PI) / n + r() * 0.5;
+      birds.push(b);
+    }
+    return birds;
+  }
+
+  function loadCells(ci, cj, R) {
+    const want = new Set();
+    for (let di = -R; di <= R; di++) {
+      for (let dj = -R; dj <= R; dj++) {
+        const i = ci + di, j = cj + dj, key = cellKey(i, j);
+        want.add(key);
+        if (!cells.has(key)) cells.set(key, makeCell(i, j));
+      }
+    }
+    for (const [key, cell] of cells) {
+      if (want.has(key)) continue;
+      for (const p of cell.props) hideProp(p);
+      cells.delete(key);
+    }
+    propList = [];
+    for (const cell of cells.values()) for (const p of cell.props) propList.push(p);
+  }
+
+  function loadFlocks(fi, fj) {
+    const want = new Set();
+    for (let di = -2; di <= 2; di++) {
+      for (let dj = -2; dj <= 2; dj++) {
+        const i = fi + di, j = fj + dj, key = cellKey(i, j);
+        want.add(key);
+        if (!flocks.has(key)) flocks.set(key, makeFlock(i, j));
+      }
+    }
+    for (const [key, list] of flocks) {
+      if (want.has(key)) continue;
+      for (const b of list) hideProp(b);
+      flocks.delete(key);
+    }
+    birdList = [];
+    for (const list of flocks.values()) for (const b of list) birdList.push(b);
+  }
+
+  function ensureWorld() {
+    const R = QUALITY[quality].cells;
+    const ci = Math.floor(S.px / CELL), cj = Math.floor(S.pz / CELL);
+    if (ci !== curCI || cj !== curCJ || R !== curR) {
+      loadCells(ci, cj, R);
+      curCI = ci; curCJ = cj; curR = R;
+    }
+    const fi = Math.floor(S.px / FLOCK), fj = Math.floor(S.pz / FLOCK);
+    if (fi !== curFI || fj !== curFJ) {
+      loadFlocks(fi, fj);
+      curFI = fi; curFJ = fj;
+    }
+  }
+
+  // Solid props push the walker out of their circle. Two passes settle the corners.
+  function collide() {
+    const ci = Math.floor(S.px / CELL), cj = Math.floor(S.pz / CELL);
+    for (let pass = 0; pass < 2; pass++) {
+      for (let di = -1; di <= 1; di++) {
+        for (let dj = -1; dj <= 1; dj++) {
+          const cell = cells.get(cellKey(ci + di, cj + dj));
+          if (!cell) continue;
+          for (const p of cell.props) {
+            if (!p.solid) continue;
+            const dx = S.px - p.x, dz = S.pz - p.z;
+            const min = p.solid + PLAYER_R, d2 = dx * dx + dz * dz;
+            if (d2 < min * min && d2 > 1e-8) {
+              const d = Math.sqrt(d2), push = (min - d) / d;
+              S.px += dx * push;
+              S.pz += dz * push;
+            }
+          }
+        }
+      }
+    }
+  }
+
+  function checkShrines() {
+    const ci = Math.floor(S.px / CELL), cj = Math.floor(S.pz / CELL);
+    for (let di = -1; di <= 1; di++) {
+      for (let dj = -1; dj <= 1; dj++) {
+        const cell = cells.get(cellKey(ci + di, cj + dj));
+        if (!cell) continue;
+        for (const p of cell.props) {
+          if (p.t !== T_SHRINE || p.lit) continue;
+          const dx = S.px - p.x, dz = S.pz - p.z;
+          if (dx * dx + dz * dz < 3.4 * 3.4) {
+            p.lit = true;
+            litSet.add(p.key);
+            restored++;
+            if (p.node) p.node.el.style.setProperty('--glow', '0.95');
+            hudCount.textContent = String(restored);
+            showLore(p.li);
+          }
+        }
+      }
+    }
+  }
+
+  let toastTimer = 0;
+  function showLore(li) {
+    toastText.textContent = LORE[li];
+    toast.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => toast.classList.remove('show'), 5600);
+  }
+
+  function updateBirds() {
+    for (let i = 0; i < birdList.length; i++) {
+      const b = birdList[i];
+      const a = b.a0 + b.w * S.t;
+      b.x = b.cx + Math.cos(a) * b.rad;
+      b.z = b.cz + Math.sin(a) * b.rad;
+      b.y = b.cy + Math.sin(S.t * 0.6 + b.a0) * 0.5;
+      b.f = -b.w * Math.sin(a) >= 0 ? 1 : -1;      // face the direction of travel
+      b.flap = 0.5 + 0.5 * Math.abs(Math.cos(S.t * 5.2 + b.a0 * 3));
+    }
+  }
+
+  // ── node pool ─────────────────────────────────────────────────────────────
+  // A node stays in the DOM for good. Hiding it with display="none" is far cheaper than removing it.
+  function acquire(p) {
+    let node = free[p.t].pop();
+    if (!node && nodeCount < QUALITY[quality].cap) {
+      const el = document.createElementNS(NS, 'use');
+      el.setAttribute('href', '#' + TYPES[p.t].id);
+      el.setAttribute('display', 'none');
+      layer.appendChild(el);
+      node = { el, _o: -1, shown: false, a: 1, d2: 0 };
+      nodeCount++;
+    }
+    if (!node) {
+      // At the cap, borrow an idle node of another type rather than drop the prop. Retargeting costs one shadow rebuild.
+      for (let u = 0; u < free.length && !node; u++) {
+        if (u !== p.t && free[u].length) node = free[u].pop();
+      }
+      if (!node) return null;
+      node.el.setAttribute('href', '#' + TYPES[p.t].id);
+    }
+    p.node = node;
+    if (p.t === T_SHRINE || p.t === T_LILY) {
+      node.el.style.setProperty('--ad', (-p.ad).toFixed(2) + 's');
+      node.el.style.setProperty('--glow', p.t === T_LILY ? '0.55' : p.lit ? '0.95' : '0.3');
+    }
+    return node;
+  }
+
+  function hideProp(p) {
+    if (!p.node) return;
+    p.node.el.setAttribute('display', 'none');
+    p.node.shown = false;
+    free[p.t].push(p.node);
+    p.node = null;
+  }
+
+  function place(p, far, far2) {
+    const dx = p.x - camX, dy = p.y - camY, dz = p.z - camZ;
+    const r2 = dx * dx + dz * dz;
+    let k = 0, show = false;
+    if (r2 < far2 && projectDir(dx, dy, dz) && RD > PROP_NEAR && RD < far) {
+      const T = TYPES[p.t];
+      k = FOC / RD * p.s;
+      const wpx = T.w * k, hpx = T.h * k;
+      show = RX + wpx > 0 && RX - wpx < W && RY > -0.5 * hpx && RY - hpx < H;
+    }
+    if (show && !p.node && !acquire(p)) show = false;
+    if (!show) { hideProp(p); return; }
+    const node = p.node;
+    if (!node.shown) { node.el.removeAttribute('display'); node.shown = true; }
+    // Fade near the walker and near the draw distance, so a prop never pops in or out.
+    const nearFade = (RD - PROP_NEAR) / (1 - PROP_NEAR), farFade = (far - RD) / (far * 0.2);
+    const a = Math.round(clamp(Math.min(nearFade, farFade), 0, 1) * 20) / 20;
+    if (node.a !== a) { node.el.setAttribute('opacity', a); node.a = a; }
+    node.el.setAttribute('transform',
+      'translate(' + RX.toFixed(1) + ' ' + RY.toFixed(1) + ') scale(' +
+      (k * p.f).toFixed(4) + ' ' + (k * p.flap).toFixed(4) + ')');
+    // View depth, not radial distance: sprites at different bearings that overlap on screen must sort by depth.
+    p.d2 = node.d2 = RD * RD;
+    visBuf.push(p);
+  }
+
+  // Longest increasing subsequence over seqBuf (old DOM index per desired slot, -1 for new nodes).
+  // Nodes on the subsequence are already in relative order, so only the others move.
+  function lisMark(n) {
+    let len = 0;
+    for (let i = 0; i < n; i++) {
+      const v = seqBuf[i];
+      if (v < 0) continue;
+      let lo = 0, hi = len;
+      while (lo < hi) {
+        const mid = (lo + hi) >> 1;
+        if (seqBuf[lisTails[mid]] < v) lo = mid + 1; else hi = mid;
+      }
+      lisPrev[i] = lo > 0 ? lisTails[lo - 1] : -1;
+      lisTails[lo] = i;
+      if (lo === len) len++;
+    }
+    let k = len ? lisTails[len - 1] : -1;
+    while (k >= 0) { markBuf[k] = 1; k = lisPrev[k]; }
+  }
+
+  // vis is sorted far to near, which is DOM order. Walk it backwards, so each out-of-place node
+  // lands in front of a successor that is already final.
+  function reconcile(vis) {
+    const n = vis.length;
+    for (let i = 0; i < n; i++) seqBuf[i] = vis[i].node._o;
+    markBuf.fill(0, 0, n);
+    lisMark(n);
+    let moves = 0;
+    for (let i = n - 1; i >= 0; i--) {
+      if (markBuf[i]) continue;
+      const el = vis[i].node.el;
+      if (i + 1 < n) layer.insertBefore(el, vis[i + 1].node.el);
+      else layer.appendChild(el);
+      moves++;
+    }
+    for (let i = 0; i < order.length; i++) order[i]._o = -1;
+    order.length = 0;
+    for (let i = 0; i < n; i++) {
+      const nd = vis[i].node;
+      nd._o = i;
+      order.push(nd);
+    }
+    return moves;
+  }
+
+  // ── sky and ground ────────────────────────────────────────────────────────
+  function buildStars() {
+    const r = rng(0x5a17c0de);
+    for (let i = 0; i < STAR_N; i++) {
+      starAz[i] = r() * Math.PI * 2;
+      starEl[i] = 0.05 + Math.pow(r(), 0.7) * 1.1;
+      const c = document.createElementNS(NS, 'circle');
+      c.setAttribute('r', (0.5 + r() * 1.0).toFixed(2));
+      c.setAttribute('fill', r() < 0.8 ? '#fff3d8' : '#ffd9bd');
+      c.setAttribute('display', 'none');
+      if (r() < 0.25) {
+        c.setAttribute('class', 'tw');
+        c.setAttribute('style', '--d:' + (-r() * 3.8).toFixed(2) + 's');
+      } else {
+        r();
+      }
+      starsG.appendChild(c);
+      STAR_EL.push(c);
+    }
+  }
+
+  function drawStars() {
+    for (let i = 0; i < STAR_N; i++) {
+      const a = starAz[i], e = starEl[i], ce = Math.cos(e);
+      const ok = projectDir(Math.sin(a) * ce, Math.sin(e), Math.cos(a) * ce) &&
+                 RX > -4 && RX < W + 4 && RY > -4 && RY < HZ;
+      const el = STAR_EL[i];
+      if (ok) {
+        el.setAttribute('cx', RX.toFixed(1));
+        el.setAttribute('cy', RY.toFixed(1));
+        if (!starOn[i]) { el.removeAttribute('display'); starOn[i] = 1; }
+      } else if (starOn[i]) {
+        el.setAttribute('display', 'none');
+        starOn[i] = 0;
+      }
+    }
+  }
+
+  function drawMoon() {
+    const ce = Math.cos(MOON_EL);
+    if (projectDir(Math.sin(MOON_AZ) * ce, Math.sin(MOON_EL), Math.cos(MOON_AZ) * ce)) {
+      const r = Math.max(14, FOC * 0.06);
+      moonG.setAttribute('transform', 'translate(' + RX.toFixed(1) + ' ' + RY.toFixed(1) + ') scale(' + r.toFixed(1) + ')');
+      moonG.removeAttribute('display');
+    } else {
+      moonG.setAttribute('display', 'none');
+    }
+  }
+
+  // Folded mountains. Each facet is a quad from the ridge line down to the horizon, toned by parity.
+  function drawRidge(lEl, dEl, fn, span) {
+    let dl = '', dd = '';
+    let px0 = 0, py0 = 0, bx0 = 0, by0 = 0;
+    for (let i = 0; i <= RIDGE_N; i++) {
+      const a = S.yaw + (i / RIDGE_N * 2 - 1) * span;
+      const e = fn(a), ce = Math.cos(e);
+      projectDir(Math.sin(a) * ce, Math.sin(e), Math.cos(a) * ce);
+      const tx = RX, ty = RY;
+      projectDir(Math.sin(a), 0, Math.cos(a));
+      const bx = RX, by = RY;
+      if (i > 0) {
+        const seg = 'M' + px0.toFixed(1) + ' ' + py0.toFixed(1) +
+          'L' + tx.toFixed(1) + ' ' + ty.toFixed(1) +
+          'L' + bx.toFixed(1) + ' ' + by.toFixed(1) +
+          'L' + bx0.toFixed(1) + ' ' + by0.toFixed(1) + 'Z';
+        if (i & 1) dl += seg; else dd += seg;
+      }
+      px0 = tx; py0 = ty; bx0 = bx; by0 = by;
+    }
+    lEl.setAttribute('d', dl);
+    dEl.setAttribute('d', dd);
+  }
+
+  // Accordion folds on the ground: world-fixed strips of alternating tone, with a few random mid strips.
+  // Ground reach is twice the draw distance, so a view at any bearing finds ground all the way to the fog.
+  function drawFolds(far) {
+    let L = '', M = '', D = '';
+    const reach = far * 2;
+    const zMin = camZ - reach, zMax = camZ + reach;
+    const kMin = Math.floor((camX - reach) / FOLD_W) - 1, kMax = Math.ceil((camX + reach) / FOLD_W) + 1;
+    for (let k = kMin; k < kMax; k++) {
+      const x0 = foldX(k), x1 = foldX(k + 1);
+      toCam(x0, zMin, 0); toCam(x1, zMin, 1); toCam(x1, zMax, 2); toCam(x0, zMax, 3);
+      const path = clipPoly(4);
+      if (!path) continue;
+      if (unit(hash2(k, 0x33, 0xf01d)) < 0.2) M += path;
+      else if ((k & 1) === 0) L += path;
+      else D += path;
+    }
+    foldL.setAttribute('d', L);
+    foldM.setAttribute('d', M);
+    foldD.setAttribute('d', D);
+  }
+
+  function drawCreases(far) {
+    let d = '';
+    const reach = far * 2;
+    const zStart = Math.floor((camZ - reach) / CREASE) * CREASE;
+    for (let z = zStart; z <= camZ + reach; z += CREASE) {
+      toCam(camX - reach, z, 0);
+      toCam(camX + reach, z, 1);
+      d += segPath();
+    }
+    creases.setAttribute('d', d);
+  }
+
+  function drawBackdrop(far) {
+    skyGrad.setAttribute('y2', HZ.toFixed(1));
+    groundRect.setAttribute('y', HZ.toFixed(1));
+    mistRect.setAttribute('y', (HZ - 0.3 * H).toFixed(1));
+    drawStars();
+    drawMoon();
+    drawRidge(ridgeFarL, ridgeFarD, ridgeFar, RIDGE_SPAN);
+    drawRidge(ridgeNearL, ridgeNearD, ridgeNear, RIDGE_SPAN * 0.9);
+    drawFolds(far);
+    drawCreases(far);
+  }
+
+  // ── per-frame ─────────────────────────────────────────────────────────────
+  function update(dt) {
+    if (!Number.isFinite(dt)) dt = 0;
+    S.t += dt;
+    S.yaw += look.yaw;
+    S.pitch = clamp(S.pitch + look.pitch, -0.8, 0.8);
+    look.yaw = 0; look.pitch = 0;
+
+    let f = 0, s = 0, t = 0;
+    if (playing) {
+      if (keys.KeyW || keys.ArrowUp) f += 1;
+      if (keys.KeyS || keys.ArrowDown) f -= 1;
+      if (keys.KeyD) s += 1;
+      if (keys.KeyA) s -= 1;
+      if (keys.KeyE || keys.ArrowRight) t += 1;
+      if (keys.KeyQ || keys.ArrowLeft) t -= 1;
+      f -= joy.L.y;      // stick up is negative y, which walks forward
+      t += joy.R.x;      // stick right turns right
+    }
+    if (!Number.isFinite(f + s + t)) f = s = t = 0;
+    f = clamp(f, -1, 1); s = clamp(s, -1, 1); t = clamp(t, -1, 1);
+    const mag = Math.hypot(f, s), g = mag > 1 ? 1 / mag : 1;
+    const sn = Math.sin(S.yaw), cs = Math.cos(S.yaw);
+    const vx = (sn * f * WALK + cs * s * STRAFE) * g;
+    const vz = (cs * f * WALK - sn * s * STRAFE) * g;
+    S.yaw += t * TURN * dt;
+    S.px += vx * dt;
+    S.pz += vz * dt;
+
+    S.phase += Math.hypot(vx, vz) * dt * 3.3;     // one stride is about 1.9 units
+    S.amt += (Math.min(1, Math.hypot(f, s)) - S.amt) * Math.min(1, dt * 7);
+    if (!Number.isFinite(S.px + S.pz + S.yaw + S.pitch + S.t + S.phase + S.amt)) {
+      // A non-finite state blanks every SVG attribute with no console error. Roll back to the last good frame.
+      if (lastGood) Object.assign(S, lastGood);
+      else Object.assign(S, { px: 0, pz: 0, yaw: 0, pitch: 0, t: 0, phase: 0, amt: 0 });
+    }
+
+    ensureWorld();
+    collide();
+    checkShrines();
+
+    const bob = reduceMotion ? 0.35 : 1;
+    const yaw = S.yaw, pitch = S.pitch + Math.sin(S.phase) * 0.006 * S.amt * bob;
+    SY = Math.sin(yaw); CSY = Math.cos(yaw);
+    SP = Math.sin(pitch); CP = Math.cos(pitch);
+    const sway = Math.sin(S.phase * 0.5) * 0.045 * S.amt * bob;
+    camX = S.px + CSY * sway;
+    camZ = S.pz - SY * sway;
+    camY = EYE - Math.abs(Math.cos(S.phase)) * 0.06 * S.amt * bob;
+    HZ = PY + FOC * SP / CP;
+
+    updateBirds();
+    lastGood = { px: S.px, pz: S.pz, yaw: S.yaw, pitch: S.pitch, t: S.t, phase: S.phase, amt: S.amt };
+  }
+
+  function render() {
+    const t0 = performance.now();
+    const far = QUALITY[quality].far, far2 = far * far;
+    drawBackdrop(far);
+    visBuf.length = 0;
+    for (let i = 0; i < propList.length; i++) place(propList[i], far, far2);
+    for (let i = 0; i < birdList.length; i++) place(birdList[i], far, far2);
+    visBuf.sort((a, b) => b.d2 - a.d2);
+    stats.moves = reconcile(visBuf);
+    stats.vis = visBuf.length;
+    stats.ms = stats.ms * 0.9 + (performance.now() - t0) * 0.1;
+  }
+
+  function setQuality(q) {
+    quality = clamp(q, 0, 2);
+    curR = -1;                                   // forces the cell window to reload
+  }
+
+  // ── input ─────────────────────────────────────────────────────────────────
+  function begin() {
+    if (playing) return;
+    playing = true;
+    document.body.classList.add('playing');
+    intro.classList.add('gone');
+    setTimeout(() => { intro.hidden = true; }, 800);
+    setTimeout(() => hint.classList.add('faded'), 12000);
+    beginBtn.blur();
+  }
+  beginBtn.addEventListener('click', begin);
+
+  const MOVE_KEYS = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyQ', 'KeyE', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space']);
+  window.addEventListener('keydown', (e) => {
+    if (!playing) {
+      if (!e.repeat && (e.code === 'Enter' || e.code === 'Space')) { e.preventDefault(); begin(); }
+      return;
+    }
+    if (MOVE_KEYS.has(e.code)) e.preventDefault();
+    keys[e.code] = true;
+  });
+  window.addEventListener('keyup', (e) => { keys[e.code] = false; });
+  window.addEventListener('blur', () => { for (const k in keys) keys[k] = false; });
+
+  let drag = null;                               // mouse-drag look
+  const stopDrag = () => { drag = null; document.body.classList.remove('grab'); };
+  stage.addEventListener('pointerdown', (e) => {
+    if (!playing || e.pointerType !== 'mouse' || e.button !== 0) return;
+    drag = { id: e.pointerId, x: e.clientX, y: e.clientY };
+    stage.setPointerCapture(e.pointerId);
+    document.body.classList.add('grab');
+  });
+  stage.addEventListener('pointermove', (e) => {
+    if (!drag || e.pointerId !== drag.id) return;
+    if (e.buttons === 0) { stopDrag(); return; }   // released where no pointerup reached the page
+    look.yaw += (e.clientX - drag.x) * 0.0042;
+    look.pitch -= (e.clientY - drag.y) * 0.0032;
+    drag.x = e.clientX;
+    drag.y = e.clientY;
+  });
+  const endDrag = (e) => { if (drag && e.pointerId === drag.id) stopDrag(); };
+  stage.addEventListener('pointerup', endDrag);
+  stage.addEventListener('pointercancel', endDrag);
+  stage.addEventListener('lostpointercapture', endDrag);
+  window.addEventListener('blur', stopDrag);
+
+  // Touch sticks. Each stick takes one pointer id, so both thumbs can be down at once.
+  const DEAD = 0.12;
+  const dead = (v) => (Math.abs(v) < DEAD ? 0 : (v - Math.sign(v) * DEAD) / (1 - DEAD));
+  function bindStick(side) {
+    const el = stickEl[side], st = joy[side], knob = el.querySelector('.knob');
+    const aim = (e) => {
+      const r = el.getBoundingClientRect();
+      const travel = r.width * 0.28;
+      if (!(travel > 0)) return;      // a hidden stick has no size: never divide by zero
+      const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+      let dx = (e.clientX - cx) / travel, dy = (e.clientY - cy) / travel;
+      const m = Math.hypot(dx, dy);
+      if (m > 1) { dx /= m; dy /= m; }
+      st.x = dead(dx);
+      st.y = dead(dy);
+      knob.style.transform = 'translate(calc(-50% + ' + (dx * travel).toFixed(1) + 'px), calc(-50% + ' + (dy * travel).toFixed(1) + 'px))';
+    };
+    const reset = () => {
+      st.id = null; st.x = 0; st.y = 0;
+      knob.style.transform = '';
+      el.classList.remove('on');
+    };
+    const release = (e) => { if (e.pointerId === st.id) reset(); };
+    el.addEventListener('pointerdown', (e) => {
+      if (!playing) return;
+      // A stick whose pointer was lost without a release event must not stay locked.
+      if (st.id !== null && !el.hasPointerCapture(st.id)) reset();
+      if (st.id !== null) return;
+      st.id = e.pointerId;
+      el.setPointerCapture(e.pointerId);
+      el.classList.add('on');
+      aim(e);
+      e.preventDefault();
+    });
+    el.addEventListener('pointermove', (e) => { if (e.pointerId === st.id) aim(e); });
+    el.addEventListener('pointerup', release);
+    el.addEventListener('pointercancel', release);
+    el.addEventListener('lostpointercapture', release);
+  }
+  bindStick('L');
+  bindStick('R');
+
+  // Keep the page from scrolling, zooming, or navigating. The intro card is the one scroll area.
+  const block = (e) => e.preventDefault();
+  document.addEventListener('touchmove', (e) => {
+    if (e.target && e.target.closest && e.target.closest('.scroll')) return;
+    e.preventDefault();
+  }, { passive: false });
+  ['gesturestart', 'gesturechange', 'gestureend'].forEach((type) => {
+    document.addEventListener(type, block, { passive: false });
+  });
+  document.addEventListener('wheel', (e) => { if (e.ctrlKey) e.preventDefault(); }, { passive: false });
+  document.addEventListener('contextmenu', block);
+  document.addEventListener('dblclick', block);
+
+  // ── loop ──────────────────────────────────────────────────────────────────
+  // Adaptive quality only steps down. Frames that average over 42 ms for 150 frames drop one level.
+  // It never steps back up, so it cannot flap.
+  let lastT = 0, probeMs = 0, probeN = 0;
+  function frame(t) {
+    const dt = lastT ? Math.min(0.05, (t - lastT) / 1000) : 0;
+    if (adaptive && lastT && t > 2500 && t - lastT < 400) {
+      probeMs += t - lastT;
+      probeN++;
+      if (probeN >= 150) {
+        const avg = probeMs / probeN;
+        probeMs = 0; probeN = 0;
+        if (avg > 42 && quality > 0) setQuality(quality - 1);
+      }
+    }
+    lastT = t;
+    update(dt);
+    render();
+    requestAnimationFrame(frame);
+  }
+
+  function snapshot() {
+    stats.nodes = nodeCount;
+    stats.cells = cells.size;
+    stats.props = propList.length;
+    stats.dom = layer.childElementCount;
+    stats.restored = restored;
+    stats.quality = quality;
+    return Object.assign({}, stats);
+  }
+
+  function resize() {
+    W = Math.max(1, innerWidth);
+    H = Math.max(1, innerHeight);
+    svg.setAttribute('viewBox', '0 0 ' + W + ' ' + H);
+    FOC = Math.min(H * 0.85, W * 0.9);
+    PX = W / 2;
+    PY = H * 0.56;
+    skyRect.setAttribute('width', W);
+    skyRect.setAttribute('height', H);
+    groundRect.setAttribute('x', -W);
+    groundRect.setAttribute('width', 3 * W);
+    groundRect.setAttribute('height', 3 * H);
+    mistRect.setAttribute('width', W);
+    mistRect.setAttribute('height', (0.42 * H).toFixed(1));
+    HZ = PY + FOC * SP / CP;
+  }
+
+  // ── hooks for the verification harness ────────────────────────────────────
+  if (params.has('harness')) window.__quire = {
+    step(dt, n = 1) {
+      for (let i = 0; i < n; i++) { update(dt); render(); }
+      return snapshot();
+    },
+    teleport(x, z, yaw, pitch) {
+      S.px = x; S.pz = z;
+      if (yaw !== undefined) S.yaw = yaw;
+      if (pitch !== undefined) S.pitch = pitch;
+      update(0); render();
+      return snapshot();
+    },
+    begin,
+    setQuality,
+    // The DOM must list visible props far to near, or nearer props are painted under farther ones.
+    orderCheck() {
+      const kids = layer.children, index = new Map();
+      for (let i = 0; i < kids.length; i++) index.set(kids[i], i);
+      let domOk = true, last = -1;
+      for (const nd of order) {
+        const k = index.get(nd.el);
+        if (k === undefined || k <= last) { domOk = false; break; }
+        last = k;
+      }
+      let farToNear = true;
+      for (let i = 1; i < order.length; i++) {
+        if (order[i].d2 > order[i - 1].d2) { farToNear = false; break; }
+      }
+      return { domOk, farToNear, n: order.length };
+    },
+    keys,
+    joy,
+    look,
+    state: () => ({ px: S.px, pz: S.pz, yaw: S.yaw, pitch: S.pitch, camX, camY, camZ, HZ, W, H, FOC, playing }),
+    stats: snapshot,
+  };
+
+  // ── boot ──────────────────────────────────────────────────────────────────
+  buildStars();
+  resize();
+  window.addEventListener('resize', resize);
+  update(0);
+  render();
+  if (params.has('nointro')) begin();
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
