@@ -916,3 +916,66 @@ Found (all fixed):
 Validation: `node --test tests/pangea-engine.test.mjs tests/pangea-navigation.test.mjs` passes 38 tests (new: geography of colour families, polar cap, Weddell sector, era table contiguity, no entities in chapter copy, slider inversion, citations, README). Browser (Chromium pane, served over http): console clean; slider value 0 at 250 Ma and 250 at 0 Ma with correct valuetext; era labels at 250/150/66/30/4/0 Ma; legend reads the ten families; straight-down South Pole view shows a complete Antarctica with only the five near-side labels; Africa and Pangaea views show no label whose anchor is on the far side; About panel shows the corrected citations; 390x844 layout keeps the chapter card and transport from overlapping; light theme renders. Data fix script is idempotent (second run changes nothing).
 
 Not verified: Safari/Firefox, physical touch hardware, the exact palaeolatitude shift quoted as "roughly twenty to thirty degrees" (literature value, not computed from this model, whose absolute frame is not included).
+
+---
+
+# Delayed neural cellular automaton lab — 2026-10-11
+
+Goal: a small local educational prototype in `learn/delayed-nca.html`, integrated into the Learn gallery. Static HTML/CSS/ES modules; no new dependencies, paid services, publication, or language-model training.
+
+Plan check-in: inspect conventions, build the mechanism and tiny supervised learner, then prove engine invariants and browser interactions. Current repository status is clean (fsmonitor disabled for status).
+
+Specification: scalar states in [-1,1] on a periodic 48×48 lattice; synchronous buffered updates. At tick t, calculate S(t+1) from own S(t) and the mean of neighbors on Chebyshev rings 1…r(t). Ring d reads S(t−d×delay), with zero history before S(0). Delay zero is the current-neighbor baseline. Optional r(t)=min(R,t+1) expansion applies to both panels. One bias-free 2→8 tanh→1 residual network (24 parameters) is shared across cells and both panels. Train locally on synthetic one-step examples of an explicitly hand-designed diffusion/growth teacher; show held-out loss. This is a mechanism prototype, not a published delayed-NCA replication or a language model.
+
+- [x] Inspect repository instructions, lessons, learn routes and gallery conventions.
+- [x] Verify cited primary sources and delimit claims.
+- [x] Implement bounded-history engine, real browser training, and invariant tests.
+- [x] Build responsive comparison, transport/seed/radius/delay controls, and explanatory content.
+- [x] Integrate gallery/README, test JS and engine, and inspect supported browser flows.
+- [x] Record proof, limitations and local launch instructions.
+
+
+Review / proof:
+- Files: `learn/delayed-nca.html`, `learn/delayed-nca.js`, `learn/delayed-nca-engine.js`; gallery and README entries added by hand. No new dependencies; repository is static HTML with no build command.
+- Run: `python3 -m http.server 8051 --bind 127.0.0.1` from the repository root, then open `http://127.0.0.1:8051/learn/delayed-nca.html`. Local server session 85168 was started with approved sandbox escalation and left running for review. No push or deploy.
+- Automated: `node --test tests/delayed-nca-engine.test.mjs` passes 9/9 (exact delays including d=2 and multiplier, negative history, simultaneous updates, torus boundary, zero-delay reference identity with/without expansion, deterministic seed/training, held-out learning, finite bounded long runs, bounded history, rejected invalid inputs). `node --check` passes both new modules. `git diff --check` passes.
+- Browser URL: `http://127.0.0.1:8051/learn/delayed-nca.html`; local unauthenticated page; supported Chrome extension session, normal desktop viewport and 390×844 mobile override (restored afterward).
+- Browser steps and actual results: Step advances one tick while paused and ring chips show S(0), S(-1), S(-2) at tick 1; Run advances repeatedly, Pause stops; Reset returns tick 0; New seed changes 42 to 43; pulse/islands select resets; maximum radius changes reset; expansion starts at 1/6 then advances to 2/6 after one step. Learned zero-delay panels show exact 0.0000 difference. Training disables controls while working, finishes, enables the learned rule and resets; final option text says Learned network · 300 epochs.
+- Actual browser training: model seed 7, 1,024 examples seed 123, independent 256 examples seed 456, 300 full-batch Adam steps at .01; validation MSE 0.226556 → 0.000392987 (576.5× lower). Repeated desktop/mobile training agrees. Loss is residual MSE, not rollout accuracy.
+- Console errors/warnings: none observed. Network capture after final reload: HTML and both JS modules HTTP 200; no loadingFailed events. No remote app assets/dependencies.
+- Screenshots: `/tmp/delayed-nca-desktop.jpg`, `/tmp/delayed-nca-mobile.jpg`. Mobile document width equals viewport width (390), no horizontal overflow. Desktop and mobile visually inspected. Browser tab retained for review.
+- Fresh independent read-only review found no substantive correctness or control defects. Minor learned-option label updated after training so it no longer says train first.
+- Sources checked: Distill Growing NCA supports shared learned local updates (its image-growing architecture differs); arXiv 2608.02050v1 confirms TextNCA 30.8M and staged windows 8/32/128, not distance-indexed history; Nature DOI verified via PubMed/author repository because publisher direct access failed, so no precise biological speed/equation asserted on the page.
+
+Limitations: supervised imitation of a hand-designed scalar teacher, no backpropagation through time, target-image growth, language modeling or learned delay compensation. Different long rollouts are expected; clamping establishes boundedness only. Weights exist in page memory and reset on reload. Physical mobile hardware, Safari/Firefox and deployment were not tested. No outstanding implementation blockers or pending approval.
+
+## Pulse example correction — 2026-10-11
+
+Jason found the single-cell pulse visually disappears. Diagnosis: diffusion dilutes a one-cell seed; the student fits low-state growth less well than the teacher (at s=m=.01, delta .000456 vs .001200). At tick20 learned delayed peak is .0339, below useful contrast; not exact extinction or NaN, and not only a renderer bug. Keep dynamics, training objective and fixed color mapping unchanged.
+Plan check-in: replace the default pulse with an adjustable radius-5 filled disk (81 cells), retain radius0 as an explicitly fading one-cell comparison, report cells at activation >=.1, verify multi-step propagation for teacher and exact UI-trained model, then inspect browser rollouts.
+- [x] Diagnose teacher vs student and single-cell vs larger seeds numerically.
+- [x] Add pulse size control and honest readouts/explanation.
+- [x] Add regression tests for sustained amplitude, outward growth, delayed arrivals and zero-delay equality.
+- [x] Verify teacher and learned pulse in Mac Chrome; record evidence and limitations.
+
+
+Correction review / proof:
+- Changed only pulse construction (radius-5 disk by default, slider 0–8), pulse readouts, and teaching copy/reference table. The handwritten formula, network, Adam data/objective and fixed color scale are unchanged. Radius0 remains a labeled fading diagnostic. Reference/student table gives actual clamped next states on identical input pairs, including small values where their approximation differs.
+- Renamed user-facing teacher terminology to reference rule and defined it as a handwritten formula supplying targets. Above-field explanation now states inputs/operation, expected growing patch, eventual saturation, and no evidence of useful task performance. No new benchmark or objective.
+- `node --test tests/delayed-nca-engine.test.mjs`: 11/11. Added disk shape/radius validation and actual multi-step rollout regressions at ticks10/20/40, visible peak >.6, increasing activation outside the seed, immediate front leading delayed, exact first arrival, and zero-delay equality for reference and exact UI-trained student. JS syntax and diff whitespace checks pass.
+- Mac Chrome, same local URL, actual native select/slider/button interactions: reference active cells at threshold .1, immediate/delayed: tick10 269/193; tick20 517/293; tick40 1281/633. Student: tick10 241/177; tick20 397/241; tick40 793/437. Both remain bright and spread across multiple steps. No auto-normalization or cosmetic gain added.
+- Actual browser training retains held-out MSE .226556→.000392987. Table at self=.1, neighbor=.1 reports reference next=.1119 versus student=.1046, making imperfect imitation explicit. Radius slider resets clock, radius0 yields one cell with diagnostic note, and delay0 yields exact displayed difference0 at tick10. No observed browser console warnings/errors.
+- Fresh reviewer found no substantive bug; corrected a minor radius0 output ambiguity to “0 · single cell”. Final browser reload confirmed Reference rule (handwritten), new pulse controls, and tick20 growth. Screenshot `/tmp/delayed-nca-pulse-reference.jpg` (final reference tick20), `/tmp/delayed-nca-pulse-fixed.jpg` (learned tick40 before final terminology-only pass).
+- Local server restarted on port8051, approved session94947; browser retained at the corrected reference pulse tick20. No pending approval, push, deployment or paid processing.
+
+Limits: recommended comparison is seed radius5, neighborhood radius3, delay1. Extreme delay/radius choices can weaken the student front; no universal propagation guarantee is claimed. Finite periodic positive fields can eventually saturate. This remains an educational one-step imitation/delay demonstration, not a useful-task benchmark or learned long-term objective.
+
+## Signals Take Time publication — authorized follow-up
+
+Jason explicitly requested committing all Signals Take Time work and pushing to origin/main, superseding the earlier local-only constraint. Scope: the three delayed-NCA implementation files, engine tests, Learn gallery entry, README entry, and associated task/lesson notes. No unrelated edits or unpublished commits were present; main and freshly fetched origin/main matched before committing.
+
+- [x] Review exact file scope and fetch origin/main safely.
+- [x] Re-run all 11 delayed-NCA tests, both module syntax checks and whitespace validation.
+Final execution steps: commit the scoped change, push without force, verify the remote SHA/content and inspect exact-commit CI. Their outcomes belong in the completion message so the committed record does not claim a push before it occurs.
+
+Verification before publication: 11/11 tests pass, both JS modules parse, diff whitespace check passes. Prior browser proof and prototype limitations remain recorded above. Repository has no checked-in .github workflows or build step; remote check status will be inspected after pushing. Final commit/remote/CI evidence is reported in the completion message.
