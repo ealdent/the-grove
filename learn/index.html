@@ -230,6 +230,7 @@
     }
 
     /* If WebGL is unavailable, give the card a firmer ink rule instead */
+    .tile-shell.shader-off .tile-shader { display: none; }
     .tile-shell.shader-off .tile { border: 2px solid rgba(88, 66, 34, 0.45); }
 
     footer {
@@ -659,24 +660,18 @@
       return program;
     }
 
-    function createInstance(shell, atlas) {
-      const canvas = shell.querySelector(".tile-shader");
-      const card = shell.querySelector(".tile");
+    function createRenderer(atlas, onContextLost) {
+      // One GPU context for the whole gallery; more lessons must not evict tiles.
+      const canvas = document.createElement("canvas");
+      canvas.addEventListener("webglcontextlost", onContextLost);
       const gl = canvas.getContext("webgl", {
         alpha: true, antialias: false, depth: false, stencil: false,
         premultipliedAlpha: true, powerPreference: "high-performance"
       });
-      if (!gl) { shell.classList.add("shader-off"); return null; }
+      if (!gl) return null;
 
-      let auraProgram, glyphProgram;
-      try {
-        auraProgram = createProgram(gl, auraVertexSource, auraFragmentSource);
-        glyphProgram = createProgram(gl, glyphVertexSource, glyphFragmentSource);
-      } catch (error) {
-        console.error("Letter drift shader:", error);
-        shell.classList.add("shader-off");
-        return null;
-      }
+      const auraProgram = createProgram(gl, auraVertexSource, auraFragmentSource);
+      const glyphProgram = createProgram(gl, glyphVertexSource, glyphFragmentSource);
 
       gl.enable(gl.BLEND);
       gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
@@ -731,16 +726,22 @@
       gl.useProgram(glyphProgram);
       gl.uniform1i(glyph.atlas, 0);
 
+      return { canvas, gl, auraProgram, glyphProgram, quadBuffer, glyphBuffer, aura, glyph };
+    }
+
+    function createInstance(shell) {
+      const canvas = shell.querySelector(".tile-shader");
+      const context = canvas.getContext("2d");
+      if (!context) { shell.classList.add("shader-off"); return null; }
       return {
-        shell, card, canvas, gl, auraProgram, glyphProgram,
-        quadBuffer, glyphBuffer, aura, glyph,
+        shell, card: shell.querySelector(".tile"), canvas, context,
         seed: Math.random() * 1000,
         visible: false
       };
     }
 
-    function renderInstance(inst, elapsed) {
-      const gl = inst.gl, canvas = inst.canvas;
+    function renderInstance(renderer, inst, elapsed) {
+      const { gl, canvas } = renderer;
       const dpr = Math.min(window.devicePixelRatio || 1, 2);
       const shellRect = inst.shell.getBoundingClientRect();
       const width = Math.max(1, Math.round(shellRect.width * dpr));
@@ -760,40 +761,60 @@
       gl.clearColor(0, 0, 0, 0);
       gl.clear(gl.COLOR_BUFFER_BIT);
 
-      gl.useProgram(inst.auraProgram);
-      gl.bindBuffer(gl.ARRAY_BUFFER, inst.quadBuffer);
-      gl.enableVertexAttribArray(inst.aura.position);
-      gl.vertexAttribPointer(inst.aura.position, 2, gl.FLOAT, false, 0, 0);
-      if (inst.glyph.seed !== inst.aura.position) gl.disableVertexAttribArray(inst.glyph.seed);
-      gl.uniform2f(inst.aura.center, centerX, centerY);
-      gl.uniform2f(inst.aura.half, halfX, halfY);
-      gl.uniform1f(inst.aura.time, elapsed);
-      gl.uniform1f(inst.aura.glow, 1);
-      gl.uniform1f(inst.aura.dpr, dpr);
+      gl.useProgram(renderer.auraProgram);
+      gl.bindBuffer(gl.ARRAY_BUFFER, renderer.quadBuffer);
+      gl.enableVertexAttribArray(renderer.aura.position);
+      gl.vertexAttribPointer(renderer.aura.position, 2, gl.FLOAT, false, 0, 0);
+      if (renderer.glyph.seed !== renderer.aura.position) gl.disableVertexAttribArray(renderer.glyph.seed);
+      gl.uniform2f(renderer.aura.center, centerX, centerY);
+      gl.uniform2f(renderer.aura.half, halfX, halfY);
+      gl.uniform1f(renderer.aura.time, elapsed);
+      gl.uniform1f(renderer.aura.glow, 1);
+      gl.uniform1f(renderer.aura.dpr, dpr);
       gl.drawArrays(gl.TRIANGLES, 0, 6);
 
-      gl.useProgram(inst.glyphProgram);
-      gl.bindBuffer(gl.ARRAY_BUFFER, inst.glyphBuffer);
-      gl.enableVertexAttribArray(inst.glyph.corner);
-      gl.vertexAttribPointer(inst.glyph.corner, 2, gl.FLOAT, false, 12, 0);
-      gl.enableVertexAttribArray(inst.glyph.seed);
-      gl.vertexAttribPointer(inst.glyph.seed, 1, gl.FLOAT, false, 12, 8);
-      gl.uniform2f(inst.glyph.resolution, canvas.width, canvas.height);
-      gl.uniform2f(inst.glyph.center, centerX, centerY);
-      gl.uniform2f(inst.glyph.half, halfX, halfY);
-      gl.uniform1f(inst.glyph.time, elapsed);
-      gl.uniform1f(inst.glyph.seedU, inst.seed);
-      gl.uniform1f(inst.glyph.dpr, dpr);
-      gl.uniform1f(inst.glyph.glow, 1);
+      gl.useProgram(renderer.glyphProgram);
+      gl.bindBuffer(gl.ARRAY_BUFFER, renderer.glyphBuffer);
+      gl.enableVertexAttribArray(renderer.glyph.corner);
+      gl.vertexAttribPointer(renderer.glyph.corner, 2, gl.FLOAT, false, 12, 0);
+      gl.enableVertexAttribArray(renderer.glyph.seed);
+      gl.vertexAttribPointer(renderer.glyph.seed, 1, gl.FLOAT, false, 12, 8);
+      gl.uniform2f(renderer.glyph.resolution, canvas.width, canvas.height);
+      gl.uniform2f(renderer.glyph.center, centerX, centerY);
+      gl.uniform2f(renderer.glyph.half, halfX, halfY);
+      gl.uniform1f(renderer.glyph.time, elapsed);
+      gl.uniform1f(renderer.glyph.seedU, inst.seed);
+      gl.uniform1f(renderer.glyph.dpr, dpr);
+      gl.uniform1f(renderer.glyph.glow, 1);
       gl.drawArrays(gl.TRIANGLES, 0, BASE_GLYPHS * 6);
+
+      if (inst.canvas.width !== width || inst.canvas.height !== height) {
+        inst.canvas.width = width;
+        inst.canvas.height = height;
+      }
+      // Copy before WebGL clears its drawing buffer, replacing the previous frame.
+      inst.context.clearRect(0, 0, width, height);
+      inst.context.drawImage(canvas, 0, 0);
     }
 
     waitForTypeFont().then(() => {
-      const atlas = buildAtlas();
+      const shells = [...document.querySelectorAll(".tile-shell")];
+      let failed = false;
+      const disableDecoration = () => {
+        failed = true;
+        shells.forEach(shell => shell.classList.add("shader-off"));
+      };
+      let renderer;
+      try {
+        renderer = createRenderer(buildAtlas(), disableDecoration);
+      } catch (error) {
+        console.warn("Letter drift unavailable:", error);
+      }
+      if (!renderer) { disableDecoration(); return; }
       const instances = [];
       const byShell = new Map();
-      document.querySelectorAll(".tile-shell").forEach(shell => {
-        const inst = createInstance(shell, atlas);
+      shells.forEach(shell => {
+        const inst = createInstance(shell);
         if (inst) {
           instances.push(inst);
           byShell.set(shell, inst);
@@ -803,11 +824,12 @@
 
       const STATIC_TIME = 47;
       const observer = new IntersectionObserver(entries => {
+        if (failed) return;
         for (const entry of entries) {
           const inst = byShell.get(entry.target);
           if (!inst) continue;
           inst.visible = entry.isIntersecting;
-          if (inst.visible && reducedMotion) renderInstance(inst, STATIC_TIME);
+          if (inst.visible && reducedMotion) renderInstance(renderer, inst, STATIC_TIME);
         }
       }, { rootMargin: "120px" });
       instances.forEach(inst => observer.observe(inst.shell));
@@ -815,11 +837,12 @@
       if (reducedMotion) {
         let resizeQueued = false;
         addEventListener("resize", () => {
-          if (resizeQueued) return;
+          if (failed || resizeQueued) return;
           resizeQueued = true;
           requestAnimationFrame(() => {
             resizeQueued = false;
-            for (const inst of instances) if (inst.visible) renderInstance(inst, STATIC_TIME);
+            if (failed) return;
+            for (const inst of instances) if (inst.visible) renderInstance(renderer, inst, STATIC_TIME);
           });
         }, { passive: true });
         return;
@@ -828,11 +851,12 @@
       let last = performance.now();
       let elapsed = 20; // start mid-drift so the first paint already feels settled
       function frame(now) {
+        if (failed) return;
         const delta = Math.min(.05, Math.max(0, (now - last) / 1000));
         last = now;
         if (!document.hidden) {
           elapsed += delta;
-          for (const inst of instances) if (inst.visible) renderInstance(inst, elapsed);
+          for (const inst of instances) if (inst.visible) renderInstance(renderer, inst, elapsed);
         }
         requestAnimationFrame(frame);
       }
