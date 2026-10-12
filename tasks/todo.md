@@ -1010,3 +1010,17 @@ Proof:
 Not verified: Safari, Firefox, physical touch devices, or actual mission guidance. No persistent user data or external runtime libraries are used.
 
 ---
+
+## Apollo visual redesign — optical navigation
+
+User correction: the original parchment/green editorial style is too familiar. Goal: replace the visual system with an original, subject-specific optical navigation design while retaining verified teaching content and orbital calculations.
+Design check-in: neutral black, optical white, signal orange, circular sighting ports, oversized condensed typography, sparse star registration marks, orbit diagrams integrated into the layout. Re-render the actual ManimGX film to match.
+
+- [x] Replace page composition, hero illustration, typography, all lesson surfaces, and diagram colors.
+- [x] Re-render ManimGX film/poster with matching optics motif and inspect key frames.
+- [x] Verify responsive layout, keyboard controls, video, and console/network; independently review the result.
+- [x] Prepare scoped revision for publication under the original delivery authorization; commit/push/deployment outcomes reported in chat.
+
+Review: a second agent checked the restyle, confirmed lab JavaScript differs only in diagram colors/font, and caught a low-contrast MOON label on the capture drawing; fixed with a dark on-body label. Narrow-tablet hero typography now scales, and a local OFL-licensed Anton font keeps the display type independent of platform fonts.
+
+Proof: six orbital tests still pass; JS parses; whitespace checks pass. Local Chromium at 1440, 1280, 650, 390, and 320 px has no horizontal overflow. At 650 px the hero title content fits its 244 px column. At 320 px both circular state and entry cards are 272 x 272; the state card was visually checked with all text inside. Checked lunar-reach preset (384,400 km,119.5 h), keyboard decrease, and reset. Reduced-motion emulation suppresses trace animation and smooth scrolling; emulation restored afterward. New film plays with captions (32.44 s observed,readyState4,duration55s), and clean chapter frames plus full FFmpeg decode pass. Final load including local font has no console warnings/errors, failed requests, or HTTP errors. Screenshot `/tmp/apollo-optical-desktop.jpg`. Safari/Firefox and physical touch remain unverified.

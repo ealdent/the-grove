@@ -25,30 +25,30 @@ function plot(orbit) {
   const points = Array.from({ length: 401 }, (_, i) => orbitPoint(orbit, i / 400 * 2 * Math.PI));
   const maxY = Math.max(...points.map(p => Math.abs(p.y))) * scale;
   // Keep the same scale on both axes; all slider states fit this viewBox.
-  geometry.append(svg('path', {d:`M30 ${centerY}H704`,stroke:'#9faf9744','stroke-dasharray':'3 5'}));
-  geometry.append(svg('circle', {cx:centerX,cy:centerY,r:MOON_DISTANCE*scale,fill:'none',stroke:'#bdc9ac66','stroke-dasharray':'4 6','stroke-width':1}));
-  geometry.append(svg('path',{d:points.map((p,i)=>`${i?'L':'M'}${sx(p.x).toFixed(3)} ${sy(p.y).toFixed(3)}`).join(' ')+'Z',fill:'#c9b87808',stroke:'#e2b77e','stroke-width':1.7}));
-  geometry.append(svg('circle',{cx:centerX,cy:centerY,r:Math.max(7,EARTH_RADIUS*scale),fill:'#b6ccaa',stroke:'#d3dfc0','stroke-width':1}));
-  geometry.append(svg('circle',{cx:sx(PARKING_RADIUS),cy:centerY,r:3,fill:'#ed9672'}));
-  geometry.append(svg('path',{d:`M${sx(PARKING_RADIUS)} ${centerY-12}v-25`,stroke:'#e5a47b','stroke-width':1.3}));
-  geometry.append(svg('path',{d:`M${sx(PARKING_RADIUS)-4} ${centerY-30}l4 -7 4 7`,fill:'none',stroke:'#e5a47b','stroke-width':1.3}));
-  const labelStyle = { fill:'#c4cfb4','font-family':'Degauss, monospace','font-size':10 };
+  geometry.append(svg('path', {d:`M30 ${centerY}H704`,stroke:'#b6b1c544','stroke-dasharray':'3 5'}));
+  geometry.append(svg('circle', {cx:centerX,cy:centerY,r:MOON_DISTANCE*scale,fill:'none',stroke:'#b6b1c566','stroke-dasharray':'4 6','stroke-width':1}));
+  geometry.append(svg('path',{d:points.map((p,i)=>`${i?'L':'M'}${sx(p.x).toFixed(3)} ${sy(p.y).toFixed(3)}`).join(' ')+'Z',fill:'#ff633308',stroke:'#ff6333','stroke-width':1.7}));
+  geometry.append(svg('circle',{cx:centerX,cy:centerY,r:Math.max(7,EARTH_RADIUS*scale),fill:'#dfdde7',stroke:'#f4f4ee','stroke-width':1}));
+  geometry.append(svg('circle',{cx:sx(PARKING_RADIUS),cy:centerY,r:3,fill:'#ff6333'}));
+  geometry.append(svg('path',{d:`M${sx(PARKING_RADIUS)} ${centerY-12}v-25`,stroke:'#ff8965','stroke-width':1.3}));
+  geometry.append(svg('path',{d:`M${sx(PARKING_RADIUS)-4} ${centerY-30}l4 -7 4 7`,fill:'none',stroke:'#ff8965','stroke-width':1.3}));
+  const labelStyle = { fill:'#e5e1ed','font-family':'monospace','font-size':10 };
   labels.append(svg('text',{...labelStyle,x:centerX+14,y:centerY+25,'text-anchor':'end'},'EARTH'));
   labels.append(svg('text',{...labelStyle,x:Math.max(43,sx(-MOON_DISTANCE)),y:65},'MEAN LUNAR DISTANCE'));
-  labels.append(svg('text',{...labelStyle,x:Math.max(43,sx(-MOON_DISTANCE)),y:81,'font-size':9,fill:'#8eaa91'},'384,400 km · reference ring'));
-  labels.append(svg('text',{...labelStyle,x:665,y:centerY-45,'text-anchor':'end',fill:'#e5a47b'},'BURN'));
+  labels.append(svg('text',{...labelStyle,x:Math.max(43,sx(-MOON_DISTANCE)),y:81,'font-size':9,fill:'#a6a0b5'},'384,400 km · reference ring'));
+  labels.append(svg('text',{...labelStyle,x:665,y:centerY-45,'text-anchor':'end',fill:'#ff8965'},'BURN'));
   const apoX=sx(-orbit.apogee);
-  geometry.append(svg('circle',{cx:apoX,cy:centerY,r:3,fill:'#e2b77e'}));
-  labels.append(svg('text',{...labelStyle,x:Math.max(apoX,43),y:centerY+maxY+31,fill:'#e2b77e'},'APOGEE / '+format.format(orbit.apogee)+' km'));
+  geometry.append(svg('circle',{cx:apoX,cy:centerY,r:3,fill:'#ff6333'}));
+  labels.append(svg('text',{...labelStyle,x:Math.max(apoX,43),y:centerY+maxY+31,fill:'#ff6333'},'APOGEE / '+format.format(orbit.apogee)+' km'));
   if(orbit.reachesMoon) {
     // Mark the first outward crossing, not an invented Moon/intercept.
     const p={x:MOON_DISTANCE*Math.cos(orbit.arrival.theta),y:MOON_DISTANCE*Math.sin(orbit.arrival.theta)};
-    geometry.append(svg('circle',{cx:sx(p.x),cy:sy(p.y),r:5,fill:'#172f28',stroke:'#dc9670','stroke-width':2}));
-    labels.append(svg('text',{...labelStyle,x:sx(p.x)+10,y:sy(p.y)-15,fill:'#e5a47b','font-size':9},'FIRST DISTANCE CROSSING'));
+    geometry.append(svg('circle',{cx:sx(p.x),cy:sy(p.y),r:5,fill:'#09090d',stroke:'#f4f4ee','stroke-width':2}));
+    labels.append(svg('text',{...labelStyle,x:sx(p.x)+10,y:sy(p.y)-15,fill:'#ff8965','font-size':9},'FIRST DISTANCE CROSSING'));
   }
   const barKm=extent>650000?200000:100000;
-  geometry.append(svg('path',{d:`M42 382v6h${barKm*scale}v-6`,fill:'none',stroke:'#9caf95','stroke-width':1}));
-  labels.append(svg('text',{...labelStyle,x:42,y:408,'font-size':8,fill:'#9caf95'},format.format(barKm)+' km'));
+  geometry.append(svg('path',{d:`M42 382v6h${barKm*scale}v-6`,fill:'none',stroke:'#a6a0b5','stroke-width':1}));
+  labels.append(svg('text',{...labelStyle,x:42,y:408,'font-size':8,fill:'#a6a0b5'},format.format(barKm)+' km'));
 }
 
 function updateBurn(deltaV) {

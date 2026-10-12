@@ -1,6 +1,8 @@
-# Apollo flight dynamics film
+# Apollo: the way home
 
 Original ManimGX scene for The Grove's Apollo tutorial. The committed film is **55 seconds, 1600 × 900, 30 fps, H.264/yuv420p**, silent, with an English WebVTT track and a JPEG poster. All linework, text, and animation are rendered by [ManimGX](https://github.com/academa-labs/manimgx); no stock imagery, historical film, or generated image assets are used.
+
+The visual identity treats the film as an optical navigation instrument: neutral black (`#09090d`), optical white (`#f4f4ee`), signal orange (`#ff6333`), cool lavender (`#b6b1c5`), condensed heavy sans headings, concentric sighting rings, and sparse registration stars.
 
 ## Reproduce
 
@@ -21,13 +23,13 @@ manimgx inspect scripts/apollo/apollo_flight_plan.py ApolloFlightPlan \
   -t 4.1,10,22,33.4,43.5,54.9 -o /tmp/apollo-storyboard.png
 ```
 
-ManimGX 0.1.1's layout inspector reports the intentional faint drafting-grid lines behind the labels as line/text collisions. Review clean video frames as well as the annotated storyboard: the checked final frames have no cropped text or text/text overlaps.
+ManimGX 0.1.1's layout inspector reports the intentional faint optical rings and registration marks behind the diagram labels as shape/text collisions. Review clean video frames as well as the annotated storyboard: the checked final frames have no cropped text or text/text overlaps.
 
 ## Chapters
 
 | Start | Subject |
 | --- | --- |
-| 0:00 | The shape of arrival |
+| 0:00 | Apollo: the way home |
 | 0:05 | State vector: position, velocity, epoch |
 | 0:15 | Prograde burn and translunar injection |
 | 0:25 | Intercept the Moon's future position |
@@ -44,4 +46,4 @@ These are teaching schematics, explicitly labeled **not to scale**. The injectio
 
 ## Verification
 
-The final MP4 was decoded with FFmpeg without errors. `ffprobe` reports 1,650 frames, exactly 55.000 seconds, 1600 × 900, 30/1 fps, H.264, and yuv420p. Clean frames from the cover and every chapter were visually reviewed, including the final hold. The delivery MP4 has its metadata at the front for browser streaming. The file is approximately 1.73 MB.
+The final MP4 was decoded with FFmpeg without errors. `ffprobe` reports 1,650 frames, exactly 55.000 seconds, 1600 × 900, 30/1 fps, H.264, and yuv420p. Clean frames from the cover and every chapter were visually reviewed, including the final hold. The delivery MP4 has its metadata at the front for browser streaming. The file is approximately 1.70 MB.
