@@ -1,6 +1,6 @@
 # Apollo: the way home
 
-Original ManimGX scene for The Grove's Apollo tutorial. The committed film is **55 seconds, 1600 × 900, 30 fps, H.264/yuv420p**, silent, with an English WebVTT track and a JPEG poster. All linework, text, and animation are rendered by [ManimGX](https://github.com/academa-labs/manimgx); no stock imagery, historical film, or generated image assets are used.
+Original ManimGX scene for The Grove's Apollo tutorial. The committed film is **55 seconds, 1600 × 900, 30 fps, H.264/yuv420p**, with an English ElevenLabs voiceover, matching WebVTT captions, and a JPEG poster. All linework, text, and animation are rendered by [ManimGX](https://github.com/academa-labs/manimgx); no stock imagery, historical film, or generated image assets are used.
 
 The visual identity treats the film as an optical navigation instrument: neutral black (`#09090d`), optical white (`#f4f4ee`), signal orange (`#ff6333`), cool lavender (`#b6b1c5`), condensed heavy sans headings, concentric sighting rings, and sparse registration stars.
 
@@ -14,7 +14,28 @@ From the repository root:
 bash scripts/apollo/render.sh
 ```
 
-The script creates a temporary virtual environment, renders the source, normalizes the native variable-duration frames to constant 30 fps, and writes the web assets in `learn/apollo-assets/`. The final still frame is deliberately held through 55 seconds. Intermediate MP4s and engine storyboards stay in the printed temporary directory. The WebVTT track is maintained alongside the film.
+The script creates a temporary virtual environment, renders the source, normalizes the native variable-duration frames to constant 30 fps, and muxes the committed narration master into the web film in `learn/apollo-assets/`. The final still frame is deliberately held through 55 seconds. Intermediate MP4s and engine storyboards stay in the temporary directory. Re-rendering requires no ElevenLabs request or credentials.
+
+To replace only the voiceover while preserving the existing picture bit-for-bit:
+
+```bash
+bash scripts/apollo/render.sh --audio-only
+```
+
+## Narration
+
+The synthetic narrator is ElevenLabs' preset **Bill — Wise, Mature, Balanced**, using `eleven_multilingual_v2`. This is newly written educational narration, not archival NASA audio or an impersonation of mission personnel. The exact voice settings, script, and chapter windows are in [`narration.json`](narration.json). The six takes were generated through the user's ElevenLabs `local-api-mcp` with a distinct stable operation ID for each request; only overlong passages were rewritten and regenerated.
+
+The committed `learn/apollo-assets/apollo-narration.flac` is the assembled mono 44.1 kHz master. It preserves natural speech timing, trims only detected trailing silence with a 100 ms tail, and is normalized to approximately −16 LUFS. The MP4 contains mono AAC at 128 kb/s. There is no music under the narration.
+
+To build a new master from replacement takes, generate one MP3 per chapter from `narration.json` using the same voice/settings, name them `cover.mp3`, `state.mp3`, `injection.mp3`, `intercept.mp3`, `encounter.mp3`, and `correction.mp3`, then run:
+
+```bash
+python3 scripts/apollo/assemble_narration.py /path/to/takes
+bash scripts/apollo/render.sh --audio-only
+```
+
+The assembler rejects overlapping or overlong takes instead of truncating speech. It writes the audio master and captions together. If a take does not fit, shorten its script and regenerate that take. The audio is never sped up to fit. Original provider artifacts remain local; private artifact paths and credentials are not part of this repository.
 
 For a quick native storyboard:
 
@@ -46,4 +67,4 @@ These are teaching schematics, explicitly labeled **not to scale**. The injectio
 
 ## Verification
 
-The final MP4 was decoded with FFmpeg without errors. `ffprobe` reports 1,650 frames, exactly 55.000 seconds, 1600 × 900, 30/1 fps, H.264, and yuv420p. Clean frames from the cover and every chapter were visually reviewed, including the final hold. The delivery MP4 has its metadata at the front for browser streaming. The file is approximately 1.70 MB.
+The final MP4 was decoded with FFmpeg without errors. `ffprobe` reports 1,650 video frames, exactly 55.000 seconds for both video and audio, 1600 × 900, 30/1 fps, H.264/yuv420p, and mono AAC at 44.1 kHz. The narration update preserves the original encoded video stream bit-for-bit. Clean frames from the cover and every chapter were visually reviewed, including the final hold. The delivery MP4 has its metadata at the front for browser streaming and is approximately 2.52 MB.
