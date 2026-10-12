@@ -23,6 +23,14 @@ export function executeFlight(flight,command){
   return {...flight,state,path,status,history,commands:[...flight.commands,{...command,detail}],awarded:flight.awarded};
 }
 export function undoFlight(flight){if(!flight.history.length)return flight;const previous=flight.history.at(-1);return {...flight,...previous,history:flight.history.slice(0,-1),commands:flight.commands.slice(0,-1)};}
+/** Preview through the same command path, without changing the actual flight or log. */
+export function previewFlight(flight,{burn=null,seconds=0}={}){
+  let projected=flight;
+  if(burn)projected=executeFlight(projected,{...burn,type:'burn'});
+  // A burn-only preview needs no coast; an explicit coast must obey its limits.
+  if(seconds!==0||!burn)projected=executeFlight(projected,{type:'coast',seconds});
+  return {state:projected.state,path:projected.path,status:projected.status,beacon:beacon(projected)};
+}
 export function referencePlan(flight,throttle=1){const {mission:m}=flight;const first=impulse(m.initial,m.reference.departureDv,90,m.engine);return {departureDuration:burnDuration(m.reference.departureDv,m.initial.mass,m.engine.thrust,m.engine.isp,throttle),arrivalDuration:burnDuration(m.reference.arrivalDv,first.state.mass,m.engine.thrust,m.engine.isp,throttle),departureMass:first.state.mass,...m.reference};}
 export function saveFlight(storage,flight){try{storage.setItem(MISSION_KEY,JSON.stringify({version:1,seed:flight.seed,commands:flight.commands.map(({detail,...c})=>c),assisted:flight.assisted,awarded:flight.awarded}));return true;}catch{return false;}}
 export function readFlight(storage){try{const data=JSON.parse(storage.getItem(MISSION_KEY));if(data?.version!==1||!Number.isInteger(data.seed)||!Array.isArray(data.commands)||data.commands.length>80)return newFlight();let flight=newFlight(data.seed);for(const c of data.commands)flight=executeFlight(flight,c);flight.assisted=!!data.assisted;flight.awarded=!!data.awarded;return flight;}catch{return newFlight();}}

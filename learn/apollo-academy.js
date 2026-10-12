@@ -2,15 +2,33 @@ import { LESSONS, generateQuestion, variantCount, parseCalculation, gradeAnswer 
 import { freshProgress, lessonProgress, isMastered, beginQuestion, recordAnswer, readProgress, saveProgress } from './apollo-progress.js';
 import { drawInstrument } from './apollo-instruments.js';
 import { mountMission } from './apollo-mission.js';
+import { guardedStorage } from './apollo-storage.js';
 
 const $ = id => document.getElementById(id);
 const esc = value => String(value).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-let storage; try { storage = window.localStorage; } catch { /* A private browser can still practice in memory. */ }
+let rawStorage; try { rawStorage = window.localStorage; } catch { /* A private browser can still practice in memory. */ }
+let storageConflict = false;
+function pauseForStorageConflict() {
+  storageConflict = true;
+  $('storage-conflict').hidden = false;
+  $('flight-school').inert = true; $('flight-deck').inert = true;
+  $('save-status').textContent = 'A newer record is saved in another tab. Load it to continue.';
+  $('reload-progress').focus({preventScroll:true});
+}
+const storage = rawStorage ? guardedStorage(rawStorage, pauseForStorageConflict) : undefined;
+window.addEventListener('storage', event => {
+  if (event.storageArea === rawStorage) { try { storage?.check(event.key); } catch { /* Save reports storage availability. */ } }
+});
+$('reload-progress').addEventListener('click', () => location.reload());
 let progress = readProgress(storage);
 if (!LESSONS.some(l => l.id === progress.selected)) progress.selected = LESSONS[0].id;
-let lesson, question, active, values, phase = .35, animating = false, lastFrame = 0, visible = true;
+let lesson, question, active, values, phase = .35, animating = false, animationFrame = 0, lastFrame = 0, visible = true;
 const shortTitles = ['Vectors','Integrate','Orbits','Engines','Transfer','Intercept','Correct','Navigate'];
-const save = () => { $('save-status').textContent = saveProgress(storage, progress) ? 'Learning record saved on this browser.' : 'Storage unavailable — this session still works.'; };
+const save = () => {
+  if (storageConflict) return;
+  const saved = saveProgress(storage, progress);
+  if (!storageConflict) $('save-status').textContent = saved ? 'Learning record saved on this browser.' : 'Storage unavailable — this session still works.';
+};
 function renderNavigation() {
   const count = LESSONS.filter(l => isMastered(progress.lessons[l.id])).length;
   $('school-progress').textContent = `${count} / 8 QUALIFIED`;
@@ -23,7 +41,7 @@ function renderNavigation() {
 }
 function selectLesson(id, mode = progress.mode) {
   progress.selected = id; progress.mode = mode; lesson = LESSONS.find(l => l.id === id);
-  animating = false; phase = .35;
+  animating = false; cancelAnimationFrame(animationFrame); animationFrame = 0; phase = .35;
   $('animate-instrument').textContent = '▷ Animate geometry'; $('animate-instrument').setAttribute('aria-pressed','false');
   values = Object.fromEntries(lesson.visual.controls.map(c => [c.key,c.value]));
   prepareQuestion(); renderNavigation(); renderPanel(); renderControls(); renderInstrument(); save();
@@ -41,11 +59,11 @@ function renderPanel() {
   const panel = $('lesson-panel');
   if (!practice) {
     panel.innerHTML = `<p class="lesson-kicker">${esc(lesson.kicker)}</p><h3>${esc(lesson.title)}</h3><p class="lesson-goal">${esc(lesson.goal)}</p><div class="lesson-copy">${lesson.paragraphs.map(p=>`<p>${esc(p)}</p>`).join('')}</div><div>${lesson.equations.map(e=>`<div class="formula-card"><code>${esc(e.formula)}</code><p>${esc(e.meaning)}</p></div>`).join('')}</div><details class="worked-example"><summary>EXPAND A WORKED EXAMPLE ↗</summary><p>${esc(lesson.worked.prompt)}</p><ol>${lesson.worked.steps.map(s=>`<li>${esc(s)}</li>`).join('')}</ol><p class="worked-answer">${esc(lesson.worked.answer)}</p></details><p class="lesson-kicker">Watch the assumptions</p><ul class="watch-for">${lesson.pitfalls.map(p=>`<li>${esc(p)}</li>`).join('')}</ul><div class="lesson-sources">READ THE UNDERLYING MATH${lesson.references.map(r=>`<a href="${esc(r.url)}" target="_blank" rel="noopener noreferrer">${esc(r.title)} ↗</a>`).join('')}</div><div class="lesson-bottom-actions"><button class="action" id="start-practice">Try the calculations →</button>${lesson.id==='mission' ? '<a class="academy-button" href="#flight-deck">Take command ↗</a>' : ''}</div>`;
-    $('start-practice').addEventListener('click',()=>{setMode('practice');$('lesson-panel').scrollIntoView({block:'start'});});
+    $('start-practice').addEventListener('click',()=>{setMode('practice');$('lesson-panel').scrollIntoView({block:'start'});$('answer-0')?.focus({preventScroll:true});});
     return;
   }
   const record = lessonProgress(progress,lesson.id);
-  panel.innerHTML = `<div class="practice-topline"><span>${esc(lesson.kicker)}<br>PROBLEM ${String(active.index+1).padStart(3,'0')} / ${variantCount(lesson.id)} TYPES</span><strong>${isMastered(record) ? '✓ QUALIFIED' : `${record.independent}/4 INDEPENDENT`}<br>${Math.min(record.variants.length,3)}/3 TYPES PASSED</strong></div><h3>${esc(question.title)}</h3><p class="question-prompt">${esc(question.prompt)}</p><div class="question-givens">${question.givens.map(g=>`<div class="given"><span>${esc(g.label)}</span><strong>${esc(g.value)} ${esc(g.unit||'')}</strong></div>`).join('')}</div><form id="answer-form" novalidate>${question.answers.map((a,i)=>`<div class="answer-field"><label for="answer-${i}">${esc(a.label)}</label><div class="answer-input-wrap">${a.options ? `<select id="answer-${i}" data-key="${esc(a.key)}" ${active.solved?'disabled':''}><option value="">Choose an answer…</option>${a.options.map(o=>`<option value="${esc(o.value)}" ${String(active.inputs[a.key])===String(o.value)?'selected':''}>${esc(o.label)}</option>`).join('')}</select>` : `<input id="answer-${i}" data-key="${esc(a.key)}" type="text" inputmode="text" autocomplete="off" spellcheck="false" maxlength="240" value="${esc(active.inputs[a.key]||'')}" ${active.solved?'disabled':''} aria-describedby="answer-help-${i}">`}<span>${esc(a.unit||'')}</span></div>${!a.options ? `<small id="answer-help-${i}">Expressions accepted. ${a.angle?'Equivalent bearings wrap by 360°. ':''}Tolerance: ±${esc(Number(a.tolerance.toPrecision(3)))} ${esc(a.unit||'')}.</small>`:''}</div>`).join('')}<div class="answer-actions"><button class="action" type="submit" ${active.solved?'disabled':''}>${active.solved?'✓ Answer checked':'Check my calculation →'}</button><button type="button" id="next-question">${active.solved?'Next fresh challenge →':'Skip / new scenario'}</button></div></form><div class="feedback ${active.solved?'success':''}" id="practice-answer-feedback" role="status" aria-live="polite">${active.solved?'<strong>This problem is complete.</strong>Try a fresh challenge to continue your practice.':''}</div><div class="question-help"><button type="button" id="question-hint" ${active.hints>=question.hints.length||active.solved?'disabled':''}>${active.hints?'Another hint':'Give me a hint'}</button><button type="button" id="question-solution" ${active.revealed?'disabled':''}>Show worked solution</button></div><ol id="question-hints" class="hint-list">${question.hints.slice(0,active.hints).map(h=>`<li>${esc(h)}</li>`).join('')}</ol><div id="question-worked"></div><p class="practice-footer">${record.correct} problems solved · ${record.independent} independent first attempts.<br>${active.solved?'Completed problem. Generate a fresh challenge to keep practicing.':active.hints||active.revealed?'This problem is assisted; it counts as practice.':'Your first unassisted answer can count toward qualification.'} Formula sheets and the calculator are always available.</p>`;
+  panel.innerHTML = `<div class="practice-topline"><span>${esc(lesson.kicker)}<br>PROBLEM ${String(active.index+1).padStart(3,'0')} / ${variantCount(lesson.id)} TYPES</span><strong>${isMastered(record) ? '✓ QUALIFIED' : `${record.independent}/4 INDEPENDENT`}<br>${Math.min(record.variants.length,3)}/3 TYPES PASSED</strong></div><h3>${esc(question.title)}</h3><p class="question-prompt">${esc(question.prompt)}</p><div class="question-givens">${question.givens.map(g=>`<div class="given"><span>${esc(g.label)}</span><strong>${esc(g.value)} ${esc(g.unit||'')}</strong></div>`).join('')}</div><form id="answer-form" novalidate>${question.answers.map((a,i)=>`<div class="answer-field"><label for="answer-${i}">${esc(a.label)}</label><div class="answer-input-wrap">${a.options ? `<select id="answer-${i}" data-key="${esc(a.key)}" ${active.solved?'disabled':''}><option value="">Choose an answer…</option>${a.options.map(o=>`<option value="${esc(o.value)}" ${String(active.inputs[a.key])===String(o.value)?'selected':''}>${esc(o.label)}</option>`).join('')}</select>` : `<input id="answer-${i}" data-key="${esc(a.key)}" type="text" inputmode="text" autocomplete="off" spellcheck="false" maxlength="240" value="${esc(active.inputs[a.key]||'')}" ${active.solved?'disabled':''} aria-describedby="answer-help-${i}">`}<span>${esc(a.unit||'')}</span></div>${!a.options ? `<small id="answer-help-${i}">Expressions accepted. ${a.angle?'Equivalent bearings wrap by 360°. ':''}Tolerance: ±${esc(Number(a.tolerance.toPrecision(3)))} ${esc(a.unit||'')}.</small>`:''}</div>`).join('')}<div class="answer-actions"><button class="action" type="submit" ${active.solved?'disabled':''}>${active.solved?'✓ Answer checked':'Check my calculation →'}</button><button type="button" id="next-question">${active.solved?'Next fresh challenge →':'Skip / new scenario'}</button></div></form><div class="feedback ${active.solved?'success':''}" id="practice-answer-feedback" role="status" aria-live="polite">${active.solved?'<strong>This problem is complete.</strong>Try a fresh challenge to continue your practice.':''}</div><div class="question-help"><button type="button" id="question-hint" ${active.hints>=question.hints.length||active.solved?'disabled':''}>${active.hints?'Another hint':'Give me a hint'}</button><button type="button" id="question-solution" ${active.revealed?'disabled':''}>Show worked solution</button></div><ol id="question-hints" class="hint-list">${question.hints.slice(0,active.hints).map(h=>`<li>${esc(h)}</li>`).join('')}</ol><div id="question-worked"></div><p class="practice-footer">${record.correct} problems solved · ${record.independent} independent first attempts.<br>${active.solved?'Completed problem. Generate a fresh challenge to keep practicing.':active.hints||active.revealed?'This problem is assisted; it counts as practice.':active.attempts?'You have already tried this problem; revised answers count as practice.':'Your first unassisted answer can count toward qualification.'} Formula sheets and the calculator are always available.</p>`;
   panel.querySelectorAll('[data-key]').forEach(input=>input.addEventListener('input',()=>{active.inputs[input.dataset.key]=input.value;save();}));
   $('answer-form').addEventListener('submit', checkAnswers);
   $('next-question').addEventListener('click',nextQuestion);
@@ -55,7 +73,7 @@ function renderPanel() {
   if(isMastered(record)){
     const next=LESSONS[LESSONS.indexOf(lesson)+1];
     const follow=document.createElement(next?'button':'a');follow.className='academy-button';follow.textContent=next?'Next lesson: '+next.title+' →':'Take command of the spacecraft ↗';
-    if(next){follow.type='button';follow.addEventListener('click',()=>{selectLesson(next.id,'briefing');$('lesson-panel').scrollIntoView({block:'start'});});}else follow.href='#flight-deck';
+    if(next){follow.type='button';follow.addEventListener('click',()=>{selectLesson(next.id,'briefing');$('lesson-panel').scrollIntoView({block:'start'});const heading=$('lesson-panel').querySelector('h3');heading.tabIndex=-1;heading.focus({preventScroll:true});});}else follow.href='#flight-deck';
     panel.append(follow);
   }
 }
@@ -92,18 +110,13 @@ function renderInstrument() {
   $('instrument-mode-note').textContent='EXPLORATION MODEL / SEPARATE FROM THIS QUESTION’S GIVENS';
   $('instrument-readouts').dataset.count=String(model.readouts.length);
   $('instrument-caption').textContent=(progress.mode==='practice'?'Exploration model — these controls are separate from the question’s givens. ':'')+model.caption;
-  const hidden=progress.mode==='practice'&&!active.solved&&!active.revealed&&!active.hints;
-  if(hidden){
-    if(!$('reveal-instrument')){
-      $('instrument-readouts').innerHTML='<div class="instrument-lock"><span>Predict first.<br>Reveal instrument values as a hint.</span><button type="button" id="reveal-instrument">Reveal values</button></div>';
-      $('reveal-instrument').addEventListener('click',()=>{active.hints=Math.max(1,active.hints);save();renderPanel();renderInstrument();$('answer-0')?.focus({preventScroll:true});});
-    }
-  }else $('instrument-readouts').innerHTML=model.readouts.map(r=>`<div class="instrument-readout"><small>${esc(r.label)}</small><strong>${esc(r.value)}</strong><span>${esc(r.unit||'')}</span></div>`).join('');
+  // This exploration model uses independent givens, so reading it is not question assistance.
+  $('instrument-readouts').innerHTML=model.readouts.map(r=>`<div class="instrument-readout"><small>${esc(r.label)}</small><strong>${esc(r.value)}</strong><span>${esc(r.unit||'')}</span></div>`).join('');
 }
 $('show-briefing').addEventListener('click',()=>setMode('briefing'));
 $('show-practice').addEventListener('click',()=>setMode('practice'));
-$('animate-instrument').addEventListener('click',()=>{animating=!animating;$('animate-instrument').textContent=animating?'Ⅱ Pause geometry':'▷ Animate geometry';$('animate-instrument').setAttribute('aria-pressed',String(animating));if(animating)requestAnimationFrame(tick);});
-function tick(time){if(!animating)return;if(visible&&!document.hidden&&time-lastFrame>66){phase=(phase+.006)%1;lastFrame=time;renderInstrument();}requestAnimationFrame(tick);}
+$('animate-instrument').addEventListener('click',()=>{animating=!animating;$('animate-instrument').textContent=animating?'Ⅱ Pause geometry':'▷ Animate geometry';$('animate-instrument').setAttribute('aria-pressed',String(animating));if(animating)animationFrame=requestAnimationFrame(tick);else{cancelAnimationFrame(animationFrame);animationFrame=0;}});
+function tick(time){if(!animating)return;if(visible&&!document.hidden&&time-lastFrame>66){phase=(phase+.006)%1;lastFrame=time;renderInstrument();}animationFrame=requestAnimationFrame(tick);}
 new IntersectionObserver(entries=>{visible=entries[0].isIntersecting;},{threshold:.05}).observe($('school-diagram'));
 $('reset-instrument').addEventListener('click',()=>{values=Object.fromEntries(lesson.visual.controls.map(c=>[c.key,c.value]));phase=.35;renderControls();renderInstrument();});
 $('calculator-form').addEventListener('submit',event=>{event.preventDefault();try{$('calculator-result').textContent=Number(parseCalculation($('flight-calculation').value).toPrecision(12)).toString();}catch(error){$('calculator-result').textContent=error.message;}});

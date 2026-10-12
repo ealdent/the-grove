@@ -198,9 +198,12 @@ function drawGravity(art, values, phase) {
 function conicAtDeparture(radius, speedFactor) {
   const speed = circularSpeed(radius) * speedFactor;
   const elements = orbitElements({ x: radius, y: 0, vx: 0, vy: speed });
+  // Use the same roundoff-aware classification as orbitElements. An exact
+  // escape speed can leave a tiny negative energy without defining an ellipse.
+  const bound = Number.isFinite(elements.apoapsis);
   const signedE = speedFactor ** 2 - 1;
   let point, velocity, end, clock, timeScale, collision = false;
-  if (elements.energy < 0 && Number.isFinite(elements.a)) {
+  if (bound) {
     const { a } = elements, b = a * Math.sqrt(1 - signedE ** 2);
     end = TAU;
     if (elements.periapsis < RADIUS && signedE < 0) {
@@ -225,7 +228,7 @@ function conicAtDeparture(radius, speedFactor) {
     timeScale = Math.sqrt(a ** 3 / MU);
     velocity = H => ({ x: -a * Math.sinh(H) / (timeScale * (e * Math.cosh(H) - 1)), y: b * Math.cosh(H) / (timeScale * (e * Math.cosh(H) - 1)) });
   }
-  return { elements, point, velocity, end, clock, timeScale, collision };
+  return { elements, bound, point, velocity, end, clock, timeScale, collision };
 }
 
 function drawOrbit(art, values, phase) {
@@ -254,13 +257,13 @@ function drawOrbit(art, values, phase) {
   if (conic.collision) {
     art.cross(project(conic.point(conic.end)), ORANGE, 7);
     art.text('SURFACE INTERSECTION', 320, 77, { anchor: 'middle', size: 11, color: ORANGE });
-  } else art.text(conic.elements.energy < 0 ? 'BOUND CONIC' : 'ESCAPE TRAJECTORY', 320, 77, { anchor: 'middle', size: 11, color: LAVENDER });
+  } else art.text(conic.bound ? 'BOUND CONIC' : 'ESCAPE TRAJECTORY', 320, 77, { anchor: 'middle', size: 11, color: LAVENDER });
   art.footer('EQUAL x / y SCALE • EARTH TO SCALE', 'VELOCITY ARROW: DIRECTION');
   return {
     title: 'Read the orbit from its energy',
     caption: conic.collision
       ? 'This mathematical conic intersects Earth. The visible flight and time-based marker stop at the first surface contact; negative energy alone does not make an orbit safe. The view fits the visible arc with equal axes.'
-      : conic.elements.energy < 0
+      : conic.bound
         ? 'The spacecraft moves according to Kepler’s equation, speeding up near Earth and slowing farther away. The view fits the whole ellipse with equal axes; Earth can become very small near escape energy.'
         : 'An escaping trajectory has no apoapsis or repeating period. This view shows the outbound arc to six times the departure radius. Marker motion follows physical time; both distance axes share one scale.',
     readouts: [output('Departure speed', conic.elements.speed, 'km/s', 4), output('Specific energy', conic.elements.energy, 'km²/s²', 3), output('Perigee radius', conic.elements.periapsis, 'km', 1), output('Apogee radius', conic.elements.apoapsis, Number.isFinite(conic.elements.apoapsis) ? 'km' : undefined, 1)]
@@ -276,8 +279,16 @@ function drawEngine(art, values, phase) {
   const x = t => 56 + t / 120 * 366, y = acceleration => 305 - acceleration / 30 * 198;
   art.arrow({ x: 56, y: 305 }, { x: 432, y: 305 }, MUTED, { width: 1 });
   art.arrow({ x: 56, y: 315 }, { x: 56, y: 76 }, MUTED, { width: 1 });
-  art.text('a', 42, 78, { size: 16, color: MUTED }); art.text('t', 435, 324, { size: 16, color: MUTED });
-  art.text('THRUST ACCELERATION', 74, 78, { size: 11, color: LAVENDER });
+  art.text('a', 42, 78, { size: 16, color: MUTED }); art.text('t (s)', 435, 324, { size: 12, color: MUTED });
+  art.text('THRUST ACCELERATION / m/s²', 74, 78, { size: 11, color: LAVENDER });
+  for (const acceleration of [0, 10, 20, 30]) {
+    art.line({ x: 52, y: y(acceleration) }, { x: 60, y: y(acceleration) }, MUTED);
+    art.text(String(acceleration), 45, y(acceleration) + 4, { size: 10, anchor: 'end', color: MUTED });
+  }
+  for (const time of [0, 40, 80, 120]) {
+    art.line({ x: x(time), y: 301 }, { x: x(time), y: 309 }, MUTED);
+    art.text(String(time), x(time), 324, { size: 10, anchor: 'middle', color: MUTED });
+  }
   const accelerationAt = t => force / Math.max(params.dryMass, params.mass - result.massFlow * t);
   if (result.duration > 0) {
     const curve = sample(t => ({ x: x(t), y: y(accelerationAt(t)) }), result.duration, 70);
@@ -292,7 +303,7 @@ function drawEngine(art, values, phase) {
     const time = duration * phase, acceleration = time <= result.duration ? force / now.mass : 0;
     art.circle({ x: x(time), y: y(acceleration) }, 4, WHITE, { fill: WHITE });
   }
-  art.text('F / m(t)', 80, 108, { size: 16, color: ORANGE });
+  art.text('qF / m(t)', 80, 108, { size: 16, color: ORANGE });
   art.text('AREA = Δv', 96, 353, { size: 15, color: ORANGE });
   art.text('DASHED: CONSTANT m₀', 96, 374, { size: 10, color: LAVENDER });
   const tank = { x: 481, y: 101, width: 77, height: 204 };
@@ -308,7 +319,7 @@ function drawEngine(art, values, phase) {
   art.footer('IDEAL ENGINE / VARYING MASS', 'GRAVITY NOT INCLUDED');
   return {
     title: 'Integrate thrust as the mass falls',
-    caption: 'The area under thrust acceleration F/m(t) gives the ideal engine Δv. Solid orange accounts for shrinking mass; the dashed reference holds mass fixed. Thrust stops at dry mass. This is not a propagated orbital burn: gravity and changing steering are omitted.',
+    caption: 'The area under thrust acceleration qF/m(t) gives the ideal engine Δv in m/s; divide by 1000 for the km/s readout. Solid orange accounts for shrinking mass; the dashed reference holds mass fixed. The moving dot and tank show elapsed animation time; the readouts give final totals. Thrust stops at dry mass. This is not a propagated orbital burn: gravity and changing steering are omitted.',
     readouts: [output('Ideal engine Δv', result.deltaV, 'km/s', 4), output('Fuel consumed', result.fuelUsed, 'kg', 1), output('Remaining mass', result.mass, 'kg', 1), output('Actual powered time', result.duration, 's', 2)]
   };
 }

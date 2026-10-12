@@ -203,9 +203,9 @@ class ApolloFlightPlan(m.Scene):
             'To stay at the Moon, Apollo', 'fired a braking burn.'],'BRAKE → CAPTURE')
         moon=body(2.13,.15,.48)
         flyby=route([(-1.4,-1.9),(.25,-1.49),(2.64,-.79),(3.28,.22),(2.73,1.3),(1.1,1.27),(-.38,.3),(-1.4,-.59)],SIGNAL,2.5)
-        capture=m.Ellipse(width=2.4,height=1.65,color=LAVENDER,stroke_width=2).move_to(p(2.13,.15))
+        capture=m.Circle(radius=1.2,color=LAVENDER,stroke_width=2).move_to(p(2.13,.15))
         craft=ship(-1.4,-1.9)
-        burn=m.Arrow(p(3.14,-.03),p(3.14,-1.12),color=BURN,stroke_width=3,buff=0)
+        burn=m.Arrow(p(3.33,.15),p(3.33,-.94),color=BURN,stroke_width=3,buff=0)
         notes=m.VGroup(label('FREE-RETURN GEOMETRY',1.1,2.3,18,SIGNAL),
                        label('BRAKE TO ENTER ORBIT',3.95,-1.78,18,BURN),
                        label('LUNAR ORBIT',4.67,.85,18,LAVENDER),

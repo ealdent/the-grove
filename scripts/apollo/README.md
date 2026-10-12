@@ -57,7 +57,7 @@ ManimGX 0.1.1's layout inspector reports the intentional faint optical rings and
 | 0:35 | Free-return geometry and lunar capture |
 | 0:45 | Tracking, correction, and the Earth-entry corridor |
 
-These are teaching schematics, explicitly labeled **not to scale**. The injection ellipse is an ideal two-body explanation. The moving spacecraft markers use illustrative timing, not Keplerian timing. The other curves are authored diagrams, not reconstructed Apollo trajectories, a numerical propagation, or guidance software. The lunar encounter finishes near the Moon rather than at its center. Free return and lunar capture are separate targeting choices; the film does not claim all Apollo missions retained a free-return trajectory.
+These are teaching schematics, explicitly labeled **not to scale**. The injection ellipse is an ideal two-body explanation. The moving spacecraft markers use illustrative timing, not Keplerian timing. The other curves are authored diagrams, not reconstructed Apollo trajectories, a numerical propagation, or guidance software. The lunar encounter finishes near the Moon rather than at its center. The captured orbit is drawn as a circle centered on the Moon, with a tangential braking vector; an elliptical orbit would place the Moon at a focus. Free return and lunar capture are separate targeting choices; the film does not claim all Apollo missions retained a free-return trajectory.
 
 ## Historical basis
 
@@ -67,4 +67,4 @@ These are teaching schematics, explicitly labeled **not to scale**. The injectio
 
 ## Verification
 
-The final MP4 was decoded with FFmpeg without errors. `ffprobe` reports 1,650 video frames, exactly 55.000 seconds for both video and audio, 1600 × 900, 30/1 fps, H.264/yuv420p, and mono AAC at 44.1 kHz. The narration update preserves the original encoded video stream bit-for-bit. Clean frames from the cover and every chapter were visually reviewed, including the final hold. The delivery MP4 has its metadata at the front for browser streaming and is approximately 2.52 MB.
+The final MP4 was decoded with FFmpeg without errors. `ffprobe` reports 1,650 video frames, exactly 55.000 seconds for both video and audio, 1600 × 900, 30/1 fps, H.264/yuv420p, and mono AAC at 44.1 kHz. The geometry audit corrected the lunar-capture circle and braking-arrow placement, then re-rendered the picture. The original narration audio stream is preserved bit-for-bit; chapter timing and captions are unchanged. Clean frames from the cover and every chapter were visually reviewed, including the final hold. The delivery MP4 has its metadata at the front for browser streaming and is approximately 2.52 MB.

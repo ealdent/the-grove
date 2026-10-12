@@ -16,10 +16,11 @@ function plot(orbit) {
   const geometry = $('orbit-geometry');
   const labels = $('orbit-labels');
   geometry.replaceChildren(); labels.replaceChildren();
-  // A real linear scale; the full transfer ellipse fits. The lunar reference ring is clipped.
+  // Fit both the complete transfer ellipse and complete lunar-distance ring.
+  // Equal axis scales preserve the geometry even when a short transfer is tiny.
   const extent = Math.max(MOON_DISTANCE, orbit.apogee);
-  const scale = 605 / (extent + MOON_DISTANCE * .13);
-  const centerX = 655, centerY = 216;
+  const scale = Math.min(662 / (extent + MOON_DISTANCE), 288 / (2 * MOON_DISTANCE));
+  const centerX = 373 + (extent - MOON_DISTANCE) * scale / 2, centerY = 208;
   const sx = (x) => centerX + x * scale;
   const sy = (y) => centerY - y * scale;
   const points = Array.from({ length: 401 }, (_, i) => orbitPoint(orbit, i / 400 * 2 * Math.PI));
@@ -32,23 +33,30 @@ function plot(orbit) {
   geometry.append(svg('circle',{cx:sx(PARKING_RADIUS),cy:centerY,r:3,fill:'#ff6333'}));
   geometry.append(svg('path',{d:`M${sx(PARKING_RADIUS)} ${centerY-12}v-25`,stroke:'#ff8965','stroke-width':1.3}));
   geometry.append(svg('path',{d:`M${sx(PARKING_RADIUS)-4} ${centerY-30}l4 -7 4 7`,fill:'none',stroke:'#ff8965','stroke-width':1.3}));
-  const labelStyle = { fill:'#e5e1ed','font-family':'monospace','font-size':10 };
-  labels.append(svg('text',{...labelStyle,x:centerX+14,y:centerY+25,'text-anchor':'end'},'EARTH'));
-  labels.append(svg('text',{...labelStyle,x:Math.max(43,sx(-MOON_DISTANCE)),y:65},'MEAN LUNAR DISTANCE'));
-  labels.append(svg('text',{...labelStyle,x:Math.max(43,sx(-MOON_DISTANCE)),y:81,'font-size':9,fill:'#a6a0b5'},'384,400 km · reference ring'));
-  labels.append(svg('text',{...labelStyle,x:665,y:centerY-45,'text-anchor':'end',fill:'#ff8965'},'BURN'));
+  const labelStyle = { class:'orbit-label',fill:'#e5e1ed','font-family':'monospace','font-size':10 };
+  const desktopLabel = { ...labelStyle,class:'orbit-label orbit-desktop-only' };
+  const mobileLabel = { ...labelStyle,class:'orbit-label orbit-mobile-only' };
+  labels.append(svg('text',{...labelStyle,x:centerX+14,y:centerY+25},'EARTH'));
+  labels.append(svg('text',{...labelStyle,x:42,y:25},'MEAN LUNAR DISTANCE'));
+  labels.append(svg('text',{...desktopLabel,x:42,y:41,'font-size':9,fill:'#a6a0b5'},'384,400 km · complete reference ring'));
+  labels.append(svg('text',{...mobileLabel,x:42,y:51,fill:'#a6a0b5'},'384,400 km · full ring'));
+  labels.append(svg('text',{...labelStyle,x:centerX+20,y:centerY-45,fill:'#ff8965'},'BURN'));
   const apoX=sx(-orbit.apogee);
   geometry.append(svg('circle',{cx:apoX,cy:centerY,r:3,fill:'#ff6333'}));
-  labels.append(svg('text',{...labelStyle,x:Math.max(apoX,43),y:centerY+maxY+31,fill:'#ff6333'},'APOGEE / '+format.format(orbit.apogee)+' km'));
+  labels.append(svg('text',{...desktopLabel,x:Math.max(apoX,43),y:centerY+maxY+31,fill:'#ff6333'},'APOGEE / '+format.format(orbit.apogee)+' km'));
+  labels.append(svg('text',{...mobileLabel,x:Math.max(apoX,43),y:centerY+maxY+46,fill:'#ff6333'},'APOGEE '+format.format(orbit.apogee)+' km'));
   if(orbit.reachesMoon) {
     // Mark the first outward crossing, not an invented Moon/intercept.
     const p={x:MOON_DISTANCE*Math.cos(orbit.arrival.theta),y:MOON_DISTANCE*Math.sin(orbit.arrival.theta)};
     geometry.append(svg('circle',{cx:sx(p.x),cy:sy(p.y),r:5,fill:'#09090d',stroke:'#f4f4ee','stroke-width':2}));
-    labels.append(svg('text',{...labelStyle,x:sx(p.x)+10,y:sy(p.y)-15,fill:'#ff8965','font-size':9},'FIRST DISTANCE CROSSING'));
+    labels.append(svg('text',{...desktopLabel,x:sx(p.x)+10,y:sy(p.y)-15,fill:'#ff8965','font-size':9},'FIRST DISTANCE CROSSING'));
+    labels.append(svg('text',{...mobileLabel,x:sx(p.x)-12,y:sy(p.y)-18,'text-anchor':'end',fill:'#ff8965'},'REACH'));
   }
   const barKm=extent>650000?200000:100000;
   geometry.append(svg('path',{d:`M42 382v6h${barKm*scale}v-6`,fill:'none',stroke:'#a6a0b5','stroke-width':1}));
-  labels.append(svg('text',{...labelStyle,x:42,y:408,'font-size':8,fill:'#a6a0b5'},format.format(barKm)+' km'));
+  labels.append(svg('text',{...desktopLabel,x:42,y:408,'font-size':8,fill:'#a6a0b5'},format.format(barKm)+' km'));
+  labels.append(svg('text',{...mobileLabel,x:42,y:418,fill:'#a6a0b5'},format.format(barKm)+' km'));
+  labels.append(svg('text',{...desktopLabel,x:704,y:408,'text-anchor':'end','font-size':8,fill:'#a6a0b5'},'FULL LUNAR-DISTANCE CONTEXT · EQUAL AXIS SCALES'));
 }
 
 function updateBurn(deltaV) {
@@ -61,7 +69,7 @@ function updateBurn(deltaV) {
   $('flight-time').textContent=((orbit.arrival?.t??orbit.halfPeriod)/3600).toFixed(1)+' hours';
   $('reach-status').textContent=orbit.reachesMoon
     ? 'Lunar distance reached. An encounter still needs the right direction, time, and lunar gravity.'
-    : 'Short of lunar distance. Add velocity to raise the far end of the ellipse.';
+    : 'Short of lunar distance. Add velocity to raise the far end of the ellipse. In this full lunar-distance view, short transfers appear small.';
   plot(orbit);
 }
 burn.addEventListener('input',()=>updateBurn(Number(burn.value)/1000));

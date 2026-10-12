@@ -85,6 +85,28 @@ test('halving the RK4 step produces fourth-order convergence toward an analytic 
   assert.ok(errors[2] < errors[1] / 12, String(errors));
 });
 
+test('eccentric coasts match an independent Kepler-equation solution through 48 hours', () => {
+  // Solve M = E - e sin E, then differentiate the ellipse parametrization.
+  // This oracle does not use orbitElements, hohmann, or the RK4 acceleration.
+  for (const e of [.1, .45, .75, .92]) {
+    const rp = RADIUS + 350, a = rp / (1 - e), n = Math.sqrt(MU / a ** 3);
+    const initial = { x: rp, y: 0, vx: 0, vy: Math.sqrt(MU * (1 + e) / rp) };
+    for (const t of [1234, 20000, 172800]) {
+      const mean = n * t;
+      let E = mean;
+      for (let i = 0; i < 30; i++) E -= (E - e * Math.sin(E) - mean) / (1 - e * Math.cos(E));
+      const q = 1 - e * Math.cos(E);
+      const expected = {
+        x: a * (Math.cos(E) - e), y: a * Math.sqrt(1 - e * e) * Math.sin(E),
+        vx: -a * n * Math.sin(E) / q, vy: a * n * Math.sqrt(1 - e * e) * Math.cos(E) / q
+      };
+      const actual = propagate(initial, t, { maxStep: 8 }).state;
+      assert.ok(Math.hypot(actual.x - expected.x, actual.y - expected.y) < .001, `position e=${e}, t=${t}`);
+      assert.ok(Math.hypot(actual.vx - expected.vx, actual.vy - expected.vy) < 1e-6, `velocity e=${e}, t=${t}`);
+    }
+  }
+});
+
 test('rocket equation and its duration inverse agree without assuming constant mass', () => {
   const result = rocketBurn({ mass: 10000, dryMass: 6000, thrust: 180000, isp: 450, throttle: .5, duration: 30 });
   near(result.massFlow, 90000 / (450 * G0));
@@ -143,6 +165,17 @@ test('propagation stops at surface impact before consuming the rest of requested
   near(initial.mass - result.state.mass, (result.state.t - 100) * 1000 / (450 * G0), 1e-9);
   const already = propagate({ ...initial, x: RADIUS }, 100);
   assert.equal(already.status, 'impact'); assert.equal(already.state.t, 100);
+});
+
+test('radial free-fall impact agrees with the analytic collapse time and speed', () => {
+  const r0 = RADIUS + 100, ratio = RADIUS / r0;
+  const expectedTime = Math.sqrt(r0 ** 3 / (2 * MU)) * (Math.acos(Math.sqrt(ratio)) + Math.sqrt(ratio * (1 - ratio)));
+  const expectedSpeed = Math.sqrt(2 * MU * (1 / RADIUS - 1 / r0));
+  const result = propagate({ x: r0, y: 0, vx: 0, vy: 0 }, 1000, { maxStep: 8 });
+  assert.equal(result.status, 'impact');
+  near(result.state.t, expectedTime, 1e-5);
+  near(result.state.vx, -expectedSpeed, 1e-7);
+  near(result.state.y, 0); near(result.state.vy, 0);
 });
 
 test('a complete fuel burn remains affordable after a fractional initial firing', () => {
