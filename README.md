@@ -144,6 +144,7 @@ A collection of games, tools, and experiments built with AI — hosted on GitHub
 
 *Tutorials, trainers & explainers*
 
+- **[Apollo: The Art of the Return](learn/apollo-trajectories.html)** — How NASA calculated lunar trajectories: a ManimGX film, interactive translunar-injection lab, and six source-grounded flight-dynamics lessons. (*Tutorial*)
 - **[Canon Rebel T5i Trainer](learn/canon_t_5_i_control_trainer.html)** — Interactive guide for learning Canon EOS Rebel T5i controls, shooting modes, exposure, autofocus, and quick field workflows. (*Guide*)
 - **[Cellular Learning Automata](learn/cellular-learning-automata.html)** — Interactive explainer of emergent consensus through distributed reinforcement learning using Cellular Learning Automata. (*Explainer*)
 - **[China Population Density](learn/china-provinces.html)** — Interactive map of China’s 34 province-level divisions — people per km², major cities, and 2020 census stats with density and population color modes. (*Visualizer*)

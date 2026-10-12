@@ -1,0 +1,47 @@
+# Apollo flight dynamics film
+
+Original ManimGX scene for The Grove's Apollo tutorial. The committed film is **55 seconds, 1600 × 900, 30 fps, H.264/yuv420p**, silent, with an English WebVTT track and a JPEG poster. All linework, text, and animation are rendered by [ManimGX](https://github.com/academa-labs/manimgx); no stock imagery, historical film, or generated image assets are used.
+
+## Reproduce
+
+Requires `uv`, Python 3.13 or later, `ffmpeg`, and a GPU supported by ManimGX. Dependencies are pinned in `requirements.txt`. The verified render used ManimGX **0.1.1**, Python **3.13.16**, and macOS Metal.
+
+From the repository root:
+
+```bash
+bash scripts/apollo/render.sh
+```
+
+The script creates a temporary virtual environment, renders the source, normalizes the native variable-duration frames to constant 30 fps, and writes the web assets in `learn/apollo-assets/`. The final still frame is deliberately held through 55 seconds. Intermediate MP4s and engine storyboards stay in the printed temporary directory. The WebVTT track is maintained alongside the film.
+
+For a quick native storyboard:
+
+```bash
+manimgx inspect scripts/apollo/apollo_flight_plan.py ApolloFlightPlan \
+  -t 4.1,10,22,33.4,43.5,54.9 -o /tmp/apollo-storyboard.png
+```
+
+ManimGX 0.1.1's layout inspector reports the intentional faint drafting-grid lines behind the labels as line/text collisions. Review clean video frames as well as the annotated storyboard: the checked final frames have no cropped text or text/text overlaps.
+
+## Chapters
+
+| Start | Subject |
+| --- | --- |
+| 0:00 | The shape of arrival |
+| 0:05 | State vector: position, velocity, epoch |
+| 0:15 | Prograde burn and translunar injection |
+| 0:25 | Intercept the Moon's future position |
+| 0:35 | Free-return geometry and lunar capture |
+| 0:45 | Tracking, correction, and the Earth-entry corridor |
+
+These are teaching schematics, explicitly labeled **not to scale**. The injection ellipse is an ideal two-body explanation. The moving spacecraft markers use illustrative timing, not Keplerian timing. The other curves are authored diagrams, not reconstructed Apollo trajectories, a numerical propagation, or guidance software. The lunar encounter finishes near the Moon rather than at its center. Free return and lunar capture are separate targeting choices; the film does not claim all Apollo missions retained a free-return trajectory.
+
+## Historical basis
+
+- [NASA, Apollo 11 Mission Overview](https://www.nasa.gov/missions/apollo/apollo-11/apollo-11-mission-overview/): parking orbit, translunar injection, free-return mission design, and lunar orbit insertion.
+- [NASA TN D-6855, Real-Time Auxiliary Computing Facility Development](https://ntrs.nasa.gov/api/citations/19720017573/downloads/19720017573.pdf), printed pp. 8–9: integrated trajectory ephemerides with position/velocity vectors, lunar-orbit-insertion support, and optimized midcourse targeting.
+- [NASA TN D-6725, Mission Planning for Apollo Entry](https://ntrs.nasa.gov/citations/19720013191): entry targeting, monitoring, and control planning.
+
+## Verification
+
+The final MP4 was decoded with FFmpeg without errors. `ffprobe` reports 1,650 frames, exactly 55.000 seconds, 1600 × 900, 30/1 fps, H.264, and yuv420p. Clean frames from the cover and every chapter were visually reviewed, including the final hold. The delivery MP4 has its metadata at the front for browser streaming. The file is approximately 1.73 MB.

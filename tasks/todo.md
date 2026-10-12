@@ -979,3 +979,34 @@ Jason explicitly requested committing all Signals Take Time work and pushing to 
 Final execution steps: commit the scoped change, push without force, verify the remote SHA/content and inspect exact-commit CI. Their outcomes belong in the completion message so the committed record does not claim a push before it occurs.
 
 Verification before publication: 11/11 tests pass, both JS modules parse, diff whitespace check passes. Prior browser proof and prototype limitations remain recorded above. Repository has no checked-in .github workflows or build step; remote check status will be inspected after pushing. Final commit/remote/CI evidence is reported in the completion message.
+
+---
+
+# Apollo / The Art of the Return — 2026-10-11
+
+Goal: build a polished, source-grounded Apollo trajectory tutorial and Learn tile, using real ManimGX animation; commit and push to origin/main.
+Project: Moon Dog Atlas / The Grove. Route: `learn/apollo-trajectories.html`.
+Constraints: static GitHub Pages, accessible on mobile and keyboard, local media, no build/runtime framework, distinguish educational models from flight trajectory reconstruction.
+Design: a flight-dynamics desk; ivory engineering paper, black-green plotter glass, vermilion maneuver annotations, oversized editorial type, precise orbital drawings.
+Files: tutorial HTML/CSS/JS, pure two-body physics module, tests, `scripts/apollo/`, `learn/apollo-assets/`, Learn index and README.
+Proof: primary NASA references; numerical invariants and representative calculations; desktop/mobile UI, controls, video, console/network; scoped diff and remote SHA.
+
+- [x] Inspect repository, remote, project lessons, and ManimGX capabilities; verify scope and plan.
+- [x] Build original tutorial, interactive TLI laboratory, and gallery integration.
+- [x] Render and inspect actual ManimGX film; keep source and reproducible instructions.
+- [x] Independently review science and implementation; verify desktop/mobile behavior.
+- [x] Review intended paths and refresh origin/main before release; remote delivery result reported in the chat.
+
+Review: independent primary-source science review confirmed the energy/crossing calculations and corrected source titles, reference frames, and the division between Saturn and spacecraft guidance. A separate deep-code-review found the SVG lunar-distance ring overflow; fixed by clipping the plot and confirmed in the browser.
+
+Proof:
+- `node --test tests/apollo-physics.test.mjs`: 6/6 pass, including all 391 slider settings, orbital invariants, threshold, shorter higher-energy crossing time, and invalid input rejection.
+- `node --check learn/apollo-trajectories.js`, `bash -n scripts/apollo/render.sh`, and complete FFmpeg decode pass. Film: 55.000 s, 1,650 frames, 1600 x 900 H.264/yuv420p, 1,732,745 bytes. Actual ManimGX 0.1.1 source, pinned requirements, and render script included.
+- UI proof URL: `http://127.0.0.1:8764/learn/apollo-trajectories.html`; local static server, anonymous user, Codex in-app Chromium. Learn tile navigates to the tutorial. Tested widths 1280, 746, 390, and 320 px; no horizontal overflow. Mobile lab controls stay within the card.
+- Observed: default burn 3.150 km/s gives 482,088 km and 75.2 hours; preset gives 384,400 km and 119.5 hours; left-arrow switches to short-of-Moon state; min/max and reset work. Coast slider at 120 h gives 65.9 degrees. Both quiz answers produce appropriate feedback. All fragment links resolve.
+- Video plays (observed at 21.56 s, readyState 4), captions appear, poster renders. Checked session has no console warnings/errors, network failures, or HTTP error responses. Desktop screenshot: `/tmp/apollo-desktop.jpg`.
+- Simplifications are visible next to the lab and film source: Earth-only impulsive model and illustrative schematic film, no historical trajectory reconstruction.
+
+Not verified: Safari, Firefox, physical touch devices, or actual mission guidance. No persistent user data or external runtime libraries are used.
+
+---
