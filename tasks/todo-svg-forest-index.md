@@ -41,3 +41,11 @@ Non-goals: per-game screenshots or thumbnails; changing any game; listing `ox-al
 - Fake-clock probes: 30 Hz cadence keeps one callback per vsync and climbs to the 0.85 cap; slow frames step 0.72 -> 0.34 and then stop on a still frame with the button showing play.
 - Layout at 320x568, 375x667, 568x320, 740x360, 1024x600, 3440x1440: no overflow; the pause button covers no line of text.
 - Text contrast over rendered frames (5 positions x 4 palettes): medians 4.5-8.5 for the small labels (were 3.0-3.8).
+
+## Safari / iOS follow-up
+
+A WebKit pass (iOS 26.5 simulator, Mobile Safari at 390x844) found the shader compiling and linking with empty logs, 60 fps, and relight, pause, reload, toolbar collapse and context loss all working. It also found two defects, now fixed:
+- The pause button was inside `.hero { z-index: 1 }`, so the fixed button could not rise above `.worlds` and sat under the cards once you scrolled (all browsers). `.hero` no longer sets a z-index; the button stays second in tab order. Proven with `elementFromPoint` at the button centre while cards scroll under it: card on top on 3a253bb, button on top now, in headless Chrome (1280x800, 390x844) and in Mobile Safari (four scroll positions).
+- Safari 26 paints the strips around its floating toolbar from a fixed element's `background-color`; the canvas had none, so page background showed with a hard edge. `#world` now has `background-color: var(--night)`.
+- Also: the "Choose a world" drip stops while paused (`html.is-still`), and the pause button's hover ring only applies on hover-capable pointers.
+Desktop Safari stays untested (it needs "Allow remote automation" in Safari's Developer settings).
