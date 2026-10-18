@@ -81,14 +81,21 @@ The video follows the song line by line. Each line gets a shot cut on the beat g
 | 3:08 | The party conga-lines out through the doors; the chairs fold back into stars; two chairs stay. |
 | 3:14 | Close on the raincoat. When the music stops (3:19.7), its pocket lights up. Last frame. |
 
+## Watching it
+
+`index.html` is the watch page: the 720p cut (`media/save-me-a-seat-720p.mp4`,
+36 MB) with the words beside it. The current line is highlighted as it's sung, and
+the voicemail lights up word by word on the intro. The night sky above the title
+is drawn twelve times a second too; pull the moon's chain.
+
+The lyrics went public with this page, at Jason's request (2026-10-18).
+
 ## Not in git
 
-The song is unreleased, so its audio, its lyrics and everything derived from them
-stay out of the repository:
-
 - `data.js` is the beat grid, loudness and the voicemail's word times.
-- `out/` and `stills/` hold renders; `*.mp4` and `prof*/` are ignored too.
-- `treatment.local.md` is this shot list with the lyric lines.
+- `out/` and `stills/` hold renders. The full-size renders (`*.mp4` outside
+  `media/`) and `prof*/` are ignored too.
+- `treatment.local.md` is the working shot list.
 
 They come from `tmp/save-me-a-seat/` (the mix, the voicemail, the beat and lyric
 analysis), which is gitignored at the repo root.
@@ -105,7 +112,7 @@ python3 ../../tmp/save-me-a-seat/scripts/flash_check.py out/handdrawn.mp4
 
 Chrome runs outside the command sandbox; `SONG=path` overrides the audio. The whole
 song renders in about 90 s through `utils/degauss/video/cdp.mjs` into ffmpeg, tagged
-BT.709. Open `index.html?t=SECONDS` in a browser to see one drawing.
+BT.709. Open `video.html?t=SECONDS` in a browser to see one drawing.
 
 ## Files
 
@@ -116,7 +123,7 @@ BT.709. Open `index.html?t=SECONDS` in a browser to see one drawing.
   and the folding chairs to the torn page edge and the raincoat on its chair.
 - `scenes.js` (0:00–0:30), `scenes_b.js` (to 1:10), `scenes_c.js` (to 2:11),
   `scenes_d.js` (to the end); `edit.js` puts the shots in order.
-- `render.mjs`: the renderer.
+- `video.html` is the drawing page the renderer opens; `render.mjs` is the renderer.
 - `probe_arm.mjs` logs which way each elbow bends, drawing by drawing.
 - `probe_mem.mjs` watches the paint-texture cache.
 - `probe_cuts.mjs` prints the cut times.

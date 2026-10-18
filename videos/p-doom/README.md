@@ -86,6 +86,13 @@ The song holds 145.2 bpm. Bar 0 starts at 1.085 s, and each bar lasts 1.653 s.
 | 76–82 | 126.7–138.3 | the cast on stage; the cast in a ring; loss down, P(DOOM) up; heart eyes; a recap |
 | 83– | 138.3–141.6 | P(DOOM) 99.9%, P(WALKIES) 100.0%, then power-off |
 
+## Watching it
+
+`index.html` is the watch page: the 720p cut (`media/p-doom-720p.mp4`, 30 MB) on a
+portable TV, with a P(DOOM) readout that runs the video's own formula and ticks in
+step with the picture, a transfer log of all 61 shots, and the 32 references, which
+light up as each one is on screen. The song's words aren't printed: it isn't ours.
+
 ## Files
 
 - `analyze.py` decodes the song with ffmpeg and fits the beat grid, using only
@@ -129,7 +136,8 @@ The song runs 141.6 s, past X's 2:20 limit for accounts without Premium. The
 and fades the audio out by 139.9 s.
 
 `analysis/` holds a copy of the song's audio, so it is gitignored, along with
-`out/`, `stills/` and `prof/`. The song is not part of this repo. Add the
+`out/`, `stills/` and `prof/`. The only copy of the song in the repo is the
+audio track of the 720p web cut in `media/`. Add the
 song's creator to `SONG` in `video.html` for the end-card credit. Version 1
 (the training-run console with Blue Ridge ridgelines) is commit `367e9d2`;
 version 2 (the first lyric-synced cut) is `20ece6f`, version 3 is `9f07194`, and version 4 is `967139c`.

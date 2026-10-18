@@ -106,6 +106,13 @@ A collection of games, tools, and experiments built with AI — hosted on GitHub
 - **[Bioluminescent Deep Sea Drift](svg-forest/sonnet-4.6-svg-forest.html)** — Dive into the dark depths. Explore glowing underwater worlds and mysterious sea creatures. (*Sonnet 4.6*)
 - **[CANDYFALL](svg-forest/sonnet5xhigh-svg-forest.html)** — Wander an endless candy-coated dreamscape of swirling lollipop trees, gumdrop groves, and peppermint spires beneath a cotton-candy sky. (*Sonnet 5 xHigh*)
 
+### [Videos](videos/)
+
+*Music videos drawn in code, on tape*
+
+- **[Save Me a Seat](videos/save-me-a-seat/)** — A hand-drawn love song for the end of time: every frame drawn in code, in ink that boils twelve times a second, watercolour and crayon. The page plays it with the words, line by line. (*3:21*)
+- **[P(DOOM), C90 transfer](videos/p-doom/)** — A training run's nerves on a Degauss picture tube, starring Seed and Dobby the watchdog corgi. The page's readout climbs with the picture, from 0.4% to 99.9%. (*2:22*)
+
 ### [Depths](depths/)
 
 *Spinners, trackers & curiosities*

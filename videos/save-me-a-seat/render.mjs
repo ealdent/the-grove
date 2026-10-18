@@ -18,9 +18,9 @@ const decode = url => Buffer.from(url.slice(url.indexOf(',') + 1), 'base64');
 
 const chrome = await launch({ port: 9377, profile: path.join(HERE, 'prof'), width: 1920, height: 1080 });
 try {
-  await chrome.goto(pathToFileURL(path.join(HERE, 'index.html')).href, 'window.__ready === true || !!window.__error', 120000);
+  await chrome.goto(pathToFileURL(path.join(HERE, 'video.html')).href, 'window.__ready === true || !!window.__error', 120000);
   const error = await chrome.evaluate('window.__error || null');
-  if (error) throw new Error('index.html: ' + error);
+  if (error) throw new Error('video.html: ' + error);
   const FPS = await chrome.evaluate('__fps'), FRAMES = await chrome.evaluate('__frames');
   const stills = opt('stills');
   if (stills) {
