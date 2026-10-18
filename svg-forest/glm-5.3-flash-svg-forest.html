@@ -1,0 +1,892 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"/>
+<meta name="theme-color" content="#070a1f"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="mobile-web-app-capable" content="yes"/>
+<title>VELMORA · The Glass Steppe</title>
+<!--
+  VELMORA — THE GLASS STEPPE
+  A first-person exploration experience rendered entirely in pure SVG.
+  No canvas, no WebGL, no images, no engines. One file.
+  Desktop: WASD / arrows to walk & turn, click-drag to look, Q/E sidestep, M sound.
+  Touch:   left stick walks, right stick turns, drag anywhere to look.
+-->
+<style>
+  :root{ --ink:#f3ead9; --dim:#cfd0ea; --teal:#7de8d8; --violet:#b7a6ff; --deep:#070a1f; }
+  *{ margin:0; padding:0; box-sizing:border-box; }
+  html,body{ height:100%; }
+  body{
+    position:fixed; inset:0; background:var(--deep); color:var(--ink); overflow:hidden;
+    overscroll-behavior:none; touch-action:none; -webkit-user-select:none; user-select:none;
+    -webkit-tap-highlight-color:transparent;
+    font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  }
+  #app{ position:fixed; inset:0; cursor:grab; }
+  #app.dragging{ cursor:grabbing; }
+  #scene{ position:absolute; inset:0; display:block; width:100%; height:100%; touch-action:none; background:#05081a; }
+
+  /* ---------- HUD ---------- */
+  #hud{ position:fixed; inset:0; pointer-events:none; z-index:4; opacity:0; transition:opacity 1.4s ease .3s; }
+  body.started #hud{ opacity:1; }
+  #brand{ position:absolute; top:calc(14px + env(safe-area-inset-top)); left:18px; line-height:1.3; }
+  #brand .t{ font-family:Georgia,"Times New Roman",serif; letter-spacing:.34em; font-size:13px; color:var(--ink); opacity:.92; }
+  #brand .p{ font-size:10.5px; letter-spacing:.22em; color:var(--teal); opacity:.85; margin-top:4px; font-variant-numeric:tabular-nums; }
+  #compassWrap{
+    position:absolute; top:calc(12px + env(safe-area-inset-top)); left:50%; transform:translateX(-50%);
+    width:min(260px,46vw); height:34px; overflow:hidden;
+    -webkit-mask-image:linear-gradient(90deg,transparent,#000 18%,#000 82%,transparent);
+    mask-image:linear-gradient(90deg,transparent,#000 18%,#000 82%,transparent);
+  }
+  #compassStrip{ position:absolute; top:0; left:50%; height:100%; will-change:transform; }
+  .tick{ position:absolute; bottom:5px; width:1px; height:6px; background:rgba(205,216,255,.38); }
+  .tick.major{ height:9px; background:rgba(205,216,255,.7); }
+  .tlabel{ position:absolute; top:1px; font-size:10px; letter-spacing:.12em; color:rgba(220,228,255,.8); transform:translateX(-50%); }
+  .tlabel.card{ color:var(--teal); }
+  #caret{
+    position:absolute; top:calc(47px + env(safe-area-inset-top)); left:50%; transform:translateX(-4px); width:0; height:0;
+    border-left:4px solid transparent; border-right:4px solid transparent; border-top:5px solid rgba(125,232,216,.9);
+  }
+  .uiset{ position:absolute; top:calc(12px + env(safe-area-inset-top)); right:14px; display:flex; gap:8px; }
+  .ubtn{
+    pointer-events:auto; background:rgba(10,14,34,.45); border:1px solid rgba(150,190,230,.28); color:var(--dim);
+    font:500 10px/1 ui-sans-serif,system-ui,sans-serif; letter-spacing:.22em; padding:9px 12px 8px; border-radius:3px;
+    cursor:pointer; backdrop-filter:blur(4px);
+  }
+  .ubtn:active{ background:rgba(125,232,216,.16); }
+  body:not(.started) .uiset .ubtn{ pointer-events:none; }
+  #flavor{
+    position:absolute; left:50%; bottom:calc(26px + env(safe-area-inset-bottom)); transform:translateX(-50%);
+    font:italic 13px/1.5 Georgia,serif; color:rgba(215,210,240,.66); letter-spacing:.04em; white-space:nowrap;
+    transition:opacity 1.4s ease; text-shadow:0 1px 8px rgba(5,8,20,.8); max-width:92vw; overflow:hidden; text-overflow:ellipsis;
+  }
+  body.touch #flavor{ bottom:calc(180px + env(safe-area-inset-bottom)); font-size:11.5px; }
+
+  /* ---------- virtual joysticks (touch only) ---------- */
+  .stick{
+    position:fixed; bottom:calc(22px + env(safe-area-inset-bottom)); width:124px; height:124px; border-radius:50%;
+    background:radial-gradient(circle at 50% 42%, rgba(24,34,66,.42), rgba(10,14,32,.28) 70%);
+    border:1px solid rgba(170,200,240,.3); display:none; z-index:6; touch-action:none;
+  }
+  body.touch .stick{ display:block; }
+  .stick .nb{
+    position:absolute; left:50%; top:50%; width:54px; height:54px; margin:-27px 0 0 -27px; border-radius:50%;
+    background:radial-gradient(circle at 50% 38%, rgba(214,236,255,.55), rgba(120,150,210,.28) 72%, rgba(90,110,170,.18));
+    border:1px solid rgba(230,244,255,.55); box-shadow:0 0 18px rgba(140,190,255,.25); will-change:transform;
+  }
+  .stick .lb{ position:absolute; top:-20px; left:50%; transform:translateX(-50%); font-size:9px; letter-spacing:.3em; color:rgba(200,215,245,.55); }
+  #stickL{ left:calc(20px + env(safe-area-inset-left)); }
+  #stickR{ right:calc(20px + env(safe-area-inset-right)); }
+
+  /* ---------- intro overlay ---------- */
+  #intro{
+    position:fixed; inset:0; z-index:10; display:flex; align-items:center; justify-content:center; text-align:center;
+    background:radial-gradient(120% 90% at 50% 8%, rgba(16,14,44,.88), rgba(5,6,18,.95) 72%);
+    transition:opacity .9s ease; overflow-y:auto; -webkit-overflow-scrolling:touch;
+  }
+  #intro.hidden{ opacity:0; pointer-events:none; }
+  .in-wrap{ max-width:660px; padding:40px 26px; margin:auto; }
+  .in-eyebrow{ font-size:10px; letter-spacing:.42em; color:var(--teal); opacity:.85; }
+  .in-title{
+    font-family:Georgia,"Times New Roman",serif; font-weight:400; font-size:clamp(44px,10vw,86px); letter-spacing:.16em;
+    text-indent:.16em; margin:14px 0 2px;
+    background:linear-gradient(180deg,#f7efe0,#cbb8a0); -webkit-background-clip:text; background-clip:text; color:transparent;
+  }
+  .in-sub{ font-size:clamp(11px,2.6vw,13px); letter-spacing:.5em; text-indent:.5em; color:var(--violet); margin-bottom:22px; }
+  .rule{ width:150px; height:1px; margin:0 auto 22px; background:linear-gradient(90deg,transparent,rgba(125,232,216,.7),transparent); }
+  .in-lore{ font-family:Georgia,serif; font-size:clamp(13.5px,3.4vw,15.5px); line-height:1.85; color:var(--dim); max-width:56ch; margin:0 auto 26px; }
+  .in-lore em{ color:#ffd9a8; }
+  .ctl{ display:flex; flex-wrap:wrap; gap:8px 18px; justify-content:center; margin-bottom:30px; }
+  .ctl span{ font-size:11px; letter-spacing:.14em; color:rgba(205,214,240,.75); }
+  .ctl b{
+    font-weight:600; color:var(--ink); border:1px solid rgba(170,200,240,.35); border-radius:4px; padding:3px 7px; margin-right:7px;
+    font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10px;
+  }
+  .ctl.desk{ display:flex; } .ctl.mob{ display:none; }
+  body.touch .ctl.desk{ display:none; } body.touch .ctl.mob{ display:flex; }
+  #begin{
+    pointer-events:auto; background:transparent; border:1px solid rgba(125,232,216,.75); color:var(--teal);
+    font-family:Georgia,serif; font-size:13px; letter-spacing:.42em; text-indent:.42em; padding:15px 40px 14px;
+    border-radius:2px; cursor:pointer; transition:all .35s ease;
+  }
+  #begin:hover{ background:rgba(125,232,216,.1); box-shadow:0 0 30px rgba(125,232,216,.15); }
+  .in-foot{ margin-top:24px; font-size:9.5px; letter-spacing:.3em; color:rgba(180,190,220,.4); }
+
+  /* ---------- SVG animation classes ---------- */
+  @keyframes tw{ 0%,100%{opacity:.12} 50%{opacity:1} }
+  @keyframes breathe{ 0%,100%{opacity:.5} 50%{opacity:1} }
+  @keyframes sway{ from{transform:rotate(-2.2deg)} to{transform:rotate(2.4deg)} }
+  @keyframes flap{ 0%,100%{transform:scaleY(1)} 50%{transform:scaleY(.5)} }
+  @keyframes driftA{ from{transform:translateX(-26px)} to{transform:translateX(26px)} }
+  @keyframes shimmer{ 0%,100%{opacity:.2} 50%{opacity:.9} }
+  @keyframes aurDrift{ 0%{transform:translateX(-2.4%) scaleY(1)} 50%{transform:translateX(2%) scaleY(1.12)} 100%{transform:translateX(-2.4%) scaleY(1)} }
+  @keyframes floaty{ 0%,100%{opacity:.1; transform:translateY(0)} 50%{opacity:.85; transform:translateY(-6px)} }
+  .twk{ animation:tw 3s ease-in-out infinite; }
+  .breathe{ animation:breathe 3.8s ease-in-out infinite; }
+  .sway{ animation:sway 5.2s ease-in-out infinite alternate; transform-box:fill-box; transform-origin:50% 100%; }
+  .flap{ animation:flap 1.7s ease-in-out infinite; transform-box:fill-box; transform-origin:50% 45%; }
+  .drA{ animation:driftA 9s ease-in-out infinite alternate; }
+  .drB{ animation:driftA 13s ease-in-out infinite alternate-reverse; }
+  .shim{ animation:shimmer 3.6s ease-in-out infinite; }
+  .flo{ animation:floaty 5.5s ease-in-out infinite; }
+  .aur{ mix-blend-mode:screen; }
+  .aur1{ animation:aurDrift 26s ease-in-out infinite; }
+  .aur2{ animation:aurDrift 38s ease-in-out infinite reverse; }
+  .aur3{ animation:aurDrift 47s ease-in-out infinite; }
+  @media (prefers-reduced-motion:reduce){
+    .twk,.breathe,.sway,.flap,.drA,.drB,.shim,.flo,.aur1,.aur2,.aur3{ animation:none; }
+  }
+  @media (max-width:640px){
+    #compassWrap{ top:calc(54px + env(safe-area-inset-top)); width:min(210px,58vw); }
+    #caret{ top:calc(89px + env(safe-area-inset-top)); }
+    .ubtn{ padding:7px 9px 6px; font-size:9px; letter-spacing:.14em; }
+    #brand .t{ font-size:11px; }
+    #brand .p{ font-size:9.5px; }
+  }
+</style>
+</head>
+<body>
+<div id="app">
+<svg id="scene" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="skyGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#05081a"/><stop offset=".45" stop-color="#131237"/>
+      <stop offset=".72" stop-color="#2b1c4e"/><stop offset=".88" stop-color="#4b2a5e"/>
+      <stop offset=".965" stop-color="#7c4163"/><stop offset="1" stop-color="#a95f56"/>
+    </linearGradient>
+    <linearGradient id="groundGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#43284e"/><stop offset=".2" stop-color="#301d43"/>
+      <stop offset=".55" stop-color="#1e1334"/><stop offset="1" stop-color="#0d0a1e"/>
+    </linearGradient>
+    <linearGradient id="hGlowGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="rgba(255,170,120,0)"/><stop offset=".55" stop-color="rgba(255,170,120,.22)"/>
+      <stop offset="1" stop-color="rgba(255,170,120,0)"/>
+    </linearGradient>
+    <linearGradient id="atmoGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="rgba(150,90,110,0)"/><stop offset=".5" stop-color="rgba(150,90,110,.3)"/>
+      <stop offset="1" stop-color="rgba(150,90,110,0)"/>
+    </linearGradient>
+    <radialGradient id="sunGrad">
+      <stop offset="0" stop-color="#fff6d8"/><stop offset=".22" stop-color="#ffd598"/>
+      <stop offset=".5" stop-color="rgba(255,150,88,.5)"/><stop offset="1" stop-color="rgba(255,130,80,0)"/>
+    </radialGradient>
+    <radialGradient id="moonGrad">
+      <stop offset="0" stop-color="#eef8ff"/><stop offset=".45" stop-color="rgba(170,215,255,.55)"/>
+      <stop offset="1" stop-color="rgba(170,215,255,0)"/>
+    </radialGradient>
+    <radialGradient id="vinGrad">
+      <stop offset=".55" stop-color="rgba(0,0,0,0)"/><stop offset=".82" stop-color="rgba(5,6,18,.26)"/>
+      <stop offset="1" stop-color="rgba(3,4,12,.55)"/>
+    </radialGradient>
+    <linearGradient id="topGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="rgba(4,6,20,.5)"/><stop offset="1" stop-color="rgba(4,6,20,0)"/>
+    </linearGradient>
+    <linearGradient id="aurG1" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="rgba(90,240,200,.55)"/><stop offset=".6" stop-color="rgba(70,150,220,.22)"/>
+      <stop offset="1" stop-color="rgba(70,150,220,0)"/>
+    </linearGradient>
+    <linearGradient id="aurG2" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="rgba(150,120,255,.42)"/><stop offset="1" stop-color="rgba(150,120,255,0)"/>
+    </linearGradient>
+    <linearGradient id="aurG3" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="rgba(255,140,170,.32)"/><stop offset="1" stop-color="rgba(255,140,170,0)"/>
+    </linearGradient>
+    <linearGradient id="crystalG" gradientUnits="userSpaceOnUse" x1="0" y1="-11.5" x2="0" y2="1">
+      <stop offset="0" stop-color="#e8fffb"/><stop offset=".18" stop-color="#a5f0e4"/>
+      <stop offset=".45" stop-color="#4cc4c9"/><stop offset=".75" stop-color="#1e6a8f"/>
+      <stop offset="1" stop-color="#0d3350"/>
+    </linearGradient>
+    <linearGradient id="crystalG2" gradientUnits="userSpaceOnUse" x1="0" y1="-6" x2="0" y2="1">
+      <stop offset="0" stop-color="#bff2ea"/><stop offset=".4" stop-color="#3597ab"/>
+      <stop offset="1" stop-color="#0a2c46"/>
+    </linearGradient>
+    <radialGradient id="coreG">
+      <stop offset="0" stop-color="rgba(235,255,250,.95)"/><stop offset=".5" stop-color="rgba(140,240,220,.45)"/>
+      <stop offset="1" stop-color="rgba(140,240,220,0)"/>
+    </radialGradient>
+    <radialGradient id="bulbG">
+      <stop offset="0" stop-color="#fff7e2"/><stop offset=".35" stop-color="#ffd28a"/>
+      <stop offset=".7" stop-color="rgba(255,150,70,.55)"/><stop offset="1" stop-color="rgba(255,140,60,0)"/>
+    </radialGradient>
+    <radialGradient id="haloG">
+      <stop offset="0" stop-color="rgba(255,190,120,.5)"/><stop offset=".55" stop-color="rgba(255,160,90,.18)"/>
+      <stop offset="1" stop-color="rgba(255,160,90,0)"/>
+    </radialGradient>
+    <linearGradient id="stemG" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="0" y2="-3">
+      <stop offset="0" stop-color="#124c52"/><stop offset="1" stop-color="#2a7a70"/>
+    </linearGradient>
+    <linearGradient id="gateG" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#282052"/><stop offset=".5" stop-color="#171234"/>
+      <stop offset="1" stop-color="#0b0a20"/>
+    </linearGradient>
+    <linearGradient id="rayG" gradientUnits="userSpaceOnUse" x1="0" y1="-1.4" x2="0" y2="0.7">
+      <stop offset="0" stop-color="rgba(205,225,255,.9)"/><stop offset=".45" stop-color="rgba(165,150,250,.72)"/>
+      <stop offset="1" stop-color="rgba(105,85,190,.8)"/>
+    </linearGradient>
+    <radialGradient id="fogG">
+      <stop offset="0" stop-color="rgba(196,186,236,.3)"/><stop offset="1" stop-color="rgba(196,186,236,0)"/>
+    </radialGradient>
+    <filter id="fA1" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="7"/></filter>
+    <filter id="fA2" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="12"/></filter>
+
+    <!-- ============ PROP DEFINITIONS (local units, base at 0,0, up = -y) ============ -->
+    <g id="p-spire">
+      <ellipse cx=".1" cy=".05" rx="2.7" ry=".5" fill="rgba(4,8,22,.45)"/>
+      <polygon points="-.1,0 -.95,-2.3 -.35,-4.8 .25,-1.9" fill="#0f3050" opacity=".85"/>
+      <polygon points="-.15,0 -2.15,-1.5 -1.5,-5.5 -.65,-2.1" fill="url(#crystalG2)" opacity=".92"/>
+      <polygon points=".3,0 2.05,-1.15 1.4,-4.7 .75,-1.5" fill="url(#crystalG2)" opacity=".88"/>
+      <polygon points="0,0 -1.1,-3.5 -.5,-9.7 .5,-11.4 1.1,-4.1 .8,-1.1" fill="url(#crystalG)"/>
+      <path d="M.5,-11.4 L.26,-6.2 L-.5,-9.7" fill="none" stroke="rgba(235,255,250,.5)" stroke-width=".07"/>
+      <path d="M0,0 L-.62,-3.4" fill="none" stroke="rgba(210,250,245,.28)" stroke-width=".05"/>
+      <ellipse class="breathe" cx=".12" cy="-7.6" rx=".5" ry="2.7" fill="url(#coreG)"/>
+      <circle class="breathe" cx=".5" cy="-11.4" r=".17" fill="#eafffa"/>
+      <polygon points="-2,0 -.9,0 -1.5,-.9" fill="#0c2740" opacity=".9"/>
+      <polygon points="1,0 1.9,0 1.45,-.7" fill="#0c2740" opacity=".9"/>
+    </g>
+    <g id="p-bulbs">
+      <ellipse cx=".05" cy=".02" rx="1.15" ry=".22" fill="rgba(4,8,22,.42)"/>
+      <g class="sway">
+        <circle cx="-.02" cy="-2.55" r="1.3" fill="url(#haloG)" class="breathe"/>
+        <path d="M0,0 C.12,-.75 -.14,-1.55 -.02,-2.35" fill="none" stroke="url(#stemG)" stroke-width=".1" stroke-linecap="round"/>
+        <path d="M.06,-.85 C.5,-1.15 .74,-1.55 .8,-2" fill="none" stroke="url(#stemG)" stroke-width=".07" stroke-linecap="round"/>
+        <path d="M-.02,-3 C-.32,-2.72 -.34,-2.3 -.02,-2.08 C.3,-2.3 .28,-2.72 -.02,-3" fill="url(#bulbG)"/>
+        <circle cx=".8" cy="-2.24" r=".85" fill="url(#haloG)" opacity=".6" class="breathe"/>
+        <circle cx=".8" cy="-2.24" r=".34" fill="url(#bulbG)"/>
+        <circle class="flo" cx=".3" cy="-3.4" r=".05" fill="#ffe9c2"/>
+        <circle class="flo" cx="-.35" cy="-3.1" r=".04" fill="#ffe9c2" style="animation-delay:-2.2s"/>
+      </g>
+    </g>
+    <g id="p-gate">
+      <ellipse cx="0" cy=".05" rx="4.4" ry=".6" fill="rgba(4,8,22,.5)"/>
+      <polygon points="-3.55,0 -2.65,0 -2.8,-6.3 -3.45,-6.3" fill="url(#gateG)"/>
+      <polygon points="2.65,0 3.55,0 3.45,-6.3 2.8,-6.3" fill="url(#gateG)"/>
+      <polygon points="-4.1,-6.3 4.1,-6.3 3.7,-7.35 -3.7,-7.35" fill="url(#gateG)"/>
+      <polygon points="-3.7,-7.35 3.7,-7.35 3.45,-7.6 -3.45,-7.6" fill="#2c2456"/>
+      <line x1="-3.02" y1="-.4" x2="-3.02" y2="-5.9" stroke="#7de8d8" stroke-width=".06" opacity=".4" class="shim"/>
+      <line x1="3.02" y1="-.4" x2="3.02" y2="-5.9" stroke="#7de8d8" stroke-width=".06" opacity=".4" class="shim"/>
+      <line x1="-3.9" y1="-6.8" x2="3.9" y2="-6.8" stroke="#7de8d8" stroke-width=".05" opacity=".35" class="shim" style="animation-delay:-1.6s"/>
+      <polygon points="0,-6.5 .55,-7.1 0,-7.7 -.55,-7.1" fill="#12102c" stroke="#7de8d8" stroke-width=".05" opacity=".9"/>
+      <ellipse cx="0" cy="-.05" rx="1.7" ry=".3" fill="url(#haloG)" opacity=".5"/>
+    </g>
+    <g id="p-wisp">
+      <ellipse class="drA" cx="0" cy="-.28" rx="3.2" ry=".5" fill="url(#fogG)"/>
+      <ellipse class="drB" cx="1.7" cy="-.14" rx="2.1" ry=".38" fill="url(#fogG)"/>
+      <ellipse class="drA" cx="-1.9" cy="-.1" rx="1.6" ry=".3" fill="url(#fogG)" style="animation-delay:-4s"/>
+    </g>
+    <g id="p-ray">
+      <g class="flap">
+        <path d="M.25,-.1 C1,-1.05 2.2,-1.35 2.9,-.85 C2.25,-.5 1.3,-.12 .55,.1 Z" fill="url(#rayG)" stroke="rgba(215,235,255,.5)" stroke-width=".04"/>
+        <path d="M-.25,-.1 C-1,-1.05 -2.2,-1.35 -2.9,-.85 C-2.25,-.5 -1.3,-.12 -.55,.1 Z" fill="url(#rayG)" stroke="rgba(215,235,255,.5)" stroke-width=".04"/>
+        <path d="M0,-.42 C.55,-.48 1.15,-.3 1.3,.02 C1.05,.22 .5,.32 0,.34 C-.5,.32 -1.05,.22 -1.3,.02 C-1.15,-.3 -.55,-.48 0,-.42 Z" fill="rgba(210,228,255,.55)"/>
+        <path d="M0,.3 C-.6,.42 -1.35,.72 -1.95,.62 C-1.5,.4 -.7,.24 0,.18 Z" fill="rgba(150,130,230,.55)"/>
+      </g>
+      <ellipse cx="0" cy="-.1" rx=".55" ry=".3" fill="rgba(255,205,150,.22)" class="breathe"/>
+      <circle class="flo" cx="-2.1" cy=".5" r=".06" fill="#cfe8ff"/>
+      <circle class="flo" cx="2.2" cy=".4" r=".05" fill="#cfe8ff" style="animation-delay:-2.7s"/>
+    </g>
+  </defs>
+
+  <g id="sceneG">
+    <rect id="skyRect" x="0" y="-200" width="100%" height="800" fill="url(#skyGrad)"/>
+    <g id="starsG">
+      <g id="starBandA"></g>
+      <use id="starBandB" href="#starBandA"/>
+    </g>
+    <g id="auroraG">
+      <path class="aurp aur aur1" fill="url(#aurG1)" filter="url(#fA2)" opacity=".6"/>
+      <path class="aurp aur aur2" fill="url(#aurG2)" filter="url(#fA1)" opacity=".5"/>
+      <path class="aurp aur aur3" fill="url(#aurG3)" filter="url(#fA2)" opacity=".45"/>
+    </g>
+    <g id="moonG" opacity="0"><circle id="moonHalo" fill="url(#moonGrad)"/><circle id="moonDisc" fill="#dceeff"/></g>
+    <g id="sunG" opacity="0"><circle id="sunHalo" fill="url(#sunGrad)"/><circle id="sunDisc" fill="#ffdda6"/></g>
+    <g id="cloudG">
+      <ellipse class="cl drA" filter="url(#fA1)" fill="rgba(30,22,58,.38)"/>
+      <ellipse class="cl drB" filter="url(#fA1)" fill="rgba(26,19,52,.42)" style="animation-delay:-5s"/>
+      <ellipse class="cl drA" filter="url(#fA1)" fill="rgba(34,25,64,.34)" style="animation-delay:-8s"/>
+    </g>
+    <g id="ridgeFar"><path id="rfA" fill="#171338" opacity=".9"/><use id="rfB" href="#rfA"/></g>
+    <rect id="hGlow" x="0" width="100%" height="120" fill="url(#hGlowGrad)"/>
+    <g id="ridgeNear"><path id="rnA" fill="#0d0b28" opacity=".95"/><use id="rnB" href="#rnA"/></g>
+    <rect id="groundRect" x="0" width="100%" fill="url(#groundGrad)"/>
+    <g id="streaksG"></g>
+    <g id="glintsG"></g>
+    <rect id="atmo" x="0" width="100%" height="140" fill="url(#atmoGrad)"/>
+    <g id="worldG"></g>
+  </g>
+  <rect id="vinRect" x="0" y="0" width="100%" height="100%" fill="url(#vinGrad)" pointer-events="none"/>
+  <rect id="topRect" x="0" y="0" width="100%" height="140" fill="url(#topGrad)" pointer-events="none"/>
+</svg>
+
+<div id="hud">
+  <div id="brand">
+    <div class="t">VELMORA</div>
+    <div class="p" id="pacesEl">0000 PACES</div>
+  </div>
+  <div id="compassWrap"><div id="compassStrip"></div></div>
+  <div id="caret"></div>
+  <div class="uiset">
+    <button class="ubtn" id="sndBtn">SOUND ON</button>
+    <button class="ubtn" id="helpBtn">GUIDE</button>
+  </div>
+  <div id="flavor">the spires keep the tide's old music, note by note</div>
+</div>
+
+<div class="stick" id="stickL"><div class="lb">WALK</div><div class="nb"></div></div>
+<div class="stick" id="stickR"><div class="lb">TURN</div><div class="nb"></div></div>
+
+<div id="intro">
+  <div class="in-wrap">
+    <div class="in-eyebrow">A PURE-SVG WAYFARING</div>
+    <h1 class="in-title">VELMORA</h1>
+    <div class="in-sub">THE GLASS STEPPE</div>
+    <div class="rule"></div>
+    <p class="in-lore">When the star Vel guttered and died, the oceans of Velmora refused to freeze —
+      they chose to <em>remember</em>. Wave by wave they rose into singing glass, and the light of a million
+      lost tides drifted up to become the aurora. Now the spires hum where lighthouses once stood, and the
+      gates of the old Lattice still wait, open, for someone to walk through. You are the last Wayfarer.
+      Keep the chimes beside you. Walk long enough, and perhaps the sun will remember how to rise.</p>
+    <div class="ctl desk">
+      <span><b>W A S D</b> walk</span>
+      <span><b>DRAG</b> look</span>
+      <span><b>Q E</b> sidestep</span>
+      <span><b>SHIFT</b> tread softly</span>
+      <span><b>M</b> sound</span>
+    </div>
+    <div class="ctl mob">
+      <span><b>LEFT STICK</b> walk</span>
+      <span><b>RIGHT STICK</b> turn</span>
+      <span><b>DRAG</b> look</span>
+    </div>
+    <button id="begin">BEGIN THE WALK</button>
+    <div class="in-foot">ONE FILE · PURE SVG · NO IMAGES · NO ENGINES</div>
+  </div>
+</div>
+<script>
+(() => {
+'use strict';
+/* ============================== helpers & refs ============================== */
+const NS='http://www.w3.org/2000/svg', XL='http://www.w3.org/1999/xlink';
+const $=id=>document.getElementById(id);
+const clamp=(v,a,b)=>v<a?a:(v>b?b:v);
+const mod=(a,n)=>((a%n)+n)%n;
+const TAU=Math.PI*2;
+const wrapPi=a=>mod(a+Math.PI,TAU)-Math.PI;
+const app=$('app'), sceneG=$('sceneG'), worldG=$('worldG'), glintsG=$('glintsG'), streaksG=$('streaksG');
+const sunG=$('sunG'), moonG=$('moonG'), cloudG=$('cloudG');
+const starA=$('starBandA'), starB=$('starBandB');
+const rfA=$('rfA'), rfB=$('rfB'), rnA=$('rnA'), rnB=$('rnB');
+const skyRect=$('skyRect'), groundRect=$('groundRect'), hGlow=$('hGlow'), atmo=$('atmo');
+const compassStrip=$('compassStrip'), pacesEl=$('pacesEl'), flavorEl=$('flavor');
+const aurPaths=[...document.querySelectorAll('.aurp')];
+const clouds=[...document.querySelectorAll('.cl')];
+
+/* ============================== game state ============================== */
+const S={ px:0, pz:8, heading:.3, pitch:0, vel:0, strafeV:0, bobPhase:0, bobAmp:0, dist:0, started:false };
+let W=innerWidth, H=innerHeight, f=1, uiK=1, HZ=0, bandW=1000, DRAW=92;
+const FOG0=46, EYE=1.72, CH=26, GENR=4, DROPR=6;
+let q=2, emaDt=0, fCount=0;
+
+/* ============================== deterministic RNG ============================== */
+function hash2(i,j){ let h=(i*374761393+j*668265263)|0; h=Math.imul(h^(h>>>13),1274126177); h^=h>>>16; return h>>>0; }
+function rng(seed){ let a=seed>>>0; return ()=>{ a=(a+0x6D2B79F5)|0; let t=Math.imul(a^(a>>>15),1|a); t=(t+Math.imul(t^(t>>>7),61|t))^t; return ((t^(t>>>14))>>>0)/4294967296; }; }
+
+/* ============================== infinite chunked world ============================== */
+const chunks=new Map(), allObjs=new Map();
+let uid=1;
+function putObj(list,o){ if(Math.hypot(o.x,o.z-8)<6.5) return; o.id=uid++; o._frame=-1; o._node=null; list.push(o); allObjs.set(o.id,o); }
+function genChunk(ci,cj){
+  const key=ci+'|'+cj; if(chunks.has(key)) return;
+  const r=rng(hash2(ci,cj)), list=[], bx=ci*CH, bz=cj*CH;
+  if(r()<.36) putObj(list,{t:'spire',x:bx+4+r()*(CH-8),z:bz+4+r()*(CH-8),s:r()<.3?2.6+r()*1.9:.85+r()*.75,flip:r()<.5,tilt:(r()-.5)*6,n:(r()*5)|0,hw:3});
+  const nb=1+((r()*3)|0);
+  for(let k=0;k<nb;k++) putObj(list,{t:'bulbs',x:bx+2+r()*(CH-4),z:bz+2+r()*(CH-4),s:.8+r()*.9,flip:r()<.5,tilt:(r()-.5)*8,n:(r()*5)|0,hw:1.7});
+  if(r()<.085) putObj(list,{t:'gate',x:bx+CH/2+(r()-.5)*9,z:bz+CH/2+(r()-.5)*9,s:1.2+r()*.5,flip:r()<.5,tilt:0,n:(r()*5)|0,hw:4.8});
+  if(r()<.55){ const nw=1+((r()*2)|0); for(let k=0;k<nw;k++) putObj(list,{t:'wisp',x:bx+r()*CH,z:bz+r()*CH,s:.9+r()*.9,flip:false,tilt:0,n:0,hw:3.8}); }
+  chunks.set(key,list);
+}
+function dropChunk(key){
+  const list=chunks.get(key);
+  for(const o of list){ if(o._node){ release(o._node); o._node=null; } allObjs.delete(o.id); }
+  chunks.delete(key);
+}
+function updateChunks(){
+  const ci=Math.floor(S.px/CH), cj=Math.floor(S.pz/CH);
+  for(let i=ci-GENR;i<=ci+GENR;i++) for(let j=cj-GENR;j<=cj+GENR;j++) genChunk(i,j);
+  for(const key of [...chunks.keys()]){
+    const [i,j]=key.split('|').map(Number);
+    if(Math.abs(i-ci)>DROPR||Math.abs(j-cj)>DROPR) dropChunk(key);
+  }
+}
+
+/* ============================== SVG node pooling ============================== */
+const free={spire:[],bulbs:[],gate:[],wisp:[],ray:[]};
+function acquire(t){
+  let n=free[t].pop();
+  if(!n){ n=document.createElementNS(NS,'use'); n.setAttribute('href','#p-'+t); n.setAttributeNS(XL,'xlink:href','#p-'+t); n._t=t; worldG.appendChild(n); }
+  n.setAttribute('display','inline');
+  return n;
+}
+function release(n){ n.setAttribute('display','none'); free[n._t].push(n); }
+
+/* ============================== sky-rays (creatures) ============================== */
+const rays=[]; const rayR=rng(90210);
+function spawnRay(o){
+  o=o||{};
+  const a=S.heading+(rayR()-.5)*2.2, d=42+rayR()*32;
+  o.t='ray';
+  if(o._node){ release(o._node); o._node=null; }
+  o.x=S.px+Math.sin(a)*d; o.z=S.pz+Math.cos(a)*d;
+  o.s=.75+rayR()*.7; o.h=4.5+rayR()*4.5; o.ph=rayR()*TAU;
+  o.vx=(rayR()-.5)*2.2; o.vz=(rayR()-.5)*2.2;
+  o.id=uid++; o._frame=-1; o._node=null;
+  return o;
+}
+function initRays(){ rays.length=0; const n=[4,6,8][q]; for(let i=0;i<n;i++) rays.push(spawnRay()); }
+
+/* ============================== input: keys, drag-look, sticks ============================== */
+const keys=new Set(), joy={f:0,s:0,t:0};
+let drag=null;
+addEventListener('keydown',e=>{
+  const c=e.code; keys.add(c);
+  if(c==='KeyM'){ initAudio(); if(AC&&AC.state==='suspended')AC.resume(); toggleSound(); }
+  if(c==='KeyH'||c==='Escape') toggleIntro();
+});
+addEventListener('keyup',e=>keys.delete(e.code));
+addEventListener('blur',()=>keys.clear());
+app.addEventListener('pointerdown',e=>{
+  if(e.target.closest('.stick')||e.target.closest('.uiset')||e.target.closest('#intro')) return;
+  drag={id:e.pointerId,x:e.clientX,y:e.clientY};
+  app.classList.add('dragging');
+});
+addEventListener('pointermove',e=>{
+  if(!drag||e.pointerId!==drag.id) return;
+  const dx=e.clientX-drag.x, dy=e.clientY-drag.y;
+  drag.x=e.clientX; drag.y=e.clientY;
+  S.heading+=dx*.0034;
+  S.pitch=clamp(S.pitch+dy*.5,-H*.16,H*.16);
+});
+const endDrag=e=>{ if(drag&&e.pointerId===drag.id){ drag=null; app.classList.remove('dragging'); } };
+addEventListener('pointerup',endDrag); addEventListener('pointercancel',endDrag);
+
+function stick(el,cb){
+  const R=46, nub=el.querySelector('.nb');
+  let pid=null, cx=0, cy=0;
+  el.addEventListener('pointerdown',e=>{
+    e.preventDefault(); e.stopPropagation(); pid=e.pointerId;
+    try{ el.setPointerCapture(pid); }catch(_){}
+    const r=el.getBoundingClientRect(); cx=r.left+r.width/2; cy=r.top+r.height/2;
+    mv(e);
+  });
+  function mv(e){
+    if(e.pointerId!==pid) return;
+    e.preventDefault(); e.stopPropagation();
+    let dx=e.clientX-cx, dy=e.clientY-cy;
+    const d=Math.hypot(dx,dy)||1, k=d>R?R/d:1;
+    dx*=k; dy*=k;
+    nub.style.transform='translate('+dx.toFixed(1)+'px,'+dy.toFixed(1)+'px)';
+    cb(dx/R,dy/R);
+  }
+  el.addEventListener('pointermove',mv);
+  const up=e=>{ if(e.pointerId!==pid) return; pid=null; nub.style.transform='translate(0,0)'; cb(0,0); };
+  el.addEventListener('pointerup',up); el.addEventListener('pointercancel',up);
+}
+/* true multitouch: two independent sticks, one pointer each */
+stick($('stickL'),(x,y)=>{ joy.f=-y; joy.s=x*.8; });
+stick($('stickR'),(x,y)=>{ joy.t=Math.abs(x)>.12?x:0; });
+
+/* suppress browser gestures: pull-to-refresh, pinch zoom, swipe nav, dbl-tap zoom */
+document.addEventListener('touchmove',e=>{ if(e.target.closest&&e.target.closest('#intro')) return; e.preventDefault(); },{passive:false});
+document.addEventListener('gesturestart',e=>e.preventDefault());
+document.addEventListener('dblclick',e=>e.preventDefault());
+document.addEventListener('contextmenu',e=>e.preventDefault());
+function markTouch(){ document.body.classList.add('touch'); }
+if(matchMedia('(pointer: coarse)').matches||navigator.maxTouchPoints>0) markTouch();
+addEventListener('touchstart',markTouch,{once:true,passive:true});
+
+/* ============================== synthesized audio (no assets) ============================== */
+let AC=null, master=null, chimeBus=null, noiseBuf=null, muted=false;
+const PENTA=[392,440,523.25,587.33,659.25];
+function initAudio(){
+  if(AC) return;
+  try{
+    AC=new (window.AudioContext||window.webkitAudioContext)();
+    master=AC.createGain(); master.gain.value=.9; master.connect(AC.destination);
+    chimeBus=AC.createGain(); chimeBus.connect(master);
+    const dl=AC.createDelay(1); dl.delayTime.value=.29;
+    const fb=AC.createGain(); fb.gain.value=.33;
+    const wet=AC.createGain(); wet.gain.value=.3;
+    chimeBus.connect(dl); dl.connect(fb); fb.connect(dl); dl.connect(wet); wet.connect(master);
+    const len=AC.sampleRate*2; noiseBuf=AC.createBuffer(1,len,AC.sampleRate);
+    const d=noiseBuf.getChannelData(0); for(let i=0;i<len;i++) d[i]=Math.random()*2-1;
+    const src=AC.createBufferSource(); src.buffer=noiseBuf; src.loop=true;
+    const lp=AC.createBiquadFilter(); lp.type='lowpass'; lp.frequency.value=340; lp.Q.value=.5;
+    const wg=AC.createGain(); wg.gain.value=.05;
+    src.connect(lp); lp.connect(wg); wg.connect(master);
+    const lfo=AC.createOscillator(); lfo.frequency.value=.06;
+    const lg=AC.createGain(); lg.gain.value=.022; lfo.connect(lg); lg.connect(wg.gain);
+    src.start(); lfo.start();
+  }catch(err){ AC=null; }
+}
+function chime(n,mult,soft){
+  if(!AC||muted) return; mult=mult||1;
+  const t=AC.currentTime, fr=PENTA[n%5]*mult;
+  const o=AC.createOscillator(), g=AC.createGain();
+  o.type='sine'; o.frequency.value=fr;
+  g.gain.setValueAtTime(.0001,t); g.gain.exponentialRampToValueAtTime(soft?.05:.11,t+.02); g.gain.exponentialRampToValueAtTime(.0001,t+2.6);
+  o.connect(g); g.connect(chimeBus); o.start(t); o.stop(t+2.7);
+  const o2=AC.createOscillator(), g2=AC.createGain();
+  o2.type='sine'; o2.frequency.value=fr*2.01;
+  g2.gain.setValueAtTime(.0001,t); g2.gain.exponentialRampToValueAtTime(.028,t+.015); g2.gain.exponentialRampToValueAtTime(.0001,t+1.2);
+  o2.connect(g2); g2.connect(chimeBus); o2.start(t); o2.stop(t+1.3);
+}
+function stepSnd(){
+  if(!AC||muted) return;
+  const t=AC.currentTime, src=AC.createBufferSource(); src.buffer=noiseBuf;
+  const lp=AC.createBiquadFilter(); lp.type='lowpass'; lp.frequency.value=230;
+  const g=AC.createGain(); g.gain.setValueAtTime(.085,t); g.gain.exponentialRampToValueAtTime(.0001,t+.14);
+  src.connect(lp); lp.connect(g); g.connect(master); src.start(t,Math.random()*1.4,.18);
+}
+function toggleSound(){
+  muted=!muted;
+  $('sndBtn').textContent=muted?'SOUND OFF':'SOUND ON';
+  if(AC&&master) master.gain.setTargetAtTime(muted?0:.9,AC.currentTime,.05);
+}
+/* ============================== UI wiring ============================== */
+let firstBegin=true;
+function begin(){
+  initAudio(); if(AC&&AC.state==='suspended')AC.resume();
+  S.started=true; document.body.classList.add('started');
+  $('intro').classList.add('hidden');
+  if(firstBegin){ firstBegin=false; $('begin').textContent='RESUME THE WALK'; }
+}
+function toggleIntro(){ if(!S.started) return; $('intro').classList.toggle('hidden'); }
+$('begin').addEventListener('click',begin);
+$('helpBtn').addEventListener('click',toggleIntro);
+$('sndBtn').addEventListener('click',()=>{ initAudio(); if(AC&&AC.state==='suspended')AC.resume(); toggleSound(); });
+
+(function buildCompass(){
+  const L={0:'N',45:'NE',90:'E',135:'SE',180:'S',225:'SW',270:'W',315:'NW'};
+  let seg='';
+  for(let d=0;d<360;d+=15){
+    const mj=d%45===0;
+    seg+='<div class="tick'+(mj?' major':'')+'" style="left:'+(d*2)+'px"></div>';
+    if(mj) seg+='<div class="tlabel'+(d%90===0?' card':'')+'" style="left:'+(d*2)+'px">'+L[d]+'</div>';
+  }
+  compassStrip.innerHTML=
+    '<div style="position:absolute;left:-720px;width:720px;height:100%">'+seg+'</div>'+
+    '<div style="position:absolute;left:0;width:720px;height:100%">'+seg+'</div>'+
+    '<div style="position:absolute;left:720px;width:720px;height:100%">'+seg+'</div>';
+})();
+
+const FLAVOR=[
+  "the spires keep the tide's old music, note by note",
+  "somewhere north, a gate remembers its hinge",
+  "the aurora is the sea, still dreaming in light",
+  "your footsteps come back to you as chimes",
+  "the glass below holds every wave it ever was",
+  "walk softly — the steppe repeats what it hears",
+  "that pale moon is a kept promise",
+  "the wind reads the ridgeline like a score",
+  "every direction is north, if you keep walking",
+  "the last lighthouse grew roots of light"
+];
+let flavI=0;
+setInterval(()=>{
+  if(!S.started||!$('intro').classList.contains('hidden')) return;
+  flavorEl.style.opacity=0;
+  setTimeout(()=>{ flavI=(flavI+1)%FLAVOR.length; flavorEl.textContent=FLAVOR[flavI]; flavorEl.style.opacity=1; },1500);
+},22000);
+
+/* ============================== static scene builders ============================== */
+let streaks=null, glints=null;
+function ridgeD(seed,hMin,hMax){
+  const r=rng(seed);
+  let x=0, h=hMin+(hMax-hMin)*r();
+  const h0=h;
+  let d='M0 90 L0 '+(-h).toFixed(1);
+  while(x<bandW-40){
+    x+=26+r()*66;
+    h=clamp(h+(r()-.5)*(hMax-hMin)*.7,hMin,hMax);
+    d+=' L'+x.toFixed(1)+' '+(-h).toFixed(1);
+  }
+  d+=' L'+bandW+' '+(-h0).toFixed(1)+' L'+bandW+' 90 Z';
+  return d;
+}
+function auroraD(seed,yb,amp,wl,band){
+  const r=rng(seed), p1=r()*TAU, p2=r()*TAU, p3=r()*TAU;
+  const pts=[], x0=-W*.15, x1=W*1.15, st=Math.max(16,W/110);
+  for(let x=x0;x<=x1;x+=st) pts.push([x, yb+Math.sin(x/wl+p1)*amp+Math.sin(x/(wl*.43)+p2)*amp*.5]);
+  let d='M'+pts.map(p=>p[0].toFixed(0)+' '+p[1].toFixed(0)).join(' L');
+  d+=' L'+x1.toFixed(0)+' '+(yb+band*1.4).toFixed(0);
+  for(let i=pts.length-1;i>=0;i--){
+    const p=pts[i], y=p[1]+band*(.8+.25*Math.sin(p[0]/(wl*.6)+p3));
+    d+=' L'+p[0].toFixed(0)+' '+y.toFixed(0);
+  }
+  d+=' L'+x0.toFixed(0)+' '+(yb+band*1.4).toFixed(0)+' Z';
+  return d;
+}
+function buildStatic(){
+  /* sun & moon */
+  $('sunHalo').setAttribute('r',H*.36); $('sunDisc').setAttribute('r',H*.072);
+  $('moonHalo').setAttribute('r',H*.17); $('moonDisc').setAttribute('r',H*.045);
+  /* clouds (y relative to horizon; group is translated each frame) */
+  const cr=rng(4242);
+  for(let i=0;i<clouds.length;i++){
+    const e=clouds[i];
+    e.setAttribute('cx',(W*(.1+cr()*.8)).toFixed(0));
+    e.setAttribute('cy',(-(H*(.08+cr()*.15))).toFixed(0));
+    e.setAttribute('rx',(W*(.04+cr()*.08)).toFixed(0));
+    e.setAttribute('ry',(1.5+cr()*3).toFixed(1));
+    e.setAttribute('opacity',(0.4+cr()*.3).toFixed(2));
+  }
+  /* star band (two copies for seamless wrap) */
+  starA.innerHTML='';
+  const sr=rng(1337), n=Math.round(W/13);
+  for(let i=0;i<n;i++){
+    const c=document.createElementNS(NS,'circle');
+    const tone=sr();
+    c.setAttribute('cx',(sr()*bandW).toFixed(1));
+    c.setAttribute('cy',(Math.pow(sr(),1.4)*H*.4).toFixed(1));
+    c.setAttribute('r',(.4+sr()*1.1).toFixed(2));
+    c.setAttribute('fill',tone<.72?'#cdd8ff':(tone<.9?'#9fe8ff':'#ffd9a8'));
+    c.setAttribute('class','twk');
+    c.style.animationDuration=(2.2+sr()*4).toFixed(2)+'s';
+    c.style.animationDelay=(-sr()*6).toFixed(2)+'s';
+    starA.appendChild(c);
+  }
+  /* ridgelines */
+  rfA.setAttribute('d',ridgeD(555,14,42));
+  rnA.setAttribute('d',ridgeD(888,6,20));
+  /* aurora ribbons */
+  aurPaths[0].setAttribute('d',auroraD(21,H*.09,H*.05,H*.34,H*.16));
+  aurPaths[1].setAttribute('d',auroraD(22,H*.16,H*.045,H*.26,H*.13));
+  aurPaths[2].setAttribute('d',auroraD(23,H*.24,H*.04,H*.44,H*.1));
+  /* ground streaks (created once) */
+  if(!streaks){
+    streaks=[];
+    for(let i=0;i<18;i++){
+      const l=document.createElementNS(NS,'line');
+      l.setAttribute('stroke', i%5===0?'rgba(125,220,230,0.1)':'rgba(170,130,220,0.12)');
+      l.setAttribute('stroke-width','1.3');
+      streaksG.appendChild(l); streaks.push(l);
+    }
+  }
+  /* ground glints pool (created once) */
+  if(!glints){
+    glints=[];
+    for(let i=0;i<56;i++){
+      const c=document.createElementNS(NS,'circle');
+      c.setAttribute('opacity','0');
+      glintsG.appendChild(c); glints.push(c);
+    }
+  }
+}
+
+/* ============================== resize ============================== */
+function resize(){
+  W=innerWidth; H=innerHeight;
+  f=Math.max(W,H)*.42;
+  uiK=clamp(H/760,.7,1.4);
+  bandW=Math.ceil(W*1.5);
+  if(W<760&&q>1){ q=1; DRAW=[70,82,92][q]; }
+  buildStatic();
+}
+let rsT=null;
+addEventListener('resize',()=>{ clearTimeout(rsT); rsT=setTimeout(resize,120); });
+addEventListener('orientationchange',()=>{ clearTimeout(rsT); rsT=setTimeout(resize,200); });
+
+/* ============================== celestial bodies ============================== */
+function celest(az,el,g){
+  const d=wrapPi(az-S.heading);
+  const o=clamp((1.28-Math.abs(d))/.5,0,1);
+  const x=W/2+Math.tan(clamp(d,-1.24,1.24))*f;
+  g.setAttribute('transform','translate('+x.toFixed(1)+' '+(HZ-el).toFixed(1)+')');
+  g.setAttribute('opacity',o.toFixed(2));
+}
+
+/* ============================== main loop ============================== */
+let lastT=performance.now(), prevVis=[], lastKey='', prevSin=0, chimeCd=0, gateCd=0, lastPaces=-1, frameNo=0;
+function frame(now){
+  requestAnimationFrame(frame);
+  let dt=(now-lastT)/1000; lastT=now;
+  if(dt>.066)dt=.066; if(dt<=0)dt=.001;
+  frameNo++; const t=now/1000;
+
+  /* adaptive quality: step draw distance down if the frame rate sags */
+  emaDt=emaDt?emaDt*.95+dt*.05:dt;
+  if(++fCount>=150){ fCount=0; if(emaDt>.031&&q>0){ q--; DRAW=[70,82,92][q]; } }
+
+  /* ---- input & motion ---- */
+  let fwd=0,turn=0,str=0;
+  if(keys.has('KeyW')||keys.has('ArrowUp'))fwd+=1;
+  if(keys.has('KeyS')||keys.has('ArrowDown'))fwd-=1;
+  if(keys.has('KeyD')||keys.has('ArrowRight'))turn+=1;
+  if(keys.has('KeyA')||keys.has('ArrowLeft'))turn-=1;
+  if(keys.has('KeyE'))str+=1; if(keys.has('KeyQ'))str-=1;
+  fwd=clamp(fwd+joy.f,-1,1); str=clamp(str+joy.s,-1,1); turn=clamp(turn+joy.t,-1,1);
+  const slow=(keys.has('ShiftLeft')||keys.has('ShiftRight'))?.55:1;
+  const tv=fwd*5.4*slow*(fwd<0?.6:1), ts=str*3.1*slow;
+  S.heading+=turn*2.35*dt;
+  S.vel+=(tv-S.vel)*Math.min(1,dt*7);
+  S.strafeV+=(ts-S.strafeV)*Math.min(1,dt*7);
+  const sh=Math.sin(S.heading), ch=Math.cos(S.heading);
+  S.px+=(sh*S.vel+ch*S.strafeV)*dt;
+  S.pz+=(ch*S.vel-sh*S.strafeV)*dt;
+  S.dist+=Math.hypot(S.vel,S.strafeV)*dt;
+
+  /* ---- head bob ---- */
+  const spd=Math.hypot(S.vel,S.strafeV), ta=clamp(spd/5.4,0,1);
+  S.bobAmp+=(ta-S.bobAmp)*Math.min(1,dt*5);
+  S.bobPhase+=dt*7.6*S.bobAmp;
+  const bobY=Math.sin(S.bobPhase)*4.6*uiK*S.bobAmp, swayX=Math.cos(S.bobPhase*.5)*3*uiK*S.bobAmp;
+  const s2=Math.sin(S.bobPhase);
+  if(S.bobAmp>.35&&s2<-.9&&prevSin>=-.9) stepSnd();
+  prevSin=s2;
+  S.pitch*=(1-Math.min(1,dt*.3));
+  HZ=H*.44+S.pitch;
+  sceneG.setAttribute('transform','translate('+swayX.toFixed(2)+' '+bobY.toFixed(2)+')');
+
+  /* ---- sky ---- */
+  skyRect.setAttribute('y',(-H*.3).toFixed(0));
+  skyRect.setAttribute('height',(HZ+H*.3+6).toFixed(0));
+  const sShift=-mod(S.heading*f*.22,bandW), py=S.pitch.toFixed(1);
+  starA.setAttribute('transform','translate('+sShift.toFixed(1)+' '+py+')');
+  starB.setAttribute('transform','translate('+(sShift+bandW).toFixed(1)+' '+py+')');
+  cloudG.setAttribute('transform','translate(0 '+HZ.toFixed(1)+')');
+  celest(.55,H*.1,sunG);
+  celest(2.35,H*.22,moonG);
+  const rf=-mod(S.heading*f*.8,bandW), rn=-mod(S.heading*f*1.35,bandW);
+  rfA.setAttribute('transform','translate('+rf.toFixed(1)+' '+py+')');
+  rfB.setAttribute('transform','translate('+(rf+bandW).toFixed(1)+' '+py+')');
+  rnA.setAttribute('transform','translate('+rn.toFixed(1)+' '+py+')');
+  rnB.setAttribute('transform','translate('+(rn+bandW).toFixed(1)+' '+py+')');
+  hGlow.setAttribute('y',(HZ-H*.05).toFixed(1));
+  atmo.setAttribute('y',(HZ-H*.06).toFixed(1));
+
+  /* ---- ground ---- */
+  groundRect.setAttribute('y',(HZ-2).toFixed(1));
+  groundRect.setAttribute('height',(H-HZ+130).toFixed(0));
+  for(let i=0;i<streaks.length;i++){
+    const rel=wrapPi(i/18*TAU-S.heading), l=streaks[i];
+    if(Math.abs(rel)>1.18){ l.setAttribute('opacity','0'); continue; }
+    const x2=W/2+Math.tan(rel)*(H-HZ+150);
+    l.setAttribute('x1',(W/2).toFixed(1)); l.setAttribute('y1',(HZ+2).toFixed(1));
+    l.setAttribute('x2',clamp(x2,-800,W+800).toFixed(1)); l.setAttribute('y2',(H+150).toFixed(1));
+    l.setAttribute('opacity',((1-Math.abs(rel)/1.18)*.85).toFixed(2));
+  }
+  /* depth-scaled glints on the glass (parallax) */
+  let gi=0;
+  const gxa=Math.floor(S.px/3)-10, gxb=Math.floor(S.px/3)+10;
+  const gza=Math.floor(S.pz/3)-9, gzb=Math.floor(S.pz/3)+9;
+  const crx=Math.cos(S.heading);
+  outer:
+  for(let gx=gxa;gx<=gxb;gx++) for(let gz=gza;gz<=gzb;gz++){
+    const hs=hash2(gx*3+101,gz*3+57);
+    if(hs%10<4) continue;
+    const wx=gx*3+((hs&255)/255-.5)*2.2, wz=gz*3+(((hs>>>8)&255)/255-.5)*2.2;
+    const ox=wx-S.px, oz=wz-S.pz;
+    const dep=ox*sh+oz*ch;
+    if(dep<1.4||dep>30) continue;
+    const side=ox*crx-oz*sh;
+    const sx=W/2+side/dep*f;
+    if(sx<-20||sx>W+20) continue;
+    const gy=HZ+EYE/dep*f;
+    if(gy>H+30) continue;
+    const c=glints[gi];
+    c.setAttribute('cx',sx.toFixed(1)); c.setAttribute('cy',gy.toFixed(1));
+    c.setAttribute('r',clamp(40/dep,.6,3.4).toFixed(2));
+    c.setAttribute('opacity',(clamp(1-dep/30,0,1)*.65).toFixed(2));
+    const tone=(hs>>>16)%3;
+    if(c._f!==tone){ c.setAttribute('fill',['#9fefff','#d8c9ff','#ffe3b0'][tone]); c._f=tone; }
+    if(++gi>=56) break outer;
+  }
+  for(;gi<56;gi++) glints[gi].setAttribute('opacity','0');
+
+  /* ---- world objects: project, cull, pool, sort ---- */
+  updateChunks();
+  const items=[];
+  const rx=crx, rz=-sh;
+  let chBest=null, chDep=1e9, gateHit=null;
+  for(const o of allObjs.values()){
+    const ox=o.x-S.px, oz=o.z-S.pz;
+    const dep=ox*sh+oz*ch;
+    if(dep<.55||dep>DRAW) continue;
+    const side=ox*rx+oz*rz;
+    const sc=f/dep*o.s;
+    const sx=W/2+side/dep*f;
+    const m=o.hw*sc+46;
+    if(sx<-m||sx>W+m) continue;
+    let a=clamp(1-(dep-FOG0)/(DRAW-FOG0),0,1);
+    if(o.t==='wisp') a*=clamp((dep-1.2)/2.8,0,1);
+    const gy=HZ+EYE/dep*f;
+    items.push({o,dep,sc,sx,y:gy,a});
+    o._frame=frameNo;
+    if(o.t==='spire'&&dep<7.5&&dep<chDep&&Math.abs(side)<3.4){ chDep=dep; chBest=o; }
+    if(o.t==='gate'&&dep<3.6&&Math.abs(side)<2.6) gateHit=o;
+  }
+  /* sky-rays roam in true world space */
+  for(const o of rays){
+    o.x+=o.vx*dt; o.z+=o.vz*dt;
+    o.vx+=Math.sin(t*.21+o.ph)*.05*dt; o.vz+=Math.cos(t*.17+o.ph)*.05*dt;
+    const sp=Math.hypot(o.vx,o.vz);
+    if(sp>1.5){ o.vx*=1.5/sp; o.vz*=1.5/sp; }
+    if(Math.hypot(o.x-S.px,o.z-S.pz)>88) spawnRay(o);
+    const ox=o.x-S.px, oz=o.z-S.pz;
+    const dep=ox*sh+oz*ch;
+    if(dep<2||dep>DRAW*1.15) continue;
+    const side=ox*rx+oz*rz;
+    const sc=f/dep*o.s;
+    const sx=W/2+side/dep*f;
+    if(sx<-W*.2||sx>W*1.2) continue;
+    const a=clamp(1-(dep-FOG0)/(DRAW*1.15-FOG0),0,1);
+    const gy=HZ+EYE/dep*f;
+    const yy=gy-(o.h+Math.sin(t*.55+o.ph)*.7)*f/dep;
+    items.push({o,dep,sc,sx,y:yy,a:a*.95});
+    o._frame=frameNo;
+  }
+  items.sort((a,b)=>b.dep-a.dep);
+  let key='';
+  for(let i=0;i<items.length;i++) key+=items[i].o.id+',';
+  for(const it of items){
+    const o=it.o;
+    if(!o._node) o._node=acquire(o.t);
+    let tr='translate('+it.sx.toFixed(1)+' '+it.y.toFixed(1)+') scale('+it.sc.toFixed(3)+')';
+    if(o.flip) tr+=' scale(-1 1)';
+    if(o.tilt) tr+=' rotate('+o.tilt.toFixed(1)+')';
+    o._node.setAttribute('transform',tr);
+    o._node.setAttribute('opacity',it.a.toFixed(2));
+  }
+  for(const o of prevVis){
+    if(o._frame!==frameNo&&o._node){ release(o._node); o._node=null; }
+  }
+  if(key!==lastKey){
+    for(const it of items) worldG.appendChild(it.o._node);
+    lastKey=key;
+  }
+  prevVis=items.map(i=>i.o);
+
+  /* ---- proximity chimes ---- */
+  if(S.started){
+    if(chBest&&t>chimeCd){ chime(chBest.n); chimeCd=t+1.4+Math.random()*1.6; }
+    if(gateHit&&t>gateCd){ chime(2,.5,true); gateCd=t+7; }
+  }
+
+  /* ---- HUD ---- */
+  const deg=mod(S.heading*180/Math.PI,360);
+  compassStrip.style.transform='translateX('+(-deg*2).toFixed(1)+'px)';
+  const paces=Math.floor(S.dist);
+  if(paces!==lastPaces){ pacesEl.textContent=String(paces).padStart(4,'0')+' PACES'; lastPaces=paces; }
+}
+
+/* ============================== boot ============================== */
+resize();
+initRays();
+updateChunks();
+requestAnimationFrame(t=>{ lastT=t; requestAnimationFrame(frame); });
+})();
+</script>
+
+</body>
+</html>
