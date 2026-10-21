@@ -167,6 +167,8 @@ A collection of games, tools, and experiments built with AI — hosted on GitHub
 - **[A Signal From Ahead](learn/signal-from-ahead.html)** — Four ways a future intelligence could be steering AI right now — simulation, a final boundary condition, nonlinear quantum mechanics, a primordial wormhole — each an experiment you can run, with the odds. (*Notebook*)
 - **[Signals Take Time](learn/delayed-nca.html)** — Train a tiny neural cellular automaton locally, compare current and distance-delayed signals, and inspect expanding neighborhoods. (*Experiment*)
 - **[Strange Attractors](learn/strange-attractors.html)** — The mathematics of strange attractors — phase space, stretching and folding, bifurcations, fractal dimension — explained visually, with interactive experiments. (*Tutorial*)
+- **[SynthID-Text](learn/synthid-text.html)** — How Google DeepMind watermarks model output through keyed token sampling — tournament choices, statistical detection, non-distortion, thresholds, edits, and honest limits. (*Tutorial*)
+- **[Text Steganography](learn/text-steganography.html)** — How secrets hide inside ordinary text — null ciphers, zero-width characters, synonym codes, and the censor’s scanner that catches them, with hands-on encoders under a UV lamp. (*Tutorial*)
 - **[US Grid & Data Centers](learn/us-datacenter-grid-map.html)** — Interactive map overlay showing US data center locations, grid capacity, and energy infrastructure across time. (*Visualizer*)
 
 ### [Vector Defense](vector-defense/)
