@@ -24,6 +24,17 @@ let progress = readProgress(storage);
 if (!LESSONS.some(l => l.id === progress.selected)) progress.selected = LESSONS[0].id;
 let lesson, question, active, values, phase = .35, animating = false, animationFrame = 0, lastFrame = 0, visible = true;
 const shortTitles = ['Vectors','Integrate','Orbits','Engines','Transfer','Intercept','Correct','Navigate'];
+// A neutral reference: only the learner chooses a topic, never the question.
+const formulaReference = document.createElement('details');
+formulaReference.id = 'formula-reference';
+formulaReference.open = true;
+formulaReference.innerHTML = `<summary>Formula reference <span>OPEN BOOK</span></summary><p>Use freely. Ask for a hint if you want help choosing.</p><label class="formula-jump" for="formula-topic">Jump to<select id="formula-topic"><option value="">All formulas</option>${LESSONS.map((l,i)=>`<option value="${l.id}">${shortTitles[i]}</option>`).join('')}</select></label><div class="formula-list" tabindex="0" role="region" aria-label="All course formulas">${LESSONS.map((l,i)=>`<section id="formulas-${l.id}"><h4>${String(i+1).padStart(2,'0')} / ${shortTitles[i]}</h4>${l.equations.map(e=>`<div class="reference-equation"><code>${esc(e.formula)}</code><p>${esc(e.meaning)}</p></div>`).join('')}</section>`).join('')}</div>`;
+const formulaList = formulaReference.querySelector('.formula-list');
+let formulaScroll = 0;
+formulaReference.querySelector('select').addEventListener('change', event => {
+  const topic = event.target.value;
+  formulaList.scrollTop = topic ? formulaReference.querySelector(`#formulas-${topic}`).offsetTop : 0;
+});
 const save = () => {
   if (storageConflict) return;
   const saved = saveProgress(storage, progress);
@@ -53,6 +64,7 @@ function prepareQuestion() {
 }
 function setMode(mode) { progress.mode = mode; renderPanel(); renderInstrument(); save(); }
 function renderPanel() {
+  if (formulaReference.isConnected) formulaScroll = formulaList.scrollTop;
   const practice = progress.mode === 'practice';
   $('show-briefing').setAttribute('aria-pressed', String(!practice));
   $('show-practice').setAttribute('aria-pressed', String(practice));
@@ -64,6 +76,8 @@ function renderPanel() {
   }
   const record = lessonProgress(progress,lesson.id);
   panel.innerHTML = `<div class="practice-topline"><span>${esc(lesson.kicker)}<br>PROBLEM ${String(active.index+1).padStart(3,'0')} / ${variantCount(lesson.id)} TYPES</span><strong>${isMastered(record) ? '✓ QUALIFIED' : `${record.independent}/4 INDEPENDENT`}<br>${Math.min(record.variants.length,3)}/3 TYPES PASSED</strong></div><h3>${esc(question.title)}</h3><p class="question-prompt">${esc(question.prompt)}</p><div class="question-givens">${question.givens.map(g=>`<div class="given"><span>${esc(g.label)}</span><strong>${esc(g.value)} ${esc(g.unit||'')}</strong></div>`).join('')}</div><form id="answer-form" novalidate>${question.answers.map((a,i)=>`<div class="answer-field"><label for="answer-${i}">${esc(a.label)}</label><div class="answer-input-wrap">${a.options ? `<select id="answer-${i}" data-key="${esc(a.key)}" ${active.solved?'disabled':''}><option value="">Choose an answer…</option>${a.options.map(o=>`<option value="${esc(o.value)}" ${String(active.inputs[a.key])===String(o.value)?'selected':''}>${esc(o.label)}</option>`).join('')}</select>` : `<input id="answer-${i}" data-key="${esc(a.key)}" type="text" inputmode="text" autocomplete="off" spellcheck="false" maxlength="240" value="${esc(active.inputs[a.key]||'')}" ${active.solved?'disabled':''} aria-describedby="answer-help-${i}">`}<span>${esc(a.unit||'')}</span></div>${!a.options ? `<small id="answer-help-${i}">Expressions accepted. ${a.angle?'Equivalent bearings wrap by 360°. ':''}Tolerance: ±${esc(Number(a.tolerance.toPrecision(3)))} ${esc(a.unit||'')}.</small>`:''}</div>`).join('')}<div class="answer-actions"><button class="action" type="submit" ${active.solved?'disabled':''}>${active.solved?'✓ Answer checked':'Check my calculation →'}</button><button type="button" id="next-question">${active.solved?'Next fresh challenge →':'Skip / new scenario'}</button></div></form><div class="feedback ${active.solved?'success':''}" id="practice-answer-feedback" role="status" aria-live="polite">${active.solved?'<strong>This problem is complete.</strong>Try a fresh challenge to continue your practice.':''}</div><div class="question-help"><button type="button" id="question-hint" ${active.hints>=question.hints.length||active.solved?'disabled':''}>${active.hints?'Another hint':'Give me a hint'}</button><button type="button" id="question-solution" ${active.revealed?'disabled':''}>Show worked solution</button></div><ol id="question-hints" class="hint-list">${question.hints.slice(0,active.hints).map(h=>`<li>${esc(h)}</li>`).join('')}</ol><div id="question-worked"></div><p class="practice-footer">${record.correct} problems solved · ${record.independent} independent first attempts.<br>${active.solved?'Completed problem. Generate a fresh challenge to keep practicing.':active.hints||active.revealed?'This problem is assisted; it counts as practice.':active.attempts?'You have already tried this problem; revised answers count as practice.':'Your first unassisted answer can count toward qualification.'} Formula sheets and the calculator are always available.</p>`;
+  $('answer-form').before(formulaReference);
+  formulaList.scrollTop = formulaScroll;
   panel.querySelectorAll('[data-key]').forEach(input=>input.addEventListener('input',()=>{active.inputs[input.dataset.key]=input.value;save();}));
   $('answer-form').addEventListener('submit', checkAnswers);
   $('next-question').addEventListener('click',nextQuestion);
