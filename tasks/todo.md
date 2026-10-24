@@ -1133,3 +1133,15 @@ Review / proof:
 - Topic/scroll retained through Understand→Calculate and through collapsing, advancing, and reopening (Engines 1170 px before/after). Keyboard Enter toggles the reference, PageDown scrolls its focusable region, and Tab reaches the answer inputs. Desktop and actual 390×844/320×740 viewport checks show formulas and editable answers together. Long equations wrap within the reference; at 320 px, both page and reference have no horizontal overflow, and the focused answer remains below the sticky sheet.
 - Console warnings/errors, JS exceptions, failed requests, and HTTP-error resources: none. Evidence: `/tmp/apollo-formula-desktop.jpg`, `/tmp/apollo-formula-mobile.jpg`. Existing 60 Apollo tests pass; JS syntax and diff checks pass. A separate skeptical review found no confirmed defects, and its collapsed-scroll edge case was checked in the browser. No new implementation-mirroring tests added for this presentation change.
 - Production learner answers were not used or edited during local proof. Safari/Firefox, physical mobile keyboards, and screen-reader behavior remain unverified. The formula sheet's topic/open position lasts through question changes in the current page; a reload starts the reference open at the full list.
+
+
+## Add Kimi K3.1 Pro tower defense — 2026-10-24
+
+Goal: version the supplied Ministry of Maybe game and add its gallery tile. Project: personal / The Grove. Scope: supplied game, tower-def/index.html, and this task record.
+Plan check-in: add the tile beside Kimi K3 using Moonshot / Kimi K3.1 Pro / Max metadata; verify syntax, tile filtering, and launch before the authorized commit and origin/main push.
+
+- [x] Add the supplied game and matching gallery tile.
+- [x] Review the diff and verify the gallery and game launch.
+- [x] Prepare scoped files for the authorized commit and origin/main push; publication confirmation belongs in the delivery message.
+
+Review / proof: all 53 gallery targets exist; unique Moonshot / Kimi K3.1 Pro / Max tile sits beside Kimi K3. Inline JavaScript syntax checks pass for the game and index; git diff --check passes. Chrome (Jason profile), local URL http://127.0.0.1:8768/tower-def/index.html: provider filter shows both Kimi games; model filter isolates The Ministry of Maybe; tile layout visually inspected; link opens the supplied game; Begin the night shift opens the workshop and enables draft/instrument controls. No captured console warnings/errors in these flows. Supplied game content preserved. Remaining limits: full campaign, mobile/cross-browser behavior, detailed network capture, and deployed Pages behavior were not tested.
