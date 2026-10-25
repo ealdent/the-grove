@@ -1,0 +1,1426 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#09091a">
+  <title>The Unsung Atlas</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      --ink: #f4f0e8;
+      --muted: #b8b5cb;
+      --mint: #a4f7dc;
+      --gold: #ffe0a3;
+      --glass: rgba(12, 12, 31, 0.64);
+      --line: rgba(220, 229, 255, 0.18);
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      overflow: hidden;
+      overscroll-behavior: none;
+      touch-action: none;
+      background: #09091a;
+    }
+
+    body {
+      position: fixed;
+      inset: 0;
+      color: var(--ink);
+      -webkit-user-select: none;
+      user-select: none;
+      -webkit-touch-callout: none;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    button { font: inherit; }
+
+    #game {
+      position: fixed;
+      inset: 0;
+      overflow: hidden;
+      isolation: isolate;
+      background: #09091a;
+    }
+
+    #world {
+      display: block;
+      width: 100%;
+      height: 100%;
+      outline: none;
+      touch-action: none;
+      cursor: grab;
+    }
+
+    #world.dragging { cursor: grabbing; }
+
+    #hud {
+      position: absolute;
+      inset: 0;
+      z-index: 4;
+      padding:
+        max(18px, env(safe-area-inset-top))
+        max(20px, env(safe-area-inset-right))
+        max(18px, env(safe-area-inset-bottom))
+        max(20px, env(safe-area-inset-left));
+      pointer-events: none;
+    }
+
+    .topbar {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 18px;
+    }
+
+    .identity {
+      padding: 12px 15px 13px;
+      border: 1px solid var(--line);
+      border-radius: 13px;
+      background: var(--glass);
+      box-shadow: 0 10px 36px rgba(2, 2, 12, 0.18);
+      backdrop-filter: blur(12px);
+    }
+
+    .eyebrow {
+      display: block;
+      margin-bottom: 5px;
+      color: var(--mint);
+      font-size: 9px;
+      font-weight: 750;
+      line-height: 1.2;
+      letter-spacing: 0.22em;
+      text-transform: uppercase;
+    }
+
+    .region {
+      display: block;
+      max-width: 42vw;
+      overflow: hidden;
+      font-family: Georgia, "Times New Roman", serif;
+      font-size: clamp(16px, 2.2vw, 23px);
+      line-height: 1.1;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .stats {
+      display: flex;
+      gap: 8px;
+    }
+
+    .stat {
+      min-width: 82px;
+      padding: 10px 12px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: var(--glass);
+      text-align: right;
+      backdrop-filter: blur(12px);
+    }
+
+    .stat-label {
+      display: block;
+      margin-bottom: 3px;
+      color: var(--muted);
+      font-size: 8px;
+      font-weight: 700;
+      letter-spacing: 0.17em;
+      text-transform: uppercase;
+    }
+
+    .stat-value {
+      display: block;
+      color: var(--gold);
+      font-size: 14px;
+      font-variant-numeric: tabular-nums;
+      font-weight: 650;
+      letter-spacing: 0.04em;
+    }
+
+    #hint {
+      position: absolute;
+      left: 50%;
+      bottom: max(18px, env(safe-area-inset-bottom));
+      max-width: min(660px, calc(100vw - 40px));
+      padding: 8px 13px;
+      transform: translateX(-50%);
+      border: 1px solid rgba(220, 229, 255, 0.12);
+      border-radius: 999px;
+      background: rgba(8, 8, 24, 0.52);
+      color: rgba(239, 237, 247, 0.72);
+      font-size: 10px;
+      line-height: 1.3;
+      letter-spacing: 0.06em;
+      text-align: center;
+      white-space: nowrap;
+      backdrop-filter: blur(10px);
+    }
+
+    #toast {
+      position: absolute;
+      top: 23%;
+      left: 50%;
+      width: min(460px, calc(100vw - 42px));
+      padding: 15px 18px 16px;
+      transform: translate(-50%, -10px);
+      border: 1px solid rgba(255, 224, 163, 0.26);
+      border-radius: 14px;
+      background: rgba(12, 11, 30, 0.79);
+      box-shadow: 0 16px 60px rgba(3, 2, 15, 0.32);
+      opacity: 0;
+      text-align: center;
+      backdrop-filter: blur(16px);
+      transition: opacity 350ms ease, transform 350ms ease;
+    }
+
+    #toast.show {
+      transform: translate(-50%, 0);
+      opacity: 1;
+    }
+
+    #toast-title {
+      display: block;
+      margin-bottom: 6px;
+      color: var(--gold);
+      font-size: 9px;
+      font-weight: 800;
+      letter-spacing: 0.22em;
+      text-transform: uppercase;
+    }
+
+    #toast-text {
+      display: block;
+      color: #f4efff;
+      font-family: Georgia, "Times New Roman", serif;
+      font-size: clamp(15px, 2.4vw, 19px);
+      font-style: italic;
+      line-height: 1.35;
+    }
+
+    #joysticks {
+      display: none;
+      position: absolute;
+      inset: 0;
+      z-index: 6;
+      pointer-events: none;
+    }
+
+    body.touch #joysticks { display: block; }
+    body.touch #world { cursor: default; }
+    body.touch #hint { bottom: max(171px, calc(env(safe-area-inset-bottom) + 158px)); }
+
+    .stick {
+      position: absolute;
+      bottom: max(24px, calc(env(safe-area-inset-bottom) + 12px));
+      width: 132px;
+      height: 132px;
+      border: 1px solid rgba(215, 231, 255, 0.22);
+      border-radius: 50%;
+      background: rgba(12, 13, 34, 0.33);
+      box-shadow: inset 0 0 0 12px rgba(202, 218, 255, 0.025), 0 8px 30px rgba(3, 3, 15, 0.16);
+      pointer-events: auto;
+      touch-action: none;
+      backdrop-filter: blur(5px);
+    }
+
+    .stick::before,
+    .stick::after {
+      content: "";
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      background: rgba(215, 231, 255, 0.11);
+      transform: translate(-50%, -50%);
+      pointer-events: none;
+    }
+
+    .stick::before { width: 70%; height: 1px; }
+    .stick::after { width: 1px; height: 70%; }
+
+    .stick-left { left: max(22px, calc(env(safe-area-inset-left) + 10px)); }
+    .stick-right { right: max(22px, calc(env(safe-area-inset-right) + 10px)); }
+
+    .stick-label {
+      position: absolute;
+      top: -23px;
+      left: 0;
+      width: 100%;
+      color: rgba(233, 237, 255, 0.58);
+      font-size: 8px;
+      font-weight: 800;
+      letter-spacing: 0.22em;
+      text-align: center;
+      pointer-events: none;
+    }
+
+    .knob {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: 55px;
+      height: 55px;
+      border: 1px solid rgba(226, 240, 255, 0.45);
+      border-radius: 50%;
+      background: rgba(119, 119, 170, 0.34);
+      box-shadow: 0 5px 20px rgba(3, 3, 15, 0.25), inset 0 0 16px rgba(209, 228, 255, 0.07);
+      transform: translate(-50%, -50%);
+      pointer-events: none;
+    }
+
+    .stick.active {
+      border-color: rgba(164, 247, 220, 0.52);
+      background: rgba(25, 37, 55, 0.43);
+    }
+
+    .stick.active .knob {
+      border-color: rgba(164, 247, 220, 0.78);
+      background: rgba(117, 203, 187, 0.31);
+    }
+
+    #intro {
+      position: absolute;
+      inset: 0;
+      z-index: 10;
+      display: grid;
+      place-items: center;
+      padding: max(18px, env(safe-area-inset-top)) max(18px, env(safe-area-inset-right)) max(18px, env(safe-area-inset-bottom)) max(18px, env(safe-area-inset-left));
+      background: rgba(5, 5, 18, 0.42);
+      opacity: 1;
+      pointer-events: auto;
+      backdrop-filter: blur(8px);
+      transition: opacity 600ms ease, visibility 0s linear 0s;
+    }
+
+    #intro.is-hidden {
+      visibility: hidden;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 600ms ease, visibility 0s linear 600ms;
+    }
+
+    .intro-panel {
+      width: min(610px, 100%);
+      max-height: calc(100dvh - 36px);
+      overflow: auto;
+      padding: clamp(24px, 5vw, 46px);
+      border: 1px solid rgba(222, 225, 255, 0.22);
+      border-radius: 22px;
+      background: rgba(10, 10, 29, 0.88);
+      box-shadow: 0 28px 100px rgba(2, 2, 12, 0.45);
+      text-align: center;
+      touch-action: pan-y;
+    }
+
+    .intro-panel .eyebrow {
+      margin-bottom: 13px;
+      color: var(--gold);
+      font-size: 9px;
+    }
+
+    h1 {
+      margin: 0;
+      color: #fff9ec;
+      font-family: Georgia, "Times New Roman", serif;
+      font-size: clamp(35px, 8vw, 66px);
+      font-weight: 400;
+      line-height: 0.94;
+      letter-spacing: -0.035em;
+    }
+
+    .subtitle {
+      display: block;
+      margin: 12px 0 22px;
+      color: var(--mint);
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.24em;
+      text-transform: uppercase;
+    }
+
+    .lore {
+      max-width: 480px;
+      margin: 0 auto;
+      color: #c9c5d8;
+      font-family: Georgia, "Times New Roman", serif;
+      font-size: clamp(14px, 2.3vw, 17px);
+      line-height: 1.58;
+    }
+
+    .controls-copy {
+      margin: 20px auto 0;
+      color: #9895ae;
+      font-size: 10px;
+      line-height: 1.65;
+      letter-spacing: 0.04em;
+    }
+
+    #enter {
+      margin-top: 25px;
+      padding: 13px 22px;
+      border: 1px solid rgba(164, 247, 220, 0.55);
+      border-radius: 999px;
+      background: rgba(97, 191, 167, 0.12);
+      color: #dcfff3;
+      font-size: 11px;
+      font-weight: 750;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      cursor: pointer;
+      transition: background 180ms ease, border-color 180ms ease, transform 180ms ease;
+    }
+
+    #enter:hover,
+    #enter:focus-visible {
+      border-color: var(--mint);
+      background: rgba(97, 191, 167, 0.22);
+      outline: none;
+      transform: translateY(-1px);
+    }
+
+    @media (pointer: coarse) {
+      #joysticks { display: block; }
+      #world { cursor: default; }
+      #hint { bottom: max(171px, calc(env(safe-area-inset-bottom) + 158px)); }
+    }
+
+    @media (max-width: 640px) {
+      #hud { padding-left: 13px; padding-right: 13px; }
+      .topbar { gap: 8px; }
+      .identity { padding: 10px 11px; }
+      .region { max-width: 47vw; font-size: 16px; }
+      .stats { gap: 5px; }
+      .stat { min-width: 61px; padding: 9px 8px; }
+      .stat-label { font-size: 7px; letter-spacing: 0.1em; }
+      .stat-value { font-size: 12px; }
+      #hint { max-width: calc(100vw - 28px); font-size: 8px; white-space: normal; }
+      .stick { width: 116px; height: 116px; }
+      .knob { width: 49px; height: 49px; }
+    }
+
+    @media (max-height: 540px) {
+      .identity { padding: 8px 10px; }
+      .identity .eyebrow { display: none; }
+      .stat { padding: 7px 9px; }
+      .stick { width: 96px; height: 96px; bottom: max(15px, env(safe-area-inset-bottom)); }
+      .knob { width: 42px; height: 42px; }
+      .stick-label { top: -17px; font-size: 7px; }
+      #hint { display: none; }
+      .intro-panel { padding: 20px 26px; }
+      .intro-panel .eyebrow { margin-bottom: 8px; }
+      .subtitle { margin: 8px 0 12px; }
+      .lore { font-size: 13px; line-height: 1.4; }
+      .controls-copy { margin-top: 10px; line-height: 1.4; }
+      #enter { margin-top: 13px; padding: 10px 18px; }
+    }
+  </style>
+</head>
+<body>
+  <main id="game" aria-label="The Unsung Atlas exploration game">
+    <svg id="world" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 600" preserveAspectRatio="none" tabindex="0" role="img" aria-label="An endless twilight plain of singing monuments, glass plants, and wandering creatures">
+      <defs>
+        <linearGradient id="skyGradient" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stop-color="#070718"/>
+          <stop offset="0.46" stop-color="#242044"/>
+          <stop offset="0.78" stop-color="#70425f"/>
+          <stop offset="1" stop-color="#d17a78"/>
+        </linearGradient>
+        <linearGradient id="groundGradient" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stop-color="#342840"/>
+          <stop offset="0.22" stop-color="#201b33"/>
+          <stop offset="1" stop-color="#080a18"/>
+        </linearGradient>
+        <linearGradient id="spireBody" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stop-color="#454367"/>
+          <stop offset="0.45" stop-color="#20233f"/>
+          <stop offset="1" stop-color="#0b1026"/>
+        </linearGradient>
+        <linearGradient id="floraGradient" x1="0" y1="0" x2="0.8" y2="1">
+          <stop offset="0" stop-color="#c0ffe9" stop-opacity="0.9"/>
+          <stop offset="0.45" stop-color="#54cbbf" stop-opacity="0.74"/>
+          <stop offset="1" stop-color="#316a86" stop-opacity="0.46"/>
+        </linearGradient>
+        <linearGradient id="shellGradient" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stop-color="#e6a58e"/>
+          <stop offset="0.42" stop-color="#81516f"/>
+          <stop offset="1" stop-color="#282540"/>
+        </linearGradient>
+        <linearGradient id="crystalGradient" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stop-color="#e9c6ff" stop-opacity="0.9"/>
+          <stop offset="0.48" stop-color="#8e75cb" stop-opacity="0.75"/>
+          <stop offset="1" stop-color="#293454" stop-opacity="0.85"/>
+        </linearGradient>
+        <linearGradient id="gateGradient" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stop-color="#6a5879"/>
+          <stop offset="0.5" stop-color="#25263f"/>
+          <stop offset="1" stop-color="#11162b"/>
+        </linearGradient>
+        <radialGradient id="moonGradient" cx="38%" cy="32%" r="70%">
+          <stop offset="0" stop-color="#fff8d7"/>
+          <stop offset="0.5" stop-color="#ffd5a1"/>
+          <stop offset="1" stop-color="#c67683"/>
+        </radialGradient>
+        <radialGradient id="moonHalo">
+          <stop offset="0" stop-color="#ffd9b0" stop-opacity="0.28"/>
+          <stop offset="0.48" stop-color="#efafc3" stop-opacity="0.1"/>
+          <stop offset="1" stop-color="#c78fc0" stop-opacity="0"/>
+        </radialGradient>
+        <radialGradient id="shadowGradient">
+          <stop offset="0" stop-color="#02030c" stop-opacity="0.7"/>
+          <stop offset="1" stop-color="#02030c" stop-opacity="0"/>
+        </radialGradient>
+        <linearGradient id="mistGradient" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stop-color="#d38991" stop-opacity="0"/>
+          <stop offset="0.46" stop-color="#d38991" stop-opacity="0.18"/>
+          <stop offset="0.62" stop-color="#9a6c8d" stop-opacity="0.09"/>
+          <stop offset="1" stop-color="#6e527c" stop-opacity="0"/>
+        </linearGradient>
+        <linearGradient id="horizonGradient" x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0" stop-color="#ffd3b0" stop-opacity="0"/>
+          <stop offset="0.5" stop-color="#ffd3b0" stop-opacity="0.48"/>
+          <stop offset="1" stop-color="#ffd3b0" stop-opacity="0"/>
+        </linearGradient>
+        <radialGradient id="vignetteGradient" cx="50%" cy="45%" r="72%">
+          <stop offset="0" stop-color="#04040f" stop-opacity="0"/>
+          <stop offset="0.66" stop-color="#04040f" stop-opacity="0.03"/>
+          <stop offset="1" stop-color="#04040f" stop-opacity="0.66"/>
+        </radialGradient>
+
+        <!-- Choir needle: a monument containing an unlived life. -->
+        <g id="prop-spire">
+          <ellipse cx="0" cy="-2.38" rx="1.08" ry="0.28" transform="rotate(-18 0 -2.38)" fill="none" stroke="#83ead9" stroke-width="0.16" opacity="0.12"/>
+          <ellipse cx="0" cy="-2.38" rx="1.08" ry="0.28" transform="rotate(-18 0 -2.38)" fill="none" stroke="#b5ffea" stroke-width="0.035" opacity="0.72"/>
+          <path d="M-0.65 0 L-0.43 -2.94 L-0.11 -4.25 L0.05 -2.18 L0.39 -3.52 L0.65 0 Z" fill="url(#spireBody)"/>
+          <path d="M-0.65 0 L-0.12 -0.28 L-0.11 -4.25 L-0.43 -2.94 Z" fill="#373451" opacity="0.72"/>
+          <path d="M0.05 -2.18 L0.13 -0.2 L0.65 0 L0.39 -3.52 Z" fill="#0a1126" opacity="0.9"/>
+          <path d="M-0.11 -3.92 L-0.055 -0.48" fill="none" stroke="#a4f7dc" stroke-width="0.055" stroke-linecap="round"/>
+          <path d="M0.39 -3.18 L0.18 -0.43" fill="none" stroke="#f58fb8" stroke-width="0.04" stroke-linecap="round" opacity="0.82"/>
+          <path d="M-0.48 -2.7 L-0.26 -1.22 M0.28 -2.55 L0.45 -1.36" fill="none" stroke="#9c91cb" stroke-width="0.025" opacity="0.6"/>
+          <circle cx="0.91" cy="-2.69" r="0.085" fill="#ffe0a3"/>
+          <circle cx="0.91" cy="-2.69" r="0.18" fill="#ffe0a3" opacity="0.12"/>
+          <path d="M-0.96 0.02 L-0.45 -0.08 M0.36 -0.04 L0.98 0.05" stroke="#8cf7e0" stroke-width="0.035" opacity="0.4"/>
+        </g>
+
+        <!-- Afterglass fern: a plant that drinks residual echoes. -->
+        <g id="prop-fern">
+          <path d="M0 0 C-0.13 -0.85 0.18 -1.55 0 -2.5 M-0.03 -0.35 C-0.52 -0.92 -0.76 -1.3 -0.9 -1.84 M0.04 -0.52 C0.55 -0.98 0.83 -1.4 0.9 -1.96 M-0.01 -1.05 C-0.36 -1.5 -0.44 -1.93 -0.4 -2.22 M0.03 -1.2 C0.32 -1.55 0.46 -1.89 0.47 -2.25" fill="none" stroke="#70d8c8" stroke-width="0.075" stroke-linecap="round"/>
+          <path d="M-0.07 -0.85 C-0.62 -0.85 -0.83 -1.1 -0.92 -1.48 C-0.48 -1.37 -0.19 -1.14 -0.07 -0.85 Z M0.04 -1.03 C0.55 -1.0 0.81 -1.26 0.91 -1.62 C0.49 -1.49 0.18 -1.29 0.04 -1.03 Z M-0.01 -1.46 C-0.39 -1.54 -0.57 -1.81 -0.56 -2.08 C-0.21 -1.91 -0.06 -1.68 -0.01 -1.46 Z M0.03 -1.65 C0.35 -1.72 0.51 -1.95 0.5 -2.18 C0.2 -2.05 0.07 -1.85 0.03 -1.65 Z" fill="url(#floraGradient)"/>
+          <path d="M-0.13 -0.35 C-0.65 -0.28 -0.94 -0.49 -1.1 -0.83 C-0.64 -0.79 -0.31 -0.61 -0.13 -0.35 Z M0.1 -0.47 C0.61 -0.36 0.94 -0.55 1.12 -0.88 C0.66 -0.85 0.3 -0.68 0.1 -0.47 Z" fill="url(#floraGradient)" opacity="0.76"/>
+          <circle cx="0" cy="-2.52" r="0.13" fill="#ffe0a3"/>
+          <circle cx="-0.9" cy="-1.86" r="0.09" fill="#f7a8c5"/>
+          <circle cx="0.9" cy="-1.98" r="0.09" fill="#f7a8c5"/>
+          <circle cx="0" cy="-2.52" r="0.27" fill="#ffe0a3" opacity="0.1"/>
+        </g>
+
+        <!-- Morrowback: a gentle six-legged migrant seeking the unrisen dawn. -->
+        <g id="prop-morrow">
+          <path d="M-0.75 -0.48 L-1.02 -0.05 L-1.18 0 M-0.25 -0.42 L-0.42 -0.04 L-0.58 0.02 M0.35 -0.43 L0.26 -0.03 L0.12 0.03 M-0.62 -0.52 L-0.72 -0.08 L-0.87 0.01 M0.02 -0.45 L0.02 -0.06 L-0.1 0 M0.68 -0.48 L0.81 -0.08 L0.98 -0.01" fill="none" stroke="#7e6b83" stroke-width="0.105" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M-1.1 -0.63 Q-1.42 -0.58 -1.54 -0.34 Q-1.18 -0.39 -0.96 -0.3" fill="#5c465f"/>
+          <path d="M-1.03 -0.63 Q-0.83 -1.42 0.08 -1.5 Q0.95 -1.45 1.08 -0.62 Q0.54 -0.26 -0.2 -0.29 Q-0.75 -0.3 -1.03 -0.63 Z" fill="url(#shellGradient)"/>
+          <path d="M-0.72 -0.72 Q-0.52 -1.27 0.08 -1.31 Q0.66 -1.27 0.79 -0.7" fill="none" stroke="#f2b699" stroke-width="0.055" opacity="0.65"/>
+          <path d="M0.11 -1.24 C-0.47 -1.29 -0.61 -0.72 -0.18 -0.59 C0.26 -0.45 0.55 -0.78 0.34 -0.99 C0.17 -1.16 -0.13 -1.03 -0.1 -0.85 C-0.07 -0.73 0.12 -0.72 0.17 -0.82" fill="none" stroke="#ffe0a3" stroke-width="0.075" stroke-linecap="round"/>
+          <path d="M0.93 -0.75 Q1.28 -0.85 1.43 -0.59 L1.35 -0.34 Q1.08 -0.3 0.85 -0.46 Z" fill="#a7747f"/>
+          <circle cx="1.31" cy="-0.57" r="0.065" fill="#c8ffe9"/>
+          <path d="M1.24 -0.75 Q1.27 -1.02 1.43 -1.09 M1.08 -0.78 Q1.02 -1.01 1.11 -1.14" fill="none" stroke="#b78b96" stroke-width="0.035" stroke-linecap="round"/>
+          <circle cx="1.43" cy="-1.09" r="0.045" fill="#ffe0a3"/>
+          <circle cx="1.11" cy="-1.14" r="0.04" fill="#ffe0a3"/>
+        </g>
+
+        <!-- Chronoclasts: crystallized fragments of abandoned possibilities. -->
+        <g id="prop-shard">
+          <path d="M-0.85 0 L-0.72 -1.15 L-0.38 -1.72 L-0.19 -0.74 L-0.28 0 Z" fill="url(#crystalGradient)"/>
+          <path d="M-0.38 -1.72 L-0.42 -0.37 L-0.28 0 L-0.19 -0.74 Z" fill="#5a548b" opacity="0.6"/>
+          <path d="M-0.27 0 L-0.11 -2.15 L0.25 -2.85 L0.52 -1.28 L0.4 0 Z" fill="url(#crystalGradient)"/>
+          <path d="M0.25 -2.85 L0.18 -0.46 L0.4 0 L0.52 -1.28 Z" fill="#3b426b" opacity="0.62"/>
+          <path d="M0.32 0 L0.57 -1.23 L0.86 -1.62 L1.01 -0.52 L0.91 0 Z" fill="url(#crystalGradient)" opacity="0.85"/>
+          <path d="M-0.09 -2.03 L0.23 -2.67 M-0.68 -1.08 L-0.4 -1.57 M0.59 -1.15 L0.83 -1.48" stroke="#f2ddff" stroke-width="0.045" stroke-linecap="round" opacity="0.8"/>
+          <path d="M-1.04 0.02 Q0 -0.2 1.18 0.02" fill="none" stroke="#c29bff" stroke-width="0.04" opacity="0.45"/>
+        </g>
+
+        <!-- Loom gate: a rare empty arch through which new geography is woven. -->
+        <g id="prop-gate">
+          <path fill-rule="evenodd" d="M-1.9 0 L-1.56 -3.08 Q-1.42 -4.68 0 -5.05 Q1.42 -4.68 1.56 -3.08 L1.9 0 Z M-1.09 0 L-0.91 -2.84 Q-0.79 -3.73 0 -4.01 Q0.79 -3.73 0.91 -2.84 L1.09 0 Z" fill="url(#gateGradient)"/>
+          <path d="M-1.55 -0.12 L-1.3 -3.02 Q-1.15 -4.33 0 -4.7 Q1.15 -4.33 1.3 -3.02 L1.55 -0.12" fill="none" stroke="#bb9ac9" stroke-width="0.065" opacity="0.65"/>
+          <path d="M-0.73 -3.35 L-0.55 -0.12 M0 -4.02 L0 -0.12 M0.73 -3.35 L0.55 -0.12" fill="none" stroke="#a4f7dc" stroke-width="0.035" stroke-dasharray="0.12 0.16" opacity="0.64"/>
+          <path d="M-1.65 -1.02 L-1.16 -1.18 M1.18 -1.72 L1.63 -1.57 M-0.73 -4.43 L-0.45 -4.13" stroke="#f5b0c7" stroke-width="0.06" opacity="0.65"/>
+          <ellipse cx="0" cy="-2.05" rx="1.32" ry="0.31" transform="rotate(14 0 -2.05)" fill="none" stroke="#ffe0a3" stroke-width="0.04" opacity="0.55"/>
+          <circle cx="-1.25" cy="-2.35" r="0.075" fill="#ffe0a3"/>
+          <path d="M-2.12 0.03 L-1.3 -0.06 M1.25 -0.05 L2.1 0.04" stroke="#a4f7dc" stroke-width="0.04" opacity="0.45"/>
+        </g>
+
+        <g id="sky-ray">
+          <path d="M-1.5 0 Q-0.77 -0.72 0 -0.14 Q0.77 -0.72 1.5 0 Q0.72 -0.22 0.24 0.21 L0.05 0.84 L-0.08 0.3 Q-0.63 -0.18 -1.5 0 Z" fill="#b8a2cf"/>
+          <path d="M-0.52 -0.24 Q0 -0.43 0.52 -0.24" fill="none" stroke="#f2c8d4" stroke-width="0.045" opacity="0.55"/>
+        </g>
+      </defs>
+
+      <g id="scene">
+        <rect id="sky" fill="url(#skyGradient)"/>
+        <g id="stars"/>
+        <g id="orrery">
+          <circle r="112" fill="url(#moonHalo)"/>
+          <circle r="48" fill="url(#moonGradient)"/>
+          <path d="M-31 -19 Q-13 -37 7 -31 Q-8 -17 -31 -19 M13 18 Q28 7 37 17 Q26 31 13 18 M-22 25 Q-11 17 -2 27 Q-13 36 -22 25" fill="#b87683" opacity="0.22"/>
+          <ellipse id="orrery-ring" rx="92" ry="25" transform="rotate(-18)" fill="none" stroke="#ffe2b5" stroke-width="2.2" stroke-dasharray="174 24 51 18" opacity="0.72"/>
+          <ellipse rx="105" ry="30" transform="rotate(-18)" fill="none" stroke="#f4b8c5" stroke-width="0.7" stroke-dasharray="60 16 125 34" opacity="0.36"/>
+          <path d="M-74 -55 L-66 -70 L-57 -57 Z M66 48 L79 43 L75 58 Z M-10 -78 L-2 -91 L5 -77 Z" fill="#f6c5b2" opacity="0.65"/>
+          <circle cx="82" cy="-37" r="4" fill="#ffe7b8"/>
+          <circle cx="-84" cy="38" r="2.5" fill="#c4f7e4"/>
+        </g>
+        <g id="sky-creatures"/>
+        <path id="mountains-far" fill="#37304f" opacity="0.74"/>
+        <path id="mountains-near" fill="#1b1a31" opacity="0.96"/>
+        <path id="ground" fill="url(#groundGradient)"/>
+        <g fill="none" stroke-linecap="round">
+          <path id="grid-minor" stroke="#8bb8bd" stroke-width="0.75" opacity="0.13"/>
+          <path id="grid-major" stroke="#b2e6d4" stroke-width="1" opacity="0.22"/>
+        </g>
+        <rect id="mist" fill="url(#mistGradient)" pointer-events="none"/>
+        <path id="horizon-line" fill="none" stroke="url(#horizonGradient)" stroke-width="1.4"/>
+        <g id="objects"/>
+        <g id="spores" fill="#ffe4ad" pointer-events="none"/>
+        <rect id="vignette" fill="url(#vignetteGradient)" pointer-events="none"/>
+      </g>
+    </svg>
+
+    <section id="hud" aria-label="Exploration status">
+      <div class="topbar">
+        <div class="identity">
+          <span class="eyebrow">The Unsung Atlas</span>
+          <span id="region" class="region">The First Unremembering</span>
+        </div>
+        <div class="stats">
+          <div class="stat">
+            <span class="stat-label">Echoes</span>
+            <span id="echoes" class="stat-value">00</span>
+          </div>
+          <div class="stat">
+            <span class="stat-label">Wandered</span>
+            <span id="distance" class="stat-value">0 m</span>
+          </div>
+        </div>
+      </div>
+      <div id="toast" role="status" aria-live="polite">
+        <span id="toast-title">An echo remembered</span>
+        <span id="toast-text"></span>
+      </div>
+      <div id="hint">W/S walk · A/D turn · drag to look · approach a choir needle</div>
+    </section>
+
+    <section id="joysticks" aria-label="Touch controls">
+      <div id="left-stick" class="stick stick-left" role="application" aria-label="Movement joystick">
+        <span class="stick-label">WALK</span>
+        <div class="knob"></div>
+      </div>
+      <div id="right-stick" class="stick stick-right" role="application" aria-label="Turning joystick">
+        <span class="stick-label">TURN</span>
+        <div class="knob"></div>
+      </div>
+    </section>
+
+    <section id="intro" aria-label="Welcome to The Unsung Atlas">
+      <div class="intro-panel">
+        <span class="eyebrow">A field recording from the last second</span>
+        <h1>The Unsung<br>Atlas</h1>
+        <span class="subtitle">Every horizon is an unlived life</span>
+        <p class="lore">At the end of time, the Clockmakers refused the final bell. They unspooled the last second into an endless plain, where every life left unlived took root as song, glass, and beast. You are the last Remembrancer. Walk into the unwritten. Wake what the ending forgot.</p>
+        <p class="controls-copy">Desktop: W/S or ↑/↓ to walk, A/D or ←/→ to turn, drag to look.<br>Touch: left thumb to walk, right thumb to turn — both at once.</p>
+        <button id="enter" type="button">Step into the unwritten</button>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    (() => {
+      'use strict';
+
+      const NS = 'http://www.w3.org/2000/svg';
+      const TAU = Math.PI * 2;
+      const CHUNK_SIZE = 20;
+      const ACTIVE_RADIUS = 4;
+      const DRAW_DISTANCE = 72;
+      const NEAR_PLANE = 0.72;
+      const WALK_SPEED = 5.2;
+      const TURN_SPEED = 1.65;
+
+      const $ = (id) => document.getElementById(id);
+      const svg = $('world');
+      const scene = $('scene');
+      const sky = $('sky');
+      const ground = $('ground');
+      const mist = $('mist');
+      const vignette = $('vignette');
+      const horizonLine = $('horizon-line');
+      const gridMinor = $('grid-minor');
+      const gridMajor = $('grid-major');
+      const objectsLayer = $('objects');
+      const mountainsFar = $('mountains-far');
+      const mountainsNear = $('mountains-near');
+      const orrery = $('orrery');
+      const orreryRing = $('orrery-ring');
+      const regionEl = $('region');
+      const echoesEl = $('echoes');
+      const distanceEl = $('distance');
+      const hintEl = $('hint');
+      const toast = $('toast');
+      const toastText = $('toast-text');
+      const intro = $('intro');
+
+      const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
+      const mod = (value, divisor) => ((value % divisor) + divisor) % divisor;
+      const wrapAngle = (angle) => mod(angle + Math.PI, TAU) - Math.PI;
+
+      function hash2(x, z, salt = 0) {
+        let h = Math.imul(x | 0, 374761393) ^ Math.imul(z | 0, 668265263) ^ Math.imul(salt | 0, 2246822519);
+        h = Math.imul(h ^ (h >>> 13), 1274126177);
+        return (h ^ (h >>> 16)) >>> 0;
+      }
+
+      function mulberry32(seed) {
+        return function random() {
+          seed |= 0;
+          seed = (seed + 0x6D2B79F5) | 0;
+          let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+          t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+          return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+        };
+      }
+
+      function makeSvg(tag, attributes = {}) {
+        const element = document.createElementNS(NS, tag);
+        for (const [name, value] of Object.entries(attributes)) {
+          element.setAttribute(name, value);
+        }
+        return element;
+      }
+
+      const player = {
+        x: 0,
+        z: 0,
+        yaw: 0,
+        pitch: 0,
+        velocity: 0,
+        turnVelocity: 0,
+        distance: 0,
+        bobPhase: 0,
+        bobAmount: 0
+      };
+
+      let W = 1000;
+      let H = 600;
+      let FOCAL = 600;
+      let horizon = 276;
+      let cameraHeight = 1.55;
+      let started = false;
+      let worldTime = 0;
+      let currentChunkKey = '';
+      let currentRegion = '';
+      let lastHudDistance = -1;
+      let lastOrder = [];
+      let toastTimer = 0;
+      let view = { sin: 0, cos: 1, cx: 500 };
+
+      const keys = new Set();
+      const leftStick = { x: 0, y: 0 };
+      const rightStick = { x: 0, y: 0 };
+      const remembered = new Set();
+      const chunks = new Map();
+      const pools = { spire: [], fern: [], morrow: [], shard: [], gate: [] };
+      const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      const isTouch = window.matchMedia('(pointer: coarse)').matches || navigator.maxTouchPoints > 0;
+
+      if (isTouch) {
+        document.body.classList.add('touch');
+        hintEl.textContent = 'Left thumb to walk · right thumb to turn · approach a choir needle';
+      }
+
+      const LORE = [
+        'Someone, somewhere, still remembers the sea.',
+        'This life would have planted a garden on a Tuesday.',
+        'A laugh without a mouth is waiting inside the stone.',
+        'The final bell was never silent. We simply stopped listening.',
+        'A morrowback carries dawn on its shell, though dawn has never come.',
+        'The Atlas does not grow ahead of you. It remembers you forward.',
+        'Here is the echo of a hand that almost held yours.',
+        'Even an ending can be persuaded to become a door.',
+        'The Clockmakers hid forever in the space between two footsteps.'
+      ];
+
+      const REGION_WORDS = [
+        ['Copper', 'Velvet', 'Silent', 'Hollow', 'Amber', 'Lucid', 'Pale', 'Sleepless', 'Mauve', 'Tender', 'Glass', 'Wayward'],
+        ['Hush', 'Reach', 'Expanse', 'Choir', 'Meridian', 'Drift', 'Orchard', 'Vesper', 'Margin', 'Interval', 'Garden', 'Reverie']
+      ];
+
+      // Ambient SVG elements are created once and only their attributes change.
+      const stars = [];
+      const starRandom = mulberry32(817263);
+      const starCount = Math.min(105, Math.max(62, Math.floor(window.innerWidth / 12)));
+      for (let i = 0; i < starCount; i += 1) {
+        const element = makeSvg('circle', {
+          r: (0.45 + starRandom() * 1.15).toFixed(2),
+          fill: i % 7 === 0 ? '#ffe2b5' : '#ddd9ff'
+        });
+        $('stars').appendChild(element);
+        stars.push({
+          element,
+          u: starRandom(),
+          v: 0.035 + starRandom() * 0.79,
+          phase: starRandom() * TAU,
+          speed: 0.35 + starRandom() * 1.1
+        });
+      }
+
+      const skyRays = [];
+      for (let i = 0; i < 4; i += 1) {
+        const element = makeSvg('use', { href: '#sky-ray' });
+        $('sky-creatures').appendChild(element);
+        skyRays.push({
+          element,
+          angle: -1.8 + i * 1.37,
+          altitude: 0.24 + (i % 3) * 0.15,
+          speed: 0.008 + i * 0.002,
+          scale: 13 + i * 4,
+          phase: i * 1.71
+        });
+      }
+
+      const spores = [];
+      const sporeRandom = mulberry32(99173);
+      for (let i = 0; i < 24; i += 1) {
+        const element = makeSvg('circle', { r: (0.55 + sporeRandom() * 1.25).toFixed(2) });
+        $('spores').appendChild(element);
+        spores.push({
+          element,
+          u: sporeRandom(),
+          v: sporeRandom(),
+          drift: 4 + sporeRandom() * 11,
+          fall: 2 + sporeRandom() * 6,
+          phase: sporeRandom() * TAU
+        });
+      }
+
+      function mountainPath(seed, amplitude, step) {
+        const random = mulberry32(seed);
+        const left = -W * 2;
+        const right = W * 3;
+        let d = `M ${left.toFixed(1)} 70`;
+        let x = left;
+        let previousHeight = amplitude * (0.25 + random() * 0.5);
+        while (x < right) {
+          const nextHeight = amplitude * (0.2 + random() * 0.8);
+          const middle = x + step * 0.5;
+          d += ` L ${middle.toFixed(1)} ${(-nextHeight).toFixed(1)} L ${(x + step).toFixed(1)} ${(-previousHeight * 0.55).toFixed(1)}`;
+          previousHeight = nextHeight;
+          x += step;
+        }
+        d += ` L ${right.toFixed(1)} 80 L ${left.toFixed(1)} 80 Z`;
+        return d;
+      }
+
+      function resize() {
+        W = Math.max(1, window.innerWidth);
+        H = Math.max(1, window.innerHeight);
+        FOCAL = Math.max(280, Math.min(W, H) * 0.96);
+        svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+
+        for (const rect of [sky, vignette]) {
+          rect.setAttribute('x', -W * 0.25);
+          rect.setAttribute('y', -H * 0.25);
+          rect.setAttribute('width', W * 1.5);
+          rect.setAttribute('height', H * 1.5);
+        }
+
+        mountainsFar.setAttribute('d', mountainPath(7214, Math.min(105, H * 0.14), Math.max(65, W / 13)));
+        mountainsNear.setAttribute('d', mountainPath(11987, Math.min(78, H * 0.105), Math.max(52, W / 17)));
+      }
+
+      function getRegion() {
+        const sectorX = Math.floor(player.x / 90);
+        const sectorZ = Math.floor(player.z / 90);
+        if (sectorX === 0 && sectorZ === 0) return 'The First Unremembering';
+        const seed = hash2(sectorX, sectorZ, 4815);
+        const first = REGION_WORDS[0][seed % REGION_WORDS[0].length];
+        const second = REGION_WORDS[1][(seed >>> 8) % REGION_WORDS[1].length];
+        return `The ${first} ${second}`;
+      }
+
+      function formatDistance(value) {
+        if (value < 1000) return `${Math.floor(value)} m`;
+        return `${(value / 1000).toFixed(2)} km`;
+      }
+
+      function begin() {
+        if (started) return;
+        started = true;
+        intro.classList.add('is-hidden');
+        svg.focus({ preventScroll: true });
+      }
+
+      $('enter').addEventListener('click', begin);
+
+      function showEcho(prop) {
+        prop.attuned = true;
+        remembered.add(prop.id);
+        echoesEl.textContent = String(remembered.size).padStart(2, '0');
+        toastText.textContent = `“${LORE[(remembered.size - 1) % LORE.length]}”`;
+        toast.classList.add('show');
+        window.clearTimeout(toastTimer);
+        toastTimer = window.setTimeout(() => toast.classList.remove('show'), 4800);
+      }
+
+      function makePropElement(type) {
+        const group = makeSvg('g');
+        const shadowSizes = {
+          spire: [0.9, 0.22],
+          fern: [0.8, 0.2],
+          morrow: [1.35, 0.25],
+          shard: [0.95, 0.22],
+          gate: [2.05, 0.3]
+        };
+        const [rx, ry] = shadowSizes[type];
+        const shadow = makeSvg('ellipse', {
+          cx: 0,
+          cy: 0.03,
+          rx,
+          ry,
+          fill: 'url(#shadowGradient)'
+        });
+        const use = makeSvg('use', { href: `#prop-${type}` });
+        group.append(shadow, use);
+        group._shadow = shadow;
+        group._use = use;
+        group._halo = null;
+
+        if (type === 'spire') {
+          const halo = makeSvg('ellipse', {
+            cx: 0,
+            cy: -0.02,
+            rx: 1.16,
+            ry: 0.27,
+            fill: 'none',
+            stroke: '#ffe0a3',
+            'stroke-width': 0.055,
+            opacity: 0
+          });
+          group.appendChild(halo);
+          group._halo = halo;
+        }
+        return group;
+      }
+
+      function acquirePropElement(prop) {
+        const group = pools[prop.type].pop() || makePropElement(prop.type);
+        group.style.display = 'none';
+        group.removeAttribute('opacity');
+        group._use.removeAttribute('transform');
+        if (group._halo) group._halo.setAttribute('opacity', prop.attuned ? '0.65' : '0');
+        objectsLayer.appendChild(group);
+        return group;
+      }
+
+      function releaseProp(prop) {
+        const element = prop.element;
+        if (!element) return;
+        element.remove();
+        element.style.display = 'none';
+        if (pools[prop.type].length < 48) pools[prop.type].push(element);
+        prop.element = null;
+        prop.visible = false;
+      }
+
+      function addProp(chunk, data) {
+        const prop = {
+          ...data,
+          id: `${chunk.cx},${chunk.cz}:${chunk.props.length}`,
+          attuned: remembered.has(`${chunk.cx},${chunk.cz}:${chunk.props.length}`),
+          visible: false,
+          element: null
+        };
+        prop.element = acquirePropElement(prop);
+        chunk.props.push(prop);
+      }
+
+      function createChunk(cx, cz) {
+        const chunk = { cx, cz, props: [] };
+        chunks.set(`${cx},${cz}`, chunk);
+
+        if (cx === 0 && cz === 0) {
+          addProp(chunk, { type: 'spire', x: 2.5, z: 8, size: 0.9, phase: 0.4, flip: 1 });
+          addProp(chunk, { type: 'fern', x: -3.2, z: 5.5, size: 0.9, phase: 2.1, flip: -1 });
+          addProp(chunk, { type: 'morrow', x: 4.4, z: 14, size: 0.9, phase: 4.2, flip: -1 });
+          addProp(chunk, { type: 'shard', x: -5.4, z: 11.5, size: 0.85, phase: 1.3, flip: 1 });
+          return chunk;
+        }
+
+        const random = mulberry32(hash2(cx, cz, 7301));
+        const count = random() < 0.16 ? 0 : 1 + Math.floor(random() * 3);
+        for (let i = 0; i < count; i += 1) {
+          const roll = random();
+          let type = 'shard';
+          if (roll < 0.24) type = 'spire';
+          else if (roll < 0.58) type = 'fern';
+          else if (roll < 0.76) type = 'morrow';
+
+          const baseSize = type === 'gate' ? 1 : type === 'spire' ? 0.78 : type === 'morrow' ? 0.75 : 0.62;
+          addProp(chunk, {
+            type,
+            x: cx * CHUNK_SIZE + 1.5 + random() * (CHUNK_SIZE - 3),
+            z: cz * CHUNK_SIZE + 1.5 + random() * (CHUNK_SIZE - 3),
+            size: baseSize + random() * (type === 'spire' ? 0.55 : 0.52),
+            phase: random() * TAU,
+            flip: random() > 0.5 ? 1 : -1
+          });
+        }
+
+        if (cx === 0 && cz === 1) {
+          addProp(chunk, { type: 'gate', x: -4.5, z: 34, size: 1.08, phase: 0, flip: 1 });
+        } else if (random() < 0.042) {
+          addProp(chunk, {
+            type: 'gate',
+            x: cx * CHUNK_SIZE + 4 + random() * (CHUNK_SIZE - 8),
+            z: cz * CHUNK_SIZE + 4 + random() * (CHUNK_SIZE - 8),
+            size: 0.9 + random() * 0.35,
+            phase: random() * TAU,
+            flip: 1
+          });
+        }
+        return chunk;
+      }
+
+      function ensureChunks(force = false) {
+        const cx = Math.floor(player.x / CHUNK_SIZE);
+        const cz = Math.floor(player.z / CHUNK_SIZE);
+        const key = `${cx},${cz}`;
+        if (!force && key === currentChunkKey) return;
+        currentChunkKey = key;
+
+        for (let dx = -ACTIVE_RADIUS; dx <= ACTIVE_RADIUS; dx += 1) {
+          for (let dz = -ACTIVE_RADIUS; dz <= ACTIVE_RADIUS; dz += 1) {
+            const chunkKey = `${cx + dx},${cz + dz}`;
+            if (!chunks.has(chunkKey)) createChunk(cx + dx, cz + dz);
+          }
+        }
+
+        for (const [chunkKey, chunk] of chunks) {
+          if (Math.abs(chunk.cx - cx) > ACTIVE_RADIUS + 1 || Math.abs(chunk.cz - cz) > ACTIVE_RADIUS + 1) {
+            for (const prop of chunk.props) releaseProp(prop);
+            chunks.delete(chunkKey);
+          }
+        }
+        lastOrder = [];
+      }
+
+      function toCamera(x, z) {
+        const dx = x - player.x;
+        const dz = z - player.z;
+        return {
+          x: dx * view.cos - dz * view.sin,
+          z: dx * view.sin + dz * view.cos
+        };
+      }
+
+      function hideProp(prop) {
+        if (!prop.visible) return;
+        prop.element.style.display = 'none';
+        prop.visible = false;
+      }
+
+      function updateProps() {
+        const visible = [];
+        const cx = W * 0.5;
+
+        for (const chunk of chunks.values()) {
+          for (const prop of chunk.props) {
+            let worldX = prop.x;
+            let worldZ = prop.z;
+            if (prop.type === 'morrow') {
+              worldX += Math.sin(worldTime * 0.23 + prop.phase) * 0.48;
+              worldZ += Math.cos(worldTime * 0.17 + prop.phase) * 0.32;
+            }
+
+            const dx = worldX - player.x;
+            const dz = worldZ - player.z;
+            const distanceSquared = dx * dx + dz * dz;
+
+            if (prop.type === 'spire' && !prop.attuned && distanceSquared < 7.3) {
+              showEcho(prop);
+            }
+
+            const camera = toCamera(worldX, worldZ);
+            if (camera.z < NEAR_PLANE || camera.z > DRAW_DISTANCE || distanceSquared > DRAW_DISTANCE * DRAW_DISTANCE) {
+              hideProp(prop);
+              continue;
+            }
+
+            const screenX = cx + (camera.x * FOCAL) / camera.z;
+            const screenY = horizon + (cameraHeight * FOCAL) / camera.z;
+            if (screenX < -260 || screenX > W + 260 || screenY < horizon - 30 || screenY > H + 360) {
+              hideProp(prop);
+              continue;
+            }
+
+            if (!prop.visible) {
+              prop.element.style.display = '';
+              prop.visible = true;
+            }
+
+            const scale = (FOCAL / camera.z) * prop.size;
+            const opacity = clamp((DRAW_DISTANCE - camera.z) / 14, 0, 1);
+            prop.element.setAttribute('transform', `translate(${screenX.toFixed(2)} ${screenY.toFixed(2)}) scale(${(scale * prop.flip).toFixed(4)} ${scale.toFixed(4)})`);
+            prop.element.setAttribute('opacity', opacity.toFixed(3));
+
+            if (prop.type === 'fern') {
+              const sway = Math.sin(worldTime * 0.8 + prop.phase) * 2.6;
+              prop.element._use.setAttribute('transform', `rotate(${sway.toFixed(2)})`);
+            } else if (prop.type === 'morrow') {
+              const bob = -Math.abs(Math.sin(worldTime * 1.35 + prop.phase)) * 0.055;
+              prop.element._use.setAttribute('transform', `translate(0 ${bob.toFixed(3)})`);
+            } else {
+              prop.element._use.removeAttribute('transform');
+            }
+
+            if (prop.element._halo) {
+              const haloOpacity = prop.attuned ? 0.48 + Math.sin(worldTime * 2 + prop.phase) * 0.2 : 0;
+              prop.element._halo.setAttribute('opacity', haloOpacity.toFixed(3));
+            }
+
+            visible.push({ element: prop.element, depth: camera.z });
+          }
+        }
+
+        visible.sort((a, b) => b.depth - a.depth);
+        let orderChanged = visible.length !== lastOrder.length;
+        if (!orderChanged) {
+          for (let i = 0; i < visible.length; i += 1) {
+            if (visible[i].element !== lastOrder[i]) {
+              orderChanged = true;
+              break;
+            }
+          }
+        }
+        if (orderChanged) {
+          for (const item of visible) objectsLayer.appendChild(item.element);
+          lastOrder = visible.map((item) => item.element);
+        }
+      }
+
+      function updateGroundGrid() {
+        const spacing = 5;
+        const range = 60;
+        let minor = '';
+        let major = '';
+
+        function segment(ax, az, bx, bz, isMajor) {
+          if ((az < NEAR_PLANE && bz < NEAR_PLANE)) return;
+          if (az < NEAR_PLANE) {
+            const t = (NEAR_PLANE - az) / (bz - az);
+            ax += (bx - ax) * t;
+            az = NEAR_PLANE;
+          } else if (bz < NEAR_PLANE) {
+            const t = (NEAR_PLANE - bz) / (az - bz);
+            bx += (ax - bx) * t;
+            bz = NEAR_PLANE;
+          }
+
+          const x1 = W * 0.5 + (ax * FOCAL) / az;
+          const y1 = horizon + (cameraHeight * FOCAL) / az;
+          const x2 = W * 0.5 + (bx * FOCAL) / bz;
+          const y2 = horizon + (cameraHeight * FOCAL) / bz;
+          if ((x1 < -W && x2 < -W) || (x1 > W * 2 && x2 > W * 2)) return;
+          const path = `M${x1.toFixed(1)} ${y1.toFixed(1)}L${x2.toFixed(1)} ${y2.toFixed(1)}`;
+          if (isMajor) major += path;
+          else minor += path;
+        }
+
+        const startX = Math.floor((player.x - range) / spacing);
+        const endX = Math.ceil((player.x + range) / spacing);
+        for (let index = startX; index <= endX; index += 1) {
+          const x = index * spacing;
+          const a = toCamera(x, player.z - range);
+          const b = toCamera(x, player.z + range);
+          segment(a.x, a.z, b.x, b.z, mod(index, 5) === 0);
+        }
+
+        const startZ = Math.floor((player.z - range) / spacing);
+        const endZ = Math.ceil((player.z + range) / spacing);
+        for (let index = startZ; index <= endZ; index += 1) {
+          const z = index * spacing;
+          const a = toCamera(player.x - range, z);
+          const b = toCamera(player.x + range, z);
+          segment(a.x, a.z, b.x, b.z, mod(index, 5) === 0);
+        }
+
+        gridMinor.setAttribute('d', minor);
+        gridMajor.setAttribute('d', major);
+      }
+
+      function renderSky() {
+        const pitchOffset = horizon - H * 0.46;
+        for (const star of stars) {
+          const x = mod(star.u * (W + 100) - player.yaw * W * 0.14, W + 100) - 50;
+          const y = star.v * Math.max(H * 0.43, horizon) + pitchOffset * 0.35;
+          const opacity = 0.28 + (Math.sin(worldTime * star.speed + star.phase) * 0.5 + 0.5) * 0.62;
+          star.element.setAttribute('cx', x.toFixed(1));
+          star.element.setAttribute('cy', y.toFixed(1));
+          star.element.setAttribute('opacity', opacity.toFixed(3));
+        }
+
+        const relativeMoon = wrapAngle(0.62 - player.yaw);
+        if (Math.abs(relativeMoon) < 1.48) {
+          const moonX = W * 0.5 + Math.tan(relativeMoon) * FOCAL * 0.82;
+          const moonY = H * 0.19 + pitchOffset * 0.78;
+          const moonScale = clamp(Math.min(W, H) / 720, 0.55, 1.35);
+          const moonOpacity = clamp((1.48 - Math.abs(relativeMoon)) / 0.28, 0, 1) * 0.94;
+          orrery.setAttribute('transform', `translate(${moonX.toFixed(1)} ${moonY.toFixed(1)}) scale(${moonScale.toFixed(3)})`);
+          orrery.setAttribute('opacity', moonOpacity.toFixed(3));
+          orreryRing.setAttribute('transform', `rotate(${(-18 + worldTime * 0.7).toFixed(2)})`);
+        } else {
+          orrery.setAttribute('opacity', '0');
+        }
+
+        for (const ray of skyRays) {
+          const relative = wrapAngle(ray.angle + worldTime * ray.speed - player.yaw);
+          if (Math.abs(relative) > 1.42) {
+            ray.element.setAttribute('opacity', '0');
+            continue;
+          }
+          const x = W * 0.5 + Math.tan(relative) * FOCAL * 0.78;
+          const y = H * ray.altitude + pitchOffset * 0.72 + Math.sin(worldTime * 0.35 + ray.phase) * 7;
+          const flap = 0.82 + Math.sin(worldTime * 0.7 + ray.phase) * 0.14;
+          const opacity = clamp((1.42 - Math.abs(relative)) / 0.3, 0, 1) * 0.42;
+          ray.element.setAttribute('transform', `translate(${x.toFixed(1)} ${y.toFixed(1)}) scale(${ray.scale} ${(ray.scale * flap).toFixed(2)})`);
+          ray.element.setAttribute('opacity', opacity.toFixed(3));
+        }
+
+        mountainsFar.setAttribute('transform', `translate(${(-mod(player.yaw * W * 0.055, W)).toFixed(1)} ${(horizon + 5).toFixed(1)})`);
+        mountainsNear.setAttribute('transform', `translate(${(-mod(player.yaw * W * 0.09, W)).toFixed(1)} ${(horizon + 13).toFixed(1)})`);
+      }
+
+      function render() {
+        view = { sin: Math.sin(player.yaw), cos: Math.cos(player.yaw), cx: W * 0.5 };
+        const motionScale = reducedMotion ? 0.25 : 1;
+        const bob = Math.sin(player.bobPhase * 2) * player.bobAmount * motionScale;
+        const roll = Math.sin(player.bobPhase) * player.bobAmount * 0.34 * motionScale;
+        cameraHeight = 1.55 + bob * 0.026;
+        horizon = H * 0.46 + player.pitch * H * 0.42 + bob * 1.35;
+
+        scene.setAttribute('transform', `rotate(${roll.toFixed(3)} ${(W * 0.5).toFixed(1)} ${(H * 0.5).toFixed(1)})`);
+        renderSky();
+
+        const groundPath = `M ${(-W * 0.25).toFixed(1)} ${(horizon + 2).toFixed(1)} Q ${(W * 0.5).toFixed(1)} ${(horizon - 3).toFixed(1)} ${(W * 1.25).toFixed(1)} ${(horizon + 2).toFixed(1)} L ${(W * 1.25).toFixed(1)} ${(H * 1.25).toFixed(1)} L ${(-W * 0.25).toFixed(1)} ${(H * 1.25).toFixed(1)} Z`;
+        ground.setAttribute('d', groundPath);
+        horizonLine.setAttribute('d', `M ${(-W * 0.1).toFixed(1)} ${(horizon + 1).toFixed(1)} Q ${(W * 0.5).toFixed(1)} ${(horizon - 2).toFixed(1)} ${(W * 1.1).toFixed(1)} ${(horizon + 1).toFixed(1)}`);
+
+        mist.setAttribute('x', -W * 0.2);
+        mist.setAttribute('y', horizon - H * 0.11);
+        mist.setAttribute('width', W * 1.4);
+        mist.setAttribute('height', H * 0.27);
+
+        updateGroundGrid();
+        updateProps();
+
+        for (const spore of spores) {
+          const x = mod(spore.u * (W + 40) + worldTime * spore.drift - player.yaw * 7, W + 40) - 20;
+          const y = mod(spore.v * (H + 40) + worldTime * spore.fall, H + 40) - 20;
+          const opacity = 0.1 + (Math.sin(worldTime * 0.8 + spore.phase) * 0.5 + 0.5) * 0.35;
+          spore.element.setAttribute('cx', x.toFixed(1));
+          spore.element.setAttribute('cy', y.toFixed(1));
+          spore.element.setAttribute('opacity', opacity.toFixed(3));
+        }
+
+        const region = getRegion();
+        if (region !== currentRegion) {
+          currentRegion = region;
+          regionEl.textContent = region;
+        }
+        const wholeDistance = Math.floor(player.distance);
+        if (wholeDistance !== lastHudDistance) {
+          lastHudDistance = wholeDistance;
+          distanceEl.textContent = formatDistance(player.distance);
+        }
+      }
+
+      function updatePlayer(dt) {
+        const keyForward = (keys.has('KeyW') || keys.has('ArrowUp') ? 1 : 0) - (keys.has('KeyS') || keys.has('ArrowDown') ? 1 : 0);
+        const keyTurn = (keys.has('KeyD') || keys.has('ArrowRight') ? 1 : 0) - (keys.has('KeyA') || keys.has('ArrowLeft') ? 1 : 0);
+        const moveInput = started ? clamp(keyForward - leftStick.y, -1, 1) : 0;
+        const turnInput = started ? clamp(keyTurn + rightStick.x, -1, 1) : 0;
+
+        const velocityBlend = 1 - Math.exp(-dt * 7.5);
+        const turnBlend = 1 - Math.exp(-dt * 9);
+        player.velocity += (moveInput * WALK_SPEED - player.velocity) * velocityBlend;
+        player.turnVelocity += (turnInput * TURN_SPEED - player.turnVelocity) * turnBlend;
+        if (Math.abs(player.velocity) < 0.002) player.velocity = 0;
+        if (Math.abs(player.turnVelocity) < 0.002) player.turnVelocity = 0;
+
+        player.yaw = wrapAngle(player.yaw + player.turnVelocity * dt);
+        const step = player.velocity * dt;
+        player.x += Math.sin(player.yaw) * step;
+        player.z += Math.cos(player.yaw) * step;
+        player.distance += Math.abs(step);
+
+        const speedRatio = clamp(Math.abs(player.velocity) / WALK_SPEED, 0, 1);
+        player.bobAmount += (speedRatio - player.bobAmount) * (1 - Math.exp(-dt * 8));
+        if (speedRatio > 0.015) player.bobPhase += dt * (5.2 + Math.abs(player.velocity) * 0.75);
+        ensureChunks();
+      }
+
+      let previousTime = performance.now();
+      function frame(now) {
+        const dt = Math.min(0.05, Math.max(0, (now - previousTime) / 1000));
+        previousTime = now;
+        worldTime += dt;
+        updatePlayer(dt);
+        render();
+        requestAnimationFrame(frame);
+      }
+
+      const MOVEMENT_CODES = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight']);
+      const PREVENT_CODES = new Set([...MOVEMENT_CODES, 'Space']);
+
+      window.addEventListener('keydown', (event) => {
+        if (PREVENT_CODES.has(event.code)) event.preventDefault();
+        if (!started && (MOVEMENT_CODES.has(event.code) || event.code === 'Enter' || event.code === 'Space')) begin();
+        if (MOVEMENT_CODES.has(event.code)) keys.add(event.code);
+      }, { passive: false });
+
+      window.addEventListener('keyup', (event) => {
+        if (PREVENT_CODES.has(event.code)) event.preventDefault();
+        keys.delete(event.code);
+      }, { passive: false });
+
+      window.addEventListener('blur', () => {
+        keys.clear();
+        leftStick.x = leftStick.y = 0;
+        rightStick.x = rightStick.y = 0;
+      });
+
+      document.addEventListener('visibilitychange', () => {
+        keys.clear();
+        previousTime = performance.now();
+      });
+
+      // One captured pointer per joystick allows genuinely simultaneous walking and turning.
+      function setupJoystick(id, output) {
+        const base = $(id);
+        const knob = base.querySelector('.knob');
+        let pointerId = null;
+
+        function reset() {
+          pointerId = null;
+          output.x = 0;
+          output.y = 0;
+          base.classList.remove('active');
+          knob.style.transform = 'translate(-50%, -50%)';
+        }
+
+        function update(event) {
+          const bounds = base.getBoundingClientRect();
+          const radius = bounds.width * 0.32;
+          let dx = event.clientX - (bounds.left + bounds.width * 0.5);
+          let dy = event.clientY - (bounds.top + bounds.height * 0.5);
+          const length = Math.hypot(dx, dy);
+          if (length > radius) {
+            dx = (dx / length) * radius;
+            dy = (dy / length) * radius;
+          }
+          output.x = clamp(dx / radius, -1, 1);
+          output.y = clamp(dy / radius, -1, 1);
+          knob.style.transform = `translate(-50%, -50%) translate(${dx.toFixed(1)}px, ${dy.toFixed(1)}px)`;
+        }
+
+        base.addEventListener('pointerdown', (event) => {
+          if (pointerId !== null) return;
+          event.preventDefault();
+          begin();
+          pointerId = event.pointerId;
+          base.setPointerCapture(pointerId);
+          base.classList.add('active');
+          update(event);
+        }, { passive: false });
+
+        base.addEventListener('pointermove', (event) => {
+          if (event.pointerId !== pointerId) return;
+          event.preventDefault();
+          update(event);
+        }, { passive: false });
+
+        function end(event) {
+          if (event.pointerId !== pointerId) return;
+          event.preventDefault();
+          reset();
+        }
+
+        base.addEventListener('pointerup', end, { passive: false });
+        base.addEventListener('pointercancel', end, { passive: false });
+        base.addEventListener('lostpointercapture', (event) => {
+          if (event.pointerId === pointerId) reset();
+        });
+      }
+
+      setupJoystick('left-stick', leftStick);
+      setupJoystick('right-stick', rightStick);
+
+      let lookPointer = null;
+      let lookX = 0;
+      let lookY = 0;
+
+      svg.addEventListener('pointerdown', (event) => {
+        if (event.button !== 0 || lookPointer !== null) return;
+        event.preventDefault();
+        lookPointer = event.pointerId;
+        lookX = event.clientX;
+        lookY = event.clientY;
+        svg.setPointerCapture(lookPointer);
+        svg.classList.add('dragging');
+      }, { passive: false });
+
+      svg.addEventListener('pointermove', (event) => {
+        if (event.pointerId !== lookPointer) return;
+        event.preventDefault();
+        const dx = event.clientX - lookX;
+        const dy = event.clientY - lookY;
+        lookX = event.clientX;
+        lookY = event.clientY;
+        player.yaw = wrapAngle(player.yaw + dx * 0.0038);
+        player.pitch = clamp(player.pitch - dy * 0.0025, -0.36, 0.36);
+      }, { passive: false });
+
+      function endLook(event) {
+        if (event.pointerId !== lookPointer) return;
+        lookPointer = null;
+        svg.classList.remove('dragging');
+      }
+
+      svg.addEventListener('pointerup', endLook);
+      svg.addEventListener('pointercancel', endLook);
+      svg.addEventListener('lostpointercapture', endLook);
+
+      document.addEventListener('touchmove', (event) => {
+        if (event.target.closest('.intro-panel')) return;
+        if (event.cancelable) event.preventDefault();
+      }, { passive: false });
+      document.addEventListener('gesturestart', (event) => event.preventDefault(), { passive: false });
+      document.addEventListener('gesturechange', (event) => event.preventDefault(), { passive: false });
+      document.addEventListener('dblclick', (event) => event.preventDefault(), { passive: false });
+      document.addEventListener('contextmenu', (event) => event.preventDefault());
+      document.addEventListener('wheel', (event) => {
+        if (event.ctrlKey) event.preventDefault();
+      }, { passive: false });
+
+      window.addEventListener('resize', resize);
+      if (window.visualViewport) window.visualViewport.addEventListener('resize', resize);
+
+      resize();
+      ensureChunks(true);
+      requestAnimationFrame(frame);
+    })();
+  </script>
+</body>
+</html>

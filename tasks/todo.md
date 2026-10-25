@@ -1145,3 +1145,15 @@ Plan check-in: add the tile beside Kimi K3 using Moonshot / Kimi K3.1 Pro / Max 
 - [x] Prepare scoped files for the authorized commit and origin/main push; publication confirmation belongs in the delivery message.
 
 Review / proof: all 53 gallery targets exist; unique Moonshot / Kimi K3.1 Pro / Max tile sits beside Kimi K3. Inline JavaScript syntax checks pass for the game and index; git diff --check passes. Chrome (Jason profile), local URL http://127.0.0.1:8768/tower-def/index.html: provider filter shows both Kimi games; model filter isolates The Ministry of Maybe; tile layout visually inspected; link opens the supplied game; Begin the night shift opens the workshop and enables draft/instrument controls. No captured console warnings/errors in these flows. Supplied game content preserved. Remaining limits: full campaign, mobile/cross-browser behavior, detailed network capture, and deployed Pages behavior were not tested.
+
+
+## Publish Kimi K3.1 Pro SVG forest — 2026-10-25
+
+Goal: copy the supplied Unsung Atlas game unchanged to svg-forest/kimi-k3.1-pro-max-svg-forest.html and add its gallery tile. Project: personal / The Grove. Scope: game, svg-forest/index.html, this record.
+Plan check-in: use Kimi K3.1 Pro / Max metadata, add Moonshot provider support, verify file fidelity, syntax, filters and launch; commit scoped files and push to origin/main under the user authorization.
+
+- [x] Copy the supplied game and add the matching gallery tile.
+- [x] Review changes and verify syntax, gallery filters, and game launch.
+- [x] Prepare the scoped commit and push; confirm remote SHA in delivery.
+
+Review / proof: copied game bytes match the supplied source exactly (SHA-256 c4ae67d105ae0327701ef0e2045c14ed7dd0efb0a35f585531c9f5da07cc00c1). All 41 gallery links target existing files; new tile appears once after Kimi K3, with Moonshot / Kimi K3.1 Pro / Max metadata and valid logo references. JavaScript syntax checks pass for both HTML files; diff whitespace check passes. Chrome (Jason profile), http://127.0.0.1:8769/svg-forest/index.html: Moonshot and model filters isolate The Unsung Atlas; tile layout visually inspected; tile click opens the copied game; entry and held W move the distance counter from 0 to 4 m. No captured console warnings/errors in those flows. Remaining limits: extended gameplay, mobile/cross-browser behavior, detailed network capture, and deployed Pages behavior untested. Publication SHA and remote verification are reported in delivery.
