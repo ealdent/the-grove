@@ -1,3 +1,21 @@
+# Save Me a Seat — a second interpretation
+
+Goal: create a complete, separate music video for the existing song and add it to the video shelf without replacing the hand-drawn version. No people or company names in the new work. Keep personal references playful and public-facing.
+
+Direction: a tactile science-fiction journey following an unanswered signal through stellar ruins, machines, and living matter. A small mechanical courier provides a recurring emotional anchor; the ending answers a question without showing a literal resurrection. Use the song's real mix, lyric timing, and beat grid to shape the edit, with no lyric text burned into the film.
+
+Plan check-in: use the available original mix and a new visual treatment, create a full-duration film and separate watch page, then verify the edit and the site in a browser. The original video stays accessible.
+
+- [x] Create and assess a consistent set of original cinematic scenes and animated footage.
+- [x] Edit the complete film to the 3:21 mix and the song's lyric/section timing.
+- [x] Add a separate watch page, gallery entry, stills, and accurate sharing metadata.
+- [x] Inspect the full cut, check audio/video streams and transitions, and exercise the player and gallery on desktop and mobile.
+- [x] Record the evidence and material limitations.
+
+Review: the final film is 4,827 frames at 24 fps, 1280×720, with the full 201.120-second mix and a 5 ms padded tail. A second cut added distinct courier and chorus views and restored the courier's arrival in the garden. The new file's streams, two audio alignment windows, and the corrected shot's adjoining cuts passed independent checks; the previous render also passed all 34 cut-boundary and decoded-frame checks. The final file passed an approximate 24 fps general-flash screening (not a certified test). Sampled visual reviews found no legible names, logos, or people. Local Chrome loaded the separate tape and player, played and sought the film over HTTP byte ranges, and showed no console errors or horizontal overflow at a 390-pixel viewport. A 30-second final-chorus excerpt is provided for sharing. The original remains linked and unchanged. Generated source clips and the WAV mix remain local and gitignored; the finished films are tracked. No claim is made about viral performance.
+
+---
+
 # The Weather Left Behind — Union Alpha / default effort
 
 Goal: single-file pure-SVG first-person exploration game for The Grove (personal project).

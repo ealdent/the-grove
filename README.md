@@ -108,10 +108,11 @@ A collection of games, tools, and experiments built with AI — hosted on GitHub
 
 ### [Videos](videos/)
 
-*Music videos drawn in code, on tape*
+*Music videos on tape*
 
 - **[Save Me a Seat](videos/save-me-a-seat/)** — A hand-drawn love song for the end of time: every frame drawn in code, in ink that boils twelve times a second, watercolour and crayon. The page plays it with the words, line by line. (*3:21*)
 - **[P(DOOM), C90 transfer](videos/p-doom/)** — A training run's nerves on a Degauss picture tube, starring Seed and Dobby the watchdog corgi. The page's readout climbs with the picture, from 0.4% to 99.9%. (*2:22*)
+- **[Save Me a Seat: The Last Signal](videos/save-me-a-seat-signal/)** — A second interpretation: a mechanical courier carries an unanswered message through eclipses, abandoned machines, and a living garden. (*3:21*)
 
 ### [Depths](depths/)
 
