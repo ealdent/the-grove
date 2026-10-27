@@ -1157,3 +1157,28 @@ Plan check-in: use Kimi K3.1 Pro / Max metadata, add Moonshot provider support, 
 - [x] Prepare the scoped commit and push; confirm remote SHA in delivery.
 
 Review / proof: copied game bytes match the supplied source exactly (SHA-256 c4ae67d105ae0327701ef0e2045c14ed7dd0efb0a35f585531c9f5da07cc00c1). All 41 gallery links target existing files; new tile appears once after Kimi K3, with Moonshot / Kimi K3.1 Pro / Max metadata and valid logo references. JavaScript syntax checks pass for both HTML files; diff whitespace check passes. Chrome (Jason profile), http://127.0.0.1:8769/svg-forest/index.html: Moonshot and model filters isolate The Unsung Atlas; tile layout visually inspected; tile click opens the copied game; entry and held W move the distance counter from 0 to 4 m. No captured console warnings/errors in those flows. Remaining limits: extended gameplay, mobile/cross-browser behavior, detailed network capture, and deployed Pages behavior untested. Publication SHA and remote verification are reported in delivery.
+
+## The Dead Letter Sky — SVG exploration — 2026-10-26
+
+Goal: create a lore-led, single-file, pure-SVG first-person exploration game and publish it to the existing gallery. Plan check-in: create an original deterministic world with bounded SVG rendering, keyboard/mouse and simultaneous touch controls, then add the alphabetically sorted tile and prove the game and gallery in a real browser before the authorized commit and push.
+
+- [ ] Build and finish the standalone game before inspecting other games.
+- [ ] Add the correctly attributed and ordered gallery tile.
+- [ ] Verify desktop, responsive touch controls, rendering, and bounded world streaming.
+- [ ] Review the scoped diff and commit and push the completed work.
+
+## Borrowed Weather — greenfield tower defense
+
+- [x] Develop an original world and weave its story into the game.
+- [x] Build a standalone responsive game with a randomized route, five instruments with four upgrades each, varied enemies, and 24 hand-composed forecasts.
+- [x] Add the GPT-6.1 Terra Max tile in model order.
+- [x] Exercise the game rules and campaign, verify the standalone file has no external resources, and check the gallery link.
+- [ ] Verify the visual layout and interactions in a real browser; the in-app browser blocked local file URLs.
+
+### Design
+
+The city borrowed sunny days for generations and deferred the rain. The unreturned weather has gathered outside the Bureau and wants the last jar of dawn as payment. Its clerks use improvised instruments to send the displaced weather home; the player protects the jar without treating the weather as evil. An illustrated field station, specimen-like weather creatures, and short dispatches carry the story as play progresses.
+
+### Review
+
+An isolated JavaScript harness checked 150 generated routes, all 20 upgrades, placement and selling, tower effects, pause and resume, defeat and restart, and ten complete 24-wave campaigns. The campaign's later difficulty was increased after the first simulations. Static inspection found no external resources or network APIs; the gallery link, model, effort, and neighboring alphabetical order were checked. Real-browser appearance, responsive layout, and direct file opening remain unverified because browser security policy rejected the local file URL.
