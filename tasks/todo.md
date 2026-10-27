@@ -1162,10 +1162,12 @@ Review / proof: copied game bytes match the supplied source exactly (SHA-256 c4a
 
 Goal: create a lore-led, single-file, pure-SVG first-person exploration game and publish it to the existing gallery. Plan check-in: create an original deterministic world with bounded SVG rendering, keyboard/mouse and simultaneous touch controls, then add the alphabetically sorted tile and prove the game and gallery in a real browser before the authorized commit and push.
 
-- [ ] Build and finish the standalone game before inspecting other games.
-- [ ] Add the correctly attributed and ordered gallery tile.
-- [ ] Verify desktop, responsive touch controls, rendering, and bounded world streaming.
-- [ ] Review the scoped diff and commit and push the completed work.
+- [x] Build and finish the standalone game before inspecting other games.
+- [x] Add the correctly attributed and ordered gallery tile.
+- [x] Verify desktop, responsive touch controls, rendering, and bounded world streaming.
+- [x] Review the scoped diff and prepare the authorized commit and push.
+
+Review / proof: the single HTML file has no canvas, WebGL, external images, external scripts, or remote resources. The pure-SVG world uses deterministic 49-chunk streaming and 120 reusable sprites. Local Chrome proof: entry and the first tower letter; 140-pace walking with 49 chunks and 120 sprites still allocated; reverse, arrow-key turning, mouse drag, visible head bob, and the guide; 390×844 and 320×740 portrait plus 844×390 landscape layouts. Two emulated touch pointers moved and turned simultaneously, one remained active when the other released, and both returned to rest. A short desktop walking sample measured approximately 120 FPS. Gallery provider/model filters isolated the unique GPT-6.1 Terra Max tile in model order, its colors were checked, and it launched the game; all 42 gallery targets exist. A fresh game load had no page console warnings/errors, script exceptions, or failed network requests. Physical touch devices and other browsers were not tested. Publication and remote verification are recorded in the delivery message.
 
 ## Borrowed Weather — greenfield tower defense
 
