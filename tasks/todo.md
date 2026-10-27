@@ -1202,3 +1202,21 @@ The city borrowed sunny days for generations and deferred the rain. The unreturn
 ### Review
 
 An isolated JavaScript harness checked 150 generated routes, all 20 upgrades, placement and selling, tower effects, pause and resume, defeat and restart, and ten complete 24-wave campaigns. The campaign's later difficulty was increased after the first simulations. Static inspection found no external resources or network APIs; the gallery link, model, effort, and neighboring alphabetical order were checked. Real-browser appearance, responsive layout, and direct file opening remain unverified because browser security policy rejected the local file URL.
+
+## Copper Crown — steampunk distillation learning page — 2026-10-26
+
+Goal: design an original, concept-level atmospheric water still, with one learning page, an editable Blender model, an explorable 3D view, and an assembly/operation film.
+Plan check-in: use a stainless wetted path with a splash-separating crown, open boiler vent, descending immersed condenser coil, and air-gapped receiver. Treat materials, capacities and energy calculations as illustrative until engineered and tested. Build the page and media together, then verify the model, controls, film, responsive layout and source claims locally.
+
+- [x] Research the process, realistic materials, and limits; settle one coherent device.
+- [x] Create the Blender scene, browser model, and assembly/operation film with accessible narration and captions.
+- [x] Build the standalone learning page and add it to the Learn catalog.
+- [x] Verify source claims, the browser experience, media, links, and scoped changes.
+
+### Review
+
+Blender scene opens with all 576 animation frames; the static GLB has eight assembled component groups. The 48-second H.264/AAC film decodes cleanly, with ElevenLabs narration, a transcript, and WebVTT captions; the retained source files and rendering instructions are under `learn/copper-crown/`. Math spot checks: 4.07 L gross kettle, 2.20 m coil, 0.48 L/h ideal vapor ceiling at 300 W, 8.6 °C illustrative cooling rise at 0.5 L/min, and about 37 min ideal warmup for 2 L.
+
+UI proof: localhost `http://127.0.0.1:8766/learn/copper-crown.html`, in-app browser, no authentication. Observed catalog entry, GLB loading and drag orbit, exploded/reassembled parts, part selection and highlight, stage switching, coupled calculator updates, and a still-image fallback with the model request deliberately blocked. The film played at 00:19 and 00:35 via chapter buttons; its English captions displayed and the media reported 48 s, ready state 4, unmuted playback. A 390×844 emulated viewport had no horizontal document overflow, and the coarse-pointer CSS permits vertical panning; physical touch was not tested. A clean load and playback reported no failed requests or JavaScript exceptions. Browser screenshot: `/private/tmp/copper-crown-browser.png`.
+
+The device, vent sizing, heat transfer, safety controls, and water quality are not physically tested or certified; the visual geometry is not a fabrication-ready CAD design. No deployment was requested or verified.
