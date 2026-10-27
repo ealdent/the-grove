@@ -1220,3 +1220,10 @@ Blender scene opens with all 576 animation frames; the static GLB has eight asse
 UI proof: localhost `http://127.0.0.1:8766/learn/copper-crown.html`, in-app browser, no authentication. Observed catalog entry, GLB loading and drag orbit, exploded/reassembled parts, part selection and highlight, stage switching, coupled calculator updates, and a still-image fallback with the model request deliberately blocked. The film played at 00:19 and 00:35 via chapter buttons; its English captions displayed and the media reported 48 s, ready state 4, unmuted playback. A 390×844 emulated viewport had no horizontal document overflow, and the coarse-pointer CSS permits vertical panning; physical touch was not tested. A clean load and playback reported no failed requests or JavaScript exceptions. Browser screenshot: `/private/tmp/copper-crown-browser.png`.
 
 The device, vent sizing, heat transfer, safety controls, and water quality are not physically tested or certified; the visual geometry is not a fabrication-ready CAD design. No deployment was requested or verified.
+
+## Copper Crown — consolidate disclaimers — 2026-10-26
+
+- [x] Replace repeated caveats with one short note while keeping the science and design explanations.
+- [x] Check the page and film, then commit and push the correction.
+
+Review: The visible page has one concise note; the parts, assembly, and physics copy now focus on the process. The film, transcript, and captions share a revised closing, with versioned media URLs. Browser preview loaded the 3D model, displayed the single note, and played the updated film; its 48-second H.264/AAC stream decoded without error.

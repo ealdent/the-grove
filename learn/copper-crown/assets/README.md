@@ -9,13 +9,11 @@ keyed at every rendered frame to keep them on the illustrated route.
 
 The kettle is an open shell with an inner stainless face; the lid has a
 separate inner liner and the demister contains a representative wire screen.
-The pipe curves have open ends but their wall thickness, connections, seals,
-and internals are not detailed as fabrication-ready CAD. The cooling vessel
-is a continuous transparent wall, open on top, to expose the coil. The
-temperature-limit housing and sensor are symbolic: electrical circuitry,
-water-level detection, insulation, and a safe remote vent discharge are not
-fully modeled. The model is an untested concept, not a pressure vessel design,
-potability claim, or safety certification.
+The pipe curves have open ends, with simplified walls, connections, seals,
+and internals. The cooling vessel is a continuous transparent wall, open on
+top, to expose the coil. The temperature-limit housing and sensor are symbolic;
+electrical circuitry, water-level detection, insulation, and the remote vent
+discharge are outside the scene.
 
 To rebuild the static assets and the high-resolution poster from the repository
 root using the macOS Blender application:

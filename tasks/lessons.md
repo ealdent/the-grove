@@ -159,3 +159,4 @@
 - Auto-follow (scrolling lyrics or a log to keep up with playback) must stop for good once the reader scrolls, and resume only when they ask. A timeout that resumes after a few seconds yanks the page away from someone reading ahead.
 
 - Apollo open-book correction: mathematical practice should test choosing and applying relationships, not require immediate formula recall. Keep a neutral formula reference visible beside the solving flow, without question-driven selection/highlighting or hint penalties. Only an explicitly requested hint should guide which formula to use.
+- For playful learning projects, when Jason asks for a single disclaimer, consolidate the caveats into one brief note and keep the rest focused on the subject rather than repeated warnings.
