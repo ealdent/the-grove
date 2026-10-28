@@ -1227,3 +1227,13 @@ The device, vent sizing, heat transfer, safety controls, and water quality are n
 - [x] Check the page and film, then commit and push the correction.
 
 Review: The visible page has one concise note; the parts, assembly, and physics copy now focus on the process. The film, transcript, and captions share a revised closing, with versioned media URLs. Browser preview loaded the 3D model, displayed the single note, and played the updated film; its 48-second H.264/AAC stream decoded without error.
+
+## Copper Crown — animated dimensional drawing — 2026-10-28
+
+Plan check-in: adapt the dimensional-drawing motion template to the Crown's actual parts and illustrative dimensions, use the workshop's parchment-and-brass palette, and add the silent motion plate above the field-notes table. Verify the rendered beats, video playback, responsive layout, and the scoped commit.
+
+- [x] Create the technical drawing film, source, and poster.
+- [x] Add an accessible, responsive player and visual description to the field notes.
+- [x] Check representative frames, media playback, browser layout, and the final diff; commit and push the intended files.
+
+Review: The 11-second silent H.264 film decodes fully at 1920×1080 and 30 fps; nine representative frames show the crown drawing, full elevation, exploded assembly, and finished sheet. The source adapts the dimensional-drawing-motion template and includes rebuild instructions. In the in-app browser at localhost, the poster loaded, the video played through to 11 seconds, and the visual description opened and closed. At 390 px and 1280 px the drawing plate fit without page overflow, with stacked and side-by-side layouts respectively. The media request returned HTTP 206, the console had no warnings or errors, and the single existing note remained in place.
