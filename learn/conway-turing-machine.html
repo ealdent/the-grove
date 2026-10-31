@@ -1,0 +1,448 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Life on a Turing Machine</title>
+<meta name="description" content="A one-tape Turing machine computes Conway's Game of Life a square at a time. Watch the tape, the controller and both generations at once, from single steps to a million a second.">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Life on a Turing Machine">
+<meta property="og:description" content="One head, one tape and a table of rules computing Conway's Game of Life a square at a time, from single steps to a million a second.">
+<meta property="og:url" content="https://ealdent.github.io/the-grove/learn/conway-turing-machine.html">
+<meta property="og:image" content="https://ealdent.github.io/the-grove/learn/conway-turing-machine/card.jpg">
+<meta property="og:image:width" content="2400">
+<meta property="og:image:height" content="1260">
+<meta property="og:image:alt" content="A Turing machine's tape, controller and two Go boards, with a glider crossing the board.">
+<meta property="og:video" content="https://ealdent.github.io/the-grove/learn/conway-turing-machine/glider-run.mp4">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Life on a Turing Machine">
+<meta name="twitter:image" content="https://ealdent.github.io/the-grove/learn/conway-turing-machine/card.jpg">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 30 30'%3E%3Crect width='30' height='30' rx='6' fill='%23dcb36a'/%3E%3Cg fill='%23171a20'%3E%3Ccircle cx='15' cy='6' r='3.6'/%3E%3Ccircle cx='24' cy='15' r='3.6'/%3E%3Ccircle cx='6' cy='24' r='3.6'/%3E%3Ccircle cx='15' cy='24' r='3.6'/%3E%3Ccircle cx='24' cy='24' r='3.6'/%3E%3C/g%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Old+Standard+TT:ital,wght@0,400;0,700;1,400&family=UnifrakturMaguntia&display=swap">
+<style>
+:root {
+  color-scheme: dark;
+  --night: #111a2e;
+  --night-deep: #0b1220;
+  --plate: #16213a;
+  --rule: rgba(236, 229, 214, .12);
+  --text: #ece5d6;
+  --text-2: #c2bdb1;
+  --text-3: #959399;
+  --kaya: #dcb36a;
+  --ink: #2a1d10;
+  --paper: #efe4c7;
+  --red: #c9412f;
+  --red-bright: #ec7461;
+  --lamp: #a6ebff;
+  --shell: #f2efe7;
+  --serif: 'Old Standard TT', 'Iowan Old Style', Georgia, serif;
+  --mono: 'IBM Plex Mono', ui-monospace, Menlo, Consolas, monospace;
+  --frak: 'UnifrakturMaguntia', 'Old English Text MT', serif;
+  --gutter: clamp(16px, 2.6vw, 40px);
+}
+* { box-sizing: border-box; }
+html { background: var(--night-deep); }
+body {
+  margin: 0;
+  min-height: 100vh;
+  color: var(--text);
+  background:
+    radial-gradient(90% 60% at 50% 0%, #1a2742 0%, rgba(26, 39, 66, 0) 70%),
+    linear-gradient(180deg, var(--night) 0%, var(--night-deep) 100%);
+  font: 400 1.1875rem/1.62 var(--serif);
+  -webkit-font-smoothing: antialiased;
+}
+a { color: var(--lamp); text-underline-offset: 3px; text-decoration-thickness: 1px; }
+a:focus-visible, button:focus-visible, select:focus-visible, input:focus-visible, [tabindex]:focus-visible {
+  outline: 2px solid var(--lamp);
+  outline-offset: 3px;
+}
+
+/* ---------- masthead ---------- */
+.masthead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 28px;
+  padding: 14px var(--gutter) 10px;
+}
+.back { flex-basis: 100%; color: var(--text-3); text-decoration: none; font-size: .95rem; }
+.back:hover { color: var(--text); }
+.back::before { content: "‹ "; }
+h1 {
+  margin: 0;
+  font-weight: 400;
+  font-size: clamp(2rem, 3.4vw, 3rem);
+  line-height: 1.05;
+  letter-spacing: .004em;
+}
+.dek { flex: 1 1 22rem; margin: 0; max-width: 48rem; color: var(--text-2); font-size: 1.05rem; line-height: 1.45; }
+
+/* ---------- the console ---------- */
+.console {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.12fr) minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr) auto auto;
+  grid-template-areas: "now ctrl next" "tape tape tape" "deck deck deck";
+  gap: 12px 26px;
+  height: max(660px, calc(100svh - var(--mast-h, 92px)));
+  padding: 4px var(--gutter) 16px;
+}
+.panel { min-width: 0; min-height: 0; margin: 0; display: flex; flex-direction: column; }
+.panel-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 2px 14px; padding: 0 2px 6px; }
+.panel-head h2 { margin: 0; font: 400 1.3rem/1.2 var(--serif); }
+.panel-head p { margin: 0; color: var(--text-3); font-size: .98rem; font-variant-numeric: tabular-nums; }
+.stage { position: relative; flex: 1 1 auto; min-height: 0; }
+.stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+#panel-now { grid-area: now; }
+#panel-next { grid-area: next; }
+#cv-now { cursor: crosshair; }
+
+.controller {
+  grid-area: ctrl;
+  padding: 10px 14px 12px;
+  border-radius: 14px;
+  background: linear-gradient(180deg, rgba(30, 44, 74, .62), rgba(20, 30, 52, .5));
+  box-shadow: inset 0 0 0 1px rgba(236, 229, 214, .08), 0 18px 40px -26px rgba(0, 0, 0, .7);
+}
+.register {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  padding: 8px 0 2px;
+  border-top: 1px solid var(--rule);
+}
+.reg { display: grid; justify-items: center; align-content: start; gap: 3px; text-align: center; min-width: 0; }
+.reg-gauge { height: 40px; display: grid; place-items: center; }
+.reg-label { margin: 0; color: var(--text-3); font-size: .86rem; line-height: 1.2; }
+.reg-value { margin: 0; font-size: 1rem; line-height: 1.2; font-variant-numeric: tabular-nums; min-height: 1.2em; }
+.reg.off .reg-gauge, .reg.off .reg-value { opacity: .28; }
+.compass { display: grid; grid-template-columns: repeat(3, 12px); gap: 2px; }
+.compass i { width: 12px; height: 12px; border-radius: 2px; background: rgba(236, 229, 214, .1); }
+.compass i.done { background: rgba(236, 229, 214, .34); }
+.compass i.now { background: var(--lamp); box-shadow: 0 0 10px rgba(166, 235, 255, .8); }
+.compass i.self { background: transparent; box-shadow: inset 0 0 0 1.5px var(--red-bright); border-radius: 50%; }
+.odometer { font: 500 1.9rem/1 var(--serif); font-variant-numeric: tabular-nums; }
+.pips { display: grid; grid-template-columns: repeat(4, 11px); gap: 4px; }
+.pips i { width: 11px; height: 11px; border-radius: 50%; box-shadow: inset 0 0 0 1px rgba(236, 229, 214, .28); }
+.pips i.on { background: radial-gradient(circle at 35% 30%, #6f737c, #17181c 70%); box-shadow: 0 1px 2px rgba(0, 0, 0, .5); }
+.stone-chip { width: 22px; height: 22px; border-radius: 50%; box-shadow: inset 0 0 0 1px rgba(236, 229, 214, .28); }
+.stone-chip.alive { background: radial-gradient(circle at 35% 30%, #6f737c, #17181c 70%); box-shadow: 0 2px 3px rgba(0, 0, 0, .5); }
+.state-words { margin: 6px 0 0; min-height: 2.6em; font-size: 1rem; line-height: 1.3; color: var(--text-2); }
+.state-words .formal { color: var(--lamp); white-space: nowrap; margin-right: .3em; }
+
+.tape-panel { grid-area: tape; }
+.tape-stage { flex: 0 0 auto; height: 124px; }
+.tape-lines { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 4px 28px; align-items: start; padding: 4px 2px 0; }
+.delta { margin: 0; font: 400 .95rem/1.5 var(--mono); color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.story { margin: 0; font-size: 1rem; line-height: 1.4; color: var(--text-2); min-height: 2.8em; }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 0; padding: 0; list-style: none; color: var(--text-3); font-size: .9rem; }
+.legend li { display: flex; align-items: center; gap: 5px; }
+
+/* tape squares used in prose, the legend and the δ line */
+.sq {
+  display: inline-block;
+  min-width: 1.45em;
+  padding: .16em .3em .12em;
+  border-radius: 2px;
+  background: var(--paper);
+  color: var(--ink);
+  font: 600 .8em/1 var(--mono);
+  text-align: center;
+  box-shadow: inset 0 0 0 1px rgba(42, 29, 16, .16);
+  white-space: nowrap;
+  vertical-align: .08em;
+}
+.sq.mark { box-shadow: inset 0 0 0 1.5px var(--red); }
+.frak { font-family: var(--frak); font-size: 1.12em; line-height: 1; }
+
+/* ---------- transport ---------- */
+.transport {
+  grid-area: deck;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 18px;
+  padding-top: 10px;
+  border-top: 1px solid var(--rule);
+}
+.keys { display: flex; flex-wrap: wrap; gap: 6px; }
+.key {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 11px 7px;
+  border: 1px solid rgba(236, 229, 214, .16);
+  border-radius: 6px;
+  color: var(--text);
+  background: linear-gradient(180deg, #213152, #18243d);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .07), 0 2px 0 #070c16;
+  font: 400 1rem/1.1 var(--serif);
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.key:hover { border-color: rgba(236, 229, 214, .32); }
+.key:active { transform: translateY(1px); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .05), 0 1px 0 #070c16; }
+.key:disabled { opacity: .38; cursor: default; transform: none; }
+.key svg { width: 13px; height: 13px; fill: currentColor; }
+.key.run { min-width: 6.4em; justify-content: center; color: #10213a; background: linear-gradient(180deg, #e9c98a, #cfa258); border-color: #e9cf98; }
+.key.run.on { color: #08202c; background: linear-gradient(180deg, #d3f6ff, #8fdcf3); border-color: #d3f6ff; box-shadow: 0 0 22px -4px rgba(166, 235, 255, .75), 0 2px 0 #070c16; }
+.speed { display: flex; align-items: center; gap: 10px; color: var(--text-3); font-size: .98rem; }
+.speed output { min-width: 9.8em; color: var(--text); font-variant-numeric: tabular-nums; }
+input[type="range"] { appearance: none; -webkit-appearance: none; width: clamp(110px, 10vw, 180px); height: 24px; background: transparent; cursor: pointer; }
+input[type="range"]::-webkit-slider-runnable-track {
+  height: 6px; border-radius: 3px;
+  background: repeating-linear-gradient(90deg, rgba(236, 229, 214, .38) 0 1px, transparent 1px calc(100% / 6 - .01px)), rgba(236, 229, 214, .1);
+}
+input[type="range"]::-moz-range-track { height: 6px; border-radius: 3px; background: rgba(236, 229, 214, .14); }
+input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 18px; height: 18px; margin-top: -6px; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #fff6dc, #cfa258 60%, #8a6427); box-shadow: 0 1px 3px rgba(0, 0, 0, .6); }
+input[type="range"]::-moz-range-thumb { width: 18px; height: 18px; border: 0; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #fff6dc, #cfa258 60%, #8a6427); }
+.pick { display: flex; align-items: center; gap: 8px; color: var(--text-3); font-size: .98rem; }
+select {
+  appearance: none;
+  -webkit-appearance: none;
+  padding: 6px 28px 6px 10px;
+  border: 1px solid rgba(236, 229, 214, .2);
+  border-radius: 6px;
+  color: var(--text);
+  background: #172238 url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%23c2bdb1' stroke-width='1.4'/%3E%3C/svg%3E") no-repeat right 10px center;
+  font: 400 1rem/1.2 var(--serif);
+  cursor: pointer;
+}
+
+/* ---------- notes ---------- */
+.notes { max-width: 44rem; margin: 0 auto; padding: 72px 20px 24px; }
+.notes h2 { margin: 2.1em 0 .45em; font: 400 2.05rem/1.12 var(--serif); }
+.notes h2:first-child { margin-top: 0; }
+.notes p, .notes li { color: #e2dccd; }
+.notes p { margin: 0 0 1em; }
+.notes ol { padding-left: 1.4em; margin: 0 0 1em; }
+.notes li { margin: 0 0 .55em; padding-left: .2em; }
+.notes li::marker { font-variant-numeric: lining-nums; color: var(--text-3); }
+.notes em { font-style: italic; }
+.wide { width: min(1100px, calc(100vw - 2 * var(--gutter))); margin: 1.8em 0 2em 50%; transform: translateX(-50%); }
+.notes figcaption { margin-top: 10px; color: var(--text-3); font-size: .98rem; line-height: 1.45; }
+.wide figcaption { max-width: calc(44rem - 40px); margin: 10px auto 0; }
+.scroll-x { overflow-x: auto; scrollbar-width: thin; }
+
+.fold svg { display: block; width: 100%; height: auto; }
+.fold .board-view { max-width: 520px; margin: 0 auto 14px; }
+.fold { width: min(1240px, calc(100vw - 2 * var(--gutter))); }
+.fold .line-view { min-width: 980px; }
+.fold text { font-family: var(--mono); }
+
+.table-row { margin: 1.6em 0 2em; }
+.table-row table { width: 100%; border-collapse: collapse; }
+.table-row th { padding: 4px 12px 6px; border-bottom: 1px solid var(--rule); color: var(--text-3); font-weight: 400; font-size: .92rem; text-align: left; }
+.table-row td { padding: 3px 12px; border-bottom: 1px solid rgba(236, 229, 214, .05); font: 400 .9rem/1.45 var(--mono); color: var(--text-2); white-space: nowrap; }
+.table-row td.none { color: rgba(236, 229, 214, .32); font-family: var(--serif); }
+.table-row tr.live td { background: rgba(166, 235, 255, .12); color: var(--text); }
+.table-row tr.live td:first-child { box-shadow: inset 3px 0 0 var(--lamp); }
+.row-state { margin: 0 0 10px; font-size: 1.02rem; color: var(--text-2); }
+
+.sizes { width: 100%; border-collapse: collapse; margin: .4em 0 1.2em; font-variant-numeric: tabular-nums; }
+.sizes th, .sizes td { padding: 7px 10px; border-bottom: 1px solid var(--rule); text-align: right; }
+.sizes th { color: var(--text-3); font-weight: 400; font-size: .95rem; }
+.sizes th:first-child, .sizes td:first-child { text-align: left; padding-left: 0; }
+
+.film video { display: block; width: 100%; height: auto; border-radius: 10px; background: #0a101d; box-shadow: 0 30px 60px -30px rgba(0, 0, 0, .8); }
+.check { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 18px; margin: .4em 0 1em; }
+.check output { color: var(--text-2); font-variant-numeric: tabular-nums; }
+.formula { font-style: italic; white-space: nowrap; }
+
+footer.colophon { max-width: 44rem; margin: 0 auto; padding: 28px 20px 56px; border-top: 1px solid var(--rule); color: var(--text-3); font-size: .95rem; line-height: 1.5; }
+footer.colophon p { margin: 0 0 .7em; }
+
+/* ---------- smaller screens ---------- */
+@media (max-width: 1100px) {
+  .console {
+    height: auto;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-rows: auto auto auto auto;
+    grid-template-areas: "now next" "ctrl ctrl" "tape tape" "deck deck";
+  }
+  #panel-now .stage, #panel-next .stage { flex: 0 0 auto; aspect-ratio: 1 / .86; }
+  .controller .fsm-stage { flex: 0 0 auto; height: 270px; }
+  .tape-lines { grid-template-columns: 1fr; }
+}
+@media (max-width: 640px) {
+  body { font-size: 1.1rem; }
+  .console { gap: 10px 12px; }
+  .panel-head h2 { font-size: 1.1rem; }
+  .panel-head p { font-size: .85rem; }
+  .controller { padding: 8px 10px 10px; }
+  .controller .fsm-stage { height: 230px; }
+  .register { gap: 4px; }
+  .reg-label { font-size: .78rem; }
+  .tape-stage { height: 112px; }
+  .delta { white-space: normal; font-size: .82rem; }
+  .speed output { min-width: 0; }
+  .key { padding: 8px 10px 7px; font-size: .95rem; }
+  .sizes th, .sizes td { padding: 6px 6px; font-size: .92rem; }
+  .table-row th, .table-row td { padding-left: 6px; padding-right: 6px; }
+}
+
+/* Video capture: the console alone, sized for a 16:9 frame. */
+.capture body { overflow: hidden; }
+.capture .notes, .capture footer.colophon, .capture .back, .capture .legend { display: none; }
+.capture .masthead { padding-top: 12px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .key:active { transform: none; }
+}
+</style>
+</head>
+<body>
+<header class="masthead" id="masthead">
+  <a class="back" href="./">Learn</a>
+  <h1>Life on a Turing Machine</h1>
+  <p class="dek">One head, one tape and a table of rules, computing Conway&rsquo;s Game of Life a square at a time.</p>
+</header>
+
+<main>
+  <section class="console" id="machine" aria-label="The machine">
+    <figure class="panel" id="panel-now">
+      <figcaption class="panel-head"><h2>Generation <span id="gen-now">0</span></h2><p id="now-meta"></p></figcaption>
+      <div class="stage"><canvas id="cv-now" role="img" aria-label="The current generation"></canvas></div>
+    </figure>
+
+    <section class="panel controller" aria-labelledby="ctrl-title">
+      <header class="panel-head"><h2 id="ctrl-title">Controller</h2><p id="ctrl-meta"></p></header>
+      <div class="stage fsm-stage"><canvas id="cv-fsm" role="img" aria-label="State diagram of the controller"></canvas></div>
+      <div class="register" aria-label="What the controller remembers">
+        <div class="reg" id="reg-dir">
+          <div class="reg-gauge"><div class="compass" aria-hidden="true"><i></i><i></i><i></i><i></i><i class="self"></i><i></i><i></i><i></i><i></i></div></div>
+          <p class="reg-label">Neighbour</p><p class="reg-value"></p>
+        </div>
+        <div class="reg" id="reg-dist">
+          <div class="reg-gauge"><span class="odometer"></span></div>
+          <p class="reg-label">Squares to go</p><p class="reg-value"></p>
+        </div>
+        <div class="reg" id="reg-count">
+          <div class="reg-gauge"><div class="pips" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div></div>
+          <p class="reg-label">Live neighbours</p><p class="reg-value"></p>
+        </div>
+        <div class="reg" id="reg-old">
+          <div class="reg-gauge"><span class="stone-chip" aria-hidden="true"></span></div>
+          <p class="reg-label">Cell was</p><p class="reg-value"></p>
+        </div>
+      </div>
+      <p class="state-words" id="state-words"></p>
+    </section>
+
+    <figure class="panel" id="panel-next">
+      <figcaption class="panel-head"><h2>Generation <span id="gen-next">1</span></h2><p id="next-meta"></p></figcaption>
+      <div class="stage"><canvas id="cv-next" role="img" aria-label="The next generation, written one cell at a time"></canvas></div>
+    </figure>
+
+    <section class="panel tape-panel" aria-labelledby="tape-title">
+      <header class="panel-head">
+        <h2 id="tape-title">Tape</h2>
+        <ul class="legend" aria-label="Tape symbols">
+          <li><span class="sq">0</span><span class="sq">1</span> a cell</li>
+          <li><span class="sq mark">1*</span> marked</li>
+          <li><span class="sq">01</span> old, new</li>
+          <li><span class="sq">X</span> always dead</li>
+          <li><span class="sq">#</span> row end</li>
+          <li><span class="sq">&#10216;</span><span class="sq">&#10217;</span> ends</li>
+        </ul>
+        <p id="tape-meta"></p>
+      </header>
+      <div class="stage tape-stage"><canvas id="cv-tape" role="img" aria-label="The tape around the head, and the whole tape below it"></canvas></div>
+      <div class="tape-lines">
+        <p class="delta" id="delta"></p>
+        <p class="story" id="story" aria-live="polite"></p>
+      </div>
+    </section>
+
+    <div class="transport" role="group" aria-label="Machine controls">
+      <div class="keys">
+        <button class="key run" id="btn-run" type="button"><svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2 1l9 5-9 5z"/></svg><span>Run</span></button>
+        <button class="key" id="btn-step" type="button">Step</button>
+        <button class="key" id="btn-cell" type="button">Finish cell</button>
+        <button class="key" id="btn-gen" type="button">Finish generation</button>
+        <button class="key" id="btn-undo" type="button">Undo step</button>
+        <button class="key" id="btn-reset" type="button">Reset</button>
+      </div>
+      <label class="speed">Speed <input id="speed" type="range" min="0" max="1000" step="1" aria-describedby="speed-out"><output id="speed-out" for="speed"></output></label>
+      <label class="pick">Start from <select id="pattern"></select></label>
+      <label class="pick">Board <select id="size"></select></label>
+    </div>
+  </section>
+
+  <article class="notes" id="notes">
+    <h2>What the machine is</h2>
+    <p>In 1936 Alan Turing described the simplest machine that can carry out any calculation a person can do by following rules. It has a tape divided into squares, each holding one symbol. It has a head that looks at one square at a time, can replace its symbol, and can move one square left or right. It has a controller that is always in one of finitely many states. And it has a table: for every state and every symbol, what to write, which way to move and which state to enter next.</p>
+    <p>Nothing else is remembered. Anything bigger than a state has to be written on the tape, and that restriction is the point: if a machine this plain can do something, it can be done by following rules mechanically.</p>
+    <p>The machine above is built exactly that way. When you pick a board size the page compiles the controller into a table, <span id="table-size">902 states by 13 symbols</span>, and from then on every step is a single lookup in it. Turing named his states with Fraktur letters, and so does this controller: scan <span class="frak">s</span>, go <span class="frak">g</span>, read <span class="frak">r</span>, home <span class="frak">h</span>, print <span class="frak">p</span>, back <span class="frak">b</span> and commit <span class="frak">c</span>.</p>
+
+    <figure class="table-row" id="table-row">
+      <p class="row-state" id="row-state"></p>
+      <div class="scroll-x"><table id="row-table"></table></div>
+      <figcaption>The machine&rsquo;s table entries for the state it is in right now, one for each symbol it could read, following the machine above as it runs. The lit row is the symbol under the head. &ldquo;No rule&rdquo; means the machine never meets that symbol in that state. L, R and S are left, right and stay.</figcaption>
+    </figure>
+
+    <h2>A plane laid on a line</h2>
+    <p>Life happens on a grid, but the tape is a single line, so the board is written out row by row, the way you read a page. Every row is wrapped in an <span class="sq">X</span> at each end, a row of <span class="sq">X</span> squares runs above and below the board, and <span class="sq">#</span> closes every row. The <span class="sq">X</span> squares are cells that are always dead, so the edge of the board needs no rules of its own.</p>
+    <p>Because every row takes <i>n</i>&nbsp;+&nbsp;3 squares, the neighbour directly above any cell is always <i>n</i>&nbsp;+&nbsp;3 squares to its left, and the diagonal neighbours are one square to either side of that. The distances are the same for every cell, and that is what lets a finite controller count them.</p>
+    <figure class="wide fold" id="fold">
+      <div class="board-view" id="fold-board"></div>
+      <div class="scroll-x"><div class="line-view" id="fold-line"></div></div>
+      <figcaption>A 5&nbsp;&times;&nbsp;5 board folded into rows of eight squares, and the same squares as one tape. Choose a cell to see where its eight neighbours lie and how far away they are.</figcaption>
+    </figure>
+    <p>Conway is said to have worked Life out by hand over lunches on a Go board, so the boards here are Go boards: black stones for the generation on the tape now, white stones for the one being written. The light is the head.</p>
+
+    <h2>Eight errands for every cell</h2>
+    <ol>
+      <li><b>Scan</b> moves right until it finds a square that still holds a plain <span class="sq">0</span> or <span class="sq">1</span>, and marks it: <span class="sq">0</span> becomes <span class="sq mark">0*</span>, <span class="sq">1</span> becomes <span class="sq mark">1*</span>. The state now remembers the cell&rsquo;s old value.</li>
+      <li><b>Go</b> walks to the next neighbour, counting the squares down in its state.</li>
+      <li><b>Read</b> adds the neighbour&rsquo;s old value to the live count the state carries. An <span class="sq">X</span> adds nothing.</li>
+      <li><b>Home</b> walks back until it sees the mark. Go, Read and Home repeat for all eight neighbours, from north-west to south-east.</li>
+      <li><b>Print</b> replaces the mark with a pair, the old value and the new one side by side in one square.</li>
+    </ol>
+    <p>The new value follows Conway&rsquo;s rule: a cell is alive in the next generation if it has exactly three live neighbours, or if it is alive now and has exactly two.</p>
+    <p>Writing a pair instead of just the new value is what keeps the update simultaneous, as Life requires. The cells further right still need this cell&rsquo;s old value when they count their own neighbours, so it stays on the tape, in the first half of the pair, until every cell has been decided. Textbooks call this a two-track tape: each square still holds one symbol, but the symbol carries two values. The tape above draws the tracks one above the other, with the new value on a white stone.</p>
+
+    <h2>Committing a generation</h2>
+    <p>When Scan reaches <span class="sq">&#10217;</span>, every cell holds a pair. Back rewinds to <span class="sq">&#10216;</span>, Commit sweeps right replacing each pair with its new half, so <span class="sq">01</span> becomes <span class="sq">1</span>, and Back rewinds once more to start the next generation. Watch the boards during the sweep: the white stones pour into the left-hand board as the head passes.</p>
+
+    <h2>How big the controller is</h2>
+    <p>The state has to carry everything the machine is in the middle of: which of the eight neighbours it is visiting, how many squares are left to walk, how many live neighbours it has counted, and the cell&rsquo;s old value. Counting every state the controller can reach gives <span class="formula">54<i>n</i> + 362</span> states for an <i>n</i>&nbsp;&times;&nbsp;<i>n</i> board.</p>
+    <div class="scroll-x"><table class="sizes" id="sizes"></table></div>
+    <p>Only the walking distance grows with the board, so strictly this page holds a family of machines, one for each size. A single machine for every size would have to measure its walks on the tape instead of counting them in its state, with extra marks and many more steps. The stay moves, S in the table, are a convenience: each could be replaced by one step right and one step back.</p>
+
+    <h2>Why it is slow</h2>
+    <p>Each cell costs <span class="formula">58 + 12<i>n</i></span> steps, and almost all of them are walking: the three neighbours above and the three below are a whole row away, and the head goes there and back for each. A full generation takes <span class="formula">12<i>n</i><sup>3</sup> + 61<i>n</i><sup>2</sup> + 20<i>n</i> + 29</span> steps; the first is a little shorter because the machine starts at the left end instead of rewinding to it. Doubling the side of the board multiplies the work by about eight.</p>
+    <p>A glider moves one cell every four generations. On a 14&nbsp;&times;&nbsp;14 board each of its diagonal steps costs <span id="glider-cost">180,772</span> tape steps.</p>
+
+    <h2>A glider at full speed</h2>
+    <figure class="wide film" id="film">
+      <video controls playsinline muted preload="metadata" poster="conway-turing-machine/poster.jpg" aria-describedby="film-caption">
+        <source src="conway-turing-machine/glider-run.mp4" type="video/mp4">
+      </video>
+      <figcaption id="film-caption">This page, recorded frame by frame in Chrome. The machine speeds up from 4 to 60,000 steps a second, and the glider still needs 40 seconds and nearly two million steps to cross a 14&nbsp;&times;&nbsp;14 board, run into the corner and freeze into a block.</figcaption>
+    </figure>
+
+    <h2>Life can run a Turing machine, too</h2>
+    <p>The relationship runs both ways. Berlekamp, Conway and Guy showed in 1982 that Life can compute anything a Turing machine can, using streams of gliders as signals, and in 2000 Paul Rendell built a working Turing machine out of Life patterns. A Turing machine can run Life, and Life can run a Turing machine, slowly in both directions.</p>
+
+    <h2>Checked against plain Life</h2>
+    <p>The tape machine has been checked against an ordinary, direct implementation of Life: the same random boards, generation by generation, cell by cell. It also matches, step for step, the machine this page grew out of. You can run the first check here.</p>
+    <div class="check">
+      <button class="key" id="btn-check" type="button">Run the check</button>
+      <output id="check-out" aria-live="polite">300 random boards, 6 generations each.</output>
+    </div>
+  </article>
+</main>
+
+<footer class="colophon">
+  <p>Sources: A. M. Turing, <a href="https://doi.org/10.1112/plms/s2-42.1.230">&ldquo;On Computable Numbers, with an Application to the Entscheidungsproblem&rdquo;</a>, <i>Proceedings of the London Mathematical Society</i> 42 (1936&ndash;37). Martin Gardner, <a href="https://doi.org/10.1038/scientificamerican1070-120">&ldquo;Mathematical Games&rdquo;</a>, <i>Scientific American</i>, October 1970. <a href="https://conwaylife.com/wiki/Paul_Rendell">Paul Rendell</a> on the LifeWiki.</p>
+  <p>Everything runs in your browser. Read <a href="conway-turing-engine.js">the machine</a> and <a href="conway-turing-machine.js">the page</a>, or go <a href="./">back to Learn</a>.</p>
+</footer>
+
+<script type="module" src="conway-turing-machine.js"></script>
+</body>
+</html>
