@@ -1237,3 +1237,14 @@ Plan check-in: adapt the dimensional-drawing motion template to the Crown's actu
 - [x] Check representative frames, media playback, browser layout, and the final diff; commit and push the intended files.
 
 Review: The 11-second silent H.264 film decodes fully at 1920×1080 and 30 fps; nine representative frames show the crown drawing, full elevation, exploded assembly, and finished sheet. The source adapts the dimensional-drawing-motion template and includes rebuild instructions. In the in-app browser at localhost, the poster loaded, the video played through to 11 seconds, and the visual description opened and closed. At 390 px and 1280 px the drawing plate fit without page overflow, with stacked and side-by-side layouts respectively. The media request returned HTTP 206, the console had no warnings or errors, and the single existing note remained in place.
+
+## Copper Crown — richer 3D model and rendering — 2026-11-01
+
+Plan check-in: deepen the existing still's mechanical geometry and materials, improve the interactive model's lighting, and carry the updated model into the poster and assembly film while keeping its animated parts and explanatory flow intact. Review rendered close-ups and verify real-browser performance and controls before the scoped commit and push.
+
+- [x] Rework the Blender model, physical details, materials, lighting, and browser export.
+- [x] Improve the interactive viewer's presentation while retaining its part selection and exploded view.
+- [x] Regenerate the matching poster and narrated assembly film.
+- [x] Check the export, renders, available interaction logic, and media; document the browser-proof limitation and prepare the scoped commit and push.
+
+Review: The revised scene adds machined fittings, gauges, heater controls, bracing, fasteners and four generated metal surface maps. The 1920×1080 poster uses 64 denoised Cycles samples; close-ups and a re-imported GLB render were inspected. The GLB has eight existing component roots, four embedded textures and 33 primitives with transparent components kept separate. A Node harness using the actual viewer module and mocked renderer/loader exercised scoped material highlighting, explode/reassemble, reset, and the studio-light fallback; it does not prove WebGL behavior. The new 48-second assembly film decodes, preserves all 576 frames and the prior narration's decoded audio exactly, and uses unchanged captions; representative assembly and flow frames were inspected. The local server returned 200 for the model and 206 for the video. Local browser use was disabled in Work settings, so real browser appearance, interactions, and performance could not be checked in this turn.

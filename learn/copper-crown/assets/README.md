@@ -1,11 +1,14 @@
 # Copper Crown model and film assets
 
 The Blender scene and glTF were created from scratch with `build_still.py`.
-The scene contains the full 1–576 frame animation at 12 frames per second.
-The glTF is a static, assembled version with named component groups. The
-film is **48 seconds**. Gold and blue moving dots are
-an explanatory flow overlay, not a fluid simulation. Their positions are
-keyed at every rendered frame to keep them on the illustrated route.
+The editable scene includes machined unions, gauges, braces, and individual
+fasteners, as well as the full 1–576 frame animation at 12 frames per second.
+The static glTF retains eight named component groups and embeds the generated
+metal surface maps. Opaque details are batched by group and material for the
+browser; transparent glass and water remain separate. The film is **48
+seconds**. Gold and blue moving dots are an explanatory flow overlay, not a
+fluid simulation. Their positions are keyed at every rendered frame to keep
+them on the illustrated route.
 
 The kettle is an open shell with an inner stainless face; the lid has a
 separate inner liner and the demister contains a representative wire screen.
@@ -16,7 +19,10 @@ electrical circuitry, water-level detection, insulation, and the remote vent
 discharge are outside the scene.
 
 To rebuild the static assets and the high-resolution poster from the repository
-root using the macOS Blender application:
+root using the macOS Blender application, including the four generated,
+tileable surface maps (which are also embedded in the `.blend` and `.glb`).
+The poster uses 64 denoised Cycles samples; the saved scene remains in Eevee
+for animation:
 
 ```sh
 /Applications/Blender.app/Contents/MacOS/Blender -b -t 4 \
