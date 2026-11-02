@@ -1248,3 +1248,13 @@ Plan check-in: deepen the existing still's mechanical geometry and materials, im
 - [x] Check the export, renders, available interaction logic, and media; document the browser-proof limitation and prepare the scoped commit and push.
 
 Review: The revised scene adds machined fittings, gauges, heater controls, bracing, fasteners and four generated metal surface maps. The 1920×1080 poster uses 64 denoised Cycles samples; close-ups and a re-imported GLB render were inspected. The GLB has eight existing component roots, four embedded textures and 33 primitives with transparent components kept separate. A Node harness using the actual viewer module and mocked renderer/loader exercised scoped material highlighting, explode/reassemble, reset, and the studio-light fallback; it does not prove WebGL behavior. The new 48-second assembly film decodes, preserves all 576 frames and the prior narration's decoded audio exactly, and uses unchanged captions; representative assembly and flow frames were inspected. The local server returned 200 for the model and 206 for the video. Local browser use was disabled in Work settings, so real browser appearance, interactions, and performance could not be checked in this turn.
+
+## Copper Crown — standalone 3D viewer — 2026-11-02
+
+Plan check-in: bundle the viewer's JavaScript and embed the GLB in the HTML, so the 3D view no longer needs local module imports or a model fetch. Retain editable source and a reproducible build, check the embedded bytes and viewer behavior, and verify in an allowed browser environment while documenting the direct-file access restriction.
+
+- [x] Bundle the viewer and model into the page, with a repeatable rebuild path.
+- [x] Verify embedded model integrity and exercise the viewer using permitted browser access.
+- [x] Review the scoped diff and prepare the authorized commit and push.
+
+Review: The HTML embeds the classic-script viewer, the GLB and fallback poster; the model download is generated from the same embedded bytes. Rebuilding is deterministic, and both embedded assets match their source files byte for byte. In the in-app browser over localhost HTTP, the textured 3D view rendered, orbit, part selection and explode/reassemble worked, and the request log contained no separate viewer JavaScript or GLB request. The downloaded GLB matched the source SHA-256. Browser automation explicitly blocks `file://` URLs, so direct-file behavior was not observed; the films, captions and Blender download still use neighboring files.

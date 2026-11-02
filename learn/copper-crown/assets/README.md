@@ -10,6 +10,11 @@ seconds**. Gold and blue moving dots are an explanatory flow overlay, not a
 fluid simulation. Their positions are keyed at every rendered frame to keep
 them on the illustrated route.
 
+The 3D viewer, its poster, and its model-download data are embedded in
+`../../copper-crown.html`, so that viewer can run when the HTML is opened
+directly from disk. The films, captions, and Blender download still use the
+neighboring asset files.
+
 The kettle is an open shell with an inner stainless face; the lid has a
 separate inner liner and the demister contains a representative wire screen.
 The pipe curves have open ends, with simplified walls, connections, seals,
@@ -30,6 +35,16 @@ for animation:
   --assets learn/copper-crown/assets --still
 ffmpeg -i learn/copper-crown/assets/copper-crown-poster.png -q:v 2 \
   learn/copper-crown/assets/copper-crown-poster.jpg
+```
+
+After changing `viewer.js`, the GLB, or the poster, rebuild the embedded
+viewer from the repository root. This build step requires Node.js, npm, Python,
+and the pinned esbuild version; none are needed to open the finished page:
+
+```sh
+npm install --prefix /tmp/copper-crown-build --save-exact esbuild@0.25.12
+python3 learn/copper-crown/build-standalone.py \
+  --esbuild /tmp/copper-crown-build/node_modules/.bin/esbuild
 ```
 
 To render the entire animation from the saved `.blend` without placing frame
