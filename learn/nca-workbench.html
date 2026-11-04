@@ -1,0 +1,2290 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Neural Cellular Automata Workbench</title>
+<meta name="description" content="A WebGL2 workbench where every cell runs the same small neural network over sixteen channels in one shader pass. Paint emitters, voids and anchors, scramble the hidden state, and trace any of the 5,376 weights.">
+<meta name="theme-color" content="#06090f">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%2307101a'/%3E%3Crect x='4.5' y='4.5' width='5' height='5' rx='1' fill='%2335e3f4'/%3E%3Crect x='10.5' y='4.5' width='5' height='5' rx='1' fill='%23f4a92b'/%3E%3Crect x='16.5' y='4.5' width='5' height='5' rx='1' fill='%23ef4fd5'/%3E%3Crect x='22.5' y='4.5' width='5' height='5' rx='1' fill='%2356dcae'/%3E%3Cg fill='%238ea8ff'%3E%3Crect x='4.5' y='10.5' width='5' height='5' rx='1'/%3E%3Crect x='10.5' y='10.5' width='5' height='5' rx='1' opacity='.75'/%3E%3Crect x='16.5' y='10.5' width='5' height='5' rx='1' opacity='.55'/%3E%3Crect x='22.5' y='10.5' width='5' height='5' rx='1' opacity='.35'/%3E%3C/g%3E%3Cg fill='%23ffc978'%3E%3Crect x='4.5' y='16.5' width='5' height='5' rx='1' opacity='.35'/%3E%3Crect x='10.5' y='16.5' width='5' height='5' rx='1' opacity='.55'/%3E%3Crect x='16.5' y='16.5' width='5' height='5' rx='1' opacity='.75'/%3E%3Crect x='22.5' y='16.5' width='5' height='5' rx='1'/%3E%3C/g%3E%3Cg fill='%23b996ff'%3E%3Crect x='4.5' y='22.5' width='5' height='5' rx='1'/%3E%3Crect x='10.5' y='22.5' width='5' height='5' rx='1' opacity='.7'/%3E%3Crect x='16.5' y='22.5' width='5' height='5' rx='1' opacity='.45'/%3E%3Crect x='22.5' y='22.5' width='5' height='5' rx='1' opacity='.3'/%3E%3C/g%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,100..900&family=JetBrains+Mono:wght@400;500;600;700&display=swap">
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #06090f;
+    --panel: #0b121b;
+    --panel-hi: #0f1823;
+    --inset: #070c13;
+    --rule: rgba(150, 180, 210, 0.12);
+    --rule-2: rgba(150, 180, 210, 0.22);
+    --text: #e8eef4;
+    --text-2: #a7b5c2;
+    --muted: #6d7d8c;
+    --emitter: #35e3f4;
+    --void: #f4a92b;
+    --anchor: #ef4fd5;
+    --readout: #56dcae;
+    --latent: #8ea8ff;
+    --flux: #ffc978;
+    --memory: #b996ff;
+    --warn: #ff6f86;
+    --pos: 255, 184, 77;
+    --neg: 72, 182, 255;
+    --field-max: min(760px, max(320px, calc(100vh - 150px)));
+    --ui: "Archivo", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+
+  * { box-sizing: border-box; }
+  html { background: var(--bg); }
+  body {
+    position: relative;
+    margin: 0;
+    min-height: 100vh;
+    background: radial-gradient(1100px 620px at 50% -8%, rgba(38, 92, 140, 0.22), transparent 70%), var(--bg);
+    color: var(--text);
+    font: 400 15px/1.55 var(--ui);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  /* A faint cell lattice behind the title, fading out down the page */
+  body::before {
+    content: "";
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 900px;
+    z-index: 0;
+    pointer-events: none;
+    background-image: radial-gradient(rgba(160, 196, 226, 0.09) 1px, transparent 1.4px);
+    background-size: 24px 24px;
+    -webkit-mask-image: radial-gradient(ellipse 75% 70% at 50% 0%, #000, transparent 80%);
+    mask-image: radial-gradient(ellipse 75% 70% at 50% 0%, #000, transparent 80%);
+  }
+
+  a { color: inherit; }
+  button, input, select { font: inherit; color: inherit; }
+  :focus-visible { outline: 2px solid var(--emitter); outline-offset: 2px; }
+  .sr-only {
+    position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+    overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+  }
+
+  /* ---------- top bar ---------- */
+  .topbar {
+    position: sticky; top: 0; z-index: 30;
+    background: rgba(6, 9, 15, 0.82);
+    -webkit-backdrop-filter: blur(14px) saturate(1.2);
+    backdrop-filter: blur(14px) saturate(1.2);
+    border-bottom: 1px solid var(--rule);
+  }
+  .topbar-inner {
+    max-width: 1440px; margin: 0 auto; min-height: 50px;
+    padding: 8px clamp(16px, 3vw, 36px);
+    display: flex; align-items: center; gap: 18px;
+  }
+  .crumb {
+    font: 500 12px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase;
+    color: var(--text-2); text-decoration: none; white-space: nowrap;
+  }
+  .crumb .c-grove { color: var(--muted); }
+  .crumb:hover, .crumb:hover .c-grove { color: var(--text); }
+  .status {
+    margin-left: auto; display: inline-flex; align-items: center; gap: 8px;
+    font: 500 11px/1 var(--mono); letter-spacing: .05em; color: var(--text-2); white-space: nowrap;
+  }
+  .status i { width: 7px; height: 7px; border-radius: 50%; background: var(--readout); box-shadow: 0 0 9px var(--readout); }
+  .status.bad { color: var(--warn); }
+  .status.bad i { background: var(--warn); box-shadow: 0 0 9px var(--warn); }
+  .meters { display: flex; gap: 16px; margin: 0; }
+  .meters div { display: flex; align-items: baseline; gap: 5px; }
+  .meters dt { order: 2; font: 500 10px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+  .meters dd { order: 1; margin: 0; font: 600 12.5px/1 var(--mono); font-variant-numeric: tabular-nums; color: var(--text); }
+  .status + .meters { margin-left: 0; }
+
+  /* ---------- buttons ---------- */
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+    min-height: 38px; padding: 8px 14px;
+    border: 1px solid var(--rule-2); border-radius: 10px;
+    background: rgba(255, 255, 255, 0.03); color: var(--text);
+    font: 600 13px/1.2 var(--ui); letter-spacing: .01em; text-decoration: none;
+    cursor: pointer; -webkit-user-select: none; user-select: none;
+    transition: background-color .15s, border-color .15s, color .15s;
+  }
+  .btn:hover { background: rgba(255, 255, 255, 0.07); border-color: rgba(150, 180, 210, 0.36); }
+  .btn svg { width: 14px; height: 14px; fill: currentColor; flex: none; }
+  .btn-primary { background: #e8f3fa; border-color: #e8f3fa; color: #06101a; }
+  .btn-primary:hover { background: #fff; border-color: #fff; }
+  .btn-ghost { min-height: 32px; padding: 6px 12px; font-size: 12.5px; }
+  .btn-row { width: 100%; justify-content: space-between; text-align: left; font-weight: 550; }
+  .btn-row .tag { font: 500 11px/1 var(--mono); color: var(--muted); }
+  .btn-warn { color: #ffd3da; border-color: rgba(255, 111, 134, 0.34); background: rgba(255, 111, 134, 0.07); }
+  .btn-warn:hover { background: rgba(255, 111, 134, 0.14); border-color: rgba(255, 111, 134, 0.56); }
+  .btn-warn .tag { color: rgba(255, 196, 206, 0.7); }
+
+  /* ---------- page + hero ---------- */
+  .page { position: relative; z-index: 1; max-width: 1440px; margin: 0 auto; padding: 0 clamp(16px, 3vw, 36px) 56px; }
+  .hero {
+    display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
+    gap: clamp(20px, 4vw, 64px); align-items: end;
+    padding: clamp(36px, 6vw, 72px) 0 clamp(28px, 3.5vw, 42px);
+  }
+  .eyebrow {
+    margin: 0 0 16px; font: 600 11px/1.3 var(--mono); letter-spacing: .2em;
+    text-transform: uppercase; color: var(--emitter);
+  }
+  h1 {
+    margin: 0; font-family: var(--ui); font-weight: 760; font-stretch: 118%;
+    font-size: clamp(36px, 5vw, 66px); line-height: .97; letter-spacing: -.028em;
+  }
+  h1 span { display: block; color: var(--text-2); font-weight: 360; }
+  .lede { margin: 0; max-width: 58ch; color: var(--text-2); font-size: clamp(15px, 1.2vw, 16.5px); line-height: 1.68; }
+  .lede strong { color: var(--text); font-weight: 600; }
+
+  /* ---------- workbench grid ---------- */
+  .bench {
+    display: grid; gap: 18px; align-items: start;
+    grid-template-columns: 284px minmax(0, 1fr) 312px;
+    grid-template-areas: "tools stage inspector";
+  }
+  .tools { grid-area: tools; }
+  .stage { grid-area: stage; }
+  .inspector { grid-area: inspector; }
+  .col { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+
+  .panel {
+    background: linear-gradient(180deg, var(--panel-hi), var(--panel) 140px);
+    border: 1px solid var(--rule); border-radius: 14px; padding: 16px 16px 17px;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.035), 0 24px 48px -34px rgba(0, 0, 0, 0.9);
+  }
+  .panel-head { display: flex; align-items: baseline; gap: 10px; margin: 0 0 13px; }
+  .panel-head .idx { font: 600 10.5px/1 var(--mono); color: var(--muted); }
+  .panel-head h2 { margin: 0; font: 680 12.5px/1.2 var(--ui); font-stretch: 112%; letter-spacing: .09em; text-transform: uppercase; }
+  .panel-head .aside { margin-left: auto; font: 500 11px/1.2 var(--mono); color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .panel-note { margin: 0 0 12px; color: var(--muted); font-size: 12.5px; line-height: 1.5; }
+  .panel-note:last-child { margin-bottom: 0; }
+
+  /* brushes */
+  .brushes { display: grid; gap: 6px; }
+  .brush {
+    --c: var(--text-2);
+    display: grid; grid-template-columns: 12px minmax(0, 1fr) auto; align-items: center; column-gap: 11px;
+    width: 100%; padding: 8px 11px;
+    border: 1px solid var(--rule); border-radius: 10px; background: rgba(255, 255, 255, 0.015);
+    text-align: left; cursor: pointer; -webkit-user-select: none; user-select: none;
+    transition: background-color .15s, border-color .15s;
+  }
+  .brush:hover { background: rgba(255, 255, 255, 0.045); border-color: var(--rule-2); }
+  .brush[aria-pressed="true"] {
+    border-color: color-mix(in srgb, var(--c) 58%, transparent);
+    background: color-mix(in srgb, var(--c) 12%, transparent);
+  }
+  .brush .sw { width: 12px; height: 12px; border-radius: 3px; background: var(--c); box-shadow: 0 0 10px color-mix(in srgb, var(--c) 50%, transparent); }
+  .brush .sw.hollow { background: transparent; border: 1.5px solid var(--c); box-shadow: none; }
+  .brush .nm { font: 600 13.5px/1.25 var(--ui); color: var(--text); }
+  .brush .nm small { display: block; margin-top: 1px; font-weight: 400; font-size: 11.5px; color: var(--muted); }
+  .brush .ch { font: 500 11px/1 var(--mono); color: var(--muted); }
+  .brush[aria-pressed="true"] .ch { color: var(--c); }
+
+  /* sliders */
+  .slider { margin-top: 14px; }
+  .slider:first-child { margin-top: 0; }
+  .slider-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; font-size: 13px; color: var(--text-2); }
+  .slider-head output { font: 600 12px/1 var(--mono); color: var(--text); font-variant-numeric: tabular-nums; }
+  input[type="range"] {
+    --fill: 50%;
+    -webkit-appearance: none; appearance: none; display: block;
+    width: 100%; height: 24px; margin: 4px 0 0; background: transparent; cursor: pointer;
+  }
+  input[type="range"]::-webkit-slider-runnable-track {
+    height: 4px; border-radius: 4px;
+    background: linear-gradient(90deg, var(--emitter) var(--fill), rgba(255, 255, 255, 0.1) var(--fill));
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none; width: 16px; height: 16px; margin-top: -6px; border-radius: 50%;
+    background: #eaf7ff; border: 3px solid #08121c;
+    box-shadow: 0 0 0 1px var(--emitter), 0 0 14px rgba(53, 227, 244, 0.5);
+  }
+  input[type="range"]::-moz-range-track { height: 4px; border-radius: 4px; background: rgba(255, 255, 255, 0.1); }
+  input[type="range"]::-moz-range-progress { height: 4px; border-radius: 4px; background: var(--emitter); }
+  input[type="range"]::-moz-range-thumb {
+    width: 10px; height: 10px; border-radius: 50%; background: #eaf7ff; border: 3px solid #08121c;
+    box-shadow: 0 0 0 1px var(--emitter), 0 0 14px rgba(53, 227, 244, 0.5);
+  }
+  input[type="range"]:focus-visible { outline: none; }
+  input[type="range"]:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 2px var(--text), 0 0 14px rgba(255, 255, 255, 0.4); }
+  input[type="range"]:focus-visible::-moz-range-thumb { box-shadow: 0 0 0 2px var(--text); }
+
+  .run-top { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px; }
+  .stack { display: grid; gap: 7px; }
+
+  /* ---------- stage ---------- */
+  .stage { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+  .stage-bar { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 10px; }
+  .seg {
+    display: inline-flex; flex-wrap: wrap; gap: 2px; padding: 3px;
+    border: 1px solid var(--rule); border-radius: 11px; background: rgba(4, 8, 13, 0.72);
+  }
+  .seg button {
+    border: 0; border-radius: 8px; padding: 7px 10px; background: transparent;
+    color: var(--text-2); font: 600 12.5px/1.1 var(--ui); white-space: nowrap; cursor: pointer;
+    transition: background-color .15s, color .15s;
+  }
+  .seg button.mono { font: 500 12px/1.1 var(--mono); }
+  .seg button:hover { color: var(--text); }
+  .seg button[aria-pressed="true"] { background: #182434; color: var(--text); box-shadow: inset 0 0 0 1px var(--rule-2); }
+
+  .viewport {
+    width: 100%; max-width: calc(var(--field-max) + 30px); margin: 0 auto;
+    display: grid; grid-template-columns: 30px minmax(0, 1fr); grid-template-rows: 22px auto auto;
+    grid-template-areas: ". ax" "ay field" ". cap";
+  }
+  .axis { position: relative; font: 500 10px/1 var(--mono); color: var(--muted); font-variant-numeric: tabular-nums; -webkit-user-select: none; user-select: none; }
+  .axis-x { grid-area: ax; }
+  .axis-y { grid-area: ay; }
+  .axis .t { position: absolute; background: rgba(150, 180, 210, 0.3); }
+  .axis .t.mj { background: rgba(170, 200, 228, 0.55); }
+  .axis-x .t { bottom: 4px; width: 1px; height: 4px; }
+  .axis-x .t.mj { height: 7px; }
+  .axis-x .l { position: absolute; bottom: 13px; transform: translateX(-50%); }
+  .axis-y .t { right: 4px; height: 1px; width: 4px; }
+  .axis-y .t.mj { width: 7px; }
+  .axis-y .l { position: absolute; right: 14px; transform: translateY(50%); }
+  .field {
+    grid-area: field; position: relative; border-radius: 4px; overflow: hidden; background: #0a1224;
+    box-shadow: 0 0 0 1px rgba(150, 180, 210, 0.3), 0 34px 90px -40px rgba(40, 150, 210, 0.45);
+  }
+  #ncaCanvas {
+    display: block; width: 100%; aspect-ratio: 1 / 1; image-rendering: pixelated; cursor: crosshair;
+    touch-action: none; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
+  }
+  .badge {
+    position: absolute; left: 10px; bottom: 10px; padding: 5px 9px; border-radius: 7px; pointer-events: none;
+    background: rgba(5, 9, 15, 0.72); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+    border: 1px solid var(--rule); font: 500 11px/1 var(--mono); color: var(--text-2);
+  }
+  .field-msg {
+    position: absolute; inset: 0; display: grid; place-items: center; padding: 28px; text-align: center;
+    background: rgba(6, 9, 15, 0.92); color: var(--text-2); font-size: 14.5px; line-height: 1.6;
+  }
+  .field-msg[hidden] { display: none; }
+  .caption {
+    grid-area: cap; display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center;
+    gap: 8px 18px; padding-top: 12px; font-size: 12px; color: var(--text-2);
+  }
+  .legend { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; min-height: 18px; }
+  .cbar {
+    width: 112px; height: 8px; border-radius: 4px; box-shadow: 0 0 0 1px var(--rule);
+    background: linear-gradient(90deg, rgb(10, 18, 36), rgb(13, 97, 140) 33%, rgb(15, 199, 163) 66%, rgb(250, 209, 56));
+  }
+  .key { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+  .key i { width: 9px; height: 9px; border-radius: 2px; background: var(--c); }
+  .key .m { font-family: var(--mono); font-size: 11.5px; }
+  .rule-name { font: 500 11.5px/1.2 var(--mono); color: var(--muted); }
+  .rule-name b { color: var(--text-2); font-weight: 600; }
+
+  .banks { list-style: none; margin: 4px 0 0; padding: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+  .bank { padding: 10px 11px 11px; border: 1px solid var(--rule); border-radius: 11px; background: rgba(255, 255, 255, 0.015); min-width: 0; }
+  .bank .lanes { display: grid; grid-template-columns: repeat(4, 1fr); gap: 3px; margin-bottom: 9px; }
+  .bank .lanes i { height: 4px; border-radius: 2px; background: var(--c); opacity: var(--o, 1); }
+  .bank .att { display: block; font: 500 10px/1.2 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+  .bank strong { display: block; margin-top: 3px; font: 600 13px/1.2 var(--mono); }
+  .bank .desc { display: block; margin-top: 3px; font-size: 12px; line-height: 1.35; color: var(--text-2); }
+
+  /* ---------- probe plate ---------- */
+  .plate { display: grid; grid-template-columns: 18px repeat(4, minmax(0, 1fr)); gap: 6px; align-items: center; }
+  .plate .ph { font: 500 10px/1 var(--mono); color: var(--muted); text-align: center; }
+  .well {
+    display: grid; justify-items: center; gap: 5px; padding: 7px 2px; min-width: 0;
+    border: 1px solid var(--rule); border-radius: 10px; background: var(--inset);
+  }
+  .well .id { font: 600 10.5px/1 var(--mono); color: var(--gc, var(--text-2)); }
+  .well .dot { width: 18px; height: 18px; border-radius: 50%; box-shadow: inset 0 0 0 1px var(--rule-2); }
+  .well .val { font: 500 10.5px/1 var(--mono); color: var(--text-2); font-variant-numeric: tabular-nums; }
+  .g-emitter { --gc: var(--emitter); }
+  .g-void { --gc: var(--void); }
+  .g-anchor { --gc: var(--anchor); }
+  .g-readout { --gc: var(--readout); }
+  .g-latent { --gc: var(--latent); }
+  .g-flux { --gc: var(--flux); }
+  .g-memory { --gc: var(--memory); }
+  .scale-key { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 11px 0 0; font-size: 11.5px; color: var(--muted); }
+  .scale-key i { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 6px; vertical-align: -1px; }
+  .scale-key .neg { background: rgb(var(--neg)); }
+  .scale-key .pos { background: rgb(var(--pos)); }
+
+  /* ---------- presets ---------- */
+  .presets { border: 0; margin: 0 0 12px; padding: 0; display: grid; gap: 6px; }
+  .preset {
+    position: relative; display: block; padding: 9px 12px 10px 36px; cursor: pointer;
+    border: 1px solid var(--rule); border-radius: 10px; transition: background-color .15s, border-color .15s;
+  }
+  .preset:hover { border-color: var(--rule-2); background: rgba(255, 255, 255, 0.03); }
+  .preset input {
+    position: absolute; left: 12px; top: 12px; width: 14px; height: 14px; margin: 0; cursor: pointer;
+    -webkit-appearance: none; appearance: none; border-radius: 50%; border: 1.5px solid rgba(150, 180, 210, 0.4); background: transparent;
+  }
+  .preset input:checked { border-color: var(--void); background: radial-gradient(circle, var(--void) 0 3px, transparent 3.5px); }
+  .preset input:focus-visible { outline: none; }
+  .preset:has(input:focus-visible) { outline: 2px solid var(--emitter); outline-offset: 2px; }
+  .preset:has(input:checked) { border-color: color-mix(in srgb, var(--void) 50%, transparent); background: color-mix(in srgb, var(--void) 8%, transparent); }
+  .preset .pn { display: block; font: 600 13.5px/1.25 var(--ui); }
+  .preset .pl { display: block; margin-top: 2px; font-size: 12px; color: var(--muted); }
+  .summary {
+    margin: 0 0 13px; padding: 11px 12px; border-radius: 10px; border: 1px solid var(--rule);
+    background: var(--inset); color: var(--text-2); font-size: 12.5px; line-height: 1.55;
+  }
+  .io { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .io label.btn:focus-within { outline: 2px solid var(--emitter); outline-offset: 2px; }
+  .micro { margin: 9px 0 0; font: 500 11px/1.4 var(--mono); color: var(--muted); }
+
+  /* ---------- weight texture ---------- */
+  .wmap { display: grid; grid-template-columns: 22px minmax(0, 1fr); grid-template-rows: auto auto; column-gap: 6px; row-gap: 5px; }
+  .wmap-cols { grid-column: 2; grid-row: 1; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); font: 500 9.5px/1 var(--mono); color: var(--muted); text-align: center; }
+  .wmap-cols span { margin: 0 1px; padding-bottom: 4px; border-bottom: 1px solid var(--rule-2); white-space: nowrap; overflow: hidden; }
+  /* contain: size keeps the labels from sizing the row; they stretch to the canvas height instead */
+  .wmap-rows {
+    grid-column: 1; grid-row: 2; contain: size; display: grid;
+    grid-template-rows: minmax(0, 16fr) minmax(0, 4fr) minmax(0, 1fr);
+    font: 600 10px/1 var(--mono); color: var(--text-2);
+  }
+  .wmap-rows span { min-height: 0; display: flex; align-items: center; justify-content: flex-end; padding-right: 5px; border-right: 1px solid var(--rule-2); }
+  .wmap-rows span + span { box-shadow: 0 -1px 0 var(--bg); }
+  #weightMinimapCanvas { grid-column: 2; grid-row: 2; display: block; width: 100%; aspect-ratio: 2 / 1; border-radius: 3px; background: #0b1520; cursor: crosshair; }
+  .wread { margin: 10px 0 0; min-height: 3em; font: 500 11.5px/1.5 var(--mono); color: var(--text-2); }
+  .wread b { color: var(--text); font-weight: 600; }
+
+  /* ---------- notes ---------- */
+  .notes { margin-top: clamp(52px, 7vw, 92px); padding-top: clamp(30px, 4vw, 46px); border-top: 1px solid var(--rule); }
+  .notes-head h2 { margin: 0; font: 720 clamp(27px, 3.3vw, 42px)/1.05 var(--ui); font-stretch: 115%; letter-spacing: -.02em; }
+  .pipeline { list-style: none; margin: 28px 0 38px; padding: 0; display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 12px; }
+  .pipeline li { position: relative; padding: 14px 14px 15px; border: 1px solid var(--rule); border-radius: 12px; background: linear-gradient(180deg, var(--panel-hi), var(--panel)); }
+  .pipeline li + li::before { content: ""; position: absolute; left: -13px; top: 50%; width: 13px; height: 1px; background: var(--rule-2); }
+  .pipeline b { display: block; font: 700 19px/1.1 var(--mono); letter-spacing: -.01em; }
+  .pipeline span { display: block; margin-top: 7px; font-size: 12.5px; line-height: 1.42; color: var(--text-2); }
+  .notes-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: clamp(20px, 2.6vw, 36px); }
+  .notes-grid h3 { margin: 0 0 8px; font: 650 15.5px/1.3 var(--ui); }
+  .notes-grid p { margin: 0 0 11px; font-size: 14px; line-height: 1.66; color: var(--text-2); }
+  .notes-grid p:last-child { margin-bottom: 0; }
+  .callout {
+    margin: 36px 0 0; padding: 18px 20px; border-radius: 14px;
+    border: 1px solid color-mix(in srgb, var(--void) 34%, transparent); background: color-mix(in srgb, var(--void) 6%, transparent);
+  }
+  .callout h3 { margin: 0 0 6px; font: 650 14.5px/1.3 var(--ui); color: #ffd99a; }
+  .callout p { margin: 0; max-width: 96ch; font-size: 14px; line-height: 1.66; color: var(--text-2); }
+  .sources { margin: 24px 0 0; max-width: 100ch; font-size: 13px; line-height: 1.6; color: var(--muted); }
+  .sources a { color: var(--text-2); text-underline-offset: 3px; text-decoration-color: var(--rule-2); }
+  .sources a:hover { color: var(--text); }
+  .foot {
+    margin-top: 40px; padding-top: 18px; border-top: 1px solid var(--rule);
+    display: flex; flex-wrap: wrap; justify-content: space-between; gap: 10px;
+    font: 500 11.5px/1.4 var(--mono); letter-spacing: .04em; color: var(--muted);
+  }
+  .foot a { color: var(--text-2); text-decoration: none; }
+  .foot a:hover { color: var(--text); }
+  .noscript { margin: 0 0 20px; padding: 14px 16px; border-radius: 10px; background: rgba(255, 111, 134, 0.12); color: #ffd3da; }
+
+  /* ---------- toast + dialog ---------- */
+  .toast {
+    position: fixed; left: 50%; bottom: 22px; z-index: 60; max-width: calc(100vw - 32px);
+    padding: 10px 16px; border-radius: 999px; border: 1px solid var(--rule-2);
+    background: rgba(12, 20, 30, 0.94); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
+    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.5); font: 500 13px/1.35 var(--ui); color: var(--text);
+    opacity: 0; transform: translate(-50%, 14px); pointer-events: none; transition: opacity .2s, transform .2s;
+  }
+  .toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+  dialog.shaders {
+    width: min(1000px, calc(100vw - 32px)); max-height: min(88vh, 940px); padding: 0;
+    border: 1px solid var(--rule-2); border-radius: 16px; background: #080d14; color: var(--text);
+    box-shadow: 0 40px 120px rgba(0, 0, 0, 0.65);
+  }
+  dialog.shaders[open] { display: flex; flex-direction: column; }
+  dialog.shaders::backdrop { background: rgba(3, 6, 10, 0.74); -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px); }
+  .dlg-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding: 18px 20px 14px; border-bottom: 1px solid var(--rule); }
+  .dlg-head h2 { margin: 0; font: 680 15px/1.3 var(--ui); font-stretch: 110%; }
+  .dlg-head p { margin: 4px 0 0; font-size: 13px; color: var(--muted); }
+  .dlg-tabs { margin: 12px 20px; align-self: flex-start; }
+  .code {
+    flex: 1; min-height: 0; margin: 0; padding: 14px 18px 22px 4px; overflow: auto;
+    background: #060a10; border-top: 1px solid var(--rule); counter-reset: ln;
+    font: 400 12px/1.62 var(--mono); color: #d3dfe8; white-space: pre; tab-size: 4;
+  }
+  .code .ln { display: block; min-height: 1.62em; }
+  .code .ln::before {
+    counter-increment: ln; content: counter(ln); display: inline-block; width: 4ch; margin-right: 2ch;
+    text-align: right; color: #33424f; -webkit-user-select: none; user-select: none;
+  }
+  .tk-com { color: #61778a; font-style: italic; }
+  .tk-pre { color: var(--anchor); }
+  .tk-kw { color: var(--latent); }
+  .tk-fn { color: var(--emitter); }
+  .tk-num { color: var(--flux); }
+  .tk-uni { color: var(--readout); }
+
+  /* ---------- responsive ---------- */
+  @media (max-width: 1240px) {
+    .bench { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-areas: "stage stage" "tools inspector"; }
+    .pipeline { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .pipeline li:nth-child(4)::before { display: none; }
+    .notes-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  }
+  @media (max-width: 900px) {
+    .status, .meters > .m-mem { display: none; }
+    .meters { margin-left: auto; }
+  }
+  @media (max-width: 760px) {
+    .hero { grid-template-columns: minmax(0, 1fr); align-items: start; gap: 18px; padding-top: 30px; }
+    .bench { grid-template-columns: minmax(0, 1fr); grid-template-areas: "stage" "tools" "inspector"; }
+    .banks { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .notes-grid { grid-template-columns: minmax(0, 1fr); }
+    .pipeline { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .pipeline li:nth-child(4)::before { display: block; }
+    .pipeline li:nth-child(odd)::before { display: none; }
+  }
+  @media (max-width: 560px) {
+    .viewport { max-width: none; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto auto; grid-template-areas: "field" "cap"; }
+    .axis { display: none; }
+    .topbar-inner { gap: 12px; }
+    .crumb .c-grove, .meters > .m-fps, .meters > .m-sps { display: none; }
+    .stage-bar .seg { width: 100%; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .dlg-head { padding: 14px 14px 12px; }
+    .dlg-tabs { margin: 10px 14px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { transition: none !important; }
+  }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="topbar-inner">
+    <a class="crumb" href="./">&larr; <span class="c-grove">The Grove /</span> Learn</a>
+    <span class="status" id="gpuStatusBadge"><i aria-hidden="true"></i><span id="gpuStatusText">WebGL2 &middot; 4 &times; RGBA16F targets</span></span>
+    <dl class="meters" aria-label="Live performance">
+      <div class="m-fps"><dt>fps</dt><dd id="telemetryFps">&mdash;</dd></div>
+      <div class="m-sps"><dt>steps/s</dt><dd id="telemetrySps">&mdash;</dd></div>
+      <div><dt>steps</dt><dd id="telemetryTotalSteps">0</dd></div>
+      <div class="m-mem"><dt>state</dt><dd id="telemetryVram">&mdash;</dd></div>
+    </dl>
+    <button class="btn btn-ghost" id="btnShowShaderModal" type="button">Shaders</button>
+  </div>
+</div>
+
+<div class="page">
+  <header class="hero">
+    <div>
+      <p class="eyebrow">Neural cellular automata &middot; WebGL2 workbench</p>
+      <h1>Sixteen channels, <span>one shader pass.</span></h1>
+    </div>
+    <p class="lede">Every cell on this grid carries sixteen numbers and runs the same small neural network. Each step it reads its 3&nbsp;&times;&nbsp;3 neighborhood through four filters, sends the 64 results through two dense layers, and adds the answer to its own state; the GPU writes all sixteen channels in a single pass. <strong>Paint emitters, voids and anchors, then scramble the hidden state and watch the pattern grow back.</strong></p>
+  </header>
+
+  <noscript><p class="noscript">This workbench needs JavaScript and WebGL2. The notes below still explain how it works.</p></noscript>
+
+  <main class="bench">
+    <!-- LEFT: brush, run controls, cell probe -->
+    <div class="col tools">
+      <section class="panel" aria-labelledby="h-brush">
+        <header class="panel-head"><span class="idx">01</span><h2 id="h-brush">Brush</h2><span class="aside">drag on the field</span></header>
+        <div class="brushes" role="group" aria-label="Brush">
+          <button class="brush" type="button" data-brush="obstacle" aria-pressed="true" style="--c: var(--void)">
+            <span class="sw" aria-hidden="true"></span><span class="nm">Void<small>blocks and drains the fields</small></span><span class="ch">c1</span>
+          </button>
+          <button class="brush" type="button" data-brush="source" aria-pressed="false" style="--c: var(--emitter)">
+            <span class="sw" aria-hidden="true"></span><span class="nm">Emitter<small>a load source</small></span><span class="ch">c0</span>
+          </button>
+          <button class="brush" type="button" data-brush="anchor" aria-pressed="false" style="--c: var(--anchor)">
+            <span class="sw" aria-hidden="true"></span><span class="nm">Anchor<small>a structural sink</small></span><span class="ch">c2</span>
+          </button>
+          <button class="brush" type="button" data-brush="damage" aria-pressed="false" style="--c: var(--warn)">
+            <span class="sw" aria-hidden="true"></span><span class="nm">Damage<small>wipes state, keeps the sensors</small></span><span class="ch">c3&ndash;c15</span>
+          </button>
+          <button class="brush" type="button" data-brush="erase" aria-pressed="false" style="--c: var(--text-2)">
+            <span class="sw hollow" aria-hidden="true"></span><span class="nm">Eraser<small>clears every channel</small></span><span class="ch">all</span>
+          </button>
+        </div>
+        <div class="slider" style="margin-top: 15px">
+          <div class="slider-head"><label for="sliderBrushRadius">Radius</label><output id="lblBrushRadius" for="sliderBrushRadius">10 cells</output></div>
+          <input id="sliderBrushRadius" type="range" min="2" max="32" step="1" value="10">
+        </div>
+      </section>
+
+      <section class="panel" aria-labelledby="h-run">
+        <header class="panel-head"><span class="idx">02</span><h2 id="h-run">Run</h2></header>
+        <div class="run-top">
+          <button class="btn btn-primary" id="btnTogglePause" type="button"></button>
+          <button class="btn" id="btnStepOnce" type="button"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 3.6v8.8c0 .5.5.8.9.5l6.6-4.4c.4-.3.4-.8 0-1L4.4 3.1c-.4-.3-.9 0-.9.5z"/><rect x="11.5" y="3" width="2" height="10" rx="1"/></svg><span>Step</span></button>
+        </div>
+        <div class="stack">
+          <button class="btn btn-row btn-warn" id="btnCorruptHidden" type="button"><span>Scramble 40% of cells</span><span class="tag">c3&ndash;c15</span></button>
+          <button class="btn btn-row" id="btnPunchObstacles" type="button"><span>Drop three random voids</span><span class="tag">c1</span></button>
+          <button class="btn btn-row" id="btnResetScene" type="button"><span>Reset the scene</span><span class="tag">seed</span></button>
+        </div>
+        <p class="panel-note" style="margin-top: 12px">The pattern is an attractor: it is set by the painted sensors, so scrambled state grows back. Lower <i>p</i> under Step shader to watch it heal slowly.</p>
+      </section>
+
+      <section class="panel" aria-labelledby="h-probe">
+        <header class="panel-head"><span class="idx">03</span><h2 id="h-probe">Cell probe</h2><span class="aside" id="probeCoords">x 128 &middot; y 128</span></header>
+        <p class="panel-note">Hover or touch the field to read all sixteen channels of one cell, laid out as the four textures that hold them.</p>
+        <div class="plate" id="channelProbeGrid"></div>
+        <p class="scale-key"><span><i class="neg"></i>negative</span><span><i class="pos"></i>positive</span><span>clamped to &plusmn;4</span></p>
+      </section>
+    </div>
+
+    <!-- CENTER: the field -->
+    <section class="stage" aria-label="Simulation">
+      <div class="stage-bar">
+        <div class="seg" role="group" aria-label="Display">
+          <button type="button" data-vis="0" aria-pressed="true">Composite</button>
+          <button type="button" data-vis="1" aria-pressed="false">Readout</button>
+          <button type="button" data-vis="2" aria-pressed="false" class="mono">c4&ndash;c6</button>
+          <button type="button" data-vis="3" aria-pressed="false" class="mono">c8&ndash;c10</button>
+          <button type="button" data-vis="4" aria-pressed="false" class="mono">c12&ndash;c14</button>
+          <button type="button" data-vis="5" aria-pressed="false">Sensors</button>
+        </div>
+        <div class="seg" role="group" aria-label="Grid size">
+          <button type="button" data-res="128" aria-pressed="false" class="mono">128&sup2;</button>
+          <button type="button" data-res="256" aria-pressed="true" class="mono">256&sup2;</button>
+          <button type="button" data-res="512" aria-pressed="false" class="mono">512&sup2;</button>
+        </div>
+      </div>
+
+      <figure class="viewport" style="margin-block: 0">
+        <div class="axis axis-x" id="axisX" aria-hidden="true"></div>
+        <div class="axis axis-y" id="axisY" aria-hidden="true"></div>
+        <div class="field">
+          <canvas id="ncaCanvas" role="img" aria-label="The simulation field. Drag to paint with the selected brush."></canvas>
+          <div class="badge" id="canvasCursorBadge" aria-hidden="true">Void &middot; r 10</div>
+          <div class="field-msg" id="fieldMsg" role="alert" hidden></div>
+        </div>
+        <figcaption class="caption">
+          <div class="legend" id="legend"></div>
+          <div class="rule-name">Rule &middot; <b id="hudPresetDescription">Flux halos</b></div>
+        </figcaption>
+      </figure>
+
+      <ol class="banks" aria-label="Where the sixteen channels live">
+        <li class="bank">
+          <span class="lanes" aria-hidden="true"><i style="--c: var(--emitter)"></i><i style="--c: var(--void)"></i><i style="--c: var(--anchor)"></i><i style="--c: var(--readout)"></i></span>
+          <span class="att">Attachment 0</span><strong>c0&ndash;c3</strong><span class="desc">emitter, void, anchor, readout</span>
+        </li>
+        <li class="bank">
+          <span class="lanes" aria-hidden="true"><i style="--c: var(--latent)"></i><i style="--c: var(--latent); --o: .75"></i><i style="--c: var(--latent); --o: .55"></i><i style="--c: var(--latent); --o: .35"></i></span>
+          <span class="att">Attachment 1</span><strong>c4&ndash;c7</strong><span class="desc">potentials and shells</span>
+        </li>
+        <li class="bank">
+          <span class="lanes" aria-hidden="true"><i style="--c: var(--flux)"></i><i style="--c: var(--flux); --o: .75"></i><i style="--c: var(--flux); --o: .55"></i><i style="--c: var(--flux); --o: .35"></i></span>
+          <span class="att">Attachment 2</span><strong>c8&ndash;c11</strong><span class="desc">gradients and flux</span>
+        </li>
+        <li class="bank">
+          <span class="lanes" aria-hidden="true"><i style="--c: var(--memory)"></i><i style="--c: var(--memory); --o: .75"></i><i style="--c: var(--memory); --o: .55"></i><i style="--c: var(--memory); --o: .35"></i></span>
+          <span class="att">Attachment 3</span><strong>c12&ndash;c15</strong><span class="desc">memory and inhibitors</span>
+        </li>
+      </ol>
+    </section>
+
+    <!-- RIGHT: rule, step shader, weight texture -->
+    <div class="col inspector">
+      <section class="panel" aria-labelledby="h-rule">
+        <header class="panel-head"><span class="idx">04</span><h2 id="h-rule">Rule</h2><span class="aside">64 &times; 21 weights</span></header>
+        <fieldset class="presets">
+          <legend class="sr-only">Weight preset</legend>
+          <label class="preset"><input type="radio" name="preset" value="flux_router" checked><span class="pn">Flux halos</span><span class="pl">Potentials and flux around each pad</span></label>
+          <label class="preset"><input type="radio" name="preset" value="med_segmenter"><span class="pn">Boundary rings</span><span class="pl">Edge detectors trace every shape</span></label>
+          <label class="preset"><input type="radio" name="preset" value="metamaterial_truss"><span class="pn">Activator&ndash;inhibitor</span><span class="pl">A self-exciting field held in check</span></label>
+        </fieldset>
+        <p class="summary" id="presetTechSummary"></p>
+        <div class="io">
+          <label class="btn"><input id="inputBinFile" class="sr-only" type="file" accept=".bin,application/octet-stream">Load .bin</label>
+          <button class="btn" id="btnExportBin" type="button">Export .bin</button>
+        </div>
+        <p class="micro">Raw float32 texture &middot; exactly 21,504 bytes</p>
+      </section>
+
+      <section class="panel" aria-labelledby="h-step">
+        <header class="panel-head"><span class="idx">05</span><h2 id="h-step">Step shader</h2></header>
+        <div class="slider">
+          <div class="slider-head"><label for="sliderStepsPerFrame">Steps per frame</label><output id="lblStepsPerFrame" for="sliderStepsPerFrame">4</output></div>
+          <input id="sliderStepsPerFrame" type="range" min="1" max="12" step="1" value="4">
+        </div>
+        <div class="slider">
+          <div class="slider-head"><label for="sliderUpdateProb">Update probability <i>p</i></label><output id="lblUpdateProb" for="sliderUpdateProb">0.60</output></div>
+          <input id="sliderUpdateProb" type="range" min="0.10" max="1.00" step="0.05" value="0.60">
+        </div>
+        <p class="panel-note" style="margin-top: 10px">Each step, a hash of the cell&rsquo;s position and the step count decides whether it updates; the rest keep their state and skip the neighborhood reads entirely.</p>
+      </section>
+
+      <section class="panel" aria-labelledby="h-weights">
+        <header class="panel-head"><span class="idx">06</span><h2 id="h-weights">Weight texture</h2><span class="aside" id="weightNonzero"></span></header>
+        <div class="wmap">
+          <div class="wmap-cols" aria-hidden="true"><span>identity</span><span>Sobel x</span><span>Sobel y</span><span>Laplacian</span></div>
+          <div class="wmap-rows" aria-hidden="true"><span>W1</span><span>W2</span><span>b</span></div>
+          <canvas id="weightMinimapCanvas" role="img" aria-label="The 64 by 21 weight texture, one square per weight. Hover to read one."></canvas>
+        </div>
+        <p class="wread" id="weightReadout" aria-live="polite">Each texel is drawn as four squares (r g / b a). Hover or tap one to see what it connects.</p>
+        <p class="scale-key"><span><i class="neg"></i>negative</span><span><i class="pos"></i>positive</span><span>dark = 0</span></p>
+      </section>
+    </div>
+  </main>
+
+  <section class="notes" aria-labelledby="how-title">
+    <div class="notes-head">
+      <p class="eyebrow">How it works</p>
+      <h2 id="how-title">One update, start to finish</h2>
+    </div>
+
+    <ol class="pipeline" aria-label="The steps of one update">
+      <li><b>3 &times; 3</b><span>neighborhood, sixteen channels per cell</span></li>
+      <li><b>&times; 4</b><span>filters: identity, Sobel x, Sobel y, Laplacian</span></li>
+      <li><b>64</b><span>perception inputs per cell</span></li>
+      <li><b>64</b><span>hidden units, ReLU</span></li>
+      <li><b>16</b><span>deltas, with c0&ndash;c2 held at zero</span></li>
+      <li><b>s + &Delta;</b><span>added to the state, clamped to &plusmn;4</span></li>
+    </ol>
+
+    <div class="notes-grid">
+      <article>
+        <h3>Sixteen channels in four textures</h3>
+        <p>The state lives in four RGBA16F textures of four channels each. One fragment-shader pass reads all four and writes four render targets at once (WebGL2&rsquo;s multiple render targets), so every channel updates together. Two copies take turns: one is read while the other is written.</p>
+        <p>c0&ndash;c2 are the inputs you paint. The network reads them but can never change them. c3 is the readout, shown as &sigma;(2&middot;c3), and c4&ndash;c15 are hidden working memory.</p>
+      </article>
+      <article>
+        <h3>What a cell sees</h3>
+        <p>Every channel passes through four 3&nbsp;&times;&nbsp;3 filters: identity, Sobel x and Sobel y (scaled by &frac18;) and a Laplacian (scaled by 1/16). The grid wraps at its edges, so every cell has eight neighbors. Sixteen channels times four filters gives 64 numbers per cell: the perception step of Growing Neural Cellular Automata with a Laplacian added.</p>
+      </article>
+      <article>
+        <h3>A network in every cell</h3>
+        <p>A dense layer maps the 64 inputs to 64 ReLU units, and a second maps those to 16 deltas: 5,120 multiply-adds per cell per step. The shader computes four hidden units at a time and folds each group straight into the output, so the hidden layer is never stored. A random gate updates each cell with probability <i>p</i>, so cells don&rsquo;t move in lockstep.</p>
+      </article>
+      <article>
+        <h3>Weights in a 64 &times; 21 texture</h3>
+        <p>All 5,376 parameters sit in one RGBA32F texture. Rows 0&ndash;15 hold W1 (a row per four hidden units, a column per input), rows 16&ndash;19 hold W2 (a row per four output channels, a column per hidden unit), and row 20 holds the biases: b1 in columns 0&ndash;15, b2 in 16&ndash;19. Inputs run filter by filter: 0&ndash;15 identity, 16&ndash;31 Sobel x, 32&ndash;47 Sobel y, 48&ndash;63 Laplacian.</p>
+        <p>A .bin file is that texture as raw little-endian float32, row 0 first and RGBA within each texel.</p>
+      </article>
+    </div>
+
+    <aside class="callout">
+      <h3>About the three presets</h3>
+      <p>They are wired by hand, not trained. Each linear term uses a pair of ReLU units, one passing +x and one passing &minus;x, so the hidden layer works like a patch bay of relays; hover the weight map to trace any of them. Every preset settles onto a fixed pattern decided by the painted sensors, which is why scrambled state grows back within a few hundred steps. To try trained weights, export a .bin to see the layout, then load your own.</p>
+    </aside>
+
+    <p class="sources">Background: <a href="https://distill.pub/2020/growing-ca/">Growing Neural Cellular Automata</a> (Mordvintsev, Randazzo, Niklasson and Levin, Distill, 2020) introduced the Sobel perception, residual update and random per-cell updates used here. Everything runs on your GPU; nothing is uploaded.</p>
+  </section>
+
+  <footer class="foot">
+    <a href="./">&larr; Back to Learn</a>
+    <span>Part of The Grove</span>
+  </footer>
+</div>
+
+<div class="toast" id="statusToast" role="status" aria-live="polite"></div>
+
+<dialog class="shaders" id="shaderModal" aria-labelledby="shaderTitle">
+  <div class="dlg-head">
+    <div>
+      <h2 id="shaderTitle">GLSL ES 3.00 shaders</h2>
+      <p>Each pass draws one full-screen triangle. The step and brush passes write all four state textures at once.</p>
+    </div>
+    <button class="btn btn-ghost" id="btnCloseShaderModal" type="button">Close</button>
+  </div>
+  <div class="seg dlg-tabs" role="group" aria-label="Shader">
+    <button type="button" data-src="step" aria-pressed="true">Step</button>
+    <button type="button" data-src="brush" aria-pressed="false">Brush</button>
+    <button type="button" data-src="display" aria-pressed="false">Display</button>
+  </div>
+  <pre class="code" id="shaderSourcePreview" tabindex="0"></pre>
+</dialog>
+
+<script>
+  "use strict";
+
+  // =========================================================================
+  // 1. GLSL 300 ES SHADER SOURCES
+  // =========================================================================
+
+  // Shared Fullscreen Triangle Vertex Shader (No VBO needed; uses gl_VertexID)
+  const FULLSCREEN_VERT_SHADER = `#version 300 es
+precision highp float;
+out vec2 v_uv;
+void main() {
+    float x = float((gl_VertexID & 1) << 2);
+    float y = float((gl_VertexID & 2) << 1);
+    v_uv = vec2(x * 0.5, y * 0.5);
+    gl_Position = vec4(x - 1.0, y - 1.0, 0.0, 1.0);
+}
+`;
+
+  // Core 16-Channel MRT NCA Step Fragment Shader (Exact 64x21 ACCUM_VEC4 Layout)
+  const NCA_STEP_FRAG_SHADER = `#version 300 es
+precision highp float;
+precision highp int;
+
+// 4 RGBA16F textures holding the 16 state channels
+uniform sampler2D u_state0; // Channels 0..3  (c0..c2 = Pinned Sensors, c3 = Readout)
+uniform sampler2D u_state1; // Channels 4..7  (Latent Potential / Shell Fields)
+uniform sampler2D u_state2; // Channels 8..11 (Directional Sobel Flux Vectors)
+uniform sampler2D u_state3; // Channels 12..15 (Harmonic & Inhibitor Memory)
+
+// 64x21 RGBA32F packed weight texture
+uniform sampler2D u_weights;
+
+uniform ivec2 u_gridSize;
+uniform uint u_stepCount;
+uniform float u_updateProb;
+
+// MRT outputs: updates all 16 channels simultaneously in one fullscreen pass
+layout(location = 0) out vec4 out_state0;
+layout(location = 1) out vec4 out_state1;
+layout(location = 2) out vec4 out_state2;
+layout(location = 3) out vec4 out_state3;
+
+// Stateless PCG hash for per-cell stochastic update gate
+float hash13(uvec3 p) {
+    uvec3 v = p * 1664525u + 1013904223u;
+    v.x += v.y * v.z; v.y += v.z * v.x; v.z += v.x * v.y;
+    v ^= v >> 16u;
+    v.x += v.y * v.z; v.y += v.z * v.x; v.z += v.x * v.y;
+    return float(v.x) / 4294967295.0;
+}
+
+// Fused SIMD vec4 Multiply-Accumulate macro reading 4 columns from u_weights
+#define ACCUM_VEC4(acc, inpVec4, baseCol, weightRow) \\
+    acc += texelFetch(u_weights, ivec2((baseCol) + 0, (weightRow)), 0) * (inpVec4).x; \\
+    acc += texelFetch(u_weights, ivec2((baseCol) + 1, (weightRow)), 0) * (inpVec4).y; \\
+    acc += texelFetch(u_weights, ivec2((baseCol) + 2, (weightRow)), 0) * (inpVec4).z; \\
+    acc += texelFetch(u_weights, ivec2((baseCol) + 3, (weightRow)), 0) * (inpVec4).w;
+
+void main() {
+    ivec2 coord = ivec2(gl_FragCoord.xy);
+
+    // 1. Read center cell state (16 channels = 4 vec4s)
+    vec4 s0 = texelFetch(u_state0, coord, 0);
+    vec4 s1 = texelFetch(u_state1, coord, 0);
+    vec4 s2 = texelFetch(u_state2, coord, 0);
+    vec4 s3 = texelFetch(u_state3, coord, 0);
+
+    // Early-out stochastic gate before 3x3 neighbor fetches and 5,120 MACs
+    float randVal = hash13(uvec3(uint(coord.x), uint(coord.y), u_stepCount));
+    if (randVal > u_updateProb) {
+        out_state0 = s0;
+        out_state1 = s1;
+        out_state2 = s2;
+        out_state3 = s3;
+        return;
+    }
+
+    // 2. Compute 3x3 Depthwise Perception (Filter-Major, Channel-Minor):
+    // z[0..3]   = Identity   (inIdx 0..15)
+    // z[4..7]   = Sobel X    (inIdx 16..31)
+    // z[8..11]  = Sobel Y    (inIdx 32..47)
+    // z[12..15] = Laplacian  (inIdx 48..63)
+    vec4 z[16];
+    z[0] = s0; z[1] = s1; z[2] = s2; z[3] = s3;
+    for (int i = 4; i < 16; ++i) {
+        z[i] = vec4(0.0);
+    }
+
+    // 3x3 kernel weights packed as vec3(sobelX, sobelY, laplacian)
+    const vec3 k[9] = vec3[9](
+        vec3(-1.0, -1.0,  1.0), vec3(0.0, -2.0,  2.0), vec3(1.0, -1.0,  1.0),
+        vec3(-2.0,  0.0,  2.0), vec3(0.0,  0.0, -12.0), vec3(2.0,  0.0,  2.0),
+        vec3(-1.0,  1.0,  1.0), vec3(0.0,  2.0,  2.0), vec3(1.0,  1.0,  1.0)
+    );
+
+    int idx = 0;
+    for (int dy = -1; dy <= 1; ++dy) {
+        for (int dx = -1; dx <= 1; ++dx) {
+            ivec2 p = (coord + ivec2(dx, dy) + u_gridSize) % u_gridSize;
+            vec3 kw = k[idx++];
+
+            vec4 n0 = (dx == 0 && dy == 0) ? s0 : texelFetch(u_state0, p, 0);
+            vec4 n1 = (dx == 0 && dy == 0) ? s1 : texelFetch(u_state1, p, 0);
+            vec4 n2 = (dx == 0 && dy == 0) ? s2 : texelFetch(u_state2, p, 0);
+            vec4 n3 = (dx == 0 && dy == 0) ? s3 : texelFetch(u_state3, p, 0);
+
+            // Sobel X
+            z[4] += n0 * kw.x; z[5] += n1 * kw.x; z[6] += n2 * kw.x; z[7] += n3 * kw.x;
+            // Sobel Y
+            z[8] += n0 * kw.y; z[9] += n1 * kw.y; z[10] += n2 * kw.y; z[11] += n3 * kw.y;
+            // Laplacian
+            z[12] += n0 * kw.z; z[13] += n1 * kw.z; z[14] += n2 * kw.z; z[15] += n3 * kw.z;
+        }
+    }
+
+    for (int c = 0; c < 4; ++c) {
+        z[4 + c]  *= 0.125;  // Normalize Sobel X by 1/8
+        z[8 + c]  *= 0.125;  // Normalize Sobel Y by 1/8
+        z[12 + c] *= 0.0625; // Normalize Laplacian by 1/16
+    }
+
+    // 3. Fused Layer 1 (64 -> 64 + ReLU) and Layer 2 (64 -> 16)
+    // Initializes output delta registers with Layer 2 biases b2 (Row 20, Cols 16..19)
+    vec4 ds0 = texelFetch(u_weights, ivec2(16, 20), 0);
+    vec4 ds1 = texelFetch(u_weights, ivec2(17, 20), 0);
+    vec4 ds2 = texelFetch(u_weights, ivec2(18, 20), 0);
+    vec4 ds3 = texelFetch(u_weights, ivec2(19, 20), 0);
+
+    for (int h = 0; h < 16; ++h) {
+        // Initialize hidden vec4 chunk h with Layer 1 bias b1[h] (Row 20, Col h)
+        vec4 hVec = texelFetch(u_weights, ivec2(h, 20), 0);
+
+        // Project all 64 perception channels (16 vec4s) into hVec (Row h)
+        for (int p = 0; p < 16; ++p) {
+            int col = p * 4;
+            ACCUM_VEC4(hVec, z[p], col, h)
+        }
+
+        // ReLU activation
+        hVec = max(hVec, vec4(0.0));
+
+        // Immediately accumulate active hidden chunk h into ds0..ds3 (Rows 16..19)
+        int hCol = h * 4;
+        ACCUM_VEC4(ds0, hVec, hCol, 16)
+        ACCUM_VEC4(ds1, hVec, hCol, 17)
+        ACCUM_VEC4(ds2, hVec, hCol, 18)
+        ACCUM_VEC4(ds3, hVec, hCol, 19)
+    }
+
+    // 4. Enforce read-only pinning on c0, c1, c2 (u_state0.rgb) and clamp to [-4.0, 4.0]
+    ds0.rgb = vec3(0.0);
+
+    out_state0 = clamp(s0 + ds0, -4.0, 4.0);
+    out_state1 = clamp(s1 + ds1, -4.0, 4.0);
+    out_state2 = clamp(s2 + ds2, -4.0, 4.0);
+    out_state3 = clamp(s3 + ds3, -4.0, 4.0);
+}
+`;
+
+  // GPU Interactive Brush & Scene Perturbation Shader (Writes to all 4 MRT attachments)
+  const BRUSH_MRT_FRAG_SHADER = `#version 300 es
+precision highp float;
+precision highp int;
+
+uniform sampler2D u_state0;
+uniform sampler2D u_state1;
+uniform sampler2D u_state2;
+uniform sampler2D u_state3;
+
+uniform ivec2 u_brushPos;
+uniform float u_brushRadius;
+uniform int u_brushMode;
+// 0 = Paint Obstacle (c1)
+// 1 = Paint Load Source (c0)
+// 2 = Paint Anchor Sink (c2)
+// 3 = Inject State Damage (Zero c3..c15 inside radius, preserve c0..c2)
+// 4 = Eraser (Clear all c0..c15 inside radius)
+// 5 = Global Hidden State Corruption (40% random scramble of c3..c15 across grid)
+uniform uint u_seed;
+
+layout(location = 0) out vec4 out_state0;
+layout(location = 1) out vec4 out_state1;
+layout(location = 2) out vec4 out_state2;
+layout(location = 3) out vec4 out_state3;
+
+float hash13(uvec3 p) {
+    uvec3 v = p * 1664525u + 1013904223u;
+    v.x += v.y * v.z; v.y += v.z * v.x; v.z += v.x * v.y;
+    v ^= v >> 16u;
+    v.x += v.y * v.z; v.y += v.z * v.x; v.z += v.x * v.y;
+    return float(v.x) / 4294967295.0;
+}
+
+void main() {
+    ivec2 coord = ivec2(gl_FragCoord.xy);
+    vec4 s0 = texelFetch(u_state0, coord, 0);
+    vec4 s1 = texelFetch(u_state1, coord, 0);
+    vec4 s2 = texelFetch(u_state2, coord, 0);
+    vec4 s3 = texelFetch(u_state3, coord, 0);
+
+    if (u_brushMode == 5) {
+        // Global 40% Hidden State Corruption & Noise Injection
+        float r = hash13(uvec3(uint(coord.x), uint(coord.y), u_seed));
+        if (r < 0.40) {
+            float noise = (hash13(uvec3(uint(coord.y), uint(coord.x), u_seed + 77u)) - 0.5) * 3.0;
+            s0.a = noise;
+            s1 = vec4(noise * 0.5, -noise * 0.5, 0.0, 0.0);
+            s2 = vec4(0.0);
+            s3 = vec4(0.0);
+        }
+        out_state0 = s0; out_state1 = s1; out_state2 = s2; out_state3 = s3;
+        return;
+    }
+
+    float dist = length(vec2(coord - u_brushPos));
+    if (dist <= u_brushRadius) {
+        if (u_brushMode == 0) {
+            // Paint Solid Obstacle / Void (c1 = 1.0, clear c0 & c2)
+            s0.r = 0.0;
+            s0.g = 1.0;
+            s0.b = 0.0;
+        } else if (u_brushMode == 1) {
+            // Paint Load Emitter Source (c0 = 1.0, clear c1 & c2)
+            s0.r = 1.0;
+            s0.g = 0.0;
+            s0.b = 0.0;
+        } else if (u_brushMode == 2) {
+            // Paint Structural Anchor Sink (c2 = 1.0, clear c0 & c1)
+            s0.r = 0.0;
+            s0.g = 0.0;
+            s0.b = 1.0;
+        } else if (u_brushMode == 3) {
+            // Inject State Damage: Wipe readout c3 and hidden channels c4..c15, keep c0..c2 intact!
+            s0.a = -1.5;
+            s1 = vec4(0.0);
+            s2 = vec4(0.0);
+            s3 = vec4(0.0);
+        } else if (u_brushMode == 4) {
+            // Eraser: Clear all 16 channels
+            s0 = vec4(0.0);
+            s1 = vec4(0.0);
+            s2 = vec4(0.0);
+            s3 = vec4(0.0);
+        }
+    }
+
+    out_state0 = s0;
+    out_state1 = s1;
+    out_state2 = s2;
+    out_state3 = s3;
+}
+`;
+
+  // Multi-Mode Technical Visualization Shader
+  const DISPLAY_FRAG_SHADER = `#version 300 es
+precision highp float;
+
+in vec2 v_uv;
+uniform sampler2D u_state0;
+uniform sampler2D u_state1;
+uniform sampler2D u_state2;
+uniform sampler2D u_state3;
+uniform ivec2 u_gridSize;
+uniform int u_visMode;
+uniform vec2 u_hoverPos;    // brush centre in grid units; negative hides the cursor
+uniform float u_brushRadius;
+uniform float u_gridPerPx;  // grid cells per CSS pixel, for a constant-width cursor
+
+out vec4 fragColor;
+
+// Viridis/Inferno-inspired technical colormap for scalar probability in [0, 1]
+vec3 heatmapColor(float t) {
+    t = clamp(t, 0.0, 1.0);
+    vec3 c0 = vec3(0.04, 0.07, 0.14);
+    vec3 c1 = vec3(0.05, 0.38, 0.55);
+    vec3 c2 = vec3(0.06, 0.78, 0.64);
+    vec3 c3 = vec3(0.98, 0.82, 0.22);
+    if (t < 0.33) return mix(c0, c1, t * 3.0);
+    if (t < 0.66) return mix(c1, c2, (t - 0.33) * 3.0);
+    return mix(c2, c3, (t - 0.66) * 3.0);
+}
+
+void main() {
+    ivec2 coord = clamp(ivec2(v_uv * vec2(u_gridSize)), ivec2(0), u_gridSize - 1);
+
+    vec4 s0 = texelFetch(u_state0, coord, 0);
+    vec4 s1 = texelFetch(u_state1, coord, 0);
+    vec4 s2 = texelFetch(u_state2, coord, 0);
+    vec4 s3 = texelFetch(u_state3, coord, 0);
+
+    float c0_source   = clamp(s0.r, 0.0, 1.0);
+    float c1_obstacle = clamp(s0.g, 0.0, 1.0);
+    float c2_anchor   = clamp(s0.b, 0.0, 1.0);
+    float c3_logit    = s0.a;
+    float prob        = 1.0 / (1.0 + exp(-2.0 * c3_logit));
+
+    vec3 col = vec3(0.04, 0.06, 0.11);
+
+    if (u_visMode == 0) {
+        // 1. Composite Readout: Converged Field + Pinned Sensor Overlays
+        vec3 fieldCol = heatmapColor(prob);
+        // Subtle contour lines on probability field
+        float contour = smoothstep(0.04, 0.0, abs(fract(prob * 8.0) - 0.5));
+        fieldCol += vec3(0.06, 0.12, 0.15) * contour * smoothstep(0.15, 0.85, prob);
+
+        col = fieldCol;
+
+        // Render Void Obstacle (c1) with dark slate hatched interior and amber rim
+        if (c1_obstacle > 0.1) {
+            float stripe = step(0.5, fract(( float(coord.x + coord.y) ) * 0.25));
+            vec3 obsCol = mix(vec3(0.12, 0.14, 0.19), vec3(0.22, 0.18, 0.10), stripe);
+            col = mix(col, obsCol, c1_obstacle * 0.92);
+        }
+        // Render Emitter Source (c0) in bright electric cyan
+        if (c0_source > 0.05) {
+            col = mix(col, vec3(0.10, 0.92, 1.00), c0_source * 0.9);
+        }
+        // Render Anchor Sink (c2) in vivid magenta/fuchsia
+        if (c2_anchor > 0.05) {
+            col = mix(col, vec3(0.95, 0.25, 0.85), c2_anchor * 0.9);
+        }
+    } else if (u_visMode == 1) {
+        // 2. Readout Probability Only (Sigmoid(2.0 * c3))
+        col = heatmapColor(prob);
+    } else if (u_visMode == 2) {
+        // 3. Hidden Channels c4..c6 (Latent Potential & Distance Shells)
+        col = vec3(0.5) + 0.35 * s1.rgb;
+        col = clamp(col, 0.0, 1.0);
+    } else if (u_visMode == 3) {
+        // 4. Hidden Channels c8..c10 (Sobel Flux Vectors)
+        col = vec3(0.5) + 0.45 * s2.rgb;
+        col = clamp(col, 0.0, 1.0);
+    } else if (u_visMode == 4) {
+        // 5. Hidden Channels c12..c14 (Harmonic & Inhibitor Memory)
+        col = vec3(0.5) + 0.40 * s3.rgb;
+        col = clamp(col, 0.0, 1.0);
+    } else if (u_visMode == 5) {
+        // 6. Raw Pinned Sensors (c0, c1, c2)
+        col = vec3(0.05, 0.08, 0.14);
+        col += c0_source   * vec3(0.05, 0.88, 1.00);
+        col += c1_obstacle * vec3(0.96, 0.65, 0.10);
+        col += c2_anchor   * vec3(0.92, 0.22, 0.82);
+    }
+
+    // Brush cursor: a thin white ring with a dark halo, drawn at screen resolution
+    if (u_hoverPos.x >= 0.0) {
+        vec2 gp = v_uv * vec2(u_gridSize);
+        float e = abs(length(gp - u_hoverPos) - u_brushRadius) / u_gridPerPx;
+        float halo = 1.0 - smoothstep(1.4, 3.0, e);
+        float ring = 1.0 - smoothstep(0.35, 1.15, e);
+        col = mix(col, vec3(0.01, 0.02, 0.04), halo * 0.5);
+        col = mix(col, vec3(1.0), ring * 0.92);
+    }
+
+    fragColor = vec4(col, 1.0);
+}
+`;
+
+  // =========================================================================
+  // 2. DETERMINISTIC 64x21 RGBA32F WEIGHT COMPILER HELPERS
+  // =========================================================================
+
+  /**
+   * Sets a single scalar weight in the 64x21 RGBA32F texture buffer.
+   * - layer === 1 (W1): outIdx in [0..63] (hidden unit), inIdx in [0..63] (perception input)
+   *   Perception inputs:
+   *     0..15  = Identity (c0..c15)
+   *     16..31 = Sobel X  (c0..c15)
+   *     32..47 = Sobel Y  (c0..c15)
+   *     48..63 = Laplacian(c0..c15)
+   * - layer === 2 (W2): outIdx in [0..15] (state channel delta), inIdx in [0..63] (hidden unit)
+   */
+  function setWeight(texFloat32, layer, outIdx, inIdx, val) {
+    if (layer === 1) {
+      const row = Math.floor(outIdx / 4); // 0..15
+      const lane = outIdx % 4;            // 0..3
+      const col = inIdx;                  // 0..63
+      texFloat32[(row * 64 + col) * 4 + lane] = val;
+    } else if (layer === 2) {
+      // Enforce pinned sensor rule: never write non-zero weights to c0, c1, c2
+      if (outIdx < 3) return;
+      const row = 16 + Math.floor(outIdx / 4); // 16..19
+      const lane = outIdx % 4;                 // 0..3
+      const col = inIdx;                       // 0..63
+      texFloat32[(row * 64 + col) * 4 + lane] = val;
+    }
+  }
+
+  /**
+   * Sets a single scalar bias in Row 20 of the 64x21 RGBA32F texture buffer.
+   * - layer === 1 (b1): outIdx in [0..63] -> Row 20, Cols 0..15
+   * - layer === 2 (b2): outIdx in [0..15] -> Row 20, Cols 16..19
+   */
+  function setBias(texFloat32, layer, outIdx, val) {
+    const row = 20;
+    if (layer === 1) {
+      const col = Math.floor(outIdx / 4); // 0..15
+      const lane = outIdx % 4;            // 0..3
+      texFloat32[(row * 64 + col) * 4 + lane] = val;
+    } else if (layer === 2) {
+      if (outIdx < 3) return;
+      const col = 16 + Math.floor(outIdx / 4); // 16..19
+      const lane = outIdx % 4;                 // 0..3
+      texFloat32[(row * 64 + col) * 4 + lane] = val;
+    }
+  }
+
+  /**
+   * Synthesizes one of the 3 hand-wired presets into a 64x21x4 Float32Array
+   * (5,376 floats = 21,504 bytes).
+   */
+  function buildSynthesizedWeights(presetName) {
+    const buf = new Float32Array(21 * 64 * 4); // Initialized to 0.0
+    const ID = (c) => c;       // 0..15
+    const SX = (c) => 16 + c;  // 16..31
+    const SY = (c) => 32 + c;  // 32..47
+    const LAP = (c) => 48 + c; // 48..63
+
+    // Helper to bind a symmetric (+/-) linear relay pair using 2 ReLU hidden units
+    function bindLinearPair(hBase, inChan, scaleIn, outChan, scaleOut) {
+      setWeight(buf, 1, hBase, inChan, scaleIn);
+      setWeight(buf, 2, outChan, hBase, scaleOut);
+      setWeight(buf, 1, hBase + 1, inChan, -scaleIn);
+      setWeight(buf, 2, outChan, hBase + 1, -scaleOut);
+    }
+
+    if (presetName === "flux_router") {
+      // =====================================================================
+      // PRESET 1: FLUX HALOS (originally "Stress & Geodesic Flux Router")
+      // - c4: Emitter harmonic potential (driven by c0, diffused by Lap(c4), damped by c1)
+      // - c5: Anchor harmonic potential (driven by c2, diffused by Lap(c5), damped by c1)
+      // - c6: Signed dipole potential (c0 - c2)
+      // - c8, c9: Smoothed Sobel X/Y flux vectors of dipole potential c6
+      // - c10: Obstacle boundary stress halo (|grad c1|)
+      // - c12..c14: Harmonic stress wave memory
+      // - c3: Readout of flux magnitude, potential overlap and rim stress
+      // =====================================================================
+
+      // 1. Source Injection: c0 -> c4 (+), c2 -> c5 (+), (c0 - c2) -> c6
+      setWeight(buf, 1, 0, ID(0), 1.0);
+      setWeight(buf, 2, 4, 0, 0.85);
+      setWeight(buf, 2, 6, 0, 0.90);
+
+      setWeight(buf, 1, 1, ID(2), 1.0);
+      setWeight(buf, 2, 5, 1, 0.85);
+      setWeight(buf, 2, 6, 1, -0.90);
+
+      // 2. Laplacian Diffusion across c4, c5, c6 (hidden units 2..7)
+      bindLinearPair(2, LAP(4), 1.0, 4, 0.65);
+      bindLinearPair(4, LAP(5), 1.0, 5, 0.65);
+      bindLinearPair(6, LAP(6), 1.0, 6, 0.72);
+
+      // 3. Mild decay on c4, c5, c6 for stable Poisson equilibrium (hidden units 8..13)
+      bindLinearPair(8, ID(4), 1.0, 4, -0.04);
+      bindLinearPair(10, ID(5), 1.0, 5, -0.04);
+      bindLinearPair(12, ID(6), 1.0, 6, -0.03);
+
+      // 4. Obstacle Suppression: where c1 == 1, strongly damp c4 and c5
+      setWeight(buf, 1, 14, ID(1), 2.5);
+      setWeight(buf, 2, 4, 14, -0.55);
+      setWeight(buf, 2, 5, 14, -0.55);
+
+      // 5. Directional Flux Vector Computation in c8 (Flux X) and c9 (Flux Y)
+      // Driven by Sobel X/Y of dipole c6 (hidden units 16..23)
+      bindLinearPair(16, SX(6), 1.5, 8, 0.55);
+      bindLinearPair(18, SY(6), 1.5, 9, 0.55);
+      bindLinearPair(20, ID(8), 1.0, 8, -0.35); // Leak on c8
+      bindLinearPair(22, ID(9), 1.0, 9, -0.35); // Leak on c9
+
+      // Smooth flux vectors spatially with Laplacian (hidden units 24..27)
+      bindLinearPair(24, LAP(8), 1.0, 8, 0.30);
+      bindLinearPair(26, LAP(9), 1.0, 9, 0.30);
+
+      // 6. Obstacle Boundary Stress Concentration Detector in c10 (hidden units 28..35)
+      // Detects magnitude |SX(1)| + |SY(1)| (edges of obstacle c1)
+      for (let idx = 0; idx < 2; idx++) {
+        const sign = idx === 0 ? 1.0 : -1.0;
+        setWeight(buf, 1, 28 + idx, SX(1), sign * 2.0);
+        setWeight(buf, 2, 10, 28 + idx, 0.65);
+
+        setWeight(buf, 1, 30 + idx, SY(1), sign * 2.0);
+        setWeight(buf, 2, 10, 30 + idx, 0.65);
+      }
+      bindLinearPair(32, LAP(10), 1.0, 10, 0.45);
+      bindLinearPair(34, ID(10), 1.0, 10, -0.18);
+
+      // 7. Co-activation Bridge Detector (where both c4 emitter reach and c5 anchor reach overlap)
+      // Hidden unit 36 activates when c4 + c5 is high and obstacle c1 is absent -> writes to c7 & c12
+      setWeight(buf, 1, 36, ID(4), 1.2);
+      setWeight(buf, 1, 36, ID(5), 1.2);
+      setWeight(buf, 1, 36, ID(1), -3.0);
+      setBias(buf, 1, 36, -0.15);
+      setWeight(buf, 2, 7, 36, 0.55);
+      setWeight(buf, 2, 12, 36, 0.45);
+      bindLinearPair(38, LAP(7), 1.0, 7, 0.45);
+      bindLinearPair(40, ID(7), 1.0, 7, -0.22);
+
+      // 8. Harmonic Memory Channels c12..c14
+      bindLinearPair(42, SX(7), 1.5, 13, 0.45);
+      bindLinearPair(44, SY(7), 1.5, 14, 0.45);
+      bindLinearPair(46, ID(12), 1.0, 12, -0.20);
+      bindLinearPair(48, ID(13), 1.0, 13, -0.25);
+      bindLinearPair(50, ID(14), 1.0, 14, -0.25);
+
+      // 9. Primary Readout Channel c3 (Attractor Target):
+      // Driven by Flux Magnitude (|c8| + |c9|), Geodesic Bridge (c7), and Obstacle Rim Stress (c10)
+      for (let s = 0; s < 2; s++) {
+        const sign = s === 0 ? 1.0 : -1.0;
+        setWeight(buf, 1, 52 + s, ID(8), sign * 1.8);
+        setWeight(buf, 2, 3, 52 + s, 0.70);
+
+        setWeight(buf, 1, 54 + s, ID(9), sign * 1.8);
+        setWeight(buf, 2, 3, 54 + s, 0.70);
+      }
+      // Add bridge c7 and obstacle stress shell c10 into readout c3
+      setWeight(buf, 1, 56, ID(7), 1.6);
+      setWeight(buf, 1, 56, ID(10), 1.3);
+      setWeight(buf, 1, 56, ID(4), 0.7);
+      setWeight(buf, 1, 56, ID(5), 0.7);
+      setWeight(buf, 1, 56, ID(1), -3.5); // Carve out interior of obstacle c1
+      setWeight(buf, 2, 3, 56, 0.75);
+
+      // Smooth readout c3 and apply attractor restoring leak (-0.32 * c3 - 0.18)
+      bindLinearPair(58, LAP(3), 1.0, 3, 0.35);
+      bindLinearPair(60, ID(3), 1.0, 3, -0.32);
+      setBias(buf, 2, 3, -0.18);
+
+    } else if (presetName === "med_segmenter") {
+      // =====================================================================
+      // PRESET 2: BOUNDARY RINGS (originally "Med-NCA Boundary & Shell Segmenter")
+      // - Detects multi-orientation Sobel boundaries around c1 (lesions/obstacles)
+      //   and c0/c2 (markers), propagates leaky shells across c4..c7,
+      //   and outputs a ring around each painted region in c3.
+      // =====================================================================
+
+      // 1. 8-Octant Sobel Edge Detectors on c1, c0, c2 (hidden units 0..7)
+      const angles = [0, Math.PI/4, Math.PI/2, 3*Math.PI/4, Math.PI, 5*Math.PI/4, 3*Math.PI/2, 7*Math.PI/4];
+      for (let k = 0; k < 8; k++) {
+        const gx = Math.cos(angles[k]) * 2.2;
+        const gy = Math.sin(angles[k]) * 2.2;
+        setWeight(buf, 1, k, SX(1), gx);
+        setWeight(buf, 1, k, SY(1), gy);
+        setWeight(buf, 1, k, SX(0), gx * 0.8);
+        setWeight(buf, 1, k, SY(0), gy * 0.8);
+        setWeight(buf, 1, k, SX(2), gx * 0.8);
+        setWeight(buf, 1, k, SY(2), gy * 0.8);
+        // Write boundary detection into c4 (Primary Rim) and c8/c9 (Normal Vector)
+        setWeight(buf, 2, 4, k, 0.45);
+        setWeight(buf, 2, 8, k, Math.cos(angles[k]) * 0.35);
+        setWeight(buf, 2, 9, k, Math.sin(angles[k]) * 0.35);
+      }
+
+      // 2. Cascade Distance Shells: c4 -> c5 -> c6 -> c7 via Laplacian diffusion
+      bindLinearPair(8, LAP(4), 1.0, 4, 0.40);
+      bindLinearPair(10, ID(4), 1.0, 4, -0.22);
+
+      setWeight(buf, 1, 12, ID(4), 1.5);
+      setBias(buf, 1, 12, -0.15);
+      setWeight(buf, 2, 5, 12, 0.55);
+      bindLinearPair(14, LAP(5), 1.0, 5, 0.55);
+      bindLinearPair(16, ID(5), 1.0, 5, -0.12);
+
+      setWeight(buf, 1, 18, ID(5), 1.4);
+      setBias(buf, 1, 18, -0.20);
+      setWeight(buf, 2, 6, 18, 0.55);
+      bindLinearPair(20, LAP(6), 1.0, 6, 0.60);
+      bindLinearPair(22, ID(6), 1.0, 6, -0.08);
+
+      // 3. Harmonic wave-shell oscillation between c6 (activator) and c12 (inhibitor)
+      setWeight(buf, 1, 24, ID(6), 1.8);
+      setWeight(buf, 1, 24, ID(12), -1.4);
+      setWeight(buf, 2, 7, 24, 0.65);
+      setWeight(buf, 2, 12, 24, 0.40);
+
+      bindLinearPair(26, LAP(7), 1.0, 7, 0.45);
+      bindLinearPair(28, ID(7), 1.0, 7, -0.20);
+      bindLinearPair(30, LAP(12), 1.0, 12, 0.65);
+      bindLinearPair(32, ID(12), 1.0, 12, -0.15);
+
+      // 4. Flux & Normal Field Decay (c8..c10)
+      bindLinearPair(34, ID(8), 1.0, 8, -0.25);
+      bindLinearPair(36, ID(9), 1.0, 9, -0.25);
+      bindLinearPair(38, LAP(8), 1.0, 8, 0.35);
+      bindLinearPair(40, LAP(9), 1.0, 9, 0.35);
+
+      // 5. Readout Segmentation Mask c3: Crisp boundary rim + concentric shell contours
+      setWeight(buf, 1, 44, ID(4), 2.4);
+      setWeight(buf, 1, 44, ID(7), 1.6);
+      setWeight(buf, 1, 44, ID(12), -1.8);
+      setWeight(buf, 2, 3, 44, 0.90);
+
+      // Interior lesion/region fill modulation
+      setWeight(buf, 1, 46, ID(5), 1.8);
+      setWeight(buf, 1, 46, ID(1), -1.5);
+      setWeight(buf, 2, 3, 46, 0.55);
+
+      bindLinearPair(48, LAP(3), 1.0, 3, 0.25);
+      bindLinearPair(50, ID(3), 1.0, 3, -0.35);
+      setBias(buf, 2, 3, -0.22);
+
+    } else if (presetName === "metamaterial_truss") {
+      // =====================================================================
+      // PRESET 3: ACTIVATOR-INHIBITOR (originally "Anisotropic Metamaterial Truss")
+      // - Coupled activator (c4) / faster-diffusing inhibitor (c5) dynamics,
+      //   seeded by c0, c2 and obstacle rims, with Sobel-aligned c8/c9 and
+      //   strut reinforcement in c6/c12. With these weights it settles into a
+      //   steady glow rather than a lattice.
+      // =====================================================================
+
+      // 1. Seed activator c4 from Load Source c0, Anchor c2, and Obstacle rims
+      setWeight(buf, 1, 0, ID(0), 2.0);
+      setWeight(buf, 1, 0, ID(2), 2.0);
+      setWeight(buf, 2, 4, 0, 0.90);
+
+      // Obstacle rim seeds struts around voids
+      setWeight(buf, 1, 1, SX(1), 2.0);
+      setWeight(buf, 1, 2, SY(1), 2.0);
+      setWeight(buf, 2, 4, 1, 0.65);
+      setWeight(buf, 2, 4, 2, 0.65);
+
+      // 2. Reaction-Diffusion Activator (c4) vs Inhibitor (c5)
+      // Hidden unit 4: Self-excitation (1.75 c4 - 1.45 c5 + 0.14)
+      setWeight(buf, 1, 4, ID(4), 1.75);
+      setWeight(buf, 1, 4, ID(5), -1.45);
+      setWeight(buf, 1, 4, ID(1), -3.5); // Suppress inside obstacles
+      setBias(buf, 1, 4, 0.14);
+      setWeight(buf, 2, 4, 4, 0.42);
+      setWeight(buf, 2, 5, 4, 0.52);
+
+      // Short-range activator diffusion vs faster inhibitor diffusion
+      bindLinearPair(6, LAP(4), 1.0, 4, 0.22);
+      bindLinearPair(8, LAP(5), 1.0, 5, 0.68);
+
+      // Activator & Inhibitor decay
+      bindLinearPair(10, ID(4), 1.0, 4, -0.28);
+      bindLinearPair(12, ID(5), 1.0, 5, -0.32);
+
+      // 3. Anisotropic Strut Alignment via Sobel X/Y of Activator (c8, c9)
+      bindLinearPair(14, SX(4), 1.8, 8, 0.55);
+      bindLinearPair(16, SY(4), 1.8, 9, 0.55);
+      bindLinearPair(18, ID(8), 1.0, 8, -0.30);
+      bindLinearPair(20, ID(9), 1.0, 9, -0.30);
+
+      // Reinforce diagonal/orthogonal load struts in c6 & c12
+      setWeight(buf, 1, 22, SX(8), 1.5);
+      setWeight(buf, 1, 22, SY(9), -1.5);
+      setWeight(buf, 2, 6, 22, 0.45);
+      setWeight(buf, 2, 12, 22, 0.45);
+      bindLinearPair(24, ID(6), 1.0, 6, -0.25);
+      bindLinearPair(26, ID(12), 1.0, 12, -0.25);
+
+      // 4. Readout c3: High-contrast structural truss density
+      setWeight(buf, 1, 30, ID(4), 2.5);
+      setWeight(buf, 1, 30, ID(5), -1.2);
+      setWeight(buf, 1, 30, ID(1), -4.0);
+      setBias(buf, 1, 30, -0.10);
+      setWeight(buf, 2, 3, 30, 0.95);
+
+      bindLinearPair(32, ID(3), 1.0, 3, -0.38);
+      setBias(buf, 2, 3, -0.30);
+    }
+
+    // Guarantee Row 16 .rgb (c0, c1, c2) in W2 and Col 16 .rgb in Row 20 (b2) are strictly 0.0
+    for (let col = 0; col < 64; col++) {
+      buf[(16 * 64 + col) * 4 + 0] = 0.0;
+      buf[(16 * 64 + col) * 4 + 1] = 0.0;
+      buf[(16 * 64 + col) * 4 + 2] = 0.0;
+    }
+    buf[(20 * 64 + 16) * 4 + 0] = 0.0;
+    buf[(20 * 64 + 16) * 4 + 1] = 0.0;
+    buf[(20 * 64 + 16) * 4 + 2] = 0.0;
+
+    return buf;
+  }
+
+  // =========================================================================
+  // 3. WEBGL2 MRT ENGINE
+  // =========================================================================
+
+  const canvas = document.getElementById("ncaCanvas");
+  const fieldMsg = document.getElementById("fieldMsg");
+
+  function showFieldMessage(message) {
+    fieldMsg.textContent = message;
+    fieldMsg.hidden = false;
+    document.getElementById("gpuStatusBadge").classList.add("bad");
+    document.getElementById("gpuStatusText").textContent = "GPU unavailable";
+  }
+
+  const gl = canvas.getContext("webgl2", {
+    antialias: false,
+    depth: false,
+    stencil: false,
+    preserveDrawingBuffer: false
+  });
+
+  if (!gl) {
+    showFieldMessage("This workbench needs WebGL2, and this browser didn’t provide it.");
+    throw new Error("WebGL2 is required for 4x RGBA16F Multiple Render Targets.");
+  }
+
+  if (!gl.getExtension("EXT_color_buffer_float")) {
+    showFieldMessage("This GPU can’t render into floating-point textures (EXT_color_buffer_float), which the sixteen-channel state needs.");
+    throw new Error("EXT_color_buffer_float is required.");
+  }
+
+  let contextLost = false;
+  canvas.addEventListener("webglcontextlost", (e) => {
+    e.preventDefault();
+    contextLost = true;
+    showFieldMessage("The GPU context was lost. Reload the page to start again.");
+  });
+
+  // Compile shader utility
+  function compileShader(type, source) {
+    const sh = gl.createShader(type);
+    gl.shaderSource(sh, source);
+    gl.compileShader(sh);
+    if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS)) {
+      const info = gl.getShaderInfoLog(sh);
+      console.error("Shader compile error:", info);
+      throw new Error(info);
+    }
+    return sh;
+  }
+
+  function createProgram(vertSrc, fragSrc) {
+    const prog = gl.createProgram();
+    gl.attachShader(prog, compileShader(gl.VERTEX_SHADER, vertSrc));
+    gl.attachShader(prog, compileShader(gl.FRAGMENT_SHADER, fragSrc));
+    gl.linkProgram(prog);
+    if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) {
+      throw new Error(gl.getProgramInfoLog(prog));
+    }
+    return prog;
+  }
+
+  let stepProgram, brushProgram, displayProgram;
+  try {
+    stepProgram = createProgram(FULLSCREEN_VERT_SHADER, NCA_STEP_FRAG_SHADER);
+    brushProgram = createProgram(FULLSCREEN_VERT_SHADER, BRUSH_MRT_FRAG_SHADER);
+    displayProgram = createProgram(FULLSCREEN_VERT_SHADER, DISPLAY_FRAG_SHADER);
+  } catch (err) {
+    showFieldMessage("A shader failed to compile on this GPU: " + err.message);
+    throw err;
+  }
+
+  // Empty VAO for fullscreen triangle draw calls
+  const emptyVAO = gl.createVertexArray();
+
+  // Simulation state variables
+  let gridWidth = 256;
+  let gridHeight = 256;
+  let ping = null;
+  let pong = null;
+  let weightTex = null;
+  let currentWeightBuffer = null;
+
+  let stepCount = 0;
+  let stepsPerFrame = 4;
+  let updateProb = 0.60;
+  let visMode = 0;
+  let isPaused = false;
+
+  // Brush & Probe state
+  let activeBrushMode = 0; // 0=Obstacle(c1), 1=Source(c0), 2=Anchor(c2), 3=Damage(c3..15), 4=Erase
+  let brushRadius = 10;
+  let isPointerDown = false;
+  let hoverCoord = { x: 128, y: 128, inside: false };
+
+  // Create 64x21 RGBA32F Weight Texture
+  function initWeightTexture() {
+    if (!weightTex) {
+      weightTex = gl.createTexture();
+    }
+    gl.bindTexture(gl.TEXTURE_2D, weightTex);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  }
+
+  function uploadWeightBuffer(float32Buf) {
+    currentWeightBuffer = float32Buf;
+    gl.bindTexture(gl.TEXTURE_2D, weightTex);
+    gl.texImage2D(
+      gl.TEXTURE_2D,
+      0,
+      gl.RGBA32F,
+      64,
+      21,
+      0,
+      gl.RGBA,
+      gl.FLOAT,
+      float32Buf
+    );
+    renderWeightMinimap();
+  }
+
+  // Create 4x RGBA16F Multiple Render Target Framebuffer Object
+  function createMRTFramebuffer(w, h) {
+    const fbo = gl.createFramebuffer();
+    gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+
+    const textures = [];
+    const attachments = [];
+
+    for (let i = 0; i < 4; i++) {
+      const tex = gl.createTexture();
+      gl.bindTexture(gl.TEXTURE_2D, tex);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      gl.texStorage2D(gl.TEXTURE_2D, 1, gl.RGBA16F, w, h);
+
+      const att = gl.COLOR_ATTACHMENT0 + i;
+      gl.framebufferTexture2D(gl.FRAMEBUFFER, att, gl.TEXTURE_2D, tex, 0);
+      textures.push(tex);
+      attachments.push(att);
+    }
+
+    gl.drawBuffers(attachments);
+    const complete = gl.checkFramebufferStatus(gl.FRAMEBUFFER) === gl.FRAMEBUFFER_COMPLETE;
+    if (!complete) {
+      console.error("MRT Framebuffer incomplete");
+    }
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    return { fbo, textures, complete };
+  }
+
+  function destroyMRTFramebuffer(mrt) {
+    if (!mrt) return;
+    for (const t of mrt.textures) gl.deleteTexture(t);
+    gl.deleteFramebuffer(mrt.fbo);
+  }
+
+  // Match the drawing buffer to the canvas's on-screen size, so the display
+  // pass draws crisp cells and a thin cursor at device resolution.
+  function sizeCanvasToDisplay() {
+    const rect = canvas.getBoundingClientRect();
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const px = Math.max(64, Math.min(2048, Math.round(rect.width * dpr)));
+    if (canvas.width !== px || canvas.height !== px) {
+      canvas.width = px;
+      canvas.height = px;
+    }
+  }
+
+  // Initialize or resize Ping-Pong MRT buffers and seed default engineering geometry
+  function initGridAndSeedScene(w, h) {
+    gridWidth = w;
+    gridHeight = h;
+
+    destroyMRTFramebuffer(ping);
+    destroyMRTFramebuffer(pong);
+    ping = createMRTFramebuffer(w, h);
+    pong = createMRTFramebuffer(w, h);
+    if (!ping.complete || !pong.complete) {
+      showFieldMessage("This GPU can’t attach four RGBA16F render targets to one framebuffer, which the step pass needs.");
+    }
+
+    // State memory (2 buffers * 4 attachments * w * h * 8 bytes for RGBA16F)
+    const bytes = 2 * 4 * w * h * 8;
+    document.getElementById("telemetryVram").textContent =
+      `${(bytes / (1024 * 1024)).toFixed(bytes < 10 * 1024 * 1024 ? 1 : 0)} MB`;
+
+    hoverCoord.x = Math.floor(w / 2);
+    hoverCoord.y = Math.floor(h / 2);
+    renderAxes(w);
+    seedDefaultEngineeringScene();
+  }
+
+  // Populate initial Load Emitters (c0), Obstacles (c1), and Structural Anchors (c2)
+  function seedDefaultEngineeringScene() {
+    const w = gridWidth;
+    const h = gridHeight;
+    const s0 = new Float32Array(w * h * 4);
+    const zeros = new Float32Array(w * h * 4);
+
+    const cx = w * 0.5;
+    const cy = h * 0.5;
+
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const idx = (y * w + x) * 4;
+        const nx = x / w;
+        const ny = y / h;
+
+        // Left-side Dual Load Emitter Pads (c0 = 1.0)
+        const dSrc1 = Math.hypot(nx - 0.16, ny - 0.32);
+        const dSrc2 = Math.hypot(nx - 0.16, ny - 0.68);
+        if (dSrc1 < 0.055 || dSrc2 < 0.055) {
+          s0[idx + 0] = 1.0;
+        }
+
+        // Right-side Dual Structural Anchor Brackets (c2 = 1.0)
+        const dAnc1 = Math.hypot(nx - 0.84, ny - 0.30);
+        const dAnc2 = Math.hypot(nx - 0.84, ny - 0.70);
+        if (dAnc1 < 0.055 || dAnc2 < 0.055) {
+          s0[idx + 2] = 1.0;
+        }
+
+        // Central Structural Void Obstacles (c1 = 1.0)
+        const dObsCenter = Math.hypot(x - cx, y - cy);
+        const dObsTop = Math.hypot(nx - 0.52, ny - 0.22);
+        const dObsBot = Math.hypot(nx - 0.52, ny - 0.78);
+        if (dObsCenter < w * 0.11 || dObsTop < 0.055 || dObsBot < 0.055) {
+          s0[idx + 0] = 0.0;
+          s0[idx + 1] = 1.0;
+          s0[idx + 2] = 0.0;
+        }
+
+        // Initialize readout c3 to baseline -1.0
+        s0[idx + 3] = -1.0;
+      }
+    }
+
+    for (const mrt of [ping, pong]) {
+      gl.bindTexture(gl.TEXTURE_2D, mrt.textures[0]);
+      gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, w, h, gl.RGBA, gl.FLOAT, s0);
+      for (let i = 1; i < 4; i++) {
+        gl.bindTexture(gl.TEXTURE_2D, mrt.textures[i]);
+        gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, w, h, gl.RGBA, gl.FLOAT, zeros);
+      }
+    }
+    stepCount = 0;
+  }
+
+  // Execute a single MRT NCA recurrent step on the GPU
+  function stepNCAOnce() {
+    gl.useProgram(stepProgram);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, pong.fbo);
+    gl.viewport(0, 0, gridWidth, gridHeight);
+
+    for (let i = 0; i < 4; i++) {
+      gl.activeTexture(gl.TEXTURE0 + i);
+      gl.bindTexture(gl.TEXTURE_2D, ping.textures[i]);
+      gl.uniform1i(gl.getUniformLocation(stepProgram, `u_state${i}`), i);
+    }
+
+    gl.activeTexture(gl.TEXTURE4);
+    gl.bindTexture(gl.TEXTURE_2D, weightTex);
+    gl.uniform1i(gl.getUniformLocation(stepProgram, "u_weights"), 4);
+
+    gl.uniform2i(gl.getUniformLocation(stepProgram, "u_gridSize"), gridWidth, gridHeight);
+    gl.uniform1ui(gl.getUniformLocation(stepProgram, "u_stepCount"), stepCount++);
+    gl.uniform1f(gl.getUniformLocation(stepProgram, "u_updateProb"), updateProb);
+
+    gl.bindVertexArray(emptyVAO);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+
+    // Swap Ping and Pong MRT buffers
+    const tmp = ping;
+    ping = pong;
+    pong = tmp;
+  }
+
+  // Apply GPU Brush or Global Perturbation Pass directly across all 4 MRT attachments
+  function applyGPUBrushPass(x, y, radius, mode) {
+    gl.useProgram(brushProgram);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, pong.fbo);
+    gl.viewport(0, 0, gridWidth, gridHeight);
+
+    for (let i = 0; i < 4; i++) {
+      gl.activeTexture(gl.TEXTURE0 + i);
+      gl.bindTexture(gl.TEXTURE_2D, ping.textures[i]);
+      gl.uniform1i(gl.getUniformLocation(brushProgram, `u_state${i}`), i);
+    }
+
+    gl.uniform2i(gl.getUniformLocation(brushProgram, "u_brushPos"), x, y);
+    gl.uniform1f(gl.getUniformLocation(brushProgram, "u_brushRadius"), radius);
+    gl.uniform1i(gl.getUniformLocation(brushProgram, "u_brushMode"), mode);
+    gl.uniform1ui(gl.getUniformLocation(brushProgram, "u_seed"), stepCount + Math.floor(Math.random() * 99999));
+
+    gl.bindVertexArray(emptyVAO);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+
+    const tmp = ping;
+    ping = pong;
+    pong = tmp;
+  }
+
+  // Render active MRT state to the visible screen canvas
+  function renderDisplayPass() {
+    gl.useProgram(displayProgram);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    gl.viewport(0, 0, canvas.width, canvas.height);
+
+    for (let i = 0; i < 4; i++) {
+      gl.activeTexture(gl.TEXTURE0 + i);
+      gl.bindTexture(gl.TEXTURE_2D, ping.textures[i]);
+      gl.uniform1i(gl.getUniformLocation(displayProgram, `u_state${i}`), i);
+    }
+
+    gl.uniform2i(gl.getUniformLocation(displayProgram, "u_gridSize"), gridWidth, gridHeight);
+    gl.uniform1i(gl.getUniformLocation(displayProgram, "u_visMode"), visMode);
+    gl.uniform2f(
+      gl.getUniformLocation(displayProgram, "u_hoverPos"),
+      hoverCoord.inside ? hoverCoord.x + 0.5 : -1000,
+      hoverCoord.inside ? hoverCoord.y + 0.5 : -1000
+    );
+    gl.uniform1f(gl.getUniformLocation(displayProgram, "u_brushRadius"), brushRadius);
+    gl.uniform1f(gl.getUniformLocation(displayProgram, "u_gridPerPx"), gridWidth / Math.max(1, canvas.clientWidth));
+
+    gl.bindVertexArray(emptyVAO);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+  }
+
+  // =========================================================================
+  // 4. PROBE, WEIGHT MAP, AXES AND LEGEND
+  // =========================================================================
+
+  const GROUP_OF = ["emitter", "void", "anchor", "readout",
+    "latent", "latent", "latent", "latent",
+    "flux", "flux", "flux", "flux",
+    "memory", "memory", "memory", "memory"];
+
+  const probeGridEl = document.getElementById("channelProbeGrid");
+  const probeWells = [];
+
+  function initProbeUI() {
+    const parts = ['<span class="ph"></span>'];
+    for (const lane of ["r", "g", "b", "a"]) parts.push(`<span class="ph">${lane}</span>`);
+    for (let att = 0; att < 4; att++) {
+      parts.push(`<span class="ph" title="state texture ${att}">${att}</span>`);
+      for (let lane = 0; lane < 4; lane++) {
+        const c = att * 4 + lane;
+        parts.push(`<div class="well g-${GROUP_OF[c]}"><span class="id">c${c}</span><span class="dot"></span><span class="val">+0.00</span></div>`);
+      }
+    }
+    probeGridEl.innerHTML = parts.join("");
+    probeGridEl.querySelectorAll(".well").forEach((el) => {
+      probeWells.push({ dot: el.querySelector(".dot"), val: el.querySelector(".val"), last: "" });
+    });
+  }
+
+  function signedColor(v, scale) {
+    const t = Math.pow(Math.min(1, Math.abs(v) / scale), 0.7);
+    const rgb = v >= 0 ? "255, 184, 77" : "72, 182, 255";
+    return `rgba(${rgb}, ${(0.06 + 0.94 * t).toFixed(3)})`;
+  }
+
+  const probePixelBuf = new Float32Array(4);
+  function updateCellProbeReadout() {
+    const px = Math.max(0, Math.min(gridWidth - 1, hoverCoord.x));
+    const py = Math.max(0, Math.min(gridHeight - 1, hoverCoord.y));
+    document.getElementById("probeCoords").textContent = `x ${px} · y ${py}`;
+
+    gl.bindFramebuffer(gl.FRAMEBUFFER, ping.fbo);
+    for (let i = 0; i < 4; i++) {
+      gl.readBuffer(gl.COLOR_ATTACHMENT0 + i);
+      gl.readPixels(px, py, 1, 1, gl.RGBA, gl.FLOAT, probePixelBuf);
+      for (let lane = 0; lane < 4; lane++) {
+        const v = probePixelBuf[lane];
+        const text = (v < 0 ? "−" : "+") + Math.abs(v).toFixed(2);
+        const well = probeWells[i * 4 + lane];
+        if (well.last !== text) {
+          well.last = text;
+          well.val.textContent = text;
+          well.dot.style.backgroundColor = signedColor(v, 3);
+        }
+      }
+    }
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  }
+
+  // The 64x21 weight texture, every lane drawn as its own square (r g / b a per texel)
+  const weightCanvas = document.getElementById("weightMinimapCanvas");
+  const weightCtx = weightCanvas.getContext("2d");
+  const weightReadout = document.getElementById("weightReadout");
+  const FILTER_NAMES = ["identity", "Sobel x", "Sobel y", "Laplacian"];
+  let weightHover = null;
+
+  function weightColor(v) {
+    const t = Math.pow(Math.min(1, Math.abs(v) / 2.5), 0.6);
+    const zero = [17, 27, 40];
+    const end = v > 0 ? [255, 184, 77] : [72, 182, 255];
+    return `rgb(${zero.map((z, i) => Math.round(z + (end[i] - z) * t)).join(",")})`;
+  }
+
+  function renderWeightMinimap() {
+    const buf = currentWeightBuffer;
+    if (!buf) return;
+    const rect = weightCanvas.getBoundingClientRect();
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const W = Math.max(128, Math.round(rect.width * dpr));
+    const H = Math.max(42, Math.round(rect.height * dpr));
+    if (weightCanvas.width !== W || weightCanvas.height !== H) {
+      weightCanvas.width = W;
+      weightCanvas.height = H;
+    }
+    const X = (lx) => Math.round(lx * W / 128);
+    const Y = (ly) => Math.round(ly * H / 42);
+    const ctx = weightCtx;
+    const hair = Math.max(1, Math.round(dpr));
+    ctx.fillStyle = "#070d15";
+    ctx.fillRect(0, 0, W, H);
+    // A faint mesh of the 64 x 21 texels, so the mostly-zero texture still shows its structure
+    ctx.fillStyle = "#0e1824";
+    for (let row = 0; row < 21; row++) {
+      for (let col = 0; col < 64; col++) {
+        const x0 = X(col * 2), y0 = Y(row * 2);
+        ctx.fillRect(x0, y0, Math.max(1, X(col * 2 + 2) - x0 - hair), Math.max(1, Y(row * 2 + 2) - y0 - hair));
+      }
+    }
+
+    let nonzero = 0;
+    for (let row = 0; row < 21; row++) {
+      for (let col = 0; col < 64; col++) {
+        for (let lane = 0; lane < 4; lane++) {
+          const v = buf[(row * 64 + col) * 4 + lane];
+          if (v === 0) continue;
+          nonzero++;
+          const lx = col * 2 + (lane & 1);
+          const ly = row * 2 + (lane >> 1);
+          // Lanes on a texel's right or bottom edge stop short of the mesh gap
+          const w = X(lx + 1) - X(lx) - ((lane & 1) ? hair : 0);
+          const h = Y(ly + 1) - Y(ly) - ((lane >> 1) ? hair : 0);
+          ctx.fillStyle = weightColor(v);
+          ctx.fillRect(X(lx), Y(ly), Math.max(1, w), Math.max(1, h));
+        }
+      }
+    }
+
+    // Filter groups (W1 columns) and the W1 / W2 / bias row groups
+    ctx.fillStyle = "rgba(170, 200, 228, 0.16)";
+    for (const c of [16, 32, 48]) ctx.fillRect(X(c * 2), 0, hair, Y(32));
+    ctx.fillStyle = "rgba(170, 200, 228, 0.34)";
+    for (const r of [16, 20]) ctx.fillRect(0, Y(r * 2), W, hair);
+
+    if (weightHover) {
+      const lx = weightHover.col * 2 + (weightHover.lane & 1);
+      const ly = weightHover.row * 2 + (weightHover.lane >> 1);
+      ctx.strokeStyle = "#ffffff";
+      ctx.lineWidth = hair;
+      ctx.strokeRect(X(lx) - hair / 2, Y(ly) - hair / 2, X(lx + 1) - X(lx) + hair, Y(ly + 1) - Y(ly) + hair);
+    }
+    document.getElementById("weightNonzero").textContent = `${nonzero.toLocaleString("en-US")} non-zero`;
+  }
+
+  function weightAt(e) {
+    const r = weightCanvas.getBoundingClientRect();
+    const lx = Math.floor((e.clientX - r.left) / r.width * 128);
+    const ly = Math.floor((e.clientY - r.top) / r.height * 42);
+    if (lx < 0 || ly < 0 || lx >= 128 || ly >= 42) return null;
+    return { col: lx >> 1, row: ly >> 1, lane: (ly & 1) * 2 + (lx & 1) };
+  }
+
+  function describeWeight(w) {
+    const { row, col, lane } = w;
+    const v = currentWeightBuffer[(row * 64 + col) * 4 + lane];
+    const value = (v < 0 ? "−" : "+") + Math.abs(v).toFixed(3);
+    let what;
+    if (row < 16) {
+      what = `W1 · hidden unit ${row * 4 + lane} ← ${FILTER_NAMES[col >> 4]} of c${col & 15}`;
+    } else if (row < 20) {
+      const ch = (row - 16) * 4 + lane;
+      what = `W2 · Δc${ch} ← hidden unit ${col}` + (ch < 3 ? " (pinned at 0)" : "");
+    } else if (col < 16) {
+      what = `b1 · hidden unit ${col * 4 + lane}`;
+    } else if (col < 20) {
+      const ch = (col - 16) * 4 + lane;
+      what = `b2 · Δc${ch}` + (ch < 3 ? " (pinned at 0)" : "");
+    } else {
+      what = "unused";
+    }
+    return `<b>${what}</b><br>texel (${col}, ${row}).${"rgba"[lane]} = ${value}`;
+  }
+
+  function onWeightPointer(e) {
+    const w = weightAt(e);
+    if (!w) return;
+    if (!weightHover || w.row !== weightHover.row || w.col !== weightHover.col || w.lane !== weightHover.lane) {
+      weightHover = w;
+      weightReadout.innerHTML = describeWeight(w);
+      renderWeightMinimap();
+    }
+  }
+  weightCanvas.addEventListener("pointermove", onWeightPointer);
+  weightCanvas.addEventListener("pointerdown", onWeightPointer);
+  weightCanvas.addEventListener("pointerleave", () => {
+    if (!weightHover) return;
+    weightHover = null;
+    renderWeightMinimap();
+  });
+  new ResizeObserver(() => renderWeightMinimap()).observe(weightCanvas);
+
+  // Axis ticks around the field, labelled in grid cells (y grows upward, as in the textures)
+  function renderAxes(n) {
+    const xs = [], ys = [];
+    for (let i = 0; i <= 8; i++) {
+      const at = i === 8 ? "calc(100% - 1px)" : `${i * 12.5}%`;
+      const major = i % 2 === 0;
+      xs.push(`<span class="t${major ? " mj" : ""}" style="left:${at}"></span>`);
+      ys.push(`<span class="t${major ? " mj" : ""}" style="bottom:${at}"></span>`);
+      if (major) {
+        const label = (n * i) / 8;
+        xs.push(`<span class="l" style="left:${i * 12.5}%">${label}</span>`);
+        ys.push(`<span class="l" style="bottom:${i * 12.5}%">${label}</span>`);
+      }
+    }
+    document.getElementById("axisX").innerHTML = xs.join("");
+    document.getElementById("axisY").innerHTML = ys.join("");
+  }
+
+  const key = (cssVar, label) => `<span class="key"><i style="--c: var(${cssVar})"></i>${label}</span>`;
+  const rgbKey = (r, g, b) =>
+    `<span class="key"><i style="--c: #ff5d5d"></i><span class="m">${r}</span></span>` +
+    `<span class="key"><i style="--c: #5dff8f"></i><span class="m">${g}</span></span>` +
+    `<span class="key"><i style="--c: #5d9cff"></i><span class="m">${b}</span></span>` +
+    `<span>mid-grey = 0</span>`;
+  const readoutKey = '<span class="key"><span class="cbar" aria-hidden="true"></span>readout σ(2·c3), 0 → 1</span>';
+  const sensorKeys = key("--emitter", "emitter c0") + key("--void", "void c1") + key("--anchor", "anchor c2");
+  const LEGENDS = [
+    readoutKey + sensorKeys,
+    readoutKey,
+    rgbKey("c4", "c5", "c6"),
+    rgbKey("c8", "c9", "c10"),
+    rgbKey("c12", "c13", "c14"),
+    sensorKeys
+  ];
+  function renderLegend() {
+    document.getElementById("legend").innerHTML = LEGENDS[visMode];
+  }
+
+  // =========================================================================
+  // 5. CONTROLS & POINTER INTERACTION
+  // =========================================================================
+
+  const toastEl = document.getElementById("statusToast");
+  function showToast(msg) {
+    toastEl.textContent = msg;
+    toastEl.classList.add("show");
+    clearTimeout(showToast._timer);
+    showToast._timer = setTimeout(() => toastEl.classList.remove("show"), 3200);
+  }
+
+  function clientToGridCoords(clientX, clientY) {
+    const rect = canvas.getBoundingClientRect();
+    const nx = (clientX - rect.left) / rect.width;
+    const ny = 1.0 - (clientY - rect.top) / rect.height; // WebGL bottom-left origin
+    return {
+      x: Math.max(0, Math.min(gridWidth - 1, Math.floor(nx * gridWidth))),
+      y: Math.max(0, Math.min(gridHeight - 1, Math.floor(ny * gridHeight)))
+    };
+  }
+
+  // Stamp along the segment since the last event so fast strokes stay continuous
+  let lastStamp = null;
+  function paintTo(pt) {
+    if (!lastStamp) {
+      applyGPUBrushPass(pt.x, pt.y, brushRadius, activeBrushMode);
+    } else {
+      const dx = pt.x - lastStamp.x;
+      const dy = pt.y - lastStamp.y;
+      const n = Math.min(64, Math.ceil(Math.hypot(dx, dy) / Math.max(1, brushRadius * 0.5)));
+      for (let i = 1; i <= n; i++) {
+        applyGPUBrushPass(Math.round(lastStamp.x + (dx * i) / n), Math.round(lastStamp.y + (dy * i) / n), brushRadius, activeBrushMode);
+      }
+    }
+    lastStamp = pt;
+  }
+
+  canvas.addEventListener("pointerdown", (e) => {
+    if (contextLost) return;
+    try {
+      canvas.setPointerCapture(e.pointerId);
+    } catch (_) {
+      // The pointer may already be gone (or synthetic); painting still works without capture.
+    }
+    isPointerDown = true;
+    lastStamp = null;
+    const pt = clientToGridCoords(e.clientX, e.clientY);
+    hoverCoord.x = pt.x;
+    hoverCoord.y = pt.y;
+    hoverCoord.inside = true;
+    paintTo(pt);
+  });
+
+  canvas.addEventListener("pointermove", (e) => {
+    const pt = clientToGridCoords(e.clientX, e.clientY);
+    hoverCoord.x = pt.x;
+    hoverCoord.y = pt.y;
+    hoverCoord.inside = true;
+    if (isPointerDown && !contextLost) {
+      paintTo(pt);
+    }
+  });
+
+  function endStroke() {
+    isPointerDown = false;
+    lastStamp = null;
+  }
+  canvas.addEventListener("pointerup", endStroke);
+  canvas.addEventListener("pointercancel", endStroke);
+  canvas.addEventListener("lostpointercapture", endStroke);
+  canvas.addEventListener("pointerleave", () => {
+    endStroke();
+    hoverCoord.inside = false;
+  });
+
+  // Brushes
+  const brushModeMap = {
+    obstacle: { code: 0, name: "Void" },
+    source:   { code: 1, name: "Emitter" },
+    anchor:   { code: 2, name: "Anchor" },
+    damage:   { code: 3, name: "Damage" },
+    erase:    { code: 4, name: "Eraser" }
+  };
+  const brushNames = ["Void", "Emitter", "Anchor", "Damage", "Eraser"];
+
+  function setPressed(selector, active) {
+    document.querySelectorAll(selector).forEach((b) => b.setAttribute("aria-pressed", String(b === active)));
+  }
+
+  document.querySelectorAll(".brush").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      setPressed(".brush", btn);
+      activeBrushMode = brushModeMap[btn.dataset.brush].code;
+      updateCursorBadge();
+    });
+  });
+
+  function updateCursorBadge() {
+    document.getElementById("canvasCursorBadge").textContent = `${brushNames[activeBrushMode]} · r ${brushRadius}`;
+  }
+
+  function syncSlider(input) {
+    const min = parseFloat(input.min), max = parseFloat(input.max);
+    input.style.setProperty("--fill", `${((parseFloat(input.value) - min) / (max - min)) * 100}%`);
+  }
+
+  document.getElementById("sliderBrushRadius").addEventListener("input", (e) => {
+    brushRadius = parseInt(e.target.value, 10);
+    document.getElementById("lblBrushRadius").textContent = `${brushRadius} cells`;
+    syncSlider(e.target);
+    updateCursorBadge();
+  });
+
+  // Run controls
+  const pauseBtn = document.getElementById("btnTogglePause");
+  const ICON_PAUSE = '<svg viewBox="0 0 16 16" aria-hidden="true"><rect x="3.5" y="3" width="3" height="10" rx="1"/><rect x="9.5" y="3" width="3" height="10" rx="1"/></svg>';
+  const ICON_PLAY = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5 3.6v8.8c0 .5.5.8.9.5l6.8-4.4c.4-.3.4-.8 0-1L5.9 3.1c-.4-.3-.9 0-.9.5z"/></svg>';
+  function setPaused(paused) {
+    isPaused = paused;
+    pauseBtn.innerHTML = (paused ? ICON_PLAY : ICON_PAUSE) + `<span>${paused ? "Resume" : "Pause"}</span>`;
+  }
+  pauseBtn.addEventListener("click", () => setPaused(!isPaused));
+
+  document.getElementById("btnStepOnce").addEventListener("click", () => {
+    if (contextLost) return;
+    setPaused(true);
+    stepNCAOnce();
+    renderDisplayPass();
+    updateCellProbeReadout();
+  });
+
+  document.getElementById("btnCorruptHidden").addEventListener("click", () => {
+    if (contextLost) return;
+    applyGPUBrushPass(0, 0, 0, 5);
+    showToast("Scrambled the hidden state in 40% of cells. Watch it grow back.");
+  });
+
+  document.getElementById("btnPunchObstacles").addEventListener("click", () => {
+    if (contextLost) return;
+    for (let i = 0; i < 3; i++) {
+      const rx = Math.floor(gridWidth * (0.28 + Math.random() * 0.44));
+      const ry = Math.floor(gridHeight * (0.20 + Math.random() * 0.60));
+      const rr = Math.floor(gridWidth * (0.035 + Math.random() * 0.04));
+      applyGPUBrushPass(rx, ry, rr, 0);
+    }
+    showToast("Dropped three random voids.");
+  });
+
+  document.getElementById("btnResetScene").addEventListener("click", () => {
+    if (contextLost) return;
+    seedDefaultEngineeringScene();
+    showToast("Scene reset to the default pads and voids.");
+  });
+
+  // Display mode & grid size
+  document.querySelectorAll("[data-vis]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      visMode = parseInt(btn.dataset.vis, 10);
+      setPressed("[data-vis]", btn);
+      renderLegend();
+    });
+  });
+
+  document.querySelectorAll("[data-res]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      if (contextLost) return;
+      const res = parseInt(btn.dataset.res, 10);
+      setPressed("[data-res]", btn);
+      initGridAndSeedScene(res, res);
+      showToast(`Grid resized to ${res} × ${res} and reseeded.`);
+    });
+  });
+
+  // Weight presets
+  const presetMeta = {
+    flux_router: {
+      name: "Flux halos",
+      summary:
+        "Emitters (c0) and anchors (c2) pump potentials (c4, c5) that spread through the Laplacian and leak away, and voids drain both. c6 holds their difference, c8–c9 its gradient and c10 the void rims; the readout adds up flux, overlap and rim stress. The fields reach only a few cells, so it settles into bright halos around the pads and thin rims on the voids."
+    },
+    med_segmenter: {
+      name: "Boundary rings",
+      summary:
+        "Eight oriented edge detectors read the Sobel gradients of c0–c2 and write rim strength into c4 and the rim’s direction into c8–c9. A cascade of leaky fields (c4 → c5 → c6 → c7) carries the rim outward while c12 inhibits it, and the readout traces a bright ring around each painted shape."
+    },
+    metamaterial_truss: {
+      name: "Activator–inhibitor",
+      summary:
+        "An activator (c4) excites itself and a faster-spreading inhibitor (c5), seeded by emitters, anchors and void rims, while c8–c9 follow the activator’s gradient. The pair balances into solid pads, lit void edges and a soft glow across open ground."
+    }
+  };
+  let currentPresetKey = "flux_router";
+
+  function loadPreset(presetKey, announce) {
+    currentPresetKey = presetKey;
+    uploadWeightBuffer(buildSynthesizedWeights(presetKey));
+    document.getElementById("hudPresetDescription").textContent = presetMeta[presetKey].name;
+    document.getElementById("presetTechSummary").textContent = presetMeta[presetKey].summary;
+    if (announce) showToast(`Loaded the ${presetMeta[presetKey].name} weights.`);
+  }
+
+  document.querySelectorAll('input[name="preset"]').forEach((radio) => {
+    radio.addEventListener("change", () => {
+      if (radio.checked) loadPreset(radio.value, true);
+    });
+  });
+
+  // Binary .bin upload & export (strict 21,504-byte validation)
+  document.getElementById("inputBinFile").addEventListener("change", async (e) => {
+    const file = e.target.files[0];
+    e.target.value = "";
+    if (!file) return;
+    const arrayBuf = await file.arrayBuffer();
+    if (arrayBuf.byteLength !== 21504) {
+      showToast(`That file is ${arrayBuf.byteLength.toLocaleString("en-US")} bytes; a weights file is exactly 21,504.`);
+      return;
+    }
+    uploadWeightBuffer(new Float32Array(arrayBuf));
+    currentPresetKey = null;
+    document.querySelectorAll('input[name="preset"]').forEach((r) => { r.checked = false; });
+    document.getElementById("hudPresetDescription").textContent = file.name;
+    document.getElementById("presetTechSummary").textContent =
+      `Custom weights from ${file.name}. The texture layout is described under How it works; the shader still holds c0–c2 fixed.`;
+    showToast(`Loaded ${file.name} into the weight texture.`);
+  });
+
+  document.getElementById("btnExportBin").addEventListener("click", () => {
+    if (!currentWeightBuffer) return;
+    const blob = new Blob([currentWeightBuffer.buffer], { type: "application/octet-stream" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `nca_weights_${currentPresetKey || "custom"}_64x21_rgba32f.bin`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    showToast("Exported 21,504 bytes of weights.");
+  });
+
+  // Step shader uniforms
+  document.getElementById("sliderStepsPerFrame").addEventListener("input", (e) => {
+    stepsPerFrame = parseInt(e.target.value, 10);
+    document.getElementById("lblStepsPerFrame").textContent = String(stepsPerFrame);
+    syncSlider(e.target);
+  });
+
+  document.getElementById("sliderUpdateProb").addEventListener("input", (e) => {
+    updateProb = parseFloat(e.target.value);
+    document.getElementById("lblUpdateProb").textContent = updateProb.toFixed(2);
+    syncSlider(e.target);
+  });
+
+  // Shader source dialog, with light GLSL highlighting and line numbers
+  const GLSL_KEYWORDS = new Set(("void bool int uint float vec2 vec3 vec4 ivec2 ivec3 ivec4 uvec2 uvec3 uvec4 " +
+    "bvec2 bvec3 bvec4 mat2 mat3 mat4 sampler2D const uniform in out inout layout location precision highp mediump " +
+    "lowp if else for while return break continue true false struct").split(" "));
+  const GLSL_BUILTINS = new Set(("texelFetch texture clamp mix max min exp length smoothstep step fract abs floor " +
+    "sign sin cos dot normalize gl_FragCoord gl_Position gl_VertexID").split(" "));
+
+  function highlightGLSL(src) {
+    const esc = (s) => s.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+    const re = /(\/\/[^\n]*)|(^[ \t]*#[^\n]*)|(\b\d+(?:\.\d*)?(?:[eE][+-]?\d+)?u?\b)|([A-Za-z_]\w*)/gm;
+    let out = "";
+    let last = 0;
+    let m;
+    while ((m = re.exec(src))) {
+      out += esc(src.slice(last, m.index));
+      const tok = m[0];
+      if (m[1]) out += `<span class="tk-com">${esc(tok)}</span>`;
+      else if (m[2]) out += `<span class="tk-pre">${esc(tok)}</span>`;
+      else if (m[3]) out += `<span class="tk-num">${tok}</span>`;
+      else if (GLSL_KEYWORDS.has(tok)) out += `<span class="tk-kw">${tok}</span>`;
+      else if (GLSL_BUILTINS.has(tok)) out += `<span class="tk-fn">${tok}</span>`;
+      else if (tok.startsWith("u_")) out += `<span class="tk-uni">${tok}</span>`;
+      else out += tok;
+      last = m.index + tok.length;
+    }
+    out += esc(src.slice(last));
+    return out.split("\n").map((line) => `<span class="ln">${line || " "}</span>`).join("");
+  }
+
+  const SHADER_SOURCES = {
+    step: NCA_STEP_FRAG_SHADER,
+    brush: BRUSH_MRT_FRAG_SHADER,
+    display: DISPLAY_FRAG_SHADER
+  };
+  const shaderModal = document.getElementById("shaderModal");
+  const shaderPre = document.getElementById("shaderSourcePreview");
+  function showShader(name) {
+    shaderPre.innerHTML = highlightGLSL(SHADER_SOURCES[name].trim());
+    shaderPre.scrollTop = 0;
+    setPressed("[data-src]", document.querySelector(`[data-src="${name}"]`));
+  }
+  document.querySelectorAll("[data-src]").forEach((btn) => {
+    btn.addEventListener("click", () => showShader(btn.dataset.src));
+  });
+  document.getElementById("btnShowShaderModal").addEventListener("click", () => {
+    showShader("step");
+    shaderModal.showModal();
+  });
+  document.getElementById("btnCloseShaderModal").addEventListener("click", () => shaderModal.close());
+  shaderModal.addEventListener("click", (e) => {
+    if (e.target === shaderModal) shaderModal.close();
+  });
+
+  // Keep the drawing buffer matched to the canvas's displayed size
+  new ResizeObserver(() => {
+    sizeCanvasToDisplay();
+    if (ping && !contextLost) renderDisplayPass();
+  }).observe(canvas);
+
+  // =========================================================================
+  // 6. MAIN ANIMATION & TELEMETRY LOOP
+  // =========================================================================
+
+  let frameCounter = 0;
+  let lastFpsTime = performance.now();
+
+  function animate(now) {
+    if (contextLost) return;
+    if (!isPaused) {
+      for (let s = 0; s < stepsPerFrame; s++) {
+        stepNCAOnce();
+      }
+    }
+
+    renderDisplayPass();
+
+    frameCounter++;
+    if (frameCounter % 4 === 0) {
+      updateCellProbeReadout();
+    }
+
+    if (now - lastFpsTime >= 500) {
+      const elapsed = (now - lastFpsTime) / 1000;
+      const fps = Math.round(frameCounter / elapsed);
+      const sps = isPaused ? 0 : fps * stepsPerFrame;
+      document.getElementById("telemetryFps").textContent = fps;
+      document.getElementById("telemetrySps").textContent = sps.toLocaleString("en-US");
+      document.getElementById("telemetryTotalSteps").textContent = stepCount.toLocaleString("en-US");
+      frameCounter = 0;
+      lastFpsTime = now;
+    }
+
+    requestAnimationFrame(animate);
+  }
+
+  initProbeUI();
+  initWeightTexture();
+  loadPreset("flux_router", false);
+  sizeCanvasToDisplay();
+  initGridAndSeedScene(256, 256);
+  renderLegend();
+  updateCursorBadge();
+  setPaused(false);
+  document.querySelectorAll('input[type="range"]').forEach(syncSlider);
+  requestAnimationFrame(animate);
+</script>
+</body>
+</html>
