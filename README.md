@@ -173,7 +173,7 @@ A collection of games, tools, and experiments built with AI — hosted on GitHub
 - **[Strange Attractors](learn/strange-attractors.html)** — The mathematics of strange attractors — phase space, stretching and folding, bifurcations, fractal dimension — explained visually, with interactive experiments. (*Tutorial*)
 - **[SynthID-Text](learn/synthid-text.html)** — How Google DeepMind watermarks model output through keyed token sampling — tournament choices, statistical detection, non-distortion, thresholds, edits, and honest limits. (*Tutorial*)
 - **[Text Steganography](learn/text-steganography.html)** — How secrets hide inside ordinary text — null ciphers, zero-width characters, synonym codes, and the censor’s scanner that catches them, with hands-on encoders under a UV lamp. (*Tutorial*)
-- **[US Grid & Data Centers](learn/us-datacenter-grid-map.html)** — Interactive map overlay showing US data center locations, grid capacity, and energy infrastructure across time. (*Visualizer*)
+- **[US Grid & Data Centers](learn/us-datacenter-grid-map.html)** — A November 2026 atlas of data-center markets, grid constraints, electricity projections and local election results. (*Visualizer*)
 
 ### [Vector Defense](vector-defense/)
 

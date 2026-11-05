@@ -1258,3 +1258,19 @@ Plan check-in: bundle the viewer's JavaScript and embed the GLB in the HTML, so 
 - [x] Review the scoped diff and prepare the authorized commit and push.
 
 Review: The HTML embeds the classic-script viewer, the GLB and fallback poster; the model download is generated from the same embedded bytes. Rebuilding is deterministic, and both embedded assets match their source files byte for byte. In the in-app browser over localhost HTTP, the textured 3D view rendered, orbit, part selection and explode/reassemble worked, and the request log contained no separate viewer JavaScript or GLB request. The downloaded GLB matched the source SHA-256. Browser automation explicitly blocks `file://` URLs, so direct-file behavior was not observed; the films, captions and Blender download still use neighboring files.
+
+## US data-center and grid map — November 4, 2026 refresh
+
+Plan check-in: replace unsupported annual interpolation, reserve-margin decay, schematic transmission and stale campus claims with dated primary-source observations. Keep the geographic explorer, add post-election local-vote context, and compare national electricity forecasts using consistent TWh units. Improve the map, keyboard/touch selection and narrow-screen layout; do not convert election results into an invented numerical demand reduction.
+
+- [x] Verify latest energy projections, market observations and November 3 election results; preserve source dates and preliminary status.
+- [x] Refresh the map, forecast comparison, election context and catalog description with traceable sources.
+- [x] Verify data integrity, map/filter controls, keyboard use, responsive rendering and console/network behavior in a real browser.
+- [x] Review the scoped diff and document results and remaining limitations.
+
+
+Review: Replaced the previous invented annual and reserve-margin paths with dated Berkeley Lab/EPRI 2030 energy scenarios, CBRE Q2 2026 market inventory, PJM/MISO/ERCOT observations and local election evidence. The map uses Census 2024 1:20 million state boundaries in a north-up Albers projection. Publication dates, measurement scope and unofficial election status are visible; research notes retain primary-source routes and limitations.
+
+UI proof: `http://127.0.0.1:8768/learn/us-datacenter-grid-map.html`, in-app Chromium browser, anonymous. Observed marker clicks, Enter/Space selection, location dropdown, all three map layers, remembered selection within the page, all five published sensitivity values, and the chart table. Desktop 1440×1100 and phone 390×844 rendered without horizontal overflow; 320×740 also passed the width check. The source document returned HTTP 200, with no JavaScript exceptions, console warnings/errors or failed network requests in the captured reload/interaction window. Screenshots: `/private/tmp/datacenter-mobile-map.jpg`, `/private/tmp/datacenter-outlook-desktop.jpg`. Physical touch and assistive-technology sessions were not exercised.
+
+Targeted Node/HTML checks passed: script syntax, unique IDs and all fragment/label/ARIA targets, 49 state/DC outlines, the 10,902.9 MW eight-market total, valid available-capacity bounds, ordered forecast cases, five in-range sensitivities, 17 unique in-bounds locations, and north-up/west-left projection. Independent review caught projection orientation and two missing heading IDs; both were repaired and rechecked. Election figures remain reported rather than certified; no numerical post-election adjustment is claimed.
