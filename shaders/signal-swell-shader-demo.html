@@ -1,0 +1,869 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Signal Swell — Plexus Wave Shader</title>
+  <!-- A live, procedural take on the orange network-wave band on bombora.com
+       (theirs is a pre-rendered video). Nothing here is sampled from it. -->
+  <style>
+    :root {
+      color-scheme: light;
+      font-family: "Avenir Next", "Segoe UI", ui-sans-serif, system-ui, sans-serif;
+      --paper: #fbfaf8;
+      --ink: #1e2a30;
+      --muted: #6b757b;
+      --accent: #e2702a;
+      --line: rgba(30, 42, 48, 0.12);
+      --panel: rgba(255, 255, 255, 0.64);
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body {
+      width: 100%;
+      min-height: 100%;
+      margin: 0;
+      background: var(--paper);
+      color: var(--ink);
+    }
+
+    body {
+      min-height: 100svh;
+      overflow: hidden;
+    }
+
+    canvas {
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      display: block;
+      touch-action: none;
+      cursor: crosshair;
+    }
+
+    .back {
+      position: fixed;
+      z-index: 3;
+      top: clamp(16px, 2.6vw, 28px);
+      right: clamp(16px, 2.6vw, 28px);
+      color: var(--muted);
+      text-decoration: none;
+      font: 400 0.72rem/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+      letter-spacing: 0.08em;
+    }
+    .back:hover { color: var(--ink); }
+
+    .masthead {
+      position: fixed;
+      z-index: 2;
+      top: clamp(18px, 3vw, 34px);
+      left: clamp(18px, 3vw, 38px);
+      max-width: min(500px, calc(100vw - 36px));
+      pointer-events: none;
+      text-shadow: 0 1px 16px rgba(251, 250, 248, 0.95);
+    }
+
+    .kicker {
+      margin: 0 0 8px;
+      font: 600 11px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace;
+      letter-spacing: 0.22em;
+      text-transform: uppercase;
+      color: var(--accent);
+    }
+
+    h1 {
+      margin: 0;
+      font-size: clamp(30px, 5.2vw, 62px);
+      font-weight: 600;
+      line-height: 0.98;
+      letter-spacing: -0.035em;
+    }
+
+    .subtitle {
+      max-width: 430px;
+      margin: 13px 0 0;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.55;
+    }
+
+    .controls {
+      position: fixed;
+      z-index: 3;
+      left: 50%;
+      bottom: max(18px, env(safe-area-inset-bottom));
+      width: min(760px, calc(100vw - 28px));
+      transform: translateX(-50%);
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr auto;
+      gap: 14px;
+      align-items: end;
+      padding: 14px;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: var(--panel);
+      box-shadow: 0 18px 48px rgba(30, 42, 48, 0.12);
+      backdrop-filter: blur(16px) saturate(120%);
+      -webkit-backdrop-filter: blur(16px) saturate(120%);
+    }
+
+    .control { min-width: 0; }
+
+    .control label {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      margin: 0 0 7px;
+      color: #3d4a51;
+      font: 600 10px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+
+    .control output {
+      color: var(--accent);
+      font-variant-numeric: tabular-nums;
+    }
+
+    input[type="range"] {
+      width: 100%;
+      height: 4px;
+      margin: 7px 0;
+      appearance: none;
+      border-radius: 999px;
+      background: linear-gradient(90deg, #f6dcc8, #e2702a);
+      outline: none;
+    }
+
+    input[type="range"]::-webkit-slider-thumb {
+      width: 18px;
+      height: 18px;
+      appearance: none;
+      border: 2px solid #e2702a;
+      border-radius: 50%;
+      background: #fff;
+      box-shadow: 0 0 0 4px rgba(226, 112, 42, 0.14);
+      cursor: pointer;
+    }
+
+    input[type="range"]::-moz-range-thumb {
+      width: 15px;
+      height: 15px;
+      border: 2px solid #e2702a;
+      border-radius: 50%;
+      background: #fff;
+      box-shadow: 0 0 0 4px rgba(226, 112, 42, 0.14);
+      cursor: pointer;
+    }
+
+    input[type="range"]:focus-visible { box-shadow: 0 0 0 3px rgba(226, 112, 42, 0.35); }
+
+    button {
+      height: 42px;
+      padding: 0 16px;
+      border: 1px solid rgba(226, 112, 42, 0.32);
+      border-radius: 11px;
+      background: rgba(226, 112, 42, 0.08);
+      color: var(--ink);
+      font: 600 11px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      cursor: pointer;
+      transition: background 0.16s ease, border-color 0.16s ease, transform 0.16s ease;
+    }
+    button:hover {
+      background: rgba(226, 112, 42, 0.15);
+      border-color: rgba(226, 112, 42, 0.5);
+    }
+    button:active { transform: translateY(1px); }
+
+    .fallback {
+      position: fixed;
+      inset: 0;
+      display: none;
+      place-items: center;
+      padding: 24px;
+      background: var(--paper);
+      color: var(--ink);
+      text-align: center;
+      font-size: 16px;
+      line-height: 1.5;
+    }
+
+    @media (max-width: 680px) {
+      .subtitle { display: none; }
+      .controls { grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
+      button { width: 100%; grid-column: 1 / -1; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .subtitle::after { content: " Reduced-motion mode is active."; }
+      button { transition: none; }
+    }
+  </style>
+</head>
+<body>
+  <canvas id="gl" aria-label="An orange network mesh rising and falling like a slow swell on white paper, binary digits flickering over its far crest while the near rows melt out of focus"></canvas>
+
+  <a class="back" href="./">&larr; shaders</a>
+
+  <header class="masthead">
+    <p class="kicker">Procedural WebGL study</p>
+    <h1>Signal Swell</h1>
+    <p class="subtitle">
+      A plexus of nodes and edges riding a slow swell, bits flickering over the
+      far crest, and a lens shallow enough that only one band holds focus.
+      Click anywhere on the swell to pull focus there.
+    </p>
+  </header>
+
+  <section class="controls" aria-label="Shader controls">
+    <div class="control">
+      <label for="focus">Focus <output id="focusOut">8.4</output></label>
+      <input id="focus" type="range" min="2.4" max="12" value="8.4" step="0.1" />
+    </div>
+    <div class="control">
+      <label for="aperture">Aperture <output id="apertureOut">1.00</output></label>
+      <input id="aperture" type="range" min="0" max="2.5" value="1" step="0.05" />
+    </div>
+    <div class="control">
+      <label for="swell">Swell <output id="swellOut">1.00</output></label>
+      <input id="swell" type="range" min="0" max="2" value="1" step="0.05" />
+    </div>
+    <button id="pause" type="button">Pause</button>
+  </section>
+
+  <div id="fallback" class="fallback">
+    This demo needs WebGL. Open it in a current version of Safari, Chrome, Firefox, or Edge.
+  </div>
+
+  <script>
+  (() => {
+    "use strict";
+
+    const canvas = document.getElementById("gl");
+    const fallback = document.getElementById("fallback");
+    const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const params = new URLSearchParams(location.search);
+    const pinParam = params.get("pin");
+    const pinTime = pinParam === null || pinParam === "" ? null : Number(pinParam);
+    const pinned = pinTime !== null && Number.isFinite(pinTime);
+
+    const gl = canvas.getContext("webgl", {
+      alpha: false,
+      antialias: false,
+      depth: false,
+      stencil: false,
+      powerPreference: "high-performance",
+      preserveDrawingBuffer: true
+    });
+
+    if (!gl) {
+      fallback.style.display = "grid";
+      return;
+    }
+
+    /* ---------------- the swell ----------------
+       Warped directional sines. This one table writes the GLSL height field
+       and the CPU copy that click-to-focus uses, so the two cannot drift.
+       Each row: amplitude, kx, kz, angular speed, phase. */
+    const SWELL = {
+      warpX: [0.60, 0.00, 0.45, 0.12, 1.3],
+      warpZ: [0.45, 0.38, 0.00, -0.10, 0.4],
+      waves: [
+        [0.30, 0.62, 0.25, 0.28, 0.0],
+        [0.22, -0.48, 0.80, -0.21, 1.9],
+        [0.15, 1.35, -0.55, 0.40, 4.1],
+        [0.09, 2.10, 1.40, -0.52, 2.6],
+        [0.05, -2.90, 2.20, 0.70, 5.3]
+      ]
+    };
+
+    const glslNum = v => {
+      const s = String(v);
+      return /[.e]/.test(s) ? s : s + ".0";
+    };
+    const glslTerm = (w, x, z) =>
+      glslNum(w[0]) + " * sin(" + glslNum(w[1]) + " * " + x + " + " + glslNum(w[2]) + " * " + z +
+      " + " + glslNum(w[3]) + " * t + " + glslNum(w[4]) + ")";
+    const SWELL_GLSL =
+      "float swell(vec2 p, float t) {\n" +
+      "  vec2 q = p + vec2(" + glslTerm(SWELL.warpX, "p.x", "p.y") + ",\n" +
+      "                    " + glslTerm(SWELL.warpZ, "p.x", "p.y") + ");\n" +
+      "  return " + SWELL.waves.map(w => glslTerm(w, "q.x", "q.y")).join("\n       + ") + ";\n" +
+      "}\n";
+
+    function swellAt(x, z, t) {
+      const a = SWELL.warpX;
+      const b = SWELL.warpZ;
+      const qx = x + a[0] * Math.sin(a[1] * x + a[2] * z + a[3] * t + a[4]);
+      const qz = z + b[0] * Math.sin(b[1] * x + b[2] * z + b[3] * t + b[4]);
+      let h = 0;
+      for (const w of SWELL.waves) h += w[0] * Math.sin(w[1] * qx + w[2] * qz + w[3] * t + w[4]);
+      return h;
+    }
+
+    /* ---------------- scene ----------------
+       World units: x right, y up, z away from a camera at the origin.
+       Screen units: height-normalised, origin at the centre. A shift lens
+       (horizon offset, no pitch) keeps the projection a pair of divides. */
+    const SCENE = {
+      z0: 1.8,          // first row
+      z1: 11.6,         // last row
+      pitch: 0.24,      // grid spacing, both axes
+      jitter: 0.68,     // node jitter, fraction of a cell
+      camY: 0.95,
+      horizon: 0.2,
+      focal: 1.6,
+      aperture: 0.022,  // circle-of-confusion scale, screen heights
+      hair: 0.8,        // line core half-width, CSS px
+      lineWorld: 0.0045,// line core half-width up close, world
+      dotR: 0.012,      // node radius, world
+      glyph: 0.1,       // bit height, world
+      irregular: 0.12,  // per-node height scatter, world
+      drift: 0.05,      // lateral flow, world units per second
+      maxAspect: 3.2
+    };
+    const PAPER = [251 / 255, 250 / 255, 248 / 255];
+    const INK = [0.9, 1.0, 0.95];           // line, node, bit
+    const INK_COLOR = [0.87, 0.42, 0.15];   // the one orange every layer is laid in
+
+    function mulberry32(a) {
+      return () => {
+        a |= 0;
+        a = a + 0x6D2B79F5 | 0;
+        let t = Math.imul(a ^ a >>> 15, 1 | a);
+        t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+        return ((t ^ t >>> 14) >>> 0) / 4294967296;
+      };
+    }
+
+    const fract = v => v - Math.floor(v);
+    const smooth = (a, b, x) => {
+      const t = Math.min(Math.max((x - a) / (b - a), 0), 1);
+      return t * t * (3 - 2 * t);
+    };
+
+    /* ---------------- the mesh ----------------
+       A jittered grid, triangulated with a random diagonal per cell. Every
+       edge, node and bit label becomes one quad (six vertices) in a static
+       buffer; nothing moves on the CPU. Columns wrap so the grid can flow
+       sideways forever, with the seam far outside the frustum. */
+    const CORNERS = [0, -1, 1, -1, 1, 1, 0, -1, 1, 1, 0, 1];
+    const STRIDE = 10; // aA(4) aB(4) aCorner(2)
+
+    function buildMesh(halfWidth, seed) {
+      const rand = mulberry32(seed);
+      const { z0, z1, pitch, jitter } = SCENE;
+      const rows = Math.round((z1 - z0) / pitch) + 1;
+      const half = Math.ceil(halfWidth / pitch);
+      const cols = half * 2;
+      const wrap = cols * pitch;
+      const count = rows * cols;
+      const nx = new Float32Array(count);
+      const nz = new Float32Array(count);
+      const ns = new Float32Array(count);
+      for (let j = 0; j < rows; j++) {
+        for (let c = 0; c < cols; c++) {
+          const k = j * cols + c;
+          nx[k] = (c - half + (rand() - 0.5) * jitter) * pitch;
+          nz[k] = z0 + (j + (rand() - 0.5) * jitter) * pitch;
+          ns[k] = 1 + rand() * 997;
+        }
+      }
+
+      // at most 3 edges + 1 node + 1 label per grid point
+      const data = new Float32Array(count * 5 * 6 * STRIDE);
+      let o = 0;
+      let quads = 0;
+      let edges = 0;
+      let labels = 0;
+      const quad = (ax, az, as, kind, bx, bz, bs, extra) => {
+        for (let v = 0; v < 6; v++) {
+          data[o++] = ax; data[o++] = az; data[o++] = as; data[o++] = kind;
+          data[o++] = bx; data[o++] = bz; data[o++] = bs; data[o++] = extra;
+          data[o++] = CORNERS[v * 2]; data[o++] = CORNERS[v * 2 + 1];
+        }
+        quads++;
+      };
+      const at = (c, j) => j * cols + (c % cols);
+      const xAt = (c, j) => nx[at(c, j)] + (c >= cols ? wrap : 0);
+      const edge = (c1, j1, c2, j2) => {
+        quad(xAt(c1, j1), nz[at(c1, j1)], ns[at(c1, j1)], 0,
+             xAt(c2, j2), nz[at(c2, j2)], ns[at(c2, j2)], 0);
+        edges++;
+      };
+
+      for (let j = 0; j < rows; j++) {
+        for (let c = 0; c < cols; c++) {
+          edge(c, j, c + 1, j);
+          if (j + 1 < rows) {
+            edge(c, j, c, j + 1);
+            if (rand() < 0.5) edge(c, j, c + 1, j + 1);
+            else edge(c + 1, j, c, j + 1);
+          }
+        }
+      }
+
+      for (let k = 0; k < count; k++) {
+        quad(nx[k], nz[k], ns[k], 1, 0, 0, 0, 0);
+        // bits gather over the far crest and stay out of the foreground
+        const p = 0.4 * smooth(4.5, 9.5, nz[k]);
+        if (rand() < p) {
+          const r = rand();
+          const glyphs = r < 0.66 ? 1 : r < 0.9 ? 2 : 3;
+          quad(nx[k], nz[k], ns[k], 2, 0.07 + 0.2 * rand(), 0, 0, glyphs);
+          labels++;
+        }
+      }
+
+      return {
+        data: data.subarray(0, o),
+        vertices: quads * 6,
+        quads, edges, labels,
+        nodes: count,
+        wrap, nx, nz, ns
+      };
+    }
+
+    /* ---------------- shaders ---------------- */
+
+    const vertexSource = `
+      precision highp float;
+
+      attribute vec4 aA;      // anchor: x, z, seed, kind (0 edge, 1 node, 2 bits)
+      attribute vec4 aB;      // edge: far end x, z, seed. bits: rise, -, -, glyph count
+      attribute vec2 aCorner; // quad corner: end (0 or 1), side (-1 or 1)
+
+      uniform vec2 uRes;
+      uniform float uTime;
+      uniform vec2 uFlow;     // lateral scroll, wrap width
+      uniform vec4 uCam;      // x, y, horizon, focal length
+      uniform vec4 uLens;     // focus depth, aperture, hairline, swell gain
+      uniform vec2 uFade;     // first and last row depth
+      uniform vec3 uInk;      // line, node, bit
+      uniform vec4 uShape;    // node radius, glyph height, height scatter, line half-width (world)
+
+      varying vec2 vP;        // quad-local position, screen units
+      varying vec4 vA;        // per-kind shape data
+      varying vec2 vK;        // kind, ink
+
+      ${SWELL_GLSL}
+
+      float hash11(float n) { return fract(sin(n) * 43758.5453); }
+
+      vec3 place(vec2 xz, float seed) {
+        float h = swell(xz, uTime) + (fract(seed * 7.31) - 0.5) * uShape.z;
+        return vec3(xz.x, h * uLens.w, xz.y);
+      }
+
+      vec3 toScreen(vec3 w) {
+        float z = max(w.z, 0.05);
+        return vec3((w.x - uCam.x) * uCam.w / z, uCam.z + (w.y - uCam.y) * uCam.w / z, z);
+      }
+
+      // circle of confusion, screen heights
+      float coc(float z) { return uLens.y * abs(z - uLens.x) / z; }
+
+      // Strict energy conservation tints the whole foreground; thin the
+      // deepest blur a little so the sharp band stays the subject.
+      float haze(float c) { return 1.0 - 0.45 * smoothstep(0.004, 0.045, c); }
+
+      float fade(float z) {
+        return smoothstep(uFade.x, uFade.x + 0.9, z) * (1.0 - smoothstep(uFade.y - 2.8, uFade.y, z));
+      }
+
+      void main() {
+        float kind = aA.w;
+        float off = uFlow.x + uFlow.y * floor((aA.x - uFlow.x) / uFlow.y + 0.5);
+        vec3 A = toScreen(place(vec2(aA.x - off, aA.y), aA.z));
+        float aa = 1.5 / uRes.y;
+        float hair = uLens.z;
+        vec2 pos;
+
+        if (kind < 0.5) {
+          // edge: a capsule whose radius follows each end's defocus
+          vec3 B = toScreen(place(vec2(aB.x - off, aB.y), aB.z));
+          float w = max(hair, uShape.w * uCam.w / (0.5 * (A.z + B.z)));
+          float cA = coc(A.z);
+          float cB = coc(B.z);
+          float rA = sqrt(w * w + cA * cA);
+          float rB = sqrt(w * w + cB * cB);
+          vec2 d = B.xy - A.xy;
+          float len = length(d);
+          vec2 dir = len > 1e-6 ? d / len : vec2(1.0, 0.0);
+          vec2 nrm = vec2(-dir.y, dir.x);
+          float R = max(rA, rB) + aa;
+          float along = aCorner.x < 0.5 ? -R : len + R;
+          pos = A.xy + dir * along + nrm * (aCorner.y * R);
+          vP = vec2(along, aCorner.y * R);
+          vA = vec4(len, rA, rB, w);
+          float tone = 0.7 + 0.3 * hash11(aA.z * 0.917 + aB.z * 0.131);
+          bool atA = aCorner.x < 0.5;
+          vK = vec2(0.0, uInk.x * tone * fade(atA ? A.z : B.z) * haze(atA ? cA : cB));
+        } else if (kind < 1.5) {
+          // node: a dot that keeps its ink as it spreads into a bokeh disc.
+          // Capped near size, or the foreground turns into a field of balls.
+          float c = coc(A.z);
+          float r0 = clamp(uShape.x * uCam.w / A.z, hair * 1.6, hair * 2.2);
+          float r = sqrt(r0 * r0 + c * c);
+          vec2 corner = vec2(aCorner.x * 2.0 - 1.0, aCorner.y);
+          float R = r + aa;
+          pos = A.xy + corner * R;
+          vP = corner * R;
+          vA = vec4(r, 0.0, 0.0, 0.0);
+          vK = vec2(1.0, uInk.y * (r0 * r0) / (r * r) * fade(A.z) * haze(c));
+        } else {
+          // bits: one to three glyphs hovering over the node, re-rolled on a timer
+          float bob = 0.025 * sin(uTime * (0.5 + fract(aA.z * 3.7)) + aA.z);
+          vec3 D = toScreen(place(vec2(aA.x - off, aA.y), aA.z) + vec3(0.0, aB.x + bob, 0.0));
+          float gh = uShape.y * uCam.w / D.z;
+          float c = coc(D.z);
+          float s = max(0.075 * gh, hair);
+          float r = sqrt(s * s + c * c);
+          vec2 corner = vec2(aCorner.x * 2.0 - 1.0, aCorner.y);
+          vec2 halfSize = vec2(aB.w * 0.3 * gh, 0.5 * gh) + r + aa;
+          pos = D.xy + corner * halfSize;
+          vP = corner * halfSize;
+          float rate = mix(0.12, 0.5, fract(aA.z * 5.3));
+          float phase = uTime * rate + fract(aA.z * 11.9) * 7.0;
+          float code = floor(hash11(aA.z * 1.73 + floor(phase) * 3.17) * 8.0);
+          float flash = exp(-fract(phase) * 9.0);
+          // strokes spread like lines (s / r) until the blur outgrows the
+          // glyph, then like a point: scale by stroke length over radius too
+          float spread = (s / r) * min(1.0, 1.2 * gh / r);
+          vA = vec4(gh, r, code, aB.w);
+          vK = vec2(2.0, uInk.z * spread * (1.0 + 0.8 * flash) * fade(D.z) * haze(c));
+        }
+
+        gl_Position = vec4(pos.x * 2.0 * uRes.y / uRes.x, pos.y * 2.0, 0.0, 1.0);
+      }
+    `;
+
+    const fragmentSource = `
+      precision highp float;
+
+      varying vec2 vP;
+      varying vec4 vA;
+      varying vec2 vK;
+
+      uniform vec3 uInkColor;
+      uniform float uSeed;
+
+      // compact, near-gaussian profile: 1 at the core, 0 at the radius
+      float fall(float x) {
+        float a = clamp(1.0 - x * x, 0.0, 1.0);
+        return a * a;
+      }
+
+      // running integral of that profile, 0 at -1, one half at 0, 1 at +1
+      float cdf(float u) {
+        u = clamp(u, -1.0, 1.0);
+        float u2 = u * u;
+        return 0.5 + 0.9375 * u * (1.0 - u2 * (0.6666667 - 0.2 * u2));
+      }
+
+      float sdSeg(vec2 p, vec2 a, vec2 b) {
+        vec2 pa = p - a;
+        vec2 ba = b - a;
+        float h = clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0);
+        return length(pa - ba * h);
+      }
+
+      // glyph space: one glyph is 1.0 tall, 0.6 wide, centred
+      float sdZero(vec2 q) {
+        vec2 r = vec2(0.19, 0.31);
+        float k0 = length(q / r);
+        float k1 = length(q / (r * r));
+        return abs(k0 * (k0 - 1.0) / max(k1, 1e-3));
+      }
+
+      float sdOne(vec2 q) {
+        return min(sdSeg(q, vec2(0.05, -0.31), vec2(0.05, 0.31)),
+                   sdSeg(q, vec2(0.05, 0.31), vec2(-0.13, 0.18)));
+      }
+
+      void main() {
+        float dens = 0.0;
+        if (vK.x < 0.5) {
+          // A blurred segment, not a capsule: energy-conserving across it
+          // (wider blur, proportionally less ink) and half strength at each
+          // end, fading out one radius past it. Round caps at full strength
+          // would stack into a blob wherever six edges meet.
+          float L = vA.x;
+          float t = clamp(vP.x / max(L, 1e-6), 0.0, 1.0);
+          float r = mix(vA.y, vA.z, t);
+          float along = clamp(cdf(vP.x / vA.y) + cdf((L - vP.x) / vA.z) - 1.0, 0.0, 1.0);
+          dens = fall(abs(vP.y) / r) * along * vA.w / r;
+        } else if (vK.x < 1.5) {
+          dens = fall(length(vP) / vA.x);
+        } else {
+          vec2 g = vP / vA.x;
+          float x0 = g.x + vA.w * 0.3;
+          for (int i = 0; i < 3; i++) {
+            float fi = float(i);
+            if (fi < vA.w) {
+              vec2 q = vec2(x0 - (fi + 0.5) * 0.6, g.y);
+              float bit = mod(floor(vA.z / exp2(fi)), 2.0);
+              float d = (bit > 0.5 ? sdOne(q) : sdZero(q)) * vA.x;
+              dens += fall(d / vA.y);
+            }
+          }
+        }
+        dens *= vK.y;
+        if (dens < 0.002) discard;
+
+        // Every layer is the same orange, so premultiplied "over" is
+        // order-independent: overlaps saturate toward the ink, never past it.
+        // The dither is keyed to the quad as well as the pixel; keyed to the
+        // pixel alone, twenty stacked blurs add the same error twenty times.
+        float n = fract(sin(dot(gl_FragCoord.xy + vP * vec2(1731.0, 977.0) + uSeed,
+                                vec2(12.9898, 78.233))) * 43758.5453);
+        float a = clamp(1.0 - exp(-dens) + (n - 0.5) / 255.0, 0.0, 1.0);
+        gl_FragColor = vec4(uInkColor * a, a);
+      }
+    `;
+
+    function compile(type, source) {
+      const shader = gl.createShader(type);
+      gl.shaderSource(shader, source);
+      gl.compileShader(shader);
+      if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+        const message = gl.getShaderInfoLog(shader) || "Unknown shader compile error";
+        gl.deleteShader(shader);
+        throw new Error(message);
+      }
+      return shader;
+    }
+
+    function createProgram() {
+      const program = gl.createProgram();
+      const vertexShader = compile(gl.VERTEX_SHADER, vertexSource);
+      const fragmentShader = compile(gl.FRAGMENT_SHADER, fragmentSource);
+      gl.attachShader(program, vertexShader);
+      gl.attachShader(program, fragmentShader);
+      gl.linkProgram(program);
+      gl.deleteShader(vertexShader);
+      gl.deleteShader(fragmentShader);
+      if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+        const message = gl.getProgramInfoLog(program) || "Unknown shader link error";
+        gl.deleteProgram(program);
+        throw new Error(message);
+      }
+      return program;
+    }
+
+    let program;
+    try {
+      program = createProgram();
+    } catch (error) {
+      console.error(error);
+      fallback.textContent = "The shader could not compile on this browser: " + error.message;
+      fallback.style.display = "grid";
+      return;
+    }
+
+    gl.useProgram(program);
+
+    const mesh = buildMesh((SCENE.maxAspect / 2) * SCENE.z1 / SCENE.focal + 1.2, 20261105);
+
+    const buffer = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+    gl.bufferData(gl.ARRAY_BUFFER, mesh.data, gl.STATIC_DRAW);
+
+    const bytes = STRIDE * 4;
+    [["aA", 4, 0], ["aB", 4, 16], ["aCorner", 2, 32]].forEach(([name, size, offset]) => {
+      const loc = gl.getAttribLocation(program, name);
+      gl.enableVertexAttribArray(loc);
+      gl.vertexAttribPointer(loc, size, gl.FLOAT, false, bytes, offset);
+    });
+
+    const U = {};
+    ["uRes", "uTime", "uFlow", "uCam", "uLens", "uFade", "uInk", "uShape", "uInkColor", "uSeed"]
+      .forEach(name => { U[name] = gl.getUniformLocation(program, name); });
+
+    gl.disable(gl.DEPTH_TEST);
+    gl.enable(gl.BLEND);
+    gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+    gl.clearColor(PAPER[0], PAPER[1], PAPER[2], 1);
+
+    /* ---------------- controls ---------------- */
+
+    const focusInput = document.getElementById("focus");
+    const apertureInput = document.getElementById("aperture");
+    const swellInput = document.getElementById("swell");
+    const focusOut = document.getElementById("focusOut");
+    const apertureOut = document.getElementById("apertureOut");
+    const swellOut = document.getElementById("swellOut");
+    const pauseButton = document.getElementById("pause");
+
+    const P = {
+      focus: Number(focusInput.value),
+      aperture: Number(apertureInput.value),
+      swell: Number(swellInput.value)
+    };
+
+    let focusNow = P.focus;
+    let paused = reducedMotion || pinned;
+    let elapsed = pinned ? pinTime : 6;
+    let last = null;
+    let frame = 0;
+    const pointer = { x: 0.5, y: 0.5 };
+    const targetPointer = { x: 0.5, y: 0.5 };
+    const cam = { x: 0, y: SCENE.camY };
+
+    if (paused) pauseButton.textContent = "Resume";
+
+    function setFocus(z) {
+      P.focus = Math.min(12, Math.max(2.4, z));
+      focusInput.value = P.focus.toFixed(1);
+      focusOut.value = P.focus.toFixed(1);
+      if (reducedMotion) focusNow = P.focus;
+    }
+
+    focusInput.addEventListener("input", () => setFocus(Number(focusInput.value)));
+    apertureInput.addEventListener("input", () => {
+      P.aperture = Number(apertureInput.value);
+      apertureOut.value = P.aperture.toFixed(2);
+    });
+    swellInput.addEventListener("input", () => {
+      P.swell = Number(swellInput.value);
+      swellOut.value = P.swell.toFixed(2);
+    });
+    pauseButton.addEventListener("click", () => {
+      paused = !paused;
+      pauseButton.textContent = paused ? "Resume" : "Pause";
+      last = null;
+    });
+
+    if (!reducedMotion) {
+      addEventListener("pointermove", event => {
+        targetPointer.x = event.clientX / innerWidth;
+        targetPointer.y = 1 - event.clientY / innerHeight;
+      }, { passive: true });
+      document.documentElement.addEventListener("pointerleave", () => {
+        targetPointer.x = 0.5;
+        targetPointer.y = 0.5;
+      });
+    }
+
+    /* ---------------- lens ---------------- */
+
+    function focalLength() {
+      const aspect = canvas.width / canvas.height;
+      return SCENE.focal * Math.min(1, Math.max(0.7, Math.sqrt(aspect / 1.3)));
+    }
+
+    // Same placement as the vertex shader, for one node, in screen units.
+    function nodeOnScreen(k, t, focal) {
+      const flow = t * SCENE.drift;
+      const z = mesh.nz[k];
+      const x = mesh.nx[k] - (flow + mesh.wrap * Math.floor((mesh.nx[k] - flow) / mesh.wrap + 0.5));
+      const h = (swellAt(x, z, t) + (fract(mesh.ns[k] * 7.31) - 0.5) * SCENE.irregular) * P.swell;
+      return {
+        x: (x - cam.x) * focal / z,
+        y: SCENE.horizon + (h - cam.y) * focal / z,
+        z
+      };
+    }
+
+    // Depth of the visible node nearest the pointer; the mean plane if none is close.
+    function pickDepth(clientX, clientY) {
+      const rect = canvas.getBoundingClientRect();
+      const px = (clientX - rect.left - rect.width / 2) / rect.height;
+      const py = (rect.height / 2 - (clientY - rect.top)) / rect.height;
+      const focal = focalLength();
+      let best = Infinity;
+      let bestZ = NaN;
+      for (let k = 0; k < mesh.nodes; k++) {
+        const z = mesh.nz[k];
+        if (z < SCENE.z0 + 0.6 || z > SCENE.z1 - 1.5) continue;
+        const s = nodeOnScreen(k, elapsed, focal);
+        const d = Math.hypot(s.x - px, s.y - py);
+        if (d < best) { best = d; bestZ = z; }
+      }
+      if (best < 0.045) return bestZ;
+      const below = SCENE.horizon - py;
+      return below > 0.02 ? cam.y * focal / below : SCENE.z1;
+    }
+
+    canvas.addEventListener("click", event => setFocus(pickDepth(event.clientX, event.clientY)));
+
+    /* ---------------- frame ---------------- */
+
+    let dpr = 1;
+    function resize() {
+      dpr = Math.min(devicePixelRatio || 1, 2);
+      const width = Math.max(1, Math.round(innerWidth * dpr));
+      const height = Math.max(1, Math.round(innerHeight * dpr));
+      if (canvas.width !== width || canvas.height !== height) {
+        canvas.width = width;
+        canvas.height = height;
+        gl.viewport(0, 0, width, height);
+      }
+    }
+    addEventListener("resize", resize, { passive: true });
+    resize();
+
+    function draw() {
+      pointer.x += (targetPointer.x - pointer.x) * 0.035;
+      pointer.y += (targetPointer.y - pointer.y) * 0.035;
+      cam.x = (pointer.x - 0.5) * 0.7;
+      cam.y = SCENE.camY + (pointer.y - 0.5) * 0.18;
+
+      gl.clear(gl.COLOR_BUFFER_BIT);
+      gl.uniform2f(U.uRes, canvas.width, canvas.height);
+      gl.uniform1f(U.uTime, elapsed);
+      gl.uniform2f(U.uFlow, elapsed * SCENE.drift, mesh.wrap);
+      gl.uniform4f(U.uCam, cam.x, cam.y, SCENE.horizon, focalLength());
+      gl.uniform4f(U.uLens, focusNow, SCENE.aperture * P.aperture, SCENE.hair * dpr / canvas.height, P.swell);
+      gl.uniform2f(U.uFade, SCENE.z0, SCENE.z1);
+      gl.uniform3f(U.uInk, INK[0], INK[1], INK[2]);
+      gl.uniform4f(U.uShape, SCENE.dotR, SCENE.glyph, SCENE.irregular, SCENE.lineWorld);
+      gl.uniform3f(U.uInkColor, INK_COLOR[0], INK_COLOR[1], INK_COLOR[2]);
+      gl.uniform1f(U.uSeed, (frame++ % 61) * 1.37);
+      gl.drawArrays(gl.TRIANGLES, 0, mesh.vertices);
+    }
+
+    function tick(now) {
+      if (last === null) last = now;
+      const delta = Math.min(0.05, Math.max(0, (now - last) / 1000));
+      last = now;
+      if (!paused && !document.hidden) elapsed += delta;
+      // rack focus, about a third of a second to settle
+      focusNow += (P.focus - focusNow) * (1 - Math.exp(-delta * 6));
+      draw();
+      requestAnimationFrame(tick);
+    }
+
+    window.__demo = {
+      P,
+      mesh: { nodes: mesh.nodes, edges: mesh.edges, labels: mesh.labels, quads: mesh.quads, vertices: mesh.vertices },
+      get elapsed() { return elapsed; },
+      get focus() { return focusNow; },
+      pin(t) {
+        elapsed = t;
+        paused = true;
+        pauseButton.textContent = "Resume";
+        focusNow = P.focus;
+        draw();
+      },
+      step(dt, steps) {
+        const n = steps == null ? 1 : steps;
+        for (let i = 0; i < n; i++) elapsed += dt;
+        draw();
+        return elapsed;
+      },
+      setFocus(z) { setFocus(z); focusNow = P.focus; draw(); },
+      pickDepth,
+      nodeOnScreen: k => nodeOnScreen(k, elapsed, focalLength()),
+      draw
+    };
+
+    requestAnimationFrame(tick);
+  })();
+  </script>
+</body>
+</html>

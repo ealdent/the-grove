@@ -136,12 +136,15 @@ A collection of games, tools, and experiments built with AI — hosted on GitHub
 
 ### [Shaders](shaders/)
 
-*Fragment-shader border experiments, computed live — the index page renders its background and all four previews on a single WebGL canvas*
+*Shader experiments, computed live — the index page renders its background and every preview on a single WebGL canvas*
 
 - **[Archive Ember](shaders/archive-ember-shader-demo.html)** — Procedural WebGL study — a single fragment shader builds paper grain, foxing, ink, charring, embers, smoke, and an advancing burn front on antique paper. (*experiment 01*)
 - **[Holographic Formula Drift](shaders/holographic-formula-drift-shader-demo.html)** — WebGL border experiment — procedural numerals and formula marks float, switch, and leave blue phosphor afterimages around a table perimeter, with no texture atlas. (*experiment 02*)
 - **[Greenhouse Vines](shaders/greenhouse-vines-shader-demo.html)** — The living dialog border from the Greenhouse To-Do app, standalone — one fragment shader grows five leafed strands around a panel, weaving in front of the glass and behind it. (*experiment 03*)
 - **[Typewriter Letter Drift](shaders/typewriter-letter-drift.html)** — The border that types itself around the Learn index — atlas-rasterized typewriter letters bob through sepia haze, morphing with a double-strike ghost. (*experiment 04*)
+- **[Blood Splat Submit](shaders/blood-splat-submit-shader-demo.html)** — A plain HTML submit button takes a hit like a bug on a windshield — spatter squeezes out around it, coats the face, dries to a crust, and flakes away to dust before the button comes back to life. (*experiment 05*)
+- **[Stillroom Shaft](shaders/stillroom-shaft-shader-demo.html)** — A dark, still room cut by one late-sun ray from the upper left — volumetric air that absorbs as well as it glows, and dust motes that wander freely and only catch when they pass through the beam. (*experiment 06*)
+- **[Signal Swell](shaders/signal-swell-shader-demo.html)** — A plexus mesh rides a slow swell, bits flickering over its far crest, through a lens so shallow only one band holds focus; click anywhere to rack focus there. Every edge, node, and bit is a quad one vertex shader places and defocuses — one draw call, no textures. (*experiment 07*)
 
 ### [Greenhouse To-Do](greenhouse-todo/)
 

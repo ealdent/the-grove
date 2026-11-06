@@ -22,6 +22,7 @@
       --sepia: #c8a35f;
       --blood: #e5484d;
       --sun: #e8b86a;
+      --signal: #ec7b35;
     }
 
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -178,6 +179,9 @@
     .no-webgl .exp[data-shader="sun"] .exp-still {
       background: linear-gradient(128deg, #b89048 0%, #5a3c14 12%, #16100b 28%, #080705 52%, #040302 100%);
     }
+    .no-webgl .exp[data-shader="signal"] .exp-still {
+      background: linear-gradient(180deg, #fbfaf8 0%, #fbfaf8 30%, #eea36d 44%, #f5cfb0 60%, #f9e6d6 78%, #fbfaf8 100%);
+    }
 
     .exp-body {
       display: flex;
@@ -286,7 +290,7 @@
       Experiments written straight against the GPU — frames that burn, type,
       grow, drift, bleed, and catch the light around whatever they are given.
       <em>Everything glowing on this page is computed live:</em> the dark behind this
-      text and every window below share a single canvas, one fragment program per
+      text and every window below share a single canvas, one shader program per
       experiment.
     </p>
 
@@ -377,6 +381,21 @@
           <span class="exp-foot">
             <span class="exp-open">Open experiment &rarr;</span>
             <span class="exp-meta">1 pass &middot; no textures</span>
+          </span>
+        </span>
+      </a>
+
+      <a class="exp" href="signal-swell-shader-demo.html" data-shader="signal" style="--accent: var(--signal)">
+        <span class="exp-window"><span class="exp-still"></span></span>
+        <span class="exp-body">
+          <span class="exp-no">EXPERIMENT 07</span>
+          <h2>Signal Swell</h2>
+          <p>A plexus mesh rides a slow swell, bits flickering over its far crest,
+             through a lens so shallow that only one band holds focus. Every edge,
+             node, and bit is a quad the vertex shader places and defocuses.</p>
+          <span class="exp-foot">
+            <span class="exp-open">Open experiment &rarr;</span>
+            <span class="exp-meta">1 draw &middot; no textures</span>
           </span>
         </span>
       </a>
@@ -901,6 +920,376 @@
       }
     `;
 
+    /* 07 — Signal Swell, the one card drawn with geometry instead of a
+       window-filling triangle: every edge, node and bit is a quad that the
+       vertex shader places on the swell and sizes by its defocus. Same
+       code as the demo, so the tile cannot drift from it. */
+    const SIGNAL = (() => {
+      // ---- begin: copied verbatim from signal-swell-shader-demo.html ----
+      /* ---------------- the swell ----------------
+         Warped directional sines. This one table writes the GLSL height field
+         and the CPU copy that click-to-focus uses, so the two cannot drift.
+         Each row: amplitude, kx, kz, angular speed, phase. */
+      const SWELL = {
+        warpX: [0.60, 0.00, 0.45, 0.12, 1.3],
+        warpZ: [0.45, 0.38, 0.00, -0.10, 0.4],
+        waves: [
+          [0.30, 0.62, 0.25, 0.28, 0.0],
+          [0.22, -0.48, 0.80, -0.21, 1.9],
+          [0.15, 1.35, -0.55, 0.40, 4.1],
+          [0.09, 2.10, 1.40, -0.52, 2.6],
+          [0.05, -2.90, 2.20, 0.70, 5.3]
+        ]
+      };
+
+      const glslNum = v => {
+        const s = String(v);
+        return /[.e]/.test(s) ? s : s + ".0";
+      };
+      const glslTerm = (w, x, z) =>
+        glslNum(w[0]) + " * sin(" + glslNum(w[1]) + " * " + x + " + " + glslNum(w[2]) + " * " + z +
+        " + " + glslNum(w[3]) + " * t + " + glslNum(w[4]) + ")";
+      const SWELL_GLSL =
+        "float swell(vec2 p, float t) {\n" +
+        "  vec2 q = p + vec2(" + glslTerm(SWELL.warpX, "p.x", "p.y") + ",\n" +
+        "                    " + glslTerm(SWELL.warpZ, "p.x", "p.y") + ");\n" +
+        "  return " + SWELL.waves.map(w => glslTerm(w, "q.x", "q.y")).join("\n       + ") + ";\n" +
+        "}\n";
+
+      function swellAt(x, z, t) {
+        const a = SWELL.warpX;
+        const b = SWELL.warpZ;
+        const qx = x + a[0] * Math.sin(a[1] * x + a[2] * z + a[3] * t + a[4]);
+        const qz = z + b[0] * Math.sin(b[1] * x + b[2] * z + b[3] * t + b[4]);
+        let h = 0;
+        for (const w of SWELL.waves) h += w[0] * Math.sin(w[1] * qx + w[2] * qz + w[3] * t + w[4]);
+        return h;
+      }
+
+      /* ---------------- scene ----------------
+         World units: x right, y up, z away from a camera at the origin.
+         Screen units: height-normalised, origin at the centre. A shift lens
+         (horizon offset, no pitch) keeps the projection a pair of divides. */
+      const SCENE = {
+        z0: 1.8,          // first row
+        z1: 11.6,         // last row
+        pitch: 0.24,      // grid spacing, both axes
+        jitter: 0.68,     // node jitter, fraction of a cell
+        camY: 0.95,
+        horizon: 0.2,
+        focal: 1.6,
+        aperture: 0.022,  // circle-of-confusion scale, screen heights
+        hair: 0.8,        // line core half-width, CSS px
+        lineWorld: 0.0045,// line core half-width up close, world
+        dotR: 0.012,      // node radius, world
+        glyph: 0.1,       // bit height, world
+        irregular: 0.12,  // per-node height scatter, world
+        drift: 0.05,      // lateral flow, world units per second
+        maxAspect: 3.2
+      };
+      const PAPER = [251 / 255, 250 / 255, 248 / 255];
+      const INK = [0.9, 1.0, 0.95];           // line, node, bit
+      const INK_COLOR = [0.87, 0.42, 0.15];   // the one orange every layer is laid in
+
+      function mulberry32(a) {
+        return () => {
+          a |= 0;
+          a = a + 0x6D2B79F5 | 0;
+          let t = Math.imul(a ^ a >>> 15, 1 | a);
+          t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+          return ((t ^ t >>> 14) >>> 0) / 4294967296;
+        };
+      }
+
+      const fract = v => v - Math.floor(v);
+      const smooth = (a, b, x) => {
+        const t = Math.min(Math.max((x - a) / (b - a), 0), 1);
+        return t * t * (3 - 2 * t);
+      };
+
+      /* ---------------- the mesh ----------------
+         A jittered grid, triangulated with a random diagonal per cell. Every
+         edge, node and bit label becomes one quad (six vertices) in a static
+         buffer; nothing moves on the CPU. Columns wrap so the grid can flow
+         sideways forever, with the seam far outside the frustum. */
+      const CORNERS = [0, -1, 1, -1, 1, 1, 0, -1, 1, 1, 0, 1];
+      const STRIDE = 10; // aA(4) aB(4) aCorner(2)
+
+      function buildMesh(halfWidth, seed) {
+        const rand = mulberry32(seed);
+        const { z0, z1, pitch, jitter } = SCENE;
+        const rows = Math.round((z1 - z0) / pitch) + 1;
+        const half = Math.ceil(halfWidth / pitch);
+        const cols = half * 2;
+        const wrap = cols * pitch;
+        const count = rows * cols;
+        const nx = new Float32Array(count);
+        const nz = new Float32Array(count);
+        const ns = new Float32Array(count);
+        for (let j = 0; j < rows; j++) {
+          for (let c = 0; c < cols; c++) {
+            const k = j * cols + c;
+            nx[k] = (c - half + (rand() - 0.5) * jitter) * pitch;
+            nz[k] = z0 + (j + (rand() - 0.5) * jitter) * pitch;
+            ns[k] = 1 + rand() * 997;
+          }
+        }
+
+        // at most 3 edges + 1 node + 1 label per grid point
+        const data = new Float32Array(count * 5 * 6 * STRIDE);
+        let o = 0;
+        let quads = 0;
+        let edges = 0;
+        let labels = 0;
+        const quad = (ax, az, as, kind, bx, bz, bs, extra) => {
+          for (let v = 0; v < 6; v++) {
+            data[o++] = ax; data[o++] = az; data[o++] = as; data[o++] = kind;
+            data[o++] = bx; data[o++] = bz; data[o++] = bs; data[o++] = extra;
+            data[o++] = CORNERS[v * 2]; data[o++] = CORNERS[v * 2 + 1];
+          }
+          quads++;
+        };
+        const at = (c, j) => j * cols + (c % cols);
+        const xAt = (c, j) => nx[at(c, j)] + (c >= cols ? wrap : 0);
+        const edge = (c1, j1, c2, j2) => {
+          quad(xAt(c1, j1), nz[at(c1, j1)], ns[at(c1, j1)], 0,
+               xAt(c2, j2), nz[at(c2, j2)], ns[at(c2, j2)], 0);
+          edges++;
+        };
+
+        for (let j = 0; j < rows; j++) {
+          for (let c = 0; c < cols; c++) {
+            edge(c, j, c + 1, j);
+            if (j + 1 < rows) {
+              edge(c, j, c, j + 1);
+              if (rand() < 0.5) edge(c, j, c + 1, j + 1);
+              else edge(c + 1, j, c, j + 1);
+            }
+          }
+        }
+
+        for (let k = 0; k < count; k++) {
+          quad(nx[k], nz[k], ns[k], 1, 0, 0, 0, 0);
+          // bits gather over the far crest and stay out of the foreground
+          const p = 0.4 * smooth(4.5, 9.5, nz[k]);
+          if (rand() < p) {
+            const r = rand();
+            const glyphs = r < 0.66 ? 1 : r < 0.9 ? 2 : 3;
+            quad(nx[k], nz[k], ns[k], 2, 0.07 + 0.2 * rand(), 0, 0, glyphs);
+            labels++;
+          }
+        }
+
+        return {
+          data: data.subarray(0, o),
+          vertices: quads * 6,
+          quads, edges, labels,
+          nodes: count,
+          wrap, nx, nz, ns
+        };
+      }
+
+      /* ---------------- shaders ---------------- */
+
+      const vertexSource = `
+        precision highp float;
+
+        attribute vec4 aA;      // anchor: x, z, seed, kind (0 edge, 1 node, 2 bits)
+        attribute vec4 aB;      // edge: far end x, z, seed. bits: rise, -, -, glyph count
+        attribute vec2 aCorner; // quad corner: end (0 or 1), side (-1 or 1)
+
+        uniform vec2 uRes;
+        uniform float uTime;
+        uniform vec2 uFlow;     // lateral scroll, wrap width
+        uniform vec4 uCam;      // x, y, horizon, focal length
+        uniform vec4 uLens;     // focus depth, aperture, hairline, swell gain
+        uniform vec2 uFade;     // first and last row depth
+        uniform vec3 uInk;      // line, node, bit
+        uniform vec4 uShape;    // node radius, glyph height, height scatter, line half-width (world)
+
+        varying vec2 vP;        // quad-local position, screen units
+        varying vec4 vA;        // per-kind shape data
+        varying vec2 vK;        // kind, ink
+
+        ${SWELL_GLSL}
+
+        float hash11(float n) { return fract(sin(n) * 43758.5453); }
+
+        vec3 place(vec2 xz, float seed) {
+          float h = swell(xz, uTime) + (fract(seed * 7.31) - 0.5) * uShape.z;
+          return vec3(xz.x, h * uLens.w, xz.y);
+        }
+
+        vec3 toScreen(vec3 w) {
+          float z = max(w.z, 0.05);
+          return vec3((w.x - uCam.x) * uCam.w / z, uCam.z + (w.y - uCam.y) * uCam.w / z, z);
+        }
+
+        // circle of confusion, screen heights
+        float coc(float z) { return uLens.y * abs(z - uLens.x) / z; }
+
+        // Strict energy conservation tints the whole foreground; thin the
+        // deepest blur a little so the sharp band stays the subject.
+        float haze(float c) { return 1.0 - 0.45 * smoothstep(0.004, 0.045, c); }
+
+        float fade(float z) {
+          return smoothstep(uFade.x, uFade.x + 0.9, z) * (1.0 - smoothstep(uFade.y - 2.8, uFade.y, z));
+        }
+
+        void main() {
+          float kind = aA.w;
+          float off = uFlow.x + uFlow.y * floor((aA.x - uFlow.x) / uFlow.y + 0.5);
+          vec3 A = toScreen(place(vec2(aA.x - off, aA.y), aA.z));
+          float aa = 1.5 / uRes.y;
+          float hair = uLens.z;
+          vec2 pos;
+
+          if (kind < 0.5) {
+            // edge: a capsule whose radius follows each end's defocus
+            vec3 B = toScreen(place(vec2(aB.x - off, aB.y), aB.z));
+            float w = max(hair, uShape.w * uCam.w / (0.5 * (A.z + B.z)));
+            float cA = coc(A.z);
+            float cB = coc(B.z);
+            float rA = sqrt(w * w + cA * cA);
+            float rB = sqrt(w * w + cB * cB);
+            vec2 d = B.xy - A.xy;
+            float len = length(d);
+            vec2 dir = len > 1e-6 ? d / len : vec2(1.0, 0.0);
+            vec2 nrm = vec2(-dir.y, dir.x);
+            float R = max(rA, rB) + aa;
+            float along = aCorner.x < 0.5 ? -R : len + R;
+            pos = A.xy + dir * along + nrm * (aCorner.y * R);
+            vP = vec2(along, aCorner.y * R);
+            vA = vec4(len, rA, rB, w);
+            float tone = 0.7 + 0.3 * hash11(aA.z * 0.917 + aB.z * 0.131);
+            bool atA = aCorner.x < 0.5;
+            vK = vec2(0.0, uInk.x * tone * fade(atA ? A.z : B.z) * haze(atA ? cA : cB));
+          } else if (kind < 1.5) {
+            // node: a dot that keeps its ink as it spreads into a bokeh disc.
+            // Capped near size, or the foreground turns into a field of balls.
+            float c = coc(A.z);
+            float r0 = clamp(uShape.x * uCam.w / A.z, hair * 1.6, hair * 2.2);
+            float r = sqrt(r0 * r0 + c * c);
+            vec2 corner = vec2(aCorner.x * 2.0 - 1.0, aCorner.y);
+            float R = r + aa;
+            pos = A.xy + corner * R;
+            vP = corner * R;
+            vA = vec4(r, 0.0, 0.0, 0.0);
+            vK = vec2(1.0, uInk.y * (r0 * r0) / (r * r) * fade(A.z) * haze(c));
+          } else {
+            // bits: one to three glyphs hovering over the node, re-rolled on a timer
+            float bob = 0.025 * sin(uTime * (0.5 + fract(aA.z * 3.7)) + aA.z);
+            vec3 D = toScreen(place(vec2(aA.x - off, aA.y), aA.z) + vec3(0.0, aB.x + bob, 0.0));
+            float gh = uShape.y * uCam.w / D.z;
+            float c = coc(D.z);
+            float s = max(0.075 * gh, hair);
+            float r = sqrt(s * s + c * c);
+            vec2 corner = vec2(aCorner.x * 2.0 - 1.0, aCorner.y);
+            vec2 halfSize = vec2(aB.w * 0.3 * gh, 0.5 * gh) + r + aa;
+            pos = D.xy + corner * halfSize;
+            vP = corner * halfSize;
+            float rate = mix(0.12, 0.5, fract(aA.z * 5.3));
+            float phase = uTime * rate + fract(aA.z * 11.9) * 7.0;
+            float code = floor(hash11(aA.z * 1.73 + floor(phase) * 3.17) * 8.0);
+            float flash = exp(-fract(phase) * 9.0);
+            // strokes spread like lines (s / r) until the blur outgrows the
+            // glyph, then like a point: scale by stroke length over radius too
+            float spread = (s / r) * min(1.0, 1.2 * gh / r);
+            vA = vec4(gh, r, code, aB.w);
+            vK = vec2(2.0, uInk.z * spread * (1.0 + 0.8 * flash) * fade(D.z) * haze(c));
+          }
+
+          gl_Position = vec4(pos.x * 2.0 * uRes.y / uRes.x, pos.y * 2.0, 0.0, 1.0);
+        }
+      `;
+
+      const fragmentSource = `
+        precision highp float;
+
+        varying vec2 vP;
+        varying vec4 vA;
+        varying vec2 vK;
+
+        uniform vec3 uInkColor;
+        uniform float uSeed;
+
+        // compact, near-gaussian profile: 1 at the core, 0 at the radius
+        float fall(float x) {
+          float a = clamp(1.0 - x * x, 0.0, 1.0);
+          return a * a;
+        }
+
+        // running integral of that profile, 0 at -1, one half at 0, 1 at +1
+        float cdf(float u) {
+          u = clamp(u, -1.0, 1.0);
+          float u2 = u * u;
+          return 0.5 + 0.9375 * u * (1.0 - u2 * (0.6666667 - 0.2 * u2));
+        }
+
+        float sdSeg(vec2 p, vec2 a, vec2 b) {
+          vec2 pa = p - a;
+          vec2 ba = b - a;
+          float h = clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0);
+          return length(pa - ba * h);
+        }
+
+        // glyph space: one glyph is 1.0 tall, 0.6 wide, centred
+        float sdZero(vec2 q) {
+          vec2 r = vec2(0.19, 0.31);
+          float k0 = length(q / r);
+          float k1 = length(q / (r * r));
+          return abs(k0 * (k0 - 1.0) / max(k1, 1e-3));
+        }
+
+        float sdOne(vec2 q) {
+          return min(sdSeg(q, vec2(0.05, -0.31), vec2(0.05, 0.31)),
+                     sdSeg(q, vec2(0.05, 0.31), vec2(-0.13, 0.18)));
+        }
+
+        void main() {
+          float dens = 0.0;
+          if (vK.x < 0.5) {
+            // A blurred segment, not a capsule: energy-conserving across it
+            // (wider blur, proportionally less ink) and half strength at each
+            // end, fading out one radius past it. Round caps at full strength
+            // would stack into a blob wherever six edges meet.
+            float L = vA.x;
+            float t = clamp(vP.x / max(L, 1e-6), 0.0, 1.0);
+            float r = mix(vA.y, vA.z, t);
+            float along = clamp(cdf(vP.x / vA.y) + cdf((L - vP.x) / vA.z) - 1.0, 0.0, 1.0);
+            dens = fall(abs(vP.y) / r) * along * vA.w / r;
+          } else if (vK.x < 1.5) {
+            dens = fall(length(vP) / vA.x);
+          } else {
+            vec2 g = vP / vA.x;
+            float x0 = g.x + vA.w * 0.3;
+            for (int i = 0; i < 3; i++) {
+              float fi = float(i);
+              if (fi < vA.w) {
+                vec2 q = vec2(x0 - (fi + 0.5) * 0.6, g.y);
+                float bit = mod(floor(vA.z / exp2(fi)), 2.0);
+                float d = (bit > 0.5 ? sdOne(q) : sdZero(q)) * vA.x;
+                dens += fall(d / vA.y);
+              }
+            }
+          }
+          dens *= vK.y;
+          if (dens < 0.002) discard;
+
+          // Every layer is the same orange, so premultiplied "over" is
+          // order-independent: overlaps saturate toward the ink, never past it.
+          // The dither is keyed to the quad as well as the pixel; keyed to the
+          // pixel alone, twenty stacked blurs add the same error twenty times.
+          float n = fract(sin(dot(gl_FragCoord.xy + vP * vec2(1731.0, 977.0) + uSeed,
+                                  vec2(12.9898, 78.233))) * 43758.5453);
+          float a = clamp(1.0 - exp(-dens) + (n - 0.5) / 255.0, 0.0, 1.0);
+          gl_FragColor = vec4(uInkColor * a, a);
+        }
+      `;
+      // ---- end: copied verbatim from signal-swell-shader-demo.html ----
+      return { SCENE, PAPER, INK, INK_COLOR, STRIDE, buildMesh, vertexSource, fragmentSource };
+    })();
+
     /* ---------------- plumbing ---------------- */
 
     function compile(type, source) {
@@ -914,9 +1303,9 @@
       }
       return shader;
     }
-    function program(fragSource) {
+    function program(fragSource, vertSource = VERTEX) {
       const prog = gl.createProgram();
-      gl.attachShader(prog, compile(gl.VERTEX_SHADER, VERTEX));
+      gl.attachShader(prog, compile(gl.VERTEX_SHADER, vertSource));
       gl.attachShader(prog, compile(gl.FRAGMENT_SHADER, fragSource));
       gl.linkProgram(prog);
       if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) {
@@ -926,6 +1315,7 @@
     }
 
     let programs;
+    let signalProgram;
     try {
       programs = {
         bg: program(BG_FRAG),
@@ -936,6 +1326,7 @@
         blood: program(BLOOD_FRAG),
         sun: program(SUN_FRAG)
       };
+      signalProgram = program(SIGNAL.fragmentSource, SIGNAL.vertexSource);
     } catch (error) {
       console.error("Shader gallery:", error);
       document.body.classList.add("no-webgl");
@@ -955,9 +1346,57 @@
       };
     }
 
+    // 07 has its own mesh buffer and attributes; drawSignal restores the shared state
+    const signal = (() => {
+      const S = SIGNAL.SCENE;
+      const mesh = SIGNAL.buildMesh((16 / 9 / 2) * S.z1 / S.focal + 1.2, 20261105);
+      const buf = gl.createBuffer();
+      gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+      gl.bufferData(gl.ARRAY_BUFFER, mesh.data, gl.STATIC_DRAW);
+      const attrs = [["aA", 4, 0], ["aB", 4, 16], ["aCorner", 2, 32]]
+        .map(([name, size, offset]) => ({ loc: gl.getAttribLocation(signalProgram, name), size, offset }));
+      const u = {};
+      ["uRes", "uTime", "uFlow", "uCam", "uLens", "uFade", "uInk", "uShape", "uInkColor", "uSeed"]
+        .forEach(name => { u[name] = gl.getUniformLocation(signalProgram, name); });
+      return { mesh, buf, attrs, u };
+    })();
+
     const quad = gl.createBuffer();
     gl.bindBuffer(gl.ARRAY_BUFFER, quad);
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
+
+    function drawSignal(card, x, y, w, h, elapsed, dpr) {
+      const S = SIGNAL.SCENE;
+      const u = signal.u;
+      gl.useProgram(signalProgram);
+      gl.viewport(x, y, w, h);
+      gl.scissor(x, y, w, h);
+      gl.clearColor(SIGNAL.PAPER[0], SIGNAL.PAPER[1], SIGNAL.PAPER[2], 1);
+      gl.clear(gl.COLOR_BUFFER_BIT);
+      gl.bindBuffer(gl.ARRAY_BUFFER, signal.buf);
+      for (const a of signal.attrs) {
+        gl.enableVertexAttribArray(a.loc);
+        gl.vertexAttribPointer(a.loc, a.size, gl.FLOAT, false, SIGNAL.STRIDE * 4, a.offset);
+      }
+      gl.enable(gl.BLEND);
+      gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+      gl.uniform2f(u.uRes, w, h);
+      gl.uniform1f(u.uTime, elapsed);
+      gl.uniform2f(u.uFlow, elapsed * S.drift, signal.mesh.wrap);
+      // a tighter lens than the demo's: at card size the full view is too fine to read
+      gl.uniform4f(u.uCam, 0, S.camY, 0.36, S.focal * 1.5);
+      // hover racks focus from the far crest down to the near rows
+      gl.uniform4f(u.uLens, 8.4 - 3.4 * card.hover, S.aperture, 0.7 * dpr / h, 1);
+      gl.uniform2f(u.uFade, S.z0, S.z1);
+      gl.uniform3f(u.uInk, SIGNAL.INK[0], SIGNAL.INK[1], SIGNAL.INK[2]);
+      gl.uniform4f(u.uShape, S.dotR, S.glyph, S.irregular, S.lineWorld);
+      gl.uniform3f(u.uInkColor, SIGNAL.INK_COLOR[0], SIGNAL.INK_COLOR[1], SIGNAL.INK_COLOR[2]);
+      gl.uniform1f(u.uSeed, 0);
+      gl.drawArrays(gl.TRIANGLES, 0, signal.mesh.vertices);
+      gl.disable(gl.BLEND);
+      for (const a of signal.attrs) gl.disableVertexAttribArray(a.loc);
+      gl.bindBuffer(gl.ARRAY_BUFFER, quad);
+    }
 
     const cards = [...document.querySelectorAll(".exp")].map(el => ({
       el,
@@ -992,7 +1431,7 @@
     }
 
     let frames = 0, fpsStamp = performance.now(), fps = 0;
-    const programCount = Object.keys(programs).length;
+    const programCount = Object.keys(programs).length + 1; // + Signal Swell
     function updateHud(dpr) {
       hud.innerHTML = `1 canvas &middot; ${programCount} programs &middot; <b>${canvas.width}&times;${canvas.height}px</b>` +
         (reducedMotion ? " &middot; still frame" : ` &middot; <b>${fps}</b> fps`);
@@ -1027,6 +1466,10 @@
         const w = Math.round(rect.width * dpr);
         const h = Math.round(rect.height * dpr);
         if (w <= 0 || h <= 0) continue;
+        if (card.shader === "signal") {
+          drawSignal(card, x, y, w, h, elapsed, dpr);
+          continue;
+        }
 
         u = uniforms[card.shader];
         gl.useProgram(programs[card.shader]);
