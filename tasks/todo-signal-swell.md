@@ -55,10 +55,10 @@ orange ink on white. Our own live, procedural version: no video, no assets.
     outgrew the glyph; scaled by stroke length over radius as well.
   - Near node dots carried world-size ink into big discs; size capped.
 - The tile's scene block is a verbatim copy of the demo's (between the
-  "copied verbatim" markers in `shaders/index.html`); a scratch script
-  confirmed the two match after the last change. Only the camera framing
-  (tighter lens, higher horizon) and the hover focus pull differ, and those
-  live outside the copied block.
+  "copied verbatim" markers in `shaders/index.html`), guarded by
+  `node --test tests/signal-swell-copy.test.mjs` (fails on a one-constant
+  drift). Only the camera framing (tighter lens, higher horizon) and the
+  hover focus pull differ, and those live outside the copied block.
 - Verified: WebKit (Browser pane) and Chromium/ANGLE (headless Chrome,
   SwiftShader) both compile and render the demo and all seven gallery tiles;
   console clean. Click-to-focus racked to 3.3 on a foreground click;
