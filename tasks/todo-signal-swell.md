@@ -1,11 +1,10 @@
 # Signal Swell — plexus wave shader
 
 ## Goal
-A new shader experiment after the orange network-wave band on bombora.com
-(their `Bombora_Waves_5.mp4`, a pre-rendered 18 s loop): a jittered triangle
-mesh riding a slow swell, tiny binary digits hovering over the far crest,
-shallow depth of field (far crest sharp, near rows melting into soft blobs),
-orange ink on white. Our own live, procedural version: no video, no assets.
+A new shader experiment: a jittered triangle mesh riding a slow swell, tiny
+binary digits hovering over the far crest, shallow depth of field (far crest
+sharp, near rows melting into soft blobs), orange ink on white. Live and
+procedural: no video, no assets.
 
 ## Files
 - `shaders/signal-swell-shader-demo.html` — fullscreen demo
