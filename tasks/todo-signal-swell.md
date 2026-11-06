@@ -64,3 +64,51 @@ procedural: no video, no assets.
   Aperture 0 + Swell 0 gives a flat, fully sharp sheet; Pause freezes time;
   375x812 layout fits; tile hover pulls focus from the crest to mid rows.
 - Not verified: an actual phone GPU, Firefox.
+
+# Palettes and dark mode (2026-11-06)
+
+## Goal
+A dark version of the demo plus an easy colour-scheme control: cobalt
+blue, warning-light red, construction yellow, royal purple and friends,
+quick to try and remembered.
+
+## Approach
+- A palette is one ink over one paper per theme, since every layer is the
+  same ink; the shader needed no change, only its two colour uniforms.
+  The palette table and scheme resolver sit inside the copied scene block,
+  so the gallery tile shares them.
+- Hazard Yellow turns to signage in the light theme: black ink on
+  construction yellow (yellow ink on white paper all but vanishes).
+- Custom inks keep their hue but are mixed toward black or white until
+  they reach 3:1 against their paper.
+
+## Plan
+- [x] Palette table (7 presets) + custom ink + resolver in the scene block
+- [x] Theme tokens for both themes; a head script sets `data-theme` before
+      first paint (link `?theme=`, then saved, then the system)
+- [x] Ink strip (radio chips, each a drop of ink on its paper) + custom
+      colour chip + sun/moon switch (`role="switch"`); saved in
+      localStorage; picking the system's own theme clears the override
+- [x] Canvas crossfades paper and ink (~0.5 s; instant under reduced motion)
+- [x] Scheme UI runs before WebGL starts, so the fallback page follows it
+- [x] Gallery tile reads the saved scheme (again on pageshow, storage and a
+      system theme change); the card accent takes the palette's dark ink
+- [x] Tests: `tests/signal-swell-palettes.test.mjs` (every preset >= 3:1 in
+      both themes, resolver fallbacks, custom legibility); copy test passes
+- [x] Real-browser check in the pane and headless Chrome; README line
+
+## Review
+- Pane (ANGLE Metal): real clicks on the Cobalt chip and the theme switch,
+  ArrowRight across the radio group, reload persistence, Hazard light and
+  dark, custom ink through the picker's `input` event (a near-black pick on
+  dark paper lifts to #646973). Canvas paper pixel matched the scheme after
+  the crossfade; console clean across every load.
+- Phone width (375x812): ink strip and switch share one row, no overflow;
+  a 6 px label misalignment (switch taller than the chips) fixed by giving
+  the chip row the switch's height.
+- Headless Chrome (SwiftShader): all 14 palette/theme pairs render; the
+  gallery tile follows a seeded scheme.
+- The hidden pane pumps no rAF on the gallery page, so its tile was checked
+  in headless Chrome only.
+- Not verified: reduced-motion paths at runtime (reviewed in code), the
+  native colour picker UI itself, Firefox, a phone GPU.
