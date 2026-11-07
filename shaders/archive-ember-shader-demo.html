@@ -3,6 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#0d0907" />
   <title>Archive Ember — Antique Paper Burn Shader</title>
   <style>
     :root {
@@ -38,6 +39,19 @@
       display: block;
       touch-action: none;
     }
+
+    .back {
+      position: fixed;
+      z-index: 3;
+      top: clamp(16px, 2.6vw, 28px);
+      right: clamp(16px, 2.6vw, 28px);
+      color: var(--muted);
+      text-decoration: none;
+      font: 400 0.72rem/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+      letter-spacing: 0.08em;
+      transition: color 0.16s ease;
+    }
+    .back:hover { color: var(--text); }
 
     .masthead {
       position: fixed;
@@ -77,10 +91,10 @@
       z-index: 3;
       left: 50%;
       bottom: max(18px, env(safe-area-inset-bottom));
-      width: min(720px, calc(100vw - 28px));
+      width: min(760px, calc(100vw - 28px));
       transform: translateX(-50%);
       display: grid;
-      grid-template-columns: 1fr 1fr auto auto;
+      grid-template-columns: 1fr 1fr auto;
       gap: 12px;
       align-items: end;
       padding: 14px;
@@ -145,7 +159,16 @@
       cursor: pointer;
     }
 
-    button {
+    .actions {
+      display: flex;
+      gap: 8px;
+    }
+
+    .action {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 7px;
       height: 42px;
       padding: 0 16px;
       border: 1px solid rgba(255,202,145,.24);
@@ -155,16 +178,34 @@
       font: 600 11px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
       letter-spacing: .08em;
       text-transform: uppercase;
+      white-space: nowrap;
       cursor: pointer;
       transition: background .16s ease, border-color .16s ease, transform .16s ease;
     }
 
-    button:hover {
+    .action:hover {
       background: rgba(255,171,92,.15);
       border-color: rgba(255,202,145,.42);
     }
 
-    button:active { transform: translateY(1px); }
+    .action:active { transform: translateY(1px); }
+
+    /* the way to take it home, a shade bolder than Pause */
+    .download {
+      border-color: color-mix(in srgb, var(--accent) 55%, transparent);
+      background: color-mix(in srgb, var(--accent) 15%, transparent);
+    }
+    .download:hover {
+      border-color: var(--accent);
+      background: color-mix(in srgb, var(--accent) 24%, transparent);
+    }
+    .download svg {
+      width: 15px;
+      height: 15px;
+      flex: none;
+      margin-left: -2px;
+      color: var(--accent);
+    }
 
     .fallback {
       position: fixed;
@@ -183,7 +224,9 @@
       .controls {
         grid-template-columns: 1fr 1fr;
       }
-      button { width: 100%; }
+      .actions { grid-column: 1 / -1; flex-wrap: wrap; }
+      /* three across while they fit; Download takes a row of its own below that */
+      .action { flex: 1 1 auto; }
     }
 
     @media (prefers-reduced-motion: reduce) {
@@ -195,6 +238,8 @@
 </head>
 <body>
   <canvas id="gl" aria-label="Procedural antique paper burning slowly from its edges"></canvas>
+
+  <a class="back" href="./">&larr; shaders</a>
 
   <header class="masthead">
     <p class="kicker">Procedural WebGL study</p>
@@ -214,8 +259,16 @@
       <label for="heat">Ember heat <output id="heatOut">1.00</output></label>
       <input id="heat" type="range" min="0.35" max="1.8" value="1" step="0.05" />
     </div>
-    <button id="pause" type="button">Pause</button>
-    <button id="restart" type="button">Restart</button>
+    <div class="actions">
+      <button id="pause" class="action" type="button">Pause</button>
+      <button id="restart" class="action" type="button">Restart</button>
+      <button id="download" class="action download" type="button" title="Download this burning page, set the way it is now, as a page of its own">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M12 4v11m-4.5-4.5L12 15l4.5-4.5M5 19.5h14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" />
+        </svg>
+        Download
+      </button>
+    </div>
   </section>
 
   <div id="fallback" class="fallback">
@@ -226,21 +279,37 @@
   (() => {
     "use strict";
 
+    const SOURCE = (document.currentScript || {}).textContent || ""; // Download ships parts of this script
     const canvas = document.getElementById("gl");
     const fallback = document.getElementById("fallback");
     const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
-    const gl = canvas.getContext("webgl", {
-      alpha: false,
-      antialias: false,
-      depth: false,
-      stencil: false,
-      powerPreference: "high-performance"
-    });
+    const params = new URLSearchParams(location.search);
+    const pinParam = params.get("pin");
+    const pinTime = pinParam === null || pinParam === "" ? null : Number(pinParam);
+    const pinned = pinTime !== null && Number.isFinite(pinTime);
 
-    if (!gl) {
-      fallback.style.display = "grid";
-      return;
+    /* ---------------- the burn ----------------
+       The front starts a hair inside the edge of the page and eats inward at
+       a steady rate, scaled by the speed setting, until only a scorched scrap
+       is left in the middle. The flicker, smoke and sparks run on a clock of
+       their own the whole time. Progress is in the shader's edge-distance
+       units: 0 at the edge of the page, 0.5 at its centre. */
+    const BURN = {
+      start: 0.006,   // a page that has only just caught
+      rate: 0.00275,  // how far the front eats in per second at speed 1
+      end: 0.435      // where it stops
+    };
+
+    // The front after burning `seconds` more at `speed`, from `progress`.
+    // A page that caught t seconds ago at speed s has its front at
+    // burnOn(BURN.start, t, s): that places the front for a pinned moment,
+    // or for a time handed over without a progress of its own.
+    function burnOn(progress, seconds, speed) {
+      if (progress >= BURN.end) return progress;
+      return Math.min(BURN.end, progress + Math.max(0, seconds) * BURN.rate * speed);
     }
+
+    /* ---------------- shaders ---------------- */
 
     const vertexSource = `
       attribute vec2 aPosition;
@@ -466,67 +535,243 @@
       }
     `;
 
-    function compile(type, source) {
-      const shader = gl.createShader(type);
-      gl.shaderSource(shader, source);
-      gl.compileShader(shader);
-      if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
-        const message = gl.getShaderInfoLog(shader) || "Unknown shader compile error";
-        gl.deleteShader(shader);
-        throw new Error(message);
-      }
-      return shader;
-    }
+    /* ---------------- engine ----------------
+       Everything the burn needs to run: WebGL, a loop that rests whenever
+       nothing moves, and the page's slight tilt after the pointer.
+       createEmber(target, settings) draws into a canvas sized by its CSS,
+       or fills any other element from behind what it holds, and returns a
+       controller. Where WebGL is missing it returns null. */
 
-    function createProgram() {
-      const program = gl.createProgram();
-      const vertexShader = compile(gl.VERTEX_SHADER, vertexSource);
-      const fragmentShader = compile(gl.FRAGMENT_SHADER, fragmentSource);
-      gl.attachShader(program, vertexShader);
-      gl.attachShader(program, fragmentShader);
-      gl.linkProgram(program);
-      gl.deleteShader(vertexShader);
-      gl.deleteShader(fragmentShader);
-
-      if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
-        const message = gl.getProgramInfoLog(program) || "Unknown shader link error";
-        gl.deleteProgram(program);
-        throw new Error(message);
-      }
-      return program;
-    }
-
-    let program;
-    try {
-      program = createProgram();
-    } catch (error) {
-      console.error(error);
-      fallback.textContent = "The shader could not compile on this browser: " + error.message;
-      fallback.style.display = "grid";
-      return;
-    }
-
-    gl.useProgram(program);
-
-    const buffer = gl.createBuffer();
-    gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
-    gl.bufferData(
-      gl.ARRAY_BUFFER,
-      new Float32Array([-1,-1, 1,-1, -1,1, -1,1, 1,-1, 1,1]),
-      gl.STATIC_DRAW
-    );
-
-    const aPosition = gl.getAttribLocation(program, "aPosition");
-    gl.enableVertexAttribArray(aPosition);
-    gl.vertexAttribPointer(aPosition, 2, gl.FLOAT, false, 0, 0);
-
-    const uniforms = {
-      resolution: gl.getUniformLocation(program, "uResolution"),
-      pointer: gl.getUniformLocation(program, "uPointer"),
-      time: gl.getUniformLocation(program, "uTime"),
-      progress: gl.getUniformLocation(program, "uProgress"),
-      heat: gl.getUniformLocation(program, "uHeat")
+    const EMBER_DEFAULTS = {
+      speed: 1,         // how fast the front eats inward
+      heat: 1,          // how hot the embers, glow and sparks burn
+      interactive: true // the page tilts a little after the pointer
     };
+
+    function createEmber(target, options = {}) {
+      const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+      const settings = { ...EMBER_DEFAULTS };
+      for (const key in EMBER_DEFAULTS) if (options[key] !== undefined) settings[key] = options[key];
+
+      // Anything but a canvas gets a canvas of its own, filling it from the
+      // back: the element becomes a stacking context with the canvas at its
+      // bottom, over its background and under everything it holds.
+      const own = !(target instanceof HTMLCanvasElement);
+      const canvas = own ? document.createElement("canvas") : target;
+      if (own) {
+        canvas.setAttribute("aria-hidden", "true");
+        canvas.style.cssText = "position:absolute;inset:0;width:100%;height:100%;display:block;z-index:-1";
+        if (getComputedStyle(target).position === "static") target.style.position = "relative";
+        target.style.isolation = "isolate";
+        target.prepend(canvas);
+      }
+
+      const gl = canvas.getContext("webgl", {
+        alpha: false,
+        antialias: false,
+        depth: false,
+        stencil: false,
+        powerPreference: "high-performance"
+      });
+      if (!gl) {
+        if (own) canvas.remove();
+        return null;
+      }
+
+      function compile(type, source) {
+        const shader = gl.createShader(type);
+        gl.shaderSource(shader, source);
+        gl.compileShader(shader);
+        if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+          const message = gl.getShaderInfoLog(shader) || "Unknown shader compile error";
+          gl.deleteShader(shader);
+          throw new Error(message);
+        }
+        return shader;
+      }
+
+      function createProgram() {
+        const program = gl.createProgram();
+        const vertexShader = compile(gl.VERTEX_SHADER, vertexSource);
+        const fragmentShader = compile(gl.FRAGMENT_SHADER, fragmentSource);
+        gl.attachShader(program, vertexShader);
+        gl.attachShader(program, fragmentShader);
+        gl.linkProgram(program);
+        gl.deleteShader(vertexShader);
+        gl.deleteShader(fragmentShader);
+        if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+          const message = gl.getProgramInfoLog(program) || "Unknown shader link error";
+          gl.deleteProgram(program);
+          throw new Error(message);
+        }
+        return program;
+      }
+
+      let program;
+      try {
+        program = createProgram();
+      } catch (error) {
+        if (own) canvas.remove();
+        throw error;
+      }
+      gl.useProgram(program);
+
+      // two triangles over the whole canvas; the fragment shader does the rest
+      gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
+      gl.bufferData(
+        gl.ARRAY_BUFFER,
+        new Float32Array([-1,-1, 1,-1, -1,1, -1,1, 1,-1, 1,1]),
+        gl.STATIC_DRAW
+      );
+      const aPosition = gl.getAttribLocation(program, "aPosition");
+      gl.enableVertexAttribArray(aPosition);
+      gl.vertexAttribPointer(aPosition, 2, gl.FLOAT, false, 0, 0);
+
+      const U = {};
+      ["uResolution", "uPointer", "uTime", "uProgress", "uHeat"]
+        .forEach(name => { U[name] = gl.getUniformLocation(program, name); });
+
+      const clampProgress = p => Math.min(BURN.end, Math.max(0, p));
+      let elapsed = Number.isFinite(options.time) ? options.time : 0;
+      let progress = clampProgress(Number.isFinite(options.progress)
+        ? options.progress
+        : burnOn(BURN.start, elapsed, settings.speed));
+      let paused = options.paused === undefined ? reduced : Boolean(options.paused);
+      const pointer = [0.5, 0.5]; // eased, 0..1 across the window
+      const aim = [0.5, 0.5];
+      const CENTRE = [0.5, 0.5];
+      let last = null;
+      let raf = 0;
+      let dirty = true;
+      let onScreen = true;
+
+      // Where the tilt is headed: after the pointer, or level when the burn
+      // isn't interactive or the system asks for reduced motion.
+      const goal = () => (settings.interactive && !reduced ? aim : CENTRE);
+
+      // Change any settings; they take hold at once. The tilt eases after
+      // the pointer, unless `instant`.
+      function set(changes, instant) {
+        for (const key in EMBER_DEFAULTS) if (changes[key] !== undefined) settings[key] = changes[key];
+        if (instant) {
+          pointer[0] = goal()[0];
+          pointer[1] = goal()[1];
+        }
+        dirty = true;
+      }
+
+      /* frame */
+
+      function resize() {
+        const dpr = Math.min(devicePixelRatio || 1, 2);
+        const width = Math.max(1, Math.round(canvas.clientWidth * dpr));
+        const height = Math.max(1, Math.round(canvas.clientHeight * dpr));
+        if (canvas.width === width && canvas.height === height) return false;
+        canvas.width = width;
+        canvas.height = height;
+        gl.viewport(0, 0, width, height);
+        return true;
+      }
+
+      function draw() {
+        resize();
+        gl.uniform2f(U.uResolution, canvas.width, canvas.height);
+        gl.uniform2f(U.uPointer, pointer[0], pointer[1]);
+        gl.uniform1f(U.uTime, elapsed);
+        gl.uniform1f(U.uProgress, progress);
+        gl.uniform1f(U.uHeat, settings.heat);
+        gl.drawArrays(gl.TRIANGLES, 0, 6);
+        dirty = false;
+      }
+
+      // Ease each value toward its goal, snapping the last sliver (well
+      // under a pixel of tilt); true while any is still on its way.
+      function approach(value, to, rate, delta) {
+        const step = 1 - Math.exp(-delta * rate);
+        let moving = false;
+        for (let i = 0; i < value.length; i++) {
+          if (Math.abs(to[i] - value[i]) > 5e-4) {
+            value[i] += (to[i] - value[i]) * step;
+            moving = true;
+          } else {
+            value[i] = to[i];
+          }
+        }
+        return moving;
+      }
+
+      function tick(now) {
+        raf = requestAnimationFrame(tick);
+        const delta = last === null ? 0 : Math.min(0.05, Math.max(0, (now - last) / 1000));
+        last = now;
+        if (!onScreen || document.hidden) return;
+        let moving = resize() || dirty;
+        if (!paused) {
+          // the clock keeps its own pace; speed drives only the front
+          elapsed += delta;
+          progress = burnOn(progress, delta, settings.speed);
+          moving = true;
+        }
+        // the tilt trails the pointer lazily, 3.5% of the way a frame at 60 fps
+        moving = approach(pointer, goal(), 2.14, delta) || moving;
+        if (moving) draw();
+      }
+
+      function onPointerMove(event) {
+        aim[0] = event.clientX / innerWidth;
+        aim[1] = 1 - event.clientY / innerHeight;
+      }
+
+      function onPointerLeave() {
+        aim[0] = 0.5;
+        aim[1] = 0.5;
+      }
+
+      addEventListener("pointermove", onPointerMove, { passive: true });
+      document.documentElement.addEventListener("pointerleave", onPointerLeave);
+
+      // rest while scrolled out of sight
+      const watcher = typeof IntersectionObserver === "function"
+        ? new IntersectionObserver(entries => {
+          onScreen = entries[entries.length - 1].isIntersecting;
+          dirty = true;
+        })
+        : null;
+      if (watcher) watcher.observe(canvas);
+
+      draw();
+      raf = requestAnimationFrame(tick);
+
+      return {
+        get settings() { return { ...settings }; },
+        set,
+        get paused() { return paused; },
+        set paused(value) { paused = Boolean(value); dirty = true; },
+        get time() { return elapsed; },
+        set time(value) { elapsed = Number(value); dirty = true; },
+        get progress() { return progress; },
+        set progress(value) { progress = clampProgress(Number(value)); dirty = true; },
+        // a fresh page, just caught, burning again
+        restart() {
+          elapsed = 0;
+          progress = BURN.start;
+          paused = false;
+          dirty = true;
+        },
+        draw,
+        destroy() {
+          cancelAnimationFrame(raf);
+          if (watcher) watcher.disconnect();
+          removeEventListener("pointermove", onPointerMove);
+          document.documentElement.removeEventListener("pointerleave", onPointerLeave);
+          const lose = gl.getExtension("WEBGL_lose_context");
+          if (lose) lose.loseContext();
+          if (own) canvas.remove();
+        }
+      };
+    }
+
+    /* ---------------- renderer ---------------- */
 
     const speedInput = document.getElementById("speed");
     const heatInput = document.getElementById("heat");
@@ -534,93 +779,236 @@
     const heatOut = document.getElementById("heatOut");
     const pauseButton = document.getElementById("pause");
     const restartButton = document.getElementById("restart");
+    const downloadButton = document.getElementById("download");
 
-    let speed = Number(speedInput.value);
-    let heat = Number(heatInput.value);
-    let paused = reducedMotion;
-    let elapsed = 0;
-    let progress = 0.006;
-    let last = performance.now();
-    let pointer = { x: 0.5, y: 0.5 };
-    let targetPointer = { x: 0.5, y: 0.5 };
+    let engine;
+    try {
+      engine = createEmber(canvas, {
+        speed: Number(speedInput.value),
+        heat: Number(heatInput.value),
+        // ?pin=<seconds> opens paused that long after the page caught, the
+        // front as far in as the speed on the slider would have burned it
+        // by then (burnOn): at the default 1x, 0.006 + 0.00275 per second.
+        time: pinned ? pinTime : 0,
+        paused: reducedMotion || pinned
+      });
+    } catch (error) {
+      console.error(error);
+      fallback.textContent = "The shader could not compile on this browser: " + error.message;
+      fallback.style.display = "grid";
+      return;
+    }
 
-    if (reducedMotion) pauseButton.textContent = "Resume";
+    if (!engine) {
+      fallback.style.display = "grid";
+      return;
+    }
+
+    /* ---------------- controls ---------------- */
+
+    function showSettings() {
+      const s = engine.settings;
+      speedOut.value = s.speed.toFixed(2) + "×";
+      heatOut.value = s.heat.toFixed(2);
+    }
+
+    function showPaused() {
+      pauseButton.textContent = engine.paused ? "Resume" : "Pause";
+    }
 
     speedInput.addEventListener("input", () => {
-      speed = Number(speedInput.value);
-      speedOut.value = speed.toFixed(2) + "×";
+      engine.set({ speed: Number(speedInput.value) });
+      showSettings();
     });
 
     heatInput.addEventListener("input", () => {
-      heat = Number(heatInput.value);
-      heatOut.value = heat.toFixed(2);
+      engine.set({ heat: Number(heatInput.value) });
+      showSettings();
     });
 
     pauseButton.addEventListener("click", () => {
-      paused = !paused;
-      pauseButton.textContent = paused ? "Resume" : "Pause";
-      last = performance.now();
+      engine.paused = !engine.paused;
+      showPaused();
     });
 
     restartButton.addEventListener("click", () => {
-      progress = 0.006;
-      elapsed = 0;
-      last = performance.now();
-      if (paused) {
-        paused = false;
-        pauseButton.textContent = "Pause";
-      }
+      engine.restart();
+      showPaused();
     });
 
-    addEventListener("pointermove", (event) => {
-      targetPointer.x = event.clientX / innerWidth;
-      targetPointer.y = 1 - event.clientY / innerHeight;
-    }, { passive: true });
+    // a reload can bring the sliders back where they were; read them out
+    showSettings();
+    showPaused();
 
-    addEventListener("pointerleave", () => {
-      targetPointer.x = 0.5;
-      targetPointer.y = 0.5;
-    });
+    /* ---------------- download ----------------
+       Download hands over this burn, set the way it is now, as a page of
+       its own: the burn, shader and engine sections of this very script,
+       verbatim, so it draws exactly what this page draws, plus its
+       settings and how far the burn had got. */
 
-    function resize() {
-      const dpr = Math.min(devicePixelRatio || 1, 2);
-      const width = Math.max(1, Math.round(innerWidth * dpr));
-      const height = Math.max(1, Math.round(innerHeight * dpr));
-      if (canvas.width !== width || canvas.height !== height) {
-        canvas.width = width;
-        canvas.height = height;
-        gl.viewport(0, 0, width, height);
-      }
+    function currentDownload() {
+      const s = engine.settings;
+      return buildDownload(SOURCE, {
+        speed: s.speed,
+        heat: s.heat,
+        interactive: s.interactive,
+        time: engine.time,
+        progress: engine.progress,
+        burned: (engine.progress - BURN.start) / (BURN.end - BURN.start), // 0 just caught, 1 burned out
+        from: /^https?:$/.test(location.protocol) ? location.origin + location.pathname : ""
+      });
     }
 
-    addEventListener("resize", resize, { passive: true });
-    resize();
+    downloadButton.addEventListener("click", () => {
+      const file = currentDownload();
+      const url = URL.createObjectURL(new Blob([file.html], { type: "text/html" }));
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = file.name;
+      document.body.append(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+    });
 
-    function frame(now) {
-      const delta = Math.min(0.05, Math.max(0, (now - last) / 1000));
-      last = now;
-
-      if (!paused) {
-        elapsed += delta;
-        if (progress < 0.435) {
-          progress = Math.min(0.435, progress + delta * 0.00275 * speed);
+    window.__demo = {
+      engine,
+      get P() { return engine.settings; },
+      get elapsed() { return engine.time; },
+      get progress() { return engine.progress; },
+      // hold the moment t seconds after the page caught, the front where
+      // the current speed would have burned it by then (as ?pin= does)
+      pin(t) {
+        engine.time = t;
+        engine.progress = burnOn(BURN.start, t, engine.settings.speed);
+        engine.paused = true;
+        showPaused();
+        engine.set({}, true);
+        engine.draw();
+      },
+      // run the clock and the front on by dt, n times over, then draw
+      step(dt, steps) {
+        const n = steps == null ? 1 : steps;
+        for (let i = 0; i < n; i++) {
+          engine.time += dt;
+          engine.progress = burnOn(engine.progress, dt, engine.settings.speed);
         }
-      }
+        engine.draw();
+        return engine.time;
+      },
+      // the file Download would hand over, without saving it
+      download: currentDownload,
+      draw: engine.draw
+    };
 
-      pointer.x += (targetPointer.x - pointer.x) * 0.035;
-      pointer.y += (targetPointer.y - pointer.y) * 0.035;
+    /* ---------------- download page ----------------
+       Source text and settings in, a standalone page out. Nothing here
+       touches the page, so a test can run it on the file as it sits. */
 
-      gl.uniform2f(uniforms.resolution, canvas.width, canvas.height);
-      gl.uniform2f(uniforms.pointer, pointer.x, pointer.y);
-      gl.uniform1f(uniforms.time, elapsed);
-      gl.uniform1f(uniforms.progress, progress);
-      gl.uniform1f(uniforms.heat, heat);
-      gl.drawArrays(gl.TRIANGLES, 0, 6);
-
-      requestAnimationFrame(frame);
+    // The lines from the one holding `from` up to the one holding `to`.
+    function sourceBetween(source, from, to) {
+      const start = source.indexOf(from);
+      const end = start < 0 ? -1 : source.indexOf(to, start);
+      if (end < 0) throw new Error("Archive Ember: a section marker is missing from the page source");
+      return source.slice(source.lastIndexOf("\n", start) + 1, source.lastIndexOf("\n", end) + 1);
     }
 
-    requestAnimationFrame(frame);
+    function buildDownload(source, look) {
+      const code = sourceBetween(source, "/* ---------------- the burn ----------------", "/* ---------------- renderer ----------------");
+      const num = (value, digits) => String(Number(Number(value).toFixed(digits)));
+      const rows = [
+        ["speed", num(look.speed, 2), "how fast the front eats inward, from 0.2 to 2.2; 0 holds it where it is"],
+        ["heat", num(look.heat, 2), "how hot the embers, glow and sparks burn, from 0.35 to 1.8"],
+        ["interactive", String(look.interactive !== false), "the page tilts a little after the pointer"],
+        ["time", num(look.time, 2), "seconds since the page caught; the flicker, smoke and sparks run on it"],
+        ["progress", num(look.progress, 5), "how far in the front has burned, from 0.006 (just caught) to 0.435 (a last scrap)"]
+      ];
+      const lines = rows.map(([key, value], i) => "    " + key + ": " + value + (i < rows.length - 1 ? "," : ""));
+      const width = Math.max(...lines.map(line => line.length)) + 2;
+      const settings = lines.map((line, i) => line.padEnd(width) + "// " + rows[i][2]).join("\n");
+      const burned = Math.round(Math.min(1, Math.max(0, look.burned)) * 100);
+      const from = look.from ? "\n  From " + look.from : "";
+
+      // In the header for readers, and atop the engine so it travels with copies.
+      const notice = "Copyright (c) 2026 Jason Adams. Released under the MIT License: https://opensource.org/license/mit";
+
+      // "<\/script>" and "<\!--" keep this page's own script from ending early.
+      const html = `<!doctype html>
+<\!--
+  Archive Ember: an antique page burning inward from its edges. One
+  fragment shader draws all of it, the paper grain, foxing, ink, char,
+  embers, smoke and drifting sparks, with no textures and no libraries.
+
+  ${notice}
+
+  Set the way you left it: ${burned}% burned, burn speed ${num(look.speed, 2)}×, ember heat ${num(look.heat, 2)}.${from}
+
+  Open this file in a browser and the page burns on in the window from
+  where you left it. Its settings are in ARCHIVE_EMBER below: change any
+  of them and reload.
+
+  To run it on a page of your own, copy the first two scripts below into
+  that page, then point the burn at an element:
+
+    <div id="hero" style="height: 70vh">Your words, over the burning page</div>
+    <script>
+      const ember = ArchiveEmber(document.getElementById("hero"), ARCHIVE_EMBER);
+    <\/script>
+
+  It fills the element from behind whatever the element holds. Hand it a
+  canvas instead and it draws into that, at the size your CSS gives it.
+  It rests while scrolled out of sight, and holds still for anyone whose
+  system asks for reduced motion.
+
+  ArchiveEmber returns a controller for changing the burn as it runs:
+    ember.set({ heat: 1.6 })   changes any setting, at once
+    ember.paused = true        holds the moment
+    ember.progress = 0.2       moves the front, from 0 (the edge) to 0.435
+    ember.restart()            lights a fresh page and sets it burning
+    ember.destroy()            stops it and lets go of the canvas
+  Where WebGL is missing it returns null and leaves the page as it was.
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#0d0907" />
+  <title>Archive Ember · Antique Paper Burn</title>
+  <style>
+    html, body { height: 100%; margin: 0; background: #0d0907; }
+    #ember { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+    p { margin: 24px; color: #f1dfc0; font: 16px/1.5 system-ui, sans-serif; }
+  </style>
+</head>
+<body>
+  <canvas id="ember" aria-label="Procedural antique paper burning slowly from its edges"></canvas>
+
+  <script>
+  // The settings. ArchiveEmber reads them as it starts; ember.set() changes them after.
+  const ARCHIVE_EMBER = {
+${settings}
+  };
+  <\/script>
+
+  <script>
+  // Archive Ember. ${notice}
+  // The engine. ArchiveEmber(element, settings) starts a burn there and returns its controller.
+  window.ArchiveEmber = (() => {
+    "use strict";
+
+${code}    return createEmber;
+  })();
+  <\/script>
+
+  <script>
+  const ember = ArchiveEmber(document.getElementById("ember"), ARCHIVE_EMBER);
+  if (!ember) document.body.insertAdjacentHTML("beforeend", "<p>Archive Ember needs WebGL, which this browser has switched off.</p>");
+  <\/script>
+</body>
+</html>
+`;
+      return { name: "archive-ember.html", html };
+    }
   })();
   </script>
 </body>
