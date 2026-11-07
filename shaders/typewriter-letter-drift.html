@@ -3,6 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#f4edda" />
   <title>Typewriter Letter Drift — Border Shader</title>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Special+Elite&family=Courier+Prime:wght@400;700&display=swap');
@@ -18,10 +19,6 @@
       --muted: #8a7a5e;
       --accent: #8f6227;
       --line: rgba(88, 66, 34, 0.28);
-      /* How far past the card edge the drift canvas reaches, CSS px. Read back by
-         the JS. The farthest anchor sits ~25px out, tangential drift adds ~11 more,
-         a rocked quad's corner another ~14 at full size — 64 leaves the haze room. */
-      --overflow: 64px;
       font-family: 'Courier Prime', 'Courier New', monospace;
     }
 
@@ -58,6 +55,19 @@
       background: radial-gradient(ellipse at 50% 42%, transparent 55%, rgba(94, 72, 40, 0.16) 100%);
     }
 
+    .back {
+      position: fixed;
+      z-index: 3;
+      top: clamp(16px, 2.6vw, 28px);
+      right: clamp(16px, 2.6vw, 28px);
+      color: var(--muted);
+      text-decoration: none;
+      font: 400 0.72rem/1 'Courier Prime', ui-monospace, SFMono-Regular, Menlo, monospace;
+      letter-spacing: 0.08em;
+      transition: color 0.45s ease;
+    }
+    .back:hover { color: var(--ink); }
+
     .page {
       position: relative;
       z-index: 1;
@@ -93,8 +103,9 @@
       line-height: 1.7;
     }
 
-    /* Room for the drift. Padding runs a shade past --overflow so nothing clips
-       on a wide window; on a narrow one the viewport edge does the clipping. */
+    /* Room for the drift, which reaches 64px past the card. Padding runs a shade
+       past that so nothing clips on a wide window; on a narrow one the viewport
+       edge does the clipping. */
     .stage {
       position: relative;
       display: grid;
@@ -117,17 +128,6 @@
       box-shadow:
         inset 0 1px 0 rgba(255, 255, 255, 0.55),
         0 16px 34px -20px rgba(80, 58, 28, 0.5);
-    }
-
-    .drift {
-      position: absolute;
-      display: block;
-      pointer-events: none;
-      z-index: 1;
-      left: calc(-1 * var(--overflow));
-      top: calc(-1 * var(--overflow));
-      /* width/height written by the JS each resize — a canvas is a replaced
-         element, so `width: auto` would resolve to the drawing-buffer size. */
     }
 
     .card-inner { position: relative; z-index: 2; padding: 26px 28px 24px; }
@@ -180,7 +180,7 @@
     .controls {
       position: fixed; z-index: 10; left: 50%; bottom: max(16px, env(safe-area-inset-bottom));
       width: min(1060px, calc(100% - 24px)); transform: translateX(-50%);
-      display: grid; grid-template-columns: repeat(5, 1fr) auto auto;
+      display: grid; grid-template-columns: repeat(5, 1fr) auto;
       align-items: end; gap: 10px;
       padding: 12px; border: 1px solid var(--line); border-radius: 6px;
       background: rgba(251, 245, 230, .92);
@@ -210,14 +210,22 @@
       border-radius: 50%; background: var(--card); box-shadow: 0 0 0 4px rgba(143, 98, 39, .12); cursor: pointer;
     }
 
-    .controls button {
+    .actions { display: flex; gap: 10px; }
+
+    .action {
+      display: inline-flex; align-items: center; justify-content: center; gap: 7px;
       height: 39px; padding: 0 14px; border: 1px solid var(--line);
       border-radius: 5px; background: rgba(143, 98, 39, .06); color: var(--ink);
       font: 700 10px/1 'Courier Prime', ui-monospace, monospace;
-      letter-spacing: .1em; text-transform: uppercase; cursor: pointer;
+      letter-spacing: .1em; text-transform: uppercase; white-space: nowrap; cursor: pointer;
     }
-    .controls button:hover { border-color: var(--accent); background: rgba(143, 98, 39, .12); }
-    .controls button:active { transform: translateY(1px); }
+    .action:hover { border-color: var(--accent); background: rgba(143, 98, 39, .12); }
+    .action:active { transform: translateY(1px); }
+
+    /* the way to take it home, a shade bolder than Pause */
+    .download { border-color: rgba(143, 98, 39, .55); background: rgba(143, 98, 39, .12); }
+    .download:hover { border-color: var(--accent); background: rgba(143, 98, 39, .2); }
+    .download svg { width: 15px; height: 15px; flex: none; margin-left: -2px; color: var(--accent); }
 
     .fallback {
       display: none; position: absolute; inset: 0; z-index: 6; place-items: center;
@@ -226,7 +234,8 @@
 
     @media (max-width: 760px) {
       .controls { grid-template-columns: 1fr 1fr 1fr; }
-      .controls button { width: 100%; }
+      .actions { grid-column: 1 / -1; }
+      .action { flex: 1; }
     }
     @media (max-width: 520px) {
       .controls { grid-template-columns: 1fr 1fr; }
@@ -237,9 +246,11 @@
   <div class="grain" aria-hidden="true"></div>
   <div class="vignette" aria-hidden="true"></div>
 
+  <a class="back" href="./">&larr; shaders</a>
+
   <main class="page">
     <p class="eyebrow">WebGL border experiment 04</p>
-    <h1>Typewriter letter drift</h1>
+    <h1>Typewriter Letter Drift</h1>
     <p class="lede">
       The border that types itself around every card on the Learn index, pulled out on
       its own. Letters from a typewriter face are rasterized once into a texture atlas,
@@ -251,7 +262,6 @@
 
     <section class="stage">
       <section class="card" id="panel" aria-labelledby="demo-title">
-        <canvas class="drift" id="drift" aria-hidden="true"></canvas>
         <div class="card-inner">
           <header>
             <p class="card-tag">Specimen</p>
@@ -298,23 +308,51 @@
       <label for="panelW">Card <output id="panelWOut">460px</output></label>
       <input id="panelW" type="range" min="260" max="520" value="460" step="1" />
     </div>
-    <button type="button" id="pause">Pause</button>
-    <button type="button" id="reseed">Re-ink</button>
+    <div class="actions">
+      <button id="pause" class="action" type="button">Pause</button>
+      <button id="reseed" class="action" type="button">Re-ink</button>
+      <button id="download" class="action download" type="button" title="Download this drift, set the way it is now, as a page of its own">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M12 4v11m-4.5-4.5L12 15l4.5-4.5M5 19.5h14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" />
+        </svg>
+        Download
+      </button>
+    </div>
   </section>
 
   <script>
   (() => {
     "use strict";
 
+    const SOURCE = (document.currentScript || {}).textContent || ""; // Download ships parts of this script
+    const panel = document.getElementById("panel");
+    const fallback = document.getElementById("fallback");
+    const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const params = new URLSearchParams(location.search);
+    const pinParam = params.get("pin");
+    const pinTime = pinParam === null || pinParam === "" ? null : Number(pinParam);
+    const pinned = pinTime !== null && Number.isFinite(pinTime);
+
     // The letter-drift border from learn/index.html, standing on its own. The two
     // shaders below are those shaders; the only additions are the demo knobs —
     // uInk on the glyph pass, and the glyph count / drift speed handled host-side —
     // which at their defaults (1.0, 118, 1.0) reproduce the Learn tiles exactly.
 
+    /* ---------------- the drift ----------------
+       Letters from a typewriter face, rasterized once into a 64-glyph atlas
+       and scattered as quads around a card's perimeter. Two passes share one
+       canvas: a faint sepia aura hugging the card's edge, then one quad per
+       letter, every position, wobble, size, rock and re-strike derived in the
+       vertex shader from a single per-glyph seed. Nothing is stored between
+       frames; the whole drift is a pure function of time. */
+
     const CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz&%$§¶.,;:'!?";
     const COLS = 16, ROWS = 4, CELL = 128;
     const MAX_GLYPHS = 170;
-    const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
+    // How far past the card edge the drift canvas reaches, CSS px. The farthest
+    // anchor sits ~25px out, tangential drift adds ~11 more, a rocked quad's
+    // corner another ~14 at full size: 64 leaves the haze room.
+    const OVERFLOW = 64;
 
     function waitForTypeFont() {
       if (!document.fonts || !document.fonts.load) return Promise.resolve();
@@ -486,81 +524,85 @@
       }
     `;
 
-    function compile(gl, type, source) {
-      const shader = gl.createShader(type);
-      gl.shaderSource(shader, source);
-      gl.compileShader(shader);
-      if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
-        const message = gl.getShaderInfoLog(shader) || "Unknown shader compile error";
-        gl.deleteShader(shader);
-        throw new Error(message);
-      }
-      return shader;
-    }
-    function createProgram(gl, vertexSource, fragmentSource) {
-      const program = gl.createProgram();
-      const vertex = compile(gl, gl.VERTEX_SHADER, vertexSource);
-      const fragment = compile(gl, gl.FRAGMENT_SHADER, fragmentSource);
-      gl.attachShader(program, vertex);
-      gl.attachShader(program, fragment);
-      gl.linkProgram(program);
-      gl.deleteShader(vertex);
-      gl.deleteShader(fragment);
-      if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
-        const message = gl.getProgramInfoLog(program) || "Unknown shader link error";
-        gl.deleteProgram(program);
-        throw new Error(message);
-      }
-      return program;
-    }
+    /* ---------------- engine ----------------
+       Everything the drift needs to run: WebGL, the atlas once the type has
+       loaded, a canvas of its own laid around the element it frames, and a
+       loop that rests whenever nothing moves. createLetterDrift(target,
+       settings) frames that element and returns a controller. Where WebGL is
+       missing it returns null; a shader that won't compile throws. */
 
-    const panel = document.getElementById("panel");
-    const canvas = document.getElementById("drift");
-    const fallback = document.getElementById("fallback");
-    const overflow = parseFloat(
-      getComputedStyle(document.documentElement).getPropertyValue("--overflow")
-    ) || 64;
-
-    const gl = canvas.getContext("webgl", {
-      alpha: true, antialias: false, depth: false, stencil: false,
-      premultipliedAlpha: true, powerPreference: "high-performance"
-    });
-    if (!gl) { fallback.style.display = "grid"; return; }
-
-    const controls = {
-      glyphs: document.getElementById("glyphs"),
-      speed: document.getElementById("speed"),
-      ink: document.getElementById("ink"),
-      glow: document.getElementById("glow"),
-      panelW: document.getElementById("panelW"),
-      pause: document.getElementById("pause"),
-      reseed: document.getElementById("reseed"),
-      outs: {
-        glyphs: document.getElementById("glyphsOut"),
-        speed: document.getElementById("speedOut"),
-        ink: document.getElementById("inkOut"),
-        glow: document.getElementById("glowOut"),
-        panelW: document.getElementById("panelWOut")
-      }
+    const DRIFT_DEFAULTS = {
+      glyphs: 118, // letters around the edge, 0 to MAX_GLYPHS
+      speed: 1,    // drift rate; 0 holds still
+      ink: 1,      // letter strength
+      glow: 1,     // the aura, and each letter's halo
+      seed: null   // which letters land where; null picks one at random
     };
-    const state = {
-      glyphs: 118, speed: 1, ink: 1, glow: 1,
-      seed: Math.random() * 1000,
-      paused: false
-    };
+    const clampGlyphs = n => Math.min(MAX_GLYPHS, Math.max(0, Math.round(Number(n) || 0)));
 
-    waitForTypeFont().then(() => {
-      const atlas = buildAtlas();
+    function createLetterDrift(target, options = {}) {
+      const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+      const settings = { ...DRIFT_DEFAULTS };
+      for (const key in DRIFT_DEFAULTS) if (options[key] !== undefined) settings[key] = options[key];
+      settings.glyphs = clampGlyphs(settings.glyphs);
+      if (!Number.isFinite(settings.seed)) settings.seed = Math.random() * 1000;
 
+      const canvas = document.createElement("canvas");
+      const gl = canvas.getContext("webgl", {
+        alpha: true, antialias: false, depth: false, stencil: false,
+        premultipliedAlpha: true, powerPreference: "high-performance"
+      });
+      if (!gl) return null;
+
+      function compile(type, source) {
+        const shader = gl.createShader(type);
+        gl.shaderSource(shader, source);
+        gl.compileShader(shader);
+        if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+          const message = gl.getShaderInfoLog(shader) || "Unknown shader compile error";
+          gl.deleteShader(shader);
+          throw new Error(message);
+        }
+        return shader;
+      }
+
+      function createProgram(vertexSource, fragmentSource) {
+        const program = gl.createProgram();
+        const vertex = compile(gl.VERTEX_SHADER, vertexSource);
+        const fragment = compile(gl.FRAGMENT_SHADER, fragmentSource);
+        gl.attachShader(program, vertex);
+        gl.attachShader(program, fragment);
+        gl.linkProgram(program);
+        gl.deleteShader(vertex);
+        gl.deleteShader(fragment);
+        if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+          const message = gl.getProgramInfoLog(program) || "Unknown shader link error";
+          gl.deleteProgram(program);
+          throw new Error(message);
+        }
+        return program;
+      }
+
+      // Both programs build before the page is touched, so a failure leaves it as it was.
       let auraProgram, glyphProgram;
       try {
-        auraProgram = createProgram(gl, auraVertexSource, auraFragmentSource);
-        glyphProgram = createProgram(gl, glyphVertexSource, glyphFragmentSource);
+        auraProgram = createProgram(auraVertexSource, auraFragmentSource);
+        glyphProgram = createProgram(glyphVertexSource, glyphFragmentSource);
       } catch (error) {
-        console.error("Letter drift shader:", error);
-        fallback.style.display = "grid";
-        return;
+        const lose = gl.getExtension("WEBGL_lose_context");
+        if (lose) lose.loseContext();
+        throw error;
       }
+
+      // The canvas reaches OVERFLOW px past each edge, over the element's
+      // background and under everything it holds: the element becomes a
+      // stacking context with the canvas at its bottom.
+      canvas.setAttribute("aria-hidden", "true");
+      canvas.style.cssText = "position:absolute;left:" + -OVERFLOW + "px;top:" + -OVERFLOW +
+        "px;display:block;pointer-events:none;z-index:-1";
+      if (getComputedStyle(target).position === "static") target.style.position = "relative";
+      target.style.isolation = "isolate";
+      target.prepend(canvas);
 
       gl.enable(gl.BLEND);
       gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
@@ -569,6 +611,7 @@
       gl.bindBuffer(gl.ARRAY_BUFFER, quadBuffer);
       gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, -1, 1, 1, -1, 1, 1]), gl.STATIC_DRAW);
 
+      // one quad per letter: corner x, corner y, letter index
       const glyphVertices = new Float32Array(MAX_GLYPHS * 6 * 3);
       const corners = [-1, -1, 1, -1, -1, 1, -1, 1, 1, -1, 1, 1];
       for (let g = 0, i = 0; g < MAX_GLYPHS; g++) {
@@ -582,15 +625,7 @@
       gl.bindBuffer(gl.ARRAY_BUFFER, glyphBuffer);
       gl.bufferData(gl.ARRAY_BUFFER, glyphVertices, gl.STATIC_DRAW);
 
-      const texture = gl.createTexture();
-      gl.bindTexture(gl.TEXTURE_2D, texture);
-      gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
-      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, atlas);
-      gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      const texture = gl.createTexture(); // the atlas, once the type has loaded
 
       const aura = {
         position: gl.getAttribLocation(auraProgram, "aPosition"),
@@ -616,20 +651,56 @@
       gl.useProgram(glyphProgram);
       gl.uniform1i(glyph.atlas, 0);
 
-      function render(elapsed) {
-        const dpr = Math.min(window.devicePixelRatio || 1, 2);
-        const rect = panel.getBoundingClientRect();
-        const cssW = rect.width + overflow * 2;
-        const cssH = rect.height + overflow * 2;
+      let elapsed = Number.isFinite(options.time) ? options.time : 20; // mid-drift, so the first paint already feels settled
+      let paused = options.paused === undefined ? reduced : Boolean(options.paused);
+      let ready = false; // the atlas is in
+      let alive = true;
+      let dpr = 1;
+      let last = null;
+      let raf = 0;
+      let dirty = true;
+      let onScreen = true;
+
+      // Change any settings. They land at once; nothing here eases, so
+      // `instant` has nothing to skip.
+      function set(changes, instant) {
+        for (const key in DRIFT_DEFAULTS) if (changes[key] !== undefined) settings[key] = changes[key];
+        settings.glyphs = clampGlyphs(settings.glyphs);
+        if (!Number.isFinite(settings.seed)) settings.seed = Math.random() * 1000;
+        dirty = true;
+      }
+
+      // Re-ink: new letters in new places.
+      function reseed() {
+        settings.seed = Math.random() * 1000;
+        dirty = true;
+        return settings.seed;
+      }
+
+      // The drift takes its size from the element's border box, and its canvas
+      // sits OVERFLOW px out from that box on every side. left/top resolve
+      // against the padding box, so they step back over the border as well;
+      // without that the drift sits one border-width right of and below centre.
+      function draw() {
+        if (!ready) return; // nothing to draw until the atlas is in
+        dpr = Math.min(devicePixelRatio || 1, 2);
+        const rect = target.getBoundingClientRect();
+        const left = -(OVERFLOW + target.clientLeft) + "px";
+        const top = -(OVERFLOW + target.clientTop) + "px";
+        if (canvas.style.left !== left) canvas.style.left = left;
+        if (canvas.style.top !== top) canvas.style.top = top;
+        const cssW = rect.width + OVERFLOW * 2;
+        const cssH = rect.height + OVERFLOW * 2;
         const width = Math.max(1, Math.round(cssW * dpr));
         const height = Math.max(1, Math.round(cssH * dpr));
         if (canvas.width !== width || canvas.height !== height) {
           canvas.width = width;
           canvas.height = height;
-          canvas.style.width = cssW + "px";
-          canvas.style.height = cssH + "px";
           gl.viewport(0, 0, width, height);
         }
+        // a canvas is a replaced element: without a stated size it shows at its buffer's
+        if (canvas.style.width !== cssW + "px") canvas.style.width = cssW + "px";
+        if (canvas.style.height !== cssH + "px") canvas.style.height = cssH + "px";
 
         const centerX = width * .5;
         const centerY = height * .5;
@@ -647,7 +718,7 @@
         gl.uniform2f(aura.center, centerX, centerY);
         gl.uniform2f(aura.half, halfX, halfY);
         gl.uniform1f(aura.time, elapsed);
-        gl.uniform1f(aura.glow, state.glow);
+        gl.uniform1f(aura.glow, settings.glow);
         gl.uniform1f(aura.dpr, dpr);
         gl.drawArrays(gl.TRIANGLES, 0, 6);
 
@@ -661,75 +732,342 @@
         gl.uniform2f(glyph.center, centerX, centerY);
         gl.uniform2f(glyph.half, halfX, halfY);
         gl.uniform1f(glyph.time, elapsed);
-        gl.uniform1f(glyph.seedU, state.seed);
+        gl.uniform1f(glyph.seedU, settings.seed);
         gl.uniform1f(glyph.dpr, dpr);
-        gl.uniform1f(glyph.glow, state.glow);
-        gl.uniform1f(glyph.ink, state.ink);
-        gl.drawArrays(gl.TRIANGLES, 0, state.glyphs * 6);
+        gl.uniform1f(glyph.glow, settings.glow);
+        gl.uniform1f(glyph.ink, settings.ink);
+        gl.drawArrays(gl.TRIANGLES, 0, settings.glyphs * 6);
+        dirty = false;
       }
 
-      // --- Controls wiring ---
-      let elapsed = 20; // start mid-drift so the first paint already feels settled
-      const STATIC_TIME = 47;
-
-      function renderOnce() { render(reducedMotion ? STATIC_TIME : elapsed); }
-
-      controls.glyphs.addEventListener("input", () => {
-        state.glyphs = +controls.glyphs.value;
-        controls.outs.glyphs.textContent = state.glyphs;
-        if (reducedMotion || state.paused) renderOnce();
-      });
-      controls.speed.addEventListener("input", () => {
-        state.speed = +controls.speed.value;
-        controls.outs.speed.textContent = state.speed.toFixed(2) + "×";
-      });
-      controls.ink.addEventListener("input", () => {
-        state.ink = +controls.ink.value;
-        controls.outs.ink.textContent = state.ink.toFixed(2);
-        if (reducedMotion || state.paused) renderOnce();
-      });
-      controls.glow.addEventListener("input", () => {
-        state.glow = +controls.glow.value;
-        controls.outs.glow.textContent = state.glow.toFixed(2);
-        if (reducedMotion || state.paused) renderOnce();
-      });
-      controls.panelW.addEventListener("input", () => {
-        panel.style.width = controls.panelW.value + "px";
-        controls.outs.panelW.textContent = controls.panelW.value + "px";
-        if (reducedMotion || state.paused) renderOnce();
-      });
-      controls.pause.addEventListener("click", () => {
-        state.paused = !state.paused;
-        controls.pause.textContent = state.paused ? "Resume" : "Pause";
-      });
-      controls.reseed.addEventListener("click", () => {
-        state.seed = Math.random() * 1000;
-        if (reducedMotion || state.paused) renderOnce();
-      });
-
-      if (reducedMotion) {
-        renderOnce();
-        let resizeQueued = false;
-        addEventListener("resize", () => {
-          if (resizeQueued) return;
-          resizeQueued = true;
-          requestAnimationFrame(() => { resizeQueued = false; renderOnce(); });
-        }, { passive: true });
-        return;
-      }
-
-      let last = performance.now();
-      function frame(now) {
-        const delta = Math.min(.05, Math.max(0, (now - last) / 1000));
+      function tick(now) {
+        raf = requestAnimationFrame(tick);
+        const delta = last === null ? 0 : Math.min(0.05, Math.max(0, (now - last) / 1000));
         last = now;
-        if (!document.hidden && !state.paused) {
-          elapsed += delta * state.speed;
-          render(elapsed);
+        if (!ready || !onScreen || document.hidden) return;
+        let moving = dirty || !sizer || Math.min(devicePixelRatio || 1, 2) !== dpr;
+        if (!paused && settings.speed > 0) {
+          elapsed += delta * settings.speed;
+          moving = true;
         }
-        requestAnimationFrame(frame);
+        if (moving) draw();
       }
-      requestAnimationFrame(frame);
+
+      // follow the element's size, and rest while scrolled out of sight
+      const sizer = typeof ResizeObserver === "function" ? new ResizeObserver(() => { dirty = true; }) : null;
+      if (sizer) sizer.observe(target, { box: "border-box" });
+      const watcher = typeof IntersectionObserver === "function"
+        ? new IntersectionObserver(entries => {
+          onScreen = entries[entries.length - 1].isIntersecting;
+          dirty = true;
+        })
+        : null;
+      if (watcher) watcher.observe(canvas);
+
+      // The atlas waits (at most 2.6 s) for the typewriter faces; until then nothing draws.
+      const whenReady = waitForTypeFont().then(() => {
+        if (!alive) return;
+        gl.bindTexture(gl.TEXTURE_2D, texture);
+        gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, buildAtlas());
+        gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+        ready = true;
+        draw();
+      });
+
+      raf = requestAnimationFrame(tick);
+
+      return {
+        get settings() { return { ...settings }; },
+        set,
+        reseed,
+        get paused() { return paused; },
+        set paused(value) { paused = Boolean(value); dirty = true; },
+        get time() { return elapsed; },
+        set time(value) { elapsed = Number(value); dirty = true; },
+        ready: whenReady, // settles once the letters are in and drawn
+        canvas,
+        draw,
+        destroy() {
+          alive = false;
+          cancelAnimationFrame(raf);
+          if (sizer) sizer.disconnect();
+          if (watcher) watcher.disconnect();
+          const lose = gl.getExtension("WEBGL_lose_context");
+          if (lose) lose.loseContext();
+          canvas.remove();
+        }
+      };
+    }
+
+    /* ---------------- controls ---------------- */
+
+    const glyphsInput = document.getElementById("glyphs");
+    const speedInput = document.getElementById("speed");
+    const inkInput = document.getElementById("ink");
+    const glowInput = document.getElementById("glow");
+    const widthInput = document.getElementById("panelW");
+    const glyphsOut = document.getElementById("glyphsOut");
+    const speedOut = document.getElementById("speedOut");
+    const inkOut = document.getElementById("inkOut");
+    const glowOut = document.getElementById("glowOut");
+    const widthOut = document.getElementById("panelWOut");
+    const pauseButton = document.getElementById("pause");
+    const reseedButton = document.getElementById("reseed");
+    const downloadButton = document.getElementById("download");
+    const STILL_TIME = 47; // the moment held under reduced motion
+
+    // The card's width is page layout; the drift follows the card.
+    function setWidth() {
+      panel.style.width = widthInput.value + "px";
+      widthOut.textContent = widthInput.value + "px";
+    }
+    setWidth();
+
+    let engine;
+    try {
+      engine = createLetterDrift(panel, {
+        glyphs: Number(glyphsInput.value),
+        speed: Number(speedInput.value),
+        ink: Number(inkInput.value),
+        glow: Number(glowInput.value),
+        time: pinned ? pinTime : reducedMotion ? STILL_TIME : 20,
+        paused: reducedMotion || pinned
+      });
+    } catch (error) {
+      console.error("Letter drift shader:", error);
+      fallback.style.display = "grid";
+      return;
+    }
+
+    if (!engine) {
+      fallback.style.display = "grid";
+      return;
+    }
+
+    function showPaused() {
+      pauseButton.textContent = engine.paused ? "Resume" : "Pause";
+    }
+
+    glyphsInput.addEventListener("input", () => {
+      engine.set({ glyphs: Number(glyphsInput.value) });
+      glyphsOut.textContent = engine.settings.glyphs;
     });
+    speedInput.addEventListener("input", () => {
+      engine.set({ speed: Number(speedInput.value) });
+      speedOut.textContent = engine.settings.speed.toFixed(2) + "×";
+    });
+    inkInput.addEventListener("input", () => {
+      engine.set({ ink: Number(inkInput.value) });
+      inkOut.textContent = engine.settings.ink.toFixed(2);
+    });
+    glowInput.addEventListener("input", () => {
+      engine.set({ glow: Number(glowInput.value) });
+      glowOut.textContent = engine.settings.glow.toFixed(2);
+    });
+    widthInput.addEventListener("input", setWidth);
+    pauseButton.addEventListener("click", () => {
+      engine.paused = !engine.paused;
+      showPaused();
+    });
+    reseedButton.addEventListener("click", () => engine.reseed());
+
+    // a reload can bring the sliders back where they were; read them out
+    glyphsOut.textContent = engine.settings.glyphs;
+    speedOut.textContent = engine.settings.speed.toFixed(2) + "×";
+    inkOut.textContent = engine.settings.ink.toFixed(2);
+    glowOut.textContent = engine.settings.glow.toFixed(2);
+    showPaused();
+
+    /* ---------------- download ----------------
+       Download hands over this drift, set the way it is now, as a page of
+       its own: the drift and engine sections of this very script, verbatim,
+       so it draws exactly what this page draws, plus its settings. */
+
+    function currentDownload() {
+      const s = engine.settings;
+      return buildDownload(SOURCE, {
+        glyphs: s.glyphs,
+        speed: s.speed,
+        ink: s.ink,
+        glow: s.glow,
+        seed: s.seed,
+        time: engine.time,
+        width: Number(widthInput.value),
+        from: /^https?:$/.test(location.protocol) ? location.origin + location.pathname : ""
+      });
+    }
+
+    downloadButton.addEventListener("click", () => {
+      const file = currentDownload();
+      const url = URL.createObjectURL(new Blob([file.html], { type: "text/html" }));
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = file.name;
+      document.body.append(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+    });
+
+    window.__demo = {
+      engine,
+      ready: engine.ready,
+      get P() { return engine.settings; },
+      get elapsed() { return engine.time; },
+      pin(t) {
+        engine.time = t;
+        engine.paused = true;
+        showPaused();
+        engine.draw();
+      },
+      step(dt, steps) {
+        const n = steps == null ? 1 : steps;
+        for (let i = 0; i < n; i++) engine.time += dt;
+        engine.draw();
+        return engine.time;
+      },
+      // the file Download would hand over, without saving it
+      download: currentDownload,
+      draw: engine.draw
+    };
+
+    /* ---------------- download page ----------------
+       Source text and settings in, a standalone page out. Nothing here
+       touches the page, so a test can run it on the file as it sits. */
+
+    // The lines from the one holding `from` up to the one holding `to`.
+    function sourceBetween(source, from, to) {
+      const start = source.indexOf(from);
+      const end = start < 0 ? -1 : source.indexOf(to, start);
+      if (end < 0) throw new Error("Typewriter Letter Drift: a section marker is missing from the page source");
+      return source.slice(source.lastIndexOf("\n", start) + 1, source.lastIndexOf("\n", end) + 1);
+    }
+
+    function buildDownload(source, look) {
+      const code =
+        sourceBetween(source, "/* ---------------- the drift ----------------", "/* ---------------- engine ----------------") +
+        sourceBetween(source, "/* ---------------- engine ----------------", "/* ---------------- controls ----------------");
+      const num = (value, digits) => String(Number(Number(value).toFixed(digits)));
+      // The shortest decimal the GPU reads as the same seed: it sees 32-bit floats.
+      const seed = value => {
+        for (let digits = 1; digits < 17; digits++) {
+          const short = Number(Number(value).toPrecision(digits));
+          if (Math.fround(short) === Math.fround(value)) return String(short);
+        }
+        return String(value);
+      };
+      const rows = [
+        ["glyphs", String(look.glyphs), "letters around the card, from 0 to 170"],
+        ["speed", num(look.speed, 2), "drift rate: 0 holds still, 3 runs three times as fast"],
+        ["ink", num(look.ink, 2), "letter strength, from 0.3 (faint) to 1.8 (heavy)"],
+        ["glow", num(look.glow, 2), "the sepia aura and each letter's halo, from 0 (none) to 2.5"],
+        ["seed", seed(look.seed), "which letters land where: any number, or null for new ones each visit"],
+        ["time", num(look.time, 2), "seconds into the drift; it opens where you left it"]
+      ];
+      const lines = rows.map(([key, value], i) => "    " + key + ": " + value + (i < rows.length - 1 ? "," : ""));
+      const width = Math.max(...lines.map(line => line.length)) + 2;
+      const settings = lines.map((line, i) => line.padEnd(width) + "// " + rows[i][2]).join("\n");
+      const card = Math.round(look.width);
+      const told = look.glyphs + " letters drifting at " + num(look.speed, 2) + "×, ink " + Number(look.ink).toFixed(2) +
+        ", aura " + Number(look.glow).toFixed(2) + ", around a " + card + "px card";
+      const from = look.from ? "\n  From " + look.from : "";
+      const fonts = "https://fonts.googleapis.com/css2?family=Special+Elite&family=Courier+Prime:wght@400;700&display=swap";
+
+      // In the header for readers, and atop the engine so it travels with copies.
+      const notice = "Copyright (c) 2026 Jason Adams. Released under the MIT License: https://opensource.org/license/mit";
+
+      // "<\/script>" and "<\!--" keep this page's own script from ending early.
+      const html = `<!doctype html>
+<\!--
+  Typewriter Letter Drift: letters from a typewriter face drift around a
+  card through sepia haze, near ones inked sharp, far ones fading, each now
+  and then re-struck with a faint double-strike ghost. Two WebGL passes, one
+  64-glyph atlas drawn from the typewriter faces, no libraries.
+
+  ${notice}
+
+  Set the way you left it: ${told}.${from}
+
+  Open this file in a browser and the letters drift around the card. Their
+  settings are in TYPEWRITER_LETTER_DRIFT below: change any of them and
+  reload. The card's width is in the CSS.
+
+  To run it on a page of your own, copy the first two scripts below into
+  that page, along with the fonts link in this head (without the faces the
+  letters fall back to Courier), then point the drift at an element:
+
+    <div id="note" style="width: 360px; margin: 96px auto; padding: 24px">Your words, framed in drifting letters</div>
+    <script>
+      const drift = TypewriterLetterDrift(document.getElementById("note"), TYPEWRITER_LETTER_DRIFT);
+    <\/script>
+
+  It lays a canvas of its own 64px past every edge of the element, over the
+  element's background and under whatever the element holds, so leave it
+  that much room. It follows the element's size, waits up to 2.6 s for the
+  fonts before the first letter, rests while scrolled out of sight, and
+  holds still for anyone whose system asks for reduced motion.
+
+  TypewriterLetterDrift returns a controller for changing the drift as it runs:
+    drift.set({ glyphs: 60 })   changes any setting
+    drift.reseed()              re-inks it: new letters in new places
+    drift.paused = true         holds the moment
+    drift.destroy()             stops it and removes its canvas
+  Where WebGL is missing it returns null and leaves the page as it was.
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#f4edda" />
+  <title>Typewriter Letter Drift · Filing Card</title>
+  <link rel="stylesheet" href="${fonts}" />
+  <style>
+    html, body { min-height: 100%; margin: 0; }
+    body { display: grid; place-items: center; box-sizing: border-box; min-height: 100vh; padding: 96px 16px; overflow-x: hidden; background: linear-gradient(180deg, #f4edda, #e9dec2) fixed; color: #2e2416; font-family: "Courier Prime", "Courier New", monospace; }
+    .card { box-sizing: border-box; width: ${card}px; max-width: 100%; padding: 26px 28px 24px; border: 1px solid rgba(88, 66, 34, 0.28); border-radius: 5px; background: linear-gradient(175deg, #fbf5e6, #f2e9d1); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.55), 0 16px 34px -20px rgba(80, 58, 28, 0.5); }
+    .tag { margin: 0 0 6px; color: #8f6227; font-size: .66rem; font-weight: 700; letter-spacing: .22em; text-transform: uppercase; }
+    h1 { margin: 0; font: 400 1.45rem/1.2 "Special Elite", "Courier New", monospace; letter-spacing: .02em; }
+    p { margin: 8px 0 0; color: #5d4e38; font-size: .85rem; line-height: 1.6; }
+  </style>
+</head>
+<body>
+  <main class="card" id="card">
+    <p class="tag">[ Specimen ]</p>
+    <h1>A filing card, re-typed nightly</h1>
+    <p>Letters drift around this card through sepia haze, near ones inked sharp, far ones fading, each now and then re-struck with a double-strike ghost.</p>
+  </main>
+
+  <script>
+  // The settings. TypewriterLetterDrift reads them as it starts; drift.set() changes them after.
+  const TYPEWRITER_LETTER_DRIFT = {
+${settings}
+  };
+  <\/script>
+
+  <script>
+  // Typewriter Letter Drift. ${notice}
+  // The engine. TypewriterLetterDrift(element, settings) frames that element and returns its controller.
+  window.TypewriterLetterDrift = (() => {
+    "use strict";
+
+${code}    return createLetterDrift;
+  })();
+  <\/script>
+
+  <script>
+  const drift = TypewriterLetterDrift(document.getElementById("card"), TYPEWRITER_LETTER_DRIFT);
+  if (!drift) document.body.insertAdjacentHTML("beforeend", "<p>Typewriter Letter Drift needs WebGL, which this browser has switched off.</p>");
+  <\/script>
+</body>
+</html>
+`;
+      return { name: "typewriter-letter-drift.html", html };
+    }
   })();
   </script>
 </body>
