@@ -3,6 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#060c07" />
   <title>Greenhouse Vines — Living Dialog Border Shader</title>
   <style>
     :root {
@@ -16,12 +17,6 @@
       --gh-edge:       rgba(150, 206, 122, 0.20);
       --gh-edge-lit:   rgba(196, 240, 168, 0.42);
       --gh-well:       rgba(6, 12, 7, 0.55);
-      /* How far past the panel edge the vine canvas reaches, CSS px. Read back by the
-         JS, so this declaration is the only place it is stated. Not a free parameter:
-         the outermost lane sits 50px out, its two wobble harmonics add up to 22px more,
-         a leaf on top of that reaches 15px further, and the halo tails off over roughly
-         another 10 — so anything much under 96 saws the tips off the back strands. */
-      --overflow: 96px;
       font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
     }
 
@@ -38,6 +33,19 @@
         #030604;
       background-attachment: fixed;
     }
+
+    .back {
+      position: fixed;
+      z-index: 11;
+      top: clamp(16px, 2.6vw, 28px);
+      right: clamp(16px, 2.6vw, 28px);
+      color: var(--gh-ink-dim);
+      text-decoration: none;
+      font: 400 0.72rem/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+      letter-spacing: 0.08em;
+      transition: color 0.45s ease;
+    }
+    .back:hover { color: var(--gh-ink); }
 
     .page {
       width: min(1120px, calc(100% - 28px));
@@ -71,9 +79,10 @@
     }
 
     /* The stage exists to give the strands room. Its padding is deliberately a
-       shade larger than --overflow so nothing is clipped on a wide window; on a
-       narrow one the horizontal clip at the viewport edge is what keeps the page
-       from growing a scrollbar for a canvas nobody can interact with. */
+       shade larger than the vines' reach past the panel edge (OVERFLOW, 96px, in
+       the script) so nothing is clipped on a wide window; on a narrow one the
+       horizontal clip at the viewport edge is what keeps the page from growing a
+       scrollbar for a canvas nobody can interact with. */
     .stage {
       position: relative;
       display: grid;
@@ -105,18 +114,6 @@
         0 40px 90px -20px rgba(0, 0, 0, 0.85),
         0 0 0 1px rgba(0, 0, 0, 0.5),
         inset 0 1px 0 var(--gh-edge-lit);
-    }
-
-    .gh-vines {
-      position: absolute;
-      display: block;
-      pointer-events: none;
-      z-index: 1;
-      left: calc(-1 * var(--overflow));
-      top: calc(-1 * var(--overflow));
-      /* width/height are written by the JS every resize — deliberately not set
-         here. A canvas is a replaced element, so `width: auto` resolves to its
-         drawing-buffer size in CSS pixels, which is devicePixelRatio times too big. */
     }
 
     .gh-panel-inner { position: relative; z-index: 2; padding: 26px 28px 24px; }
@@ -155,7 +152,7 @@
     .controls {
       position: fixed; z-index: 10; left: 50%; bottom: max(16px, env(safe-area-inset-bottom));
       width: min(1060px, calc(100% - 24px)); transform: translateX(-50%);
-      display: grid; grid-template-columns: repeat(5, 1fr) auto auto auto;
+      display: grid; grid-template-columns: repeat(5, 1fr) auto;
       align-items: end; gap: 10px;
       padding: 12px; border: 1px solid rgba(150, 206, 122, .2); border-radius: 15px;
       background: rgba(7, 14, 8, .78); box-shadow: 0 18px 55px rgba(0, 0, 0, .5);
@@ -184,33 +181,47 @@
       border-radius: 50%; background: #10210c; box-shadow: 0 0 0 4px rgba(143, 217, 106, .12); cursor: pointer;
     }
 
-    .controls button {
+    .actions { display: flex; gap: 8px; }
+
+    .action {
+      display: inline-flex; align-items: center; justify-content: center; gap: 7px;
       height: 39px; padding: 0 14px; border: 1px solid rgba(150, 206, 122, .24);
       border-radius: 10px; background: rgba(143, 217, 106, .07); color: #dcecd2;
       font: 600 10px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
-      letter-spacing: .08em; text-transform: uppercase; cursor: pointer;
+      letter-spacing: .08em; text-transform: uppercase; white-space: nowrap; cursor: pointer;
     }
-    .controls button:hover { border-color: rgba(150, 206, 122, .45); background: rgba(143, 217, 106, .13); }
-    .controls button:active { transform: translateY(1px); }
+    .action:hover { border-color: rgba(150, 206, 122, .45); background: rgba(143, 217, 106, .13); }
+    .action:active { transform: translateY(1px); }
+
+    /* the way to take it home, a shade bolder than Pause */
+    .download { border-color: rgba(150, 206, 122, .45); background: rgba(143, 217, 106, .14); }
+    .download:hover { border-color: var(--gh-leaf); background: rgba(143, 217, 106, .22); }
+    .download svg { width: 14px; height: 14px; flex: none; margin-left: -2px; color: var(--gh-leaf); }
 
     .fallback {
       display: none; position: absolute; inset: 0; z-index: 6; place-items: center;
       padding: 20px; text-align: center; color: var(--gh-ink-dim); background: rgba(3, 8, 4, .9);
     }
 
-    @media (max-width: 760px) {
+    /* four buttons on the row: stack them a little sooner than the sliders would need */
+    @media (max-width: 860px) {
       .controls { grid-template-columns: 1fr 1fr 1fr; }
-      .controls button { width: 100%; }
+      .actions { grid-column: 1 / -1; }
+      .action { flex: 1 1 auto; }
     }
     @media (max-width: 520px) {
       .controls { grid-template-columns: 1fr 1fr; }
+      .actions { gap: 6px; }
+      .action { padding: 0 9px; }
     }
   </style>
 </head>
 <body>
+  <a class="back" href="./">&larr; shaders</a>
+
   <main class="page">
     <p class="eyebrow">WebGL border experiment 03</p>
-    <h1>Greenhouse vines</h1>
+    <h1>Greenhouse Vines</h1>
     <p class="lede">
       The living border from the greenhouse to-do dialogs, pulled out on its own. One
       fragment shader on one canvas grows five leafed strands around the panel — some
@@ -220,7 +231,6 @@
 
     <section class="stage">
       <section class="gh-panel" id="panel" aria-labelledby="demo-title">
-        <canvas class="gh-vines" id="vines" aria-hidden="true"></canvas>
         <div class="gh-panel-inner">
           <header class="gh-head">
             <p class="gh-eyebrow">Panel</p>
@@ -267,20 +277,38 @@
       <label for="panelW">Panel <output id="panelWOut">460px</output></label>
       <input id="panelW" type="range" min="240" max="520" value="460" step="1" />
     </div>
-    <button type="button" id="pause">Pause</button>
-    <button type="button" id="regrow">Regrow</button>
-    <button type="button" id="reseed">Reseed</button>
+    <div class="actions">
+      <button id="pause" class="action" type="button">Pause</button>
+      <button id="regrow" class="action" type="button">Regrow</button>
+      <button id="reseed" class="action" type="button">Reseed</button>
+      <button id="download" class="action download" type="button" title="Download these vines, set the way they are now, as a page of their own">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M12 4v11m-4.5-4.5L12 15l4.5-4.5M5 19.5h14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" />
+        </svg>
+        Download
+      </button>
+    </div>
   </section>
 
   <script>
   (() => {
     "use strict";
 
-    // The vine border from the greenhouse to-do dialogs (greenhouse-todo/ui-vines.js),
-    // standing on its own. The shader below is that shader; the only additions are the
-    // three demo knobs at the end of the uniform list — uSeed, uStrands and uGlow — which
-    // at their defaults (0, 5, 1) reproduce the dialog exactly.
-    //
+    const SOURCE = (document.currentScript || {}).textContent || ""; // Download ships parts of this script
+    const panel = document.getElementById("panel");
+    const fallback = document.getElementById("fallback");
+    const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const params = new URLSearchParams(location.search);
+    const pinParam = params.get("pin");
+    const pinTime = pinParam === null || pinParam === "" ? null : Number(pinParam);
+    const pinned = pinTime !== null && Number.isFinite(pinTime);
+
+    /* ---------------- the vines ----------------
+       The vine border from the greenhouse to-do dialogs (greenhouse-todo/ui-vines.js),
+       standing on its own. The shader below is that shader; the only additions are
+       the three demo knobs at the end of the uniform list, uSeed, uStrands and uGlow,
+       which at their defaults (0, 5, 1) reproduce the dialog exactly. */
+
     // Three geometric decisions carry the whole effect:
     //
     //   * Everything is parametrised by `s`, the arc length around the panel rectangle to
@@ -303,24 +331,13 @@
     //     hashes, is the minority of the time, so most leaves float clear of the vine
     //     they belong to.
 
-    const OVERFLOW = 96;  // fallback only; --overflow in the CSS is the real source
-    const RADIUS = 18;    // panel corner radius, CSS px
-    const GROW_MS = 1100;
-
-    const canvas = document.getElementById("vines");
-    const panel = document.getElementById("panel");
-    const fallback = document.getElementById("fallback");
-    const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
-
-    const gl = canvas.getContext("webgl", {
-      alpha: true,
-      premultipliedAlpha: true,
-      antialias: false,
-      depth: false,
-      stencil: false,
-      powerPreference: "high-performance"
-    });
-    if (!gl) { fallback.style.display = "grid"; return; }
+    // How far past the framed element's edges the vines' canvas reaches, CSS px. Not
+    // a free parameter: the outermost lane sits 50px out, its two wobble harmonics add
+    // up to 22px more, a leaf on top of that reaches 15px further, and the halo tails
+    // off over roughly another 10, so anything much under 96 saws the tips off the
+    // back strands.
+    const OVERFLOW = 96;
+    const GROW_SECONDS = 1.1; // the border knits itself together in about this long
 
     const vertexSource = `
       attribute vec2 aPos;
@@ -532,68 +549,280 @@
       }
     `;
 
-    function compile(type, source) {
-      const shader = gl.createShader(type);
-      gl.shaderSource(shader, source);
-      gl.compileShader(shader);
-      if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
-        const message = gl.getShaderInfoLog(shader) || "Unknown shader compile error";
-        gl.deleteShader(shader);
-        throw new Error(message);
+    /* ---------------- engine ----------------
+       Everything the vines need to run: WebGL, a canvas of their own around the
+       element they frame, kept to its size as it changes, the grow-in, and a loop
+       that rests whenever nothing moves. createVines(target, settings) frames the
+       target and returns a controller. Where WebGL is missing it returns null and
+       leaves the page as it was. */
+
+    const VINES_DEFAULTS = {
+      growth: null, // null grows the border in over GROW_SECONDS; 0..1 holds it part-grown
+      speed: 1,     // how fast the strands drift; 0 holds them still
+      strands: 5,   // how many of the five strands to draw
+      glow: 1,      // scales the light they give off
+      seed: 0,      // shifts every hash; 0 is the dialog's own arrangement
+      radius: 18    // the framed element's corner radius, CSS px
+    };
+
+    function createVines(target, options = {}) {
+      const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+      const settings = { ...VINES_DEFAULTS };
+      for (const key in VINES_DEFAULTS) if (options[key] !== undefined) settings[key] = options[key];
+
+      // Anchored by left/top only, with the CSS size written in measure(). An inset
+      // with an auto width looks equivalent and is not: a canvas is a replaced
+      // element, so an auto width resolves to its drawing-buffer size in CSS pixels,
+      // which is devicePixelRatio times too big, and the vines sprawl at double scale
+      // on a retina screen. Above the target's background, never in the way of a click.
+      const canvas = document.createElement("canvas");
+      canvas.setAttribute("aria-hidden", "true");
+      canvas.style.cssText = "position:absolute;display:block;pointer-events:none;z-index:-1;" +
+        "left:" + -OVERFLOW + "px;top:" + -OVERFLOW + "px";
+
+      const gl = canvas.getContext("webgl", {
+        alpha: true,
+        premultipliedAlpha: true,
+        antialias: false,
+        depth: false,
+        stencil: false,
+        powerPreference: "high-performance"
+      });
+      if (!gl) return null;
+
+      function compile(type, source) {
+        const shader = gl.createShader(type);
+        gl.shaderSource(shader, source);
+        gl.compileShader(shader);
+        if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+          const message = gl.getShaderInfoLog(shader) || "Unknown shader compile error";
+          gl.deleteShader(shader);
+          throw new Error(message);
+        }
+        return shader;
       }
-      return shader;
-    }
 
-    function createProgram() {
-      const program = gl.createProgram();
-      const vertex = compile(gl.VERTEX_SHADER, vertexSource);
-      const fragment = compile(gl.FRAGMENT_SHADER, fragmentSource);
-      gl.attachShader(program, vertex);
-      gl.attachShader(program, fragment);
-      gl.linkProgram(program);
-      gl.deleteShader(vertex);
-      gl.deleteShader(fragment);
-      if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
-        const message = gl.getProgramInfoLog(program) || "Unknown shader link error";
-        gl.deleteProgram(program);
-        throw new Error(message);
+      function createProgram() {
+        const program = gl.createProgram();
+        const vertex = compile(gl.VERTEX_SHADER, vertexSource);
+        const fragment = compile(gl.FRAGMENT_SHADER, fragmentSource);
+        gl.attachShader(program, vertex);
+        gl.attachShader(program, fragment);
+        gl.linkProgram(program);
+        gl.deleteShader(vertex);
+        gl.deleteShader(fragment);
+        if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+          const message = gl.getProgramInfoLog(program) || "Unknown shader link error";
+          gl.deleteProgram(program);
+          throw new Error(message);
+        }
+        return program;
       }
-      return program;
+
+      // Throws on a compile error, before anything on the page has changed.
+      const program = createProgram();
+      gl.useProgram(program);
+
+      // The target becomes a stacking context with the canvas at its bottom: over
+      // its background and border, under everything it holds. The shader itself
+      // decides which strands read as in front of the glass and which behind it, so
+      // one canvas gives the weave.
+      if (getComputedStyle(target).position === "static") target.style.position = "relative";
+      target.style.isolation = "isolate";
+      target.prepend(canvas);
+
+      gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
+      // One oversized triangle rather than two: fewer vertices, no diagonal seam.
+      gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
+      const aPos = gl.getAttribLocation(program, "aPos");
+      gl.enableVertexAttribArray(aPos);
+      gl.vertexAttribPointer(aPos, 2, gl.FLOAT, false, 0, 0);
+
+      const U = {};
+      for (const name of ["uRes", "uPanel", "uRadius", "uPx", "uTime", "uReveal",
+                          "uMotion", "uSeed", "uStrands", "uGlow"]) {
+        U[name] = gl.getUniformLocation(program, name);
+      }
+
+      // Premultiplied source: rgb is already scaled by alpha, so ONE is correct and it
+      // lets a fragment add light without occluding what is behind it.
+      gl.enable(gl.BLEND);
+      gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+      gl.clearColor(0, 0, 0, 0);
+
+      let elapsed = Number.isFinite(options.time) ? options.time : 0;
+      // Under prefers-reduced-motion the app freezes the wobble outright. Here the
+      // clock simply starts stopped instead, so the strands hold the shape they have
+      // rather than snapping back to t = 0, and can be started deliberately.
+      let paused = options.paused === undefined ? reduced : Boolean(options.paused);
+      // The grow-in runs while the vines run, at its own pace whatever the drift, so
+      // pausing holds it mid-knit. Vines that start paused start grown: a grow-in
+      // that cannot run would leave the element bare.
+      let grownFor = paused ? GROW_SECONDS : 0;
+      let told = null; // the growth last handed to onGrow
+      let px = 1;
+      let size = [1, 1];
+      let box = [0, 0, 0, 0];
+      let sized = false;
+      let dirty = true;
+      let onScreen = true;
+      let last = null;
+      let raf = 0;
+
+      // Change any settings. They show on the next frame; `instant` also finishes a
+      // grow-in that is still under way.
+      function set(changes, instant) {
+        for (const key in VINES_DEFAULTS) if (changes[key] !== undefined) settings[key] = changes[key];
+        if (instant) grownFor = GROW_SECONDS;
+        dirty = true;
+      }
+
+      // How far the border has grown, 0..1: held where the growth setting says, or
+      // easing out over the grow-in so the last strands settle rather than snap.
+      function reveal() {
+        if (settings.growth !== null) return Math.min(1, Math.max(0, Number(settings.growth)));
+        const k = Math.min(1, grownFor / GROW_SECONDS);
+        return 1 - Math.pow(1 - k, 3);
+      }
+
+      function measure() {
+        // clientWidth/clientHeight, NOT getBoundingClientRect(). The bounding rect
+        // includes transforms; these are the target's own untransformed coordinates,
+        // which is the right space anyway since the canvas is a child of the target
+        // and inherits the same transform.
+        //
+        // The padding box specifically (client*, not offset*), because left/top on an
+        // absolutely positioned child are resolved against the padding box. That makes
+        // the canvas exactly centred on it, which is what the shader assumes when it
+        // puts the panel at the canvas centre.
+        const width = target.clientWidth;
+        const height = target.clientHeight;
+        if (width < 1) return false;
+        // A shader this cheap does not need 3x; capping keeps a large dialog on a
+        // retina phone from allocating a needlessly big drawing buffer.
+        px = Math.min(devicePixelRatio || 1, 2);
+        const cssW = width + OVERFLOW * 2;
+        const cssH = height + OVERFLOW * 2;
+        const w = Math.max(1, Math.round(cssW * px));
+        const h = Math.max(1, Math.round(cssH * px));
+        if (canvas.width !== w || canvas.height !== h) {
+          canvas.width = w;
+          canvas.height = h;
+        }
+        // The CSS size has to be stated, not inferred: see where the canvas is made.
+        canvas.style.width = cssW + "px";
+        canvas.style.height = cssH + "px";
+        gl.viewport(0, 0, w, h);
+        size = [w, h];
+        // gl_FragCoord has its origin at the bottom left, the DOM at the top left, and
+        // the panel is centred in the canvas either way, so only the half extents and
+        // the pixel ratio actually matter here.
+        box = [w * 0.5, h * 0.5, width * 0.5 * px, height * 0.5 * px];
+        sized = true;
+        return true;
+      }
+
+      function draw() {
+        dirty = false;
+        if (!sized && !measure()) return; // no size yet; the observer calls back when it has one
+        const grown = reveal();
+        gl.uniform2f(U.uRes, size[0], size[1]);
+        gl.uniform4f(U.uPanel, box[0], box[1], box[2], box[3]);
+        gl.uniform1f(U.uRadius, settings.radius * px);
+        gl.uniform1f(U.uPx, px);
+        gl.uniform1f(U.uTime, elapsed);
+        gl.uniform1f(U.uReveal, grown);
+        gl.uniform1f(U.uMotion, 1);
+        gl.uniform1f(U.uSeed, settings.seed);
+        gl.uniform1f(U.uStrands, settings.strands);
+        gl.uniform1f(U.uGlow, settings.glow);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+        gl.drawArrays(gl.TRIANGLES, 0, 3);
+        if (options.onGrow && settings.growth === null && grown !== told) {
+          told = grown;
+          options.onGrow(grown);
+        }
+      }
+
+      function tick(now) {
+        raf = requestAnimationFrame(tick);
+        const delta = last === null ? 0 : Math.min(0.05, Math.max(0, (now - last) / 1000));
+        last = now;
+        if (!onScreen || document.hidden) return;
+        let moving = dirty;
+        if (!paused) {
+          if (settings.speed > 0) {
+            elapsed += delta * settings.speed;
+            moving = true;
+          }
+          if (settings.growth === null && grownFor < GROW_SECONDS) {
+            grownFor = Math.min(GROW_SECONDS, grownFor + delta);
+            moving = true;
+          }
+        }
+        if (moving) draw();
+      }
+
+      // The target changes size as its content changes (a validation message, a
+      // longer description), and the vines have to follow or they wrap the wrong
+      // rectangle. A window resize can change the pixel ratio too.
+      function remeasure() {
+        sized = false;
+        dirty = true;
+      }
+      const sizer = typeof ResizeObserver === "function" ? new ResizeObserver(remeasure) : null;
+      if (sizer) sizer.observe(target);
+      addEventListener("resize", remeasure, { passive: true });
+
+      // rest while scrolled out of sight
+      const watcher = typeof IntersectionObserver === "function"
+        ? new IntersectionObserver(entries => {
+          onScreen = entries[entries.length - 1].isIntersecting;
+          dirty = true;
+        })
+        : null;
+      if (watcher) watcher.observe(canvas);
+
+      draw();
+      raf = requestAnimationFrame(tick);
+
+      return {
+        get settings() { return { ...settings }; },
+        set,
+        get paused() { return paused; },
+        set paused(value) { paused = Boolean(value); dirty = true; },
+        get time() { return elapsed; },
+        set time(value) { elapsed = Number(value); dirty = true; },
+        get reveal() { return reveal(); },
+        // Grow the border in again from nothing, and set it running.
+        regrow() {
+          settings.growth = null;
+          grownFor = 0;
+          paused = false;
+          dirty = true;
+        },
+        // A new arrangement of strands and leaves: the seed given, or a fresh one.
+        reseed(seed) {
+          settings.seed = seed === undefined ? Math.round(Math.random() * 9000 + 100) / 100 : Number(seed);
+          dirty = true;
+          return settings.seed;
+        },
+        draw,
+        destroy() {
+          cancelAnimationFrame(raf);
+          if (sizer) sizer.disconnect();
+          if (watcher) watcher.disconnect();
+          removeEventListener("resize", remeasure);
+          const lose = gl.getExtension("WEBGL_lose_context");
+          if (lose) lose.loseContext();
+          canvas.remove();
+        }
+      };
     }
 
-    let program;
-    try {
-      program = createProgram();
-    } catch (error) {
-      console.error(error);
-      fallback.textContent = "The shader could not compile on this browser: " + error.message;
-      fallback.style.display = "grid";
-      return;
-    }
-
-    gl.useProgram(program);
-
-    const buffer = gl.createBuffer();
-    gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
-    // One oversized triangle rather than two: fewer vertices, no diagonal seam.
-    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
-    const aPos = gl.getAttribLocation(program, "aPos");
-    gl.enableVertexAttribArray(aPos);
-    gl.vertexAttribPointer(aPos, 2, gl.FLOAT, false, 0, 0);
-
-    const u = {};
-    for (const name of ["uRes", "uPanel", "uRadius", "uPx", "uTime", "uReveal",
-                        "uMotion", "uSeed", "uStrands", "uGlow"]) {
-      u[name] = gl.getUniformLocation(program, name);
-    }
-
-    // Premultiplied source: rgb is already scaled by alpha, so ONE is correct and it
-    // lets a fragment add light without occluding what is behind it.
-    gl.enable(gl.BLEND);
-    gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
-    gl.clearColor(0, 0, 0, 0);
-
-    // --- Controls ---
+    /* ---------------- controls ----------------
+       The panel of sliders drives the engine. Panel width is page layout, not an
+       engine setting: the border simply re-wraps whatever size the panel ends up. */
 
     const growthInput = document.getElementById("growth");
     const speedInput = document.getElementById("speed");
@@ -608,45 +837,12 @@
     const pauseButton = document.getElementById("pause");
     const regrowButton = document.getElementById("regrow");
     const reseedButton = document.getElementById("reseed");
+    const downloadButton = document.getElementById("download");
 
-    let speed = Number(speedInput.value);
-    let strands = Number(strandsInput.value);
-    let glow = Number(glowInput.value);
-    let seed = 0;
-    // Under prefers-reduced-motion the app freezes the wobble outright. Here the clock
-    // simply stops instead, so the strands hold the shape they already have rather than
-    // snapping back to t = 0, and the user can start it deliberately.
-    let paused = reducedMotion;
-    let elapsed = 0;
-    let last = performance.now();
-
-    // Growth runs off the same clock as the wobble, so pausing holds it mid-knit.
-    let growStart = reducedMotion ? -GROW_MS / 1000 : 0;
-    let pinnedReveal = null;
-    let reveal = reducedMotion ? 1 : 0;
-
-    if (paused) pauseButton.textContent = "Resume";
-
-    growthInput.addEventListener("input", () => {
-      pinnedReveal = Number(growthInput.value);
-      growthOut.value = pinnedReveal.toFixed(2);
-    });
-    speedInput.addEventListener("input", () => {
-      speed = Number(speedInput.value);
-      speedOut.value = speed.toFixed(2) + "×";
-    });
-    strandsInput.addEventListener("input", () => {
-      strands = Number(strandsInput.value);
-      strandsOut.value = String(strands);
-    });
-    glowInput.addEventListener("input", () => {
-      glow = Number(glowInput.value);
-      glowOut.value = glow.toFixed(2);
-    });
-    // Resizing the panel is the point of this one: the ResizeObserver below marks the
-    // canvas dirty and the border re-wraps the new rectangle on the next frame. The
-    // readout is the width the panel actually ended up at, not the width asked for —
-    // on a narrow screen its own max-width overrides the top of the slider's range.
+    // Resizing the panel is the point of this one: the engine sees the new size and
+    // the border re-wraps the new rectangle on the next frame. The readout is the
+    // width the panel actually ended up at, not the width asked for: on a narrow
+    // screen its own max-width overrides the top of the slider's range.
     function syncPanelWidth() {
       panel.style.width = panelWInput.value + "px";
       panelWOut.value = panel.offsetWidth + "px";
@@ -654,109 +850,275 @@
     panelWInput.addEventListener("input", syncPanelWidth);
     addEventListener("resize", syncPanelWidth, { passive: true });
     syncPanelWidth();
+
+    function showGrowth(grown) {
+      growthInput.value = String(grown);
+      growthOut.value = grown.toFixed(2);
+    }
+
+    let engine;
+    try {
+      engine = createVines(panel, {
+        speed: Number(speedInput.value),
+        strands: Number(strandsInput.value),
+        glow: Number(glowInput.value),
+        time: pinned ? pinTime : 0,
+        paused: reducedMotion || pinned,
+        onGrow: showGrowth // the border growing in, shown on its slider
+      });
+    } catch (error) {
+      console.error(error);
+      fallback.textContent = "The shader could not compile on this browser: " + error.message;
+      fallback.style.display = "grid";
+      return;
+    }
+
+    if (!engine) {
+      fallback.style.display = "grid";
+      return;
+    }
+
+    function showPaused() {
+      pauseButton.textContent = engine.paused ? "Resume" : "Pause";
+    }
+
+    growthInput.addEventListener("input", () => {
+      engine.set({ growth: Number(growthInput.value) });
+      growthOut.value = Number(growthInput.value).toFixed(2);
+    });
+    speedInput.addEventListener("input", () => {
+      engine.set({ speed: Number(speedInput.value) });
+      speedOut.value = Number(speedInput.value).toFixed(2) + "×";
+    });
+    strandsInput.addEventListener("input", () => {
+      engine.set({ strands: Number(strandsInput.value) });
+      strandsOut.value = String(Number(strandsInput.value));
+    });
+    glowInput.addEventListener("input", () => {
+      engine.set({ glow: Number(glowInput.value) });
+      glowOut.value = Number(glowInput.value).toFixed(2);
+    });
     pauseButton.addEventListener("click", () => {
-      paused = !paused;
-      pauseButton.textContent = paused ? "Resume" : "Pause";
-      last = performance.now();
+      engine.paused = !engine.paused;
+      showPaused();
     });
     regrowButton.addEventListener("click", () => {
-      pinnedReveal = null;
-      growStart = elapsed;
-      if (paused) { paused = false; pauseButton.textContent = "Pause"; }
+      engine.regrow();
+      showPaused();
     });
-    reseedButton.addEventListener("click", () => { seed = Math.random() * 90 + 1; });
+    reseedButton.addEventListener("click", () => engine.reseed());
 
-    // --- Sizing ---
+    // a reload can bring the sliders back where they were; read them out
+    speedOut.value = engine.settings.speed.toFixed(2) + "×";
+    strandsOut.value = String(engine.settings.strands);
+    glowOut.value = engine.settings.glow.toFixed(2);
+    showPaused();
 
-    let dirty = true;
-    let px = 1;
-    let size = [1, 1];
-    let panelUniform = [0, 0, 0, 0];
+    /* ---------------- download ----------------
+       Download hands over these vines, set the way they are now, as a page of
+       their own: the scene and engine sections of this very script, verbatim, so
+       it draws exactly what this page draws, plus its settings and a panel, as
+       wide as this one, for the vines to frame. */
 
-    function overflow() {
-      // Read back from the stylesheet, which positions the canvas with the same value —
-      // two independent copies of this number would drift and de-centre the panel.
-      const declared = getComputedStyle(document.documentElement).getPropertyValue("--overflow");
-      const parsed = parseFloat(declared);
-      return Number.isFinite(parsed) ? parsed : OVERFLOW;
+    function currentDownload() {
+      const s = engine.settings;
+      return buildDownload(SOURCE, {
+        growth: s.growth,
+        speed: s.speed,
+        strands: s.strands,
+        glow: s.glow,
+        seed: s.seed,
+        radius: s.radius,
+        time: engine.time,
+        width: Number(panelWInput.value),
+        from: /^https?:$/.test(location.protocol) ? location.origin + location.pathname : ""
+      });
     }
 
-    function resize() {
-      // offsetWidth/offsetHeight, NOT getBoundingClientRect(). The bounding rect
-      // includes transforms; these are the panel's own untransformed coordinates, which
-      // is the right space anyway since the canvas is a child of the panel and inherits
-      // the same transform.
-      //
-      // The padding box specifically (client*, not offset*), because `left`/`top` on an
-      // absolutely positioned child are resolved against the padding box. That makes the
-      // canvas exactly centred on it, which is what the shader assumes when it puts the
-      // panel at the canvas centre.
-      const panelW = panel.clientWidth;
-      const panelH = panel.clientHeight;
-      if (panelW < 1) return false;
-      const over = overflow();
-      // A shader this cheap does not need 3x; capping keeps a large dialog on a retina
-      // phone from allocating a needlessly big drawing buffer.
-      px = Math.min(devicePixelRatio || 1, 2);
-      const cssW = panelW + over * 2;
-      const cssH = panelH + over * 2;
-      const w = Math.max(1, Math.round(cssW * px));
-      const h = Math.max(1, Math.round(cssH * px));
-      if (canvas.width !== w || canvas.height !== h) {
-        canvas.width = w;
-        canvas.height = h;
-      }
-      // The CSS size has to be stated, not inferred: a canvas is a replaced element, so
-      // an auto width resolves to the drawing-buffer size, which is `px` times too large
-      // on a retina display — and the vines then sprawl at double scale.
-      canvas.style.width = `${cssW}px`;
-      canvas.style.height = `${cssH}px`;
-      gl.viewport(0, 0, w, h);
-      size = [w, h];
-      // gl_FragCoord has its origin at the bottom left, the DOM at the top left, and the
-      // panel is centred in the canvas either way — so only the half extents and the
-      // pixel ratio actually matter here.
-      panelUniform = [w * 0.5, h * 0.5, panelW * 0.5 * px, panelH * 0.5 * px];
-      dirty = false;
-      return true;
+    downloadButton.addEventListener("click", () => {
+      const file = currentDownload();
+      const url = URL.createObjectURL(new Blob([file.html], { type: "text/html" }));
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = file.name;
+      document.body.append(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+    });
+
+    window.__demo = {
+      engine,
+      get P() { return engine.settings; },
+      get elapsed() { return engine.time; },
+      get reveal() { return engine.reveal; },
+      pin(t) {
+        engine.time = t;
+        engine.paused = true;
+        showPaused();
+        engine.set({}, true);
+        engine.draw();
+      },
+      step(dt, steps) {
+        const n = steps == null ? 1 : steps;
+        for (let i = 0; i < n; i++) engine.time += dt;
+        engine.draw();
+        return engine.time;
+      },
+      // the file Download would hand over, without saving it
+      download: currentDownload,
+      draw: engine.draw
+    };
+
+    /* ---------------- download page ----------------
+       Source text and settings in, a standalone page out. Nothing here touches
+       the page, so a test can run it on the file as it sits. */
+
+    // The lines from the one holding `from` up to the one holding `to`.
+    function sourceBetween(source, from, to) {
+      const start = source.indexOf(from);
+      const end = start < 0 ? -1 : source.indexOf(to, start);
+      if (end < 0) throw new Error("Greenhouse Vines: a section marker is missing from the page source");
+      return source.slice(source.lastIndexOf("\n", start) + 1, source.lastIndexOf("\n", end) + 1);
     }
 
-    new ResizeObserver(() => { dirty = true; }).observe(panel);
-    addEventListener("resize", () => { dirty = true; }, { passive: true });
+    function buildDownload(source, look) {
+      const code =
+        sourceBetween(source, "/* ---------------- the vines ----------------", "/* ---------------- engine ----------------") +
+        sourceBetween(source, "/* ---------------- engine ----------------", "/* ---------------- controls ----------------");
+      const num = (value, digits) => String(Number(Number(value).toFixed(digits)));
+      const held = look.growth !== null && look.growth !== undefined;
+      const seed = String(Number(look.seed)); // whole: every hash moves with it
+      const rows = [
+        ["growth", held ? num(look.growth, 2) : "null", "null grows the border in as the page opens; 0 to 1 holds it part-grown"],
+        ["speed", num(look.speed, 2), "how fast the strands drift: 0 holds them still, 3 is three times as fast"],
+        ["strands", num(look.strands, 0), "how many of the five strands to draw, 1 to 5"],
+        ["glow", num(look.glow, 2), "the light they give off, from 0 (none) to 2.5"],
+        ["seed", seed, "any number grows its own arrangement of strands and leaves; 0 is the original"],
+        ["radius", num(look.radius, 2), "the framed element's corner radius in CSS px: match its border-radius"],
+        ["time", num(look.time, 2), "seconds into the drift; it opens where you left it"]
+      ];
+      const lines = rows.map(([key, value], i) => "    " + key + ": " + value + (i < rows.length - 1 ? "," : ""));
+      const width = Math.max(...lines.map(line => line.length)) + 2;
+      const settings = lines.map((line, i) => line.padEnd(width) + "// " + rows[i][2]).join("\n");
+      const count = Math.max(1, Math.min(5, Math.ceil(Number(look.strands))));
+      const words = ["", "one", "two", "three", "four", "five"][count];
+      const strands = words + (count === 1 ? " strand" : " strands");
+      const panelWidth = Math.round(Number(look.width));
+      const state = strands + " from seed " + seed + " around a " + panelWidth + "px panel" +
+        (held ? ", held " + Math.round(Number(look.growth) * 100) + "% grown" : "");
+      const variant = strands.replace(/\b\w/g, c => c.toUpperCase()) + ", Seed " + seed;
+      const from = look.from ? "\n  From " + look.from : "";
 
-    function frame(now) {
-      requestAnimationFrame(frame);
-      const delta = Math.min(0.05, Math.max(0, (now - last) / 1000));
-      last = now;
-      if (!paused) elapsed += delta * speed;
-      if (dirty && !resize()) return;
+      // In the header for readers, and atop the engine so it travels with copies.
+      const notice = "Copyright (c) 2026 Jason Adams. Released under the MIT License: https://opensource.org/license/mit";
 
-      // ~1.1 s to knit the border together, ease-out so the last strands settle rather
-      // than snapping into place.
-      if (pinnedReveal !== null) {
-        reveal = pinnedReveal;
-      } else {
-        const k = Math.min(1, (elapsed - growStart) / (GROW_MS / 1000));
-        reveal = 1 - Math.pow(1 - k, 3);
-        growthInput.value = String(reveal);
-        growthOut.value = reveal.toFixed(2);
-      }
+      // "<\/script>" and "<\!--" keep this page's own script from ending early.
+      const html = `<!doctype html>
+<\!--
+  Greenhouse Vines: five leafed strands that grow in around a panel and frame
+  it, some reading as in front of the glass and some behind it, so the border
+  weaves itself together. One fragment shader on one canvas, no textures, no
+  libraries.
 
-      gl.uniform2f(u.uRes, size[0], size[1]);
-      gl.uniform4f(u.uPanel, panelUniform[0], panelUniform[1], panelUniform[2], panelUniform[3]);
-      gl.uniform1f(u.uRadius, RADIUS * px);
-      gl.uniform1f(u.uPx, px);
-      gl.uniform1f(u.uTime, elapsed);
-      gl.uniform1f(u.uReveal, reveal);
-      gl.uniform1f(u.uMotion, 1);
-      gl.uniform1f(u.uSeed, seed);
-      gl.uniform1f(u.uStrands, strands);
-      gl.uniform1f(u.uGlow, glow);
-      gl.clear(gl.COLOR_BUFFER_BIT);
-      gl.drawArrays(gl.TRIANGLES, 0, 3);
+  ${notice}
+
+  Set the way you left it: ${state}.${from}
+
+  Open this file in a browser and the vines ${held ? "frame" : "grow in around"} the panel. Their
+  settings are in GREENHOUSE_VINES below: change any of them and reload.
+
+  To run it on a page of your own, copy the first two scripts below into
+  that page, then point the vines at the element to frame:
+
+    <div id="card" style="width: 420px; padding: 24px; border-radius: 18px">Your words, framed</div>
+    <script>
+      const vines = GreenhouseVines(document.getElementById("card"), GREENHOUSE_VINES);
+    <\/script>
+
+  The vines draw on a canvas of their own that reaches 96px past every edge
+  of the element, over its background and under whatever it holds, and they
+  re-wrap it whenever it changes size. Leave them that room: overflow: hidden
+  on the element, or on anything around it closer than 96px, cuts them off.
+  Set radius to the element's own border-radius. They rest while scrolled out
+  of sight, and hold still for anyone whose system asks for reduced motion.
+
+  GreenhouseVines returns a controller for changing the vines as they run:
+    vines.set({ glow: 2 })   changes any setting
+    vines.regrow()           grows the border in again
+    vines.reseed()           a new arrangement of strands and leaves
+    vines.paused = true      holds the moment
+    vines.destroy()          stops them and takes their canvas away
+  Where WebGL is missing it returns null and leaves the page as it was.
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#060c07" />
+  <title>Greenhouse Vines · ${variant}</title>
+  <style>
+    body {
+      margin: 0; color: #e4efdc; font: 15px/1.6 "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+      background:
+        radial-gradient(90% 55% at 50% -8%, rgba(255, 201, 138, 0.10), rgba(255, 201, 138, 0) 68%),
+        radial-gradient(120% 90% at 50% 42%, #0d1a0d 0%, #060c07 55%, #030604 100%),
+        #030604;
+      background-attachment: fixed;
     }
+    /* Room for the vines all round; on a narrow screen the clip keeps their
+       canvas from widening the page. minmax(0, 1fr) lets the panel shrink. */
+    main {
+      display: grid; grid-template-columns: minmax(0, 1fr); place-items: center; gap: 24px;
+      box-sizing: border-box; min-height: 100svh; padding: 112px 16px; overflow: hidden;
+    }
+    #panel {
+      box-sizing: border-box; width: ${panelWidth}px; max-width: 100%; padding: 26px 28px 24px;
+      border: 1px solid rgba(150, 206, 122, 0.2); border-radius: 18px;
+      background:
+        linear-gradient(147deg, rgba(206, 232, 198, 0.10) 0%, rgba(206, 232, 198, 0) 38%),
+        radial-gradient(90% 60% at 50% -10%, rgba(255, 201, 138, 0.16), rgba(255, 201, 138, 0) 70%),
+        linear-gradient(180deg, #16200f 0%, #0c130a 62%, #080d07 100%);
+      box-shadow: 0 40px 90px -20px rgba(0, 0, 0, 0.85), 0 0 0 1px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(196, 240, 168, 0.42);
+    }
+    h1 { margin: 0; font-size: 1.5rem; font-weight: 600; }
+    p { margin: 8px 0 0; color: #9db393; font-size: 0.88rem; line-height: 1.5; }
+  </style>
+</head>
+<body>
+  <main>
+    <section id="panel">
+      <h1>A rectangle, framed</h1>
+      <p>Ordinary page content, drawn over the vines and never touched by them.</p>
+    </section>
+  </main>
 
-    requestAnimationFrame(frame);
+  <script>
+  // The settings. GreenhouseVines reads them as it starts; vines.set() changes them after.
+  const GREENHOUSE_VINES = {
+${settings}
+  };
+  <\/script>
+
+  <script>
+  // Greenhouse Vines. ${notice}
+  // The engine. GreenhouseVines(element, settings) frames that element and returns its controller.
+  window.GreenhouseVines = (() => {
+    "use strict";
+
+${code}    return createVines;
+  })();
+  <\/script>
+
+  <script>
+  const vines = GreenhouseVines(document.getElementById("panel"), GREENHOUSE_VINES);
+  if (!vines) document.querySelector("main").insertAdjacentHTML("beforeend", "<p>Greenhouse Vines needs WebGL, which this browser has switched off.</p>");
+  <\/script>
+</body>
+</html>
+`;
+      return { name: "greenhouse-vines.html", html };
+    }
   })();
   </script>
 </body>
