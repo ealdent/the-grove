@@ -112,3 +112,56 @@ quick to try and remembered.
   in headless Chrome only.
 - Not verified: reduced-motion paths at runtime (reviewed in code), the
   native colour picker UI itself, Firefox, a phone GPU.
+
+# Download with your settings (2026-11-06)
+
+## Goal
+Set the sliders, ink and theme, press Download, and get the swell as a file
+of your own that draws exactly what the page showed.
+
+## Approach
+- One file, `signal-swell-<ink>-<theme>.html`: opens full-window anywhere,
+  works offline, and its scripts lift into any page.
+- No second copy of the renderer. The demo's renderer becomes an engine
+  section (`createSwell(target, settings)`), the demo drives it from its
+  panel, and the download is built from the demo's own script text: the
+  scene sections (minus palettes, moved to the end of the shared block) and
+  the engine, verbatim, plus a settings object with a note on every line.
+- The engine also fills a plain element (behind its content), takes any CSS
+  colour or "transparent", rests while off screen or settled, and returns a
+  controller (`set`, `paused`, `destroy`).
+
+## Plan
+- [x] Move palettes to the end of the shared block (hexRGB to the helpers);
+      re-sync the gallery copy; END marker becomes the engine header
+- [x] Engine section; demo panel, hooks and fallback rebuilt on it
+- [x] Download button beside Pause, and the page builder
+- [x] Test: build a download from the file on disk; scripts parse, settings
+      carried, engine defines itself with nothing from the page
+- [x] Headless Chrome: real click downloads the file; it matches the demo
+      pixel for pixel at the same moment; element mode over a page background
+- [x] Pane (WebKit): button layout desktop + phone, download intercepted,
+      exported page renders; README line
+
+## Review
+- Node: `tests/signal-swell-download.test.mjs` builds a download from the file
+  on disk: one page, three scripts that parse, the settings carried, both
+  sections verbatim, and the engine defines itself with no page at all.
+  Copy and palette tests pass with the shared block's new end marker.
+- Headless Chrome (CDP, real clicks): Cobalt chip + theme switch + a click
+  on the swell (focus 8.4 -> 6.3, slider followed) + sliders; Download saved
+  `signal-swell-cobalt-blue-light.html` (30.9 KB). Opened under reduced
+  motion it holds at t = 37.5 with every setting; against the pinned demo
+  with the panel hidden, 0.12% of pixels differ, none by more than 2%
+  (frame dither). Running free it moves; element mode over a gradient:
+  canvas at z -1 under the heading, 52% of it see-through, a click pulls
+  focus, time stops while scrolled away and resumes, destroy() removes it.
+- Paused and settled, the demo draws nothing (0 draws in 2 s); a crossfade
+  or the camera easing redraws until it lands. Pause/Resume and the gallery
+  tile unchanged.
+- Pane (WebKit, hidden): Pause and Download share a row at 375 px (155 px
+  each, no overflow); a real click on Download (save intercepted) handed
+  over `signal-swell-phosphor-green-light.html` with the panel's settings;
+  the downloaded cobalt page renders at dpr 2; console clean.
+- Not verified: a real save dialog in Safari or iOS (the pane intercepted
+  the save; Chrome's real download path was exercised headless), Firefox.

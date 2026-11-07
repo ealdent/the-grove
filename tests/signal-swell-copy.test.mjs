@@ -10,7 +10,7 @@ const demoPath = new URL('../shaders/signal-swell-shader-demo.html', import.meta
 const indexPath = new URL('../shaders/index.html', import.meta.url);
 
 const START = '/* ---------------- the swell ----------------';
-const END = 'function compile(type, source) {';
+const END = '/* ---------------- engine ----------------';
 const OPEN = '// ---- begin: copied verbatim from signal-swell-shader-demo.html ----';
 const CLOSE = '// ---- end: copied verbatim from signal-swell-shader-demo.html ----';
 

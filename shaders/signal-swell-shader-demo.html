@@ -199,7 +199,16 @@
 
     input[type="range"]:focus-visible { box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 35%, transparent); }
 
-    .pause {
+    .actions {
+      display: flex;
+      gap: 8px;
+    }
+
+    .action {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 7px;
       height: 42px;
       padding: 0 16px;
       border: 1px solid color-mix(in srgb, var(--accent) 32%, transparent);
@@ -209,14 +218,32 @@
       font: 600 11px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
       letter-spacing: 0.08em;
       text-transform: uppercase;
+      white-space: nowrap;
       cursor: pointer;
       transition: background 0.16s ease, border-color 0.16s ease, transform 0.16s ease;
     }
-    .pause:hover {
+    .action:hover {
       background: color-mix(in srgb, var(--accent) 15%, transparent);
       border-color: color-mix(in srgb, var(--accent) 50%, transparent);
     }
-    .pause:active { transform: translateY(1px); }
+    .action:active { transform: translateY(1px); }
+
+    /* the way to take it home, a shade bolder than Pause */
+    .download {
+      border-color: color-mix(in srgb, var(--accent) 55%, transparent);
+      background: color-mix(in srgb, var(--accent) 15%, transparent);
+    }
+    .download:hover {
+      border-color: var(--accent);
+      background: color-mix(in srgb, var(--accent) 24%, transparent);
+    }
+    .download svg {
+      width: 15px;
+      height: 15px;
+      flex: none;
+      margin-left: -2px;
+      color: var(--accent);
+    }
 
     /* ---- palette and theme ---- */
 
@@ -362,7 +389,8 @@
     @media (max-width: 680px) {
       .subtitle { display: none; }
       .controls { grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
-      .pause { width: 100%; grid-column: 1 / -1; }
+      .actions { grid-column: 1 / -1; }
+      .action { flex: 1; }
       .scheme { gap: 10px 14px; padding-top: 11px; }
       .swatch { width: 24px; height: 24px; }
       .swatch-row,
@@ -404,7 +432,15 @@
       <label for="swell">Swell <output id="swellOut">1.00</output></label>
       <input id="swell" type="range" min="0" max="2" value="1" step="0.05" />
     </div>
-    <button id="pause" class="pause" type="button">Pause</button>
+    <div class="actions">
+      <button id="pause" class="action" type="button">Pause</button>
+      <button id="download" class="action download" type="button" title="Download this swell, set the way it is now, as a page of its own">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M12 4v11m-4.5-4.5L12 15l4.5-4.5M5 19.5h14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" />
+        </svg>
+        Download
+      </button>
+    </div>
 
     <div class="scheme">
       <div class="ink-group">
@@ -440,6 +476,7 @@
   (() => {
     "use strict";
 
+    const SOURCE = (document.currentScript || {}).textContent || ""; // Download ships parts of this script
     const canvas = document.getElementById("gl");
     const fallback = document.getElementById("fallback");
     const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -510,93 +547,6 @@
       maxAspect: 3.2
     };
 
-    /* ---------------- palettes ----------------
-       Every layer is one ink laid over one paper, so a palette is just those
-       two colours per theme (plus an accent or a muted tone where the page
-       text needs one). Hazard turns to signage in the light: black ink on
-       construction yellow. */
-    const PALETTES = [
-      { id: "beacon", name: "Beacon Red",
-        light: { paper: "#fcf9f8", ink: "#d61f26" },
-        dark: { paper: "#130a0a", ink: "#ff4136" } },
-      { id: "signal", name: "Signal Orange",
-        light: { paper: "#fbfaf8", ink: "#de6b26", accent: "#e2702a" },
-        dark: { paper: "#120e0b", ink: "#ff8a3d" } },
-      { id: "hazard", name: "Hazard Yellow",
-        light: { paper: "#ffc72e", ink: "#1b1813", muted: "#4d4630" },
-        dark: { paper: "#12110d", ink: "#ffc61a" } },
-      { id: "phosphor", name: "Phosphor Green",
-        light: { paper: "#f7fbf8", ink: "#0a9a62", accent: "#087a4f" },
-        dark: { paper: "#06100c", ink: "#3cf59c" } },
-      { id: "cobalt", name: "Cobalt Blue",
-        light: { paper: "#f7f9fc", ink: "#0047ab" },
-        dark: { paper: "#070b17", ink: "#3d7dff" } },
-      { id: "royal", name: "Royal Purple",
-        light: { paper: "#faf8fd", ink: "#6a2fc0" },
-        dark: { paper: "#0d0916", ink: "#a46bff" } },
-      { id: "graphite", name: "Graphite",
-        light: { paper: "#fafaf9", ink: "#272c31" },
-        dark: { paper: "#0d0e10", ink: "#e4e2dd" } }
-    ];
-    const DEFAULT_PALETTE = "signal";
-    const CUSTOM_PAPER = { light: "#fbfaf8", dark: "#0f1012" };
-    const INK = { light: [0.9, 1.0, 0.95], dark: [0.9, 1.0, 0.95] }; // line, node, bit
-    const SCHEME_KEY = "signal-swell:scheme";
-
-    const hexRGB = hex => [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16) / 255);
-    const rgbHex = rgb =>
-      "#" + rgb.map(v => Math.round(Math.min(1, Math.max(0, v)) * 255).toString(16).padStart(2, "0")).join("");
-    const luminance = rgb => rgb
-      .map(v => (v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4)))
-      .reduce((sum, v, i) => sum + v * [0.2126, 0.7152, 0.0722][i], 0);
-    const contrast = (a, b) => {
-      const la = luminance(a);
-      const lb = luminance(b);
-      return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05);
-    };
-
-    // Mix a picked ink toward black (light paper) or white (dark paper) until
-    // it reads at min:1 against the paper, so no pick can vanish. Steps land
-    // on 8-bit values, so the hex it becomes reads exactly as well.
-    function legibleInk(ink, paper, min = 3) {
-      const target = luminance(paper) > 0.18 ? 0 : 1;
-      for (let step = 0; step <= 20; step++) {
-        const mixed = ink.map(v => Math.round((v + (target - v) * step / 20) * 255) / 255);
-        if (contrast(mixed, paper) >= min) return mixed;
-      }
-      return ink.map(() => target);
-    }
-
-    function readScheme() {
-      try {
-        const saved = JSON.parse(localStorage.getItem(SCHEME_KEY) || "{}");
-        return saved && typeof saved === "object" ? saved : {};
-      } catch (error) {
-        return {};
-      }
-    }
-
-    // A scheme is one palette in one theme; with no saved theme, the system's.
-    function resolveScheme(saved, prefersDark) {
-      const theme = saved.theme === "light" || saved.theme === "dark" ? saved.theme : prefersDark ? "dark" : "light";
-      let palette = PALETTES.find(p => p.id === saved.palette);
-      if (!palette && saved.palette === "custom" && /^#[0-9a-f]{6}$/i.test(saved.custom || "")) {
-        const on = paper => ({ paper, ink: rgbHex(legibleInk(hexRGB(saved.custom), hexRGB(paper))) });
-        palette = { id: "custom", name: "Custom", light: on(CUSTOM_PAPER.light), dark: on(CUSTOM_PAPER.dark) };
-      }
-      palette = palette || PALETTES.find(p => p.id === DEFAULT_PALETTE);
-      const look = palette[theme];
-      return {
-        palette,
-        theme,
-        paper: hexRGB(look.paper),
-        ink: hexRGB(look.ink),
-        strength: INK[theme],
-        accent: look.accent || look.ink,
-        muted: look.muted || null
-      };
-    }
-
     function mulberry32(a) {
       return () => {
         a |= 0;
@@ -612,6 +562,7 @@
       const t = Math.min(Math.max((x - a) / (b - a), 0), 1);
       return t * t * (3 - 2 * t);
     };
+    const hexRGB = hex => [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16) / 255);
 
     /* ---------------- the mesh ----------------
        A jittered grid, triangulated with a random diagonal per cell. Every
@@ -894,33 +845,411 @@
       }
     `;
 
-    function compile(type, source) {
-      const shader = gl.createShader(type);
-      gl.shaderSource(shader, source);
-      gl.compileShader(shader);
-      if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
-        const message = gl.getShaderInfoLog(shader) || "Unknown shader compile error";
-        gl.deleteShader(shader);
-        throw new Error(message);
+    /* ---------------- palettes ----------------
+       Every layer is one ink laid over one paper, so a palette is just those
+       two colours per theme (plus an accent or a muted tone where the page
+       text needs one). Hazard turns to signage in the light: black ink on
+       construction yellow. */
+    const PALETTES = [
+      { id: "beacon", name: "Beacon Red",
+        light: { paper: "#fcf9f8", ink: "#d61f26" },
+        dark: { paper: "#130a0a", ink: "#ff4136" } },
+      { id: "signal", name: "Signal Orange",
+        light: { paper: "#fbfaf8", ink: "#de6b26", accent: "#e2702a" },
+        dark: { paper: "#120e0b", ink: "#ff8a3d" } },
+      { id: "hazard", name: "Hazard Yellow",
+        light: { paper: "#ffc72e", ink: "#1b1813", muted: "#4d4630" },
+        dark: { paper: "#12110d", ink: "#ffc61a" } },
+      { id: "phosphor", name: "Phosphor Green",
+        light: { paper: "#f7fbf8", ink: "#0a9a62", accent: "#087a4f" },
+        dark: { paper: "#06100c", ink: "#3cf59c" } },
+      { id: "cobalt", name: "Cobalt Blue",
+        light: { paper: "#f7f9fc", ink: "#0047ab" },
+        dark: { paper: "#070b17", ink: "#3d7dff" } },
+      { id: "royal", name: "Royal Purple",
+        light: { paper: "#faf8fd", ink: "#6a2fc0" },
+        dark: { paper: "#0d0916", ink: "#a46bff" } },
+      { id: "graphite", name: "Graphite",
+        light: { paper: "#fafaf9", ink: "#272c31" },
+        dark: { paper: "#0d0e10", ink: "#e4e2dd" } }
+    ];
+    const DEFAULT_PALETTE = "signal";
+    const CUSTOM_PAPER = { light: "#fbfaf8", dark: "#0f1012" };
+    const INK = { light: [0.9, 1.0, 0.95], dark: [0.9, 1.0, 0.95] }; // line, node, bit
+    const SCHEME_KEY = "signal-swell:scheme";
+
+    const rgbHex = rgb =>
+      "#" + rgb.map(v => Math.round(Math.min(1, Math.max(0, v)) * 255).toString(16).padStart(2, "0")).join("");
+    const luminance = rgb => rgb
+      .map(v => (v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4)))
+      .reduce((sum, v, i) => sum + v * [0.2126, 0.7152, 0.0722][i], 0);
+    const contrast = (a, b) => {
+      const la = luminance(a);
+      const lb = luminance(b);
+      return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05);
+    };
+
+    // Mix a picked ink toward black (light paper) or white (dark paper) until
+    // it reads at min:1 against the paper, so no pick can vanish. Steps land
+    // on 8-bit values, so the hex it becomes reads exactly as well.
+    function legibleInk(ink, paper, min = 3) {
+      const target = luminance(paper) > 0.18 ? 0 : 1;
+      for (let step = 0; step <= 20; step++) {
+        const mixed = ink.map(v => Math.round((v + (target - v) * step / 20) * 255) / 255);
+        if (contrast(mixed, paper) >= min) return mixed;
       }
-      return shader;
+      return ink.map(() => target);
     }
 
-    function createProgram() {
-      const program = gl.createProgram();
-      const vertexShader = compile(gl.VERTEX_SHADER, vertexSource);
-      const fragmentShader = compile(gl.FRAGMENT_SHADER, fragmentSource);
-      gl.attachShader(program, vertexShader);
-      gl.attachShader(program, fragmentShader);
-      gl.linkProgram(program);
-      gl.deleteShader(vertexShader);
-      gl.deleteShader(fragmentShader);
-      if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
-        const message = gl.getProgramInfoLog(program) || "Unknown shader link error";
-        gl.deleteProgram(program);
-        throw new Error(message);
+    function readScheme() {
+      try {
+        const saved = JSON.parse(localStorage.getItem(SCHEME_KEY) || "{}");
+        return saved && typeof saved === "object" ? saved : {};
+      } catch (error) {
+        return {};
       }
-      return program;
+    }
+
+    // A scheme is one palette in one theme; with no saved theme, the system's.
+    function resolveScheme(saved, prefersDark) {
+      const theme = saved.theme === "light" || saved.theme === "dark" ? saved.theme : prefersDark ? "dark" : "light";
+      let palette = PALETTES.find(p => p.id === saved.palette);
+      if (!palette && saved.palette === "custom" && /^#[0-9a-f]{6}$/i.test(saved.custom || "")) {
+        const on = paper => ({ paper, ink: rgbHex(legibleInk(hexRGB(saved.custom), hexRGB(paper))) });
+        palette = { id: "custom", name: "Custom", light: on(CUSTOM_PAPER.light), dark: on(CUSTOM_PAPER.dark) };
+      }
+      palette = palette || PALETTES.find(p => p.id === DEFAULT_PALETTE);
+      const look = palette[theme];
+      return {
+        palette,
+        theme,
+        paper: hexRGB(look.paper),
+        ink: hexRGB(look.ink),
+        strength: INK[theme],
+        accent: look.accent || look.ink,
+        muted: look.muted || null
+      };
+    }
+
+    /* ---------------- engine ----------------
+       Everything the swell needs to run: WebGL, a loop that rests whenever
+       nothing moves, the camera's sway after the pointer, and click to
+       focus. createSwell(target, settings) draws into a canvas sized by its
+       CSS, or fills any other element from behind what it holds, and returns
+       a controller. Where WebGL is missing it returns null. */
+
+    const SWELL_DEFAULTS = {
+      paper: "#fbfaf8",
+      ink: "#de6b26",
+      strength: [0.9, 1.0, 0.95], // ink on the lines, nodes, bits
+      focus: 8.4,
+      aperture: 1,
+      swell: 1,
+      speed: 1,
+      interactive: true
+    };
+    const clampFocus = z => Math.min(12, Math.max(2.4, z));
+
+    // A CSS colour (hex, rgb(), hsl(), a name, "transparent") or an
+    // [r, g, b(, a)] array of 0..1 values, as [r, g, b, a].
+    let colourProbe = null;
+    function parseColour(value) {
+      if (Array.isArray(value)) return [value[0], value[1], value[2], value.length > 3 ? value[3] : 1];
+      colourProbe = colourProbe || document.createElement("canvas").getContext("2d");
+      colourProbe.fillStyle = "#000";
+      colourProbe.fillStyle = String(value);
+      const css = colourProbe.fillStyle; // "#rrggbb" when opaque, else "rgba(r, g, b, a)"
+      if (css[0] === "#") return [...hexRGB(css), 1];
+      const rgba = css.match(/^rgba?\(([\d.]+), ([\d.]+), ([\d.]+)(?:, ([\d.]+))?\)$/);
+      if (rgba) return [rgba[1] / 255, rgba[2] / 255, rgba[3] / 255, rgba[4] === undefined ? 1 : Number(rgba[4])];
+      console.warn("Signal Swell: can't read the colour " + value + ", so it's black");
+      return [0, 0, 0, 1];
+    }
+
+    function createSwell(target, options = {}) {
+      const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+      const settings = { ...SWELL_DEFAULTS };
+      for (const key in SWELL_DEFAULTS) if (options[key] !== undefined) settings[key] = options[key];
+      settings.focus = clampFocus(settings.focus);
+
+      // Anything but a canvas gets a canvas of its own, filling it from the
+      // back: the element becomes a stacking context with the canvas at its
+      // bottom, over its background and under everything it holds.
+      const own = !(target instanceof HTMLCanvasElement);
+      const canvas = own ? document.createElement("canvas") : target;
+      if (own) {
+        canvas.setAttribute("aria-hidden", "true");
+        canvas.style.cssText = "position:absolute;inset:0;width:100%;height:100%;display:block;z-index:-1";
+        if (getComputedStyle(target).position === "static") target.style.position = "relative";
+        target.style.isolation = "isolate";
+        target.prepend(canvas);
+      }
+
+      const shown = { paper: parseColour(settings.paper), ink: parseColour(settings.ink) }; // eased
+      const goal = { paper: shown.paper.slice(), ink: shown.ink.slice() };
+      const gl = canvas.getContext("webgl", {
+        alpha: shown.paper[3] < 1, // a see-through paper needs a see-through canvas
+        antialias: false,
+        depth: false,
+        stencil: false,
+        powerPreference: "high-performance",
+        preserveDrawingBuffer: true
+      });
+      if (!gl) {
+        if (own) canvas.remove();
+        return null;
+      }
+
+      function compile(type, source) {
+        const shader = gl.createShader(type);
+        gl.shaderSource(shader, source);
+        gl.compileShader(shader);
+        if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+          const message = gl.getShaderInfoLog(shader) || "Unknown shader compile error";
+          gl.deleteShader(shader);
+          throw new Error(message);
+        }
+        return shader;
+      }
+
+      function createProgram() {
+        const program = gl.createProgram();
+        const vertexShader = compile(gl.VERTEX_SHADER, vertexSource);
+        const fragmentShader = compile(gl.FRAGMENT_SHADER, fragmentSource);
+        gl.attachShader(program, vertexShader);
+        gl.attachShader(program, fragmentShader);
+        gl.linkProgram(program);
+        gl.deleteShader(vertexShader);
+        gl.deleteShader(fragmentShader);
+        if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+          const message = gl.getProgramInfoLog(program) || "Unknown shader link error";
+          gl.deleteProgram(program);
+          throw new Error(message);
+        }
+        return program;
+      }
+
+      let program;
+      try {
+        program = createProgram();
+      } catch (error) {
+        if (own) canvas.remove();
+        throw error;
+      }
+      gl.useProgram(program);
+
+      const mesh = buildMesh((SCENE.maxAspect / 2) * SCENE.z1 / SCENE.focal + 1.2, 20261105);
+      gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
+      gl.bufferData(gl.ARRAY_BUFFER, mesh.data, gl.STATIC_DRAW);
+      [["aA", 4, 0], ["aB", 4, 16], ["aCorner", 2, 32]].forEach(([name, size, offset]) => {
+        const loc = gl.getAttribLocation(program, name);
+        gl.enableVertexAttribArray(loc);
+        gl.vertexAttribPointer(loc, size, gl.FLOAT, false, STRIDE * 4, offset);
+      });
+
+      const U = {};
+      ["uRes", "uTime", "uFlow", "uCam", "uLens", "uFade", "uInk", "uShape", "uInkColor", "uSeed"]
+        .forEach(name => { U[name] = gl.getUniformLocation(program, name); });
+
+      gl.disable(gl.DEPTH_TEST);
+      gl.enable(gl.BLEND);
+      gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+
+      let elapsed = Number.isFinite(options.time) ? options.time : 6;
+      let paused = options.paused === undefined ? reduced : Boolean(options.paused);
+      const lens = [settings.focus]; // the focus depth, eased
+      const pointer = [0.5, 0.5];    // eased, 0..1 across the window
+      const aim = [0.5, 0.5];
+      const CENTRE = [0.5, 0.5];
+      const cam = { x: 0, y: SCENE.camY };
+      let dpr = 1;
+      let frame = 0;
+      let last = null;
+      let raf = 0;
+      let dirty = true;
+      let onScreen = true;
+
+      // Change any settings. Focus and colours ease over, unless `instant`.
+      function set(changes, instant) {
+        for (const key in SWELL_DEFAULTS) if (changes[key] !== undefined) settings[key] = changes[key];
+        settings.focus = clampFocus(settings.focus);
+        goal.paper = parseColour(settings.paper);
+        goal.ink = parseColour(settings.ink);
+        if (instant || reduced) {
+          shown.paper = goal.paper.slice();
+          shown.ink = goal.ink.slice();
+          lens[0] = settings.focus;
+        }
+        dirty = true;
+      }
+
+      /* lens */
+
+      function focalLength() {
+        const aspect = canvas.width / canvas.height;
+        return SCENE.focal * Math.min(1, Math.max(0.7, Math.sqrt(aspect / 1.3)));
+      }
+
+      // Same placement as the vertex shader, for one node, in screen units.
+      function nodeOnScreen(k, t, focal) {
+        const flow = t * SCENE.drift;
+        const z = mesh.nz[k];
+        const x = mesh.nx[k] - (flow + mesh.wrap * Math.floor((mesh.nx[k] - flow) / mesh.wrap + 0.5));
+        const h = (swellAt(x, z, t) + (fract(mesh.ns[k] * 7.31) - 0.5) * SCENE.irregular) * settings.swell;
+        return {
+          x: (x - cam.x) * focal / z,
+          y: SCENE.horizon + (h - cam.y) * focal / z,
+          z
+        };
+      }
+
+      // Depth of the visible node nearest a point; the mean plane if none is close.
+      function pickDepth(clientX, clientY) {
+        const rect = canvas.getBoundingClientRect();
+        const px = (clientX - rect.left - rect.width / 2) / rect.height;
+        const py = (rect.height / 2 - (clientY - rect.top)) / rect.height;
+        const focal = focalLength();
+        let best = Infinity;
+        let bestZ = NaN;
+        for (let k = 0; k < mesh.nodes; k++) {
+          const z = mesh.nz[k];
+          if (z < SCENE.z0 + 0.6 || z > SCENE.z1 - 1.5) continue;
+          const s = nodeOnScreen(k, elapsed, focal);
+          const d = Math.hypot(s.x - px, s.y - py);
+          if (d < best) { best = d; bestZ = z; }
+        }
+        if (best < 0.045) return bestZ;
+        const below = SCENE.horizon - py;
+        return below > 0.02 ? cam.y * focal / below : SCENE.z1;
+      }
+
+      /* frame */
+
+      function resize() {
+        dpr = Math.min(devicePixelRatio || 1, 2);
+        const width = Math.max(1, Math.round(canvas.clientWidth * dpr));
+        const height = Math.max(1, Math.round(canvas.clientHeight * dpr));
+        if (canvas.width === width && canvas.height === height) return false;
+        canvas.width = width;
+        canvas.height = height;
+        gl.viewport(0, 0, width, height);
+        return true;
+      }
+
+      function draw() {
+        resize();
+        cam.x = (pointer[0] - 0.5) * 0.7;
+        cam.y = SCENE.camY + (pointer[1] - 0.5) * 0.18;
+        const paper = shown.paper;
+        const ink = shown.ink;
+        const strength = settings.strength;
+        gl.clearColor(paper[0] * paper[3], paper[1] * paper[3], paper[2] * paper[3], paper[3]);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+        gl.uniform2f(U.uRes, canvas.width, canvas.height);
+        gl.uniform1f(U.uTime, elapsed);
+        gl.uniform2f(U.uFlow, elapsed * SCENE.drift, mesh.wrap);
+        gl.uniform4f(U.uCam, cam.x, cam.y, SCENE.horizon, focalLength());
+        gl.uniform4f(U.uLens, lens[0], SCENE.aperture * settings.aperture, SCENE.hair * dpr / canvas.height, settings.swell);
+        gl.uniform2f(U.uFade, SCENE.z0, SCENE.z1);
+        gl.uniform3f(U.uInk, strength[0], strength[1], strength[2]);
+        gl.uniform4f(U.uShape, SCENE.dotR, SCENE.glyph, SCENE.irregular, SCENE.lineWorld);
+        gl.uniform3f(U.uInkColor, ink[0], ink[1], ink[2]);
+        gl.uniform1f(U.uSeed, (frame++ % 61) * 1.37);
+        gl.drawArrays(gl.TRIANGLES, 0, mesh.vertices);
+        dirty = false;
+      }
+
+      // Ease each value toward its goal, snapping the last sliver (a fraction
+      // of a pixel or a colour level); true while any is still on its way.
+      function approach(value, to, rate, delta) {
+        const step = 1 - Math.exp(-delta * rate);
+        let moving = false;
+        for (let i = 0; i < value.length; i++) {
+          if (Math.abs(to[i] - value[i]) > 5e-4) {
+            value[i] += (to[i] - value[i]) * step;
+            moving = true;
+          } else {
+            value[i] = to[i];
+          }
+        }
+        return moving;
+      }
+
+      function tick(now) {
+        raf = requestAnimationFrame(tick);
+        const delta = last === null ? 0 : Math.min(0.05, Math.max(0, (now - last) / 1000));
+        last = now;
+        if (!onScreen || document.hidden) return;
+        let moving = resize() || dirty;
+        if (!paused && settings.speed > 0) {
+          elapsed += delta * settings.speed;
+          moving = true;
+        }
+        // focus racks over in about a third of a second, a new ink in about
+        // half, and the camera trails the pointer more lazily still
+        moving = approach(lens, [settings.focus], 6, delta) || moving;
+        moving = approach(shown.paper, goal.paper, 7, delta) || moving;
+        moving = approach(shown.ink, goal.ink, 7, delta) || moving;
+        moving = approach(pointer, settings.interactive && !reduced ? aim : CENTRE, 2.14, delta) || moving;
+        if (moving) draw();
+      }
+
+      function onPointerMove(event) {
+        aim[0] = event.clientX / innerWidth;
+        aim[1] = 1 - event.clientY / innerHeight;
+      }
+
+      function onPointerLeave() {
+        aim[0] = 0.5;
+        aim[1] = 0.5;
+      }
+
+      function onClick(event) {
+        if (!settings.interactive) return;
+        const focus = clampFocus(pickDepth(event.clientX, event.clientY));
+        set({ focus });
+        if (options.onFocus) options.onFocus(focus);
+      }
+
+      addEventListener("pointermove", onPointerMove, { passive: true });
+      document.documentElement.addEventListener("pointerleave", onPointerLeave);
+      canvas.addEventListener("click", onClick);
+
+      // rest while scrolled out of sight
+      const watcher = typeof IntersectionObserver === "function"
+        ? new IntersectionObserver(entries => {
+          onScreen = entries[entries.length - 1].isIntersecting;
+          dirty = true;
+        })
+        : null;
+      if (watcher) watcher.observe(canvas);
+
+      draw();
+      raf = requestAnimationFrame(tick);
+
+      return {
+        get settings() { return { ...settings, strength: settings.strength.slice() }; },
+        set,
+        get paused() { return paused; },
+        set paused(value) { paused = Boolean(value); dirty = true; },
+        get time() { return elapsed; },
+        set time(value) { elapsed = Number(value); dirty = true; },
+        get focus() { return lens[0]; },
+        mesh: { nodes: mesh.nodes, edges: mesh.edges, labels: mesh.labels, quads: mesh.quads, vertices: mesh.vertices },
+        pickDepth,
+        nodeOnScreen: k => nodeOnScreen(k, elapsed, focalLength()),
+        draw,
+        destroy() {
+          cancelAnimationFrame(raf);
+          if (watcher) watcher.disconnect();
+          removeEventListener("pointermove", onPointerMove);
+          document.documentElement.removeEventListener("pointerleave", onPointerLeave);
+          canvas.removeEventListener("click", onClick);
+          const lose = gl.getExtension("WEBGL_lose_context");
+          if (lose) lose.loseContext();
+          if (own) canvas.remove();
+        }
+      };
     }
 
     /* ---------------- palette and theme ----------------
@@ -963,7 +1292,7 @@
     if (params.get("theme") === "light" || params.get("theme") === "dark") choice.theme = params.get("theme");
 
     let scheme = resolveScheme(choice, darkQuery.matches);
-    const shown = { paper: scheme.paper.slice(), ink: scheme.ink.slice() }; // what the canvas draws, eased
+    let engine = null; // the renderer, once WebGL is up
 
     function remember() {
       try {
@@ -991,10 +1320,8 @@
       }
       themeSwitch.setAttribute("aria-checked", String(scheme.theme === "dark"));
       themeOut.value = scheme.theme === "dark" ? "Dark" : "Light";
-      if (instant || reducedMotion) {
-        shown.paper = scheme.paper.slice();
-        shown.ink = scheme.ink.slice();
-      }
+      // the canvas eases into the new scheme, or cuts to it when asked to
+      if (engine) engine.set({ paper: scheme.paper, ink: scheme.ink, strength: scheme.strength }, instant);
     }
 
     swatches.addEventListener("change", event => {
@@ -1028,55 +1355,6 @@
 
     /* ---------------- renderer ---------------- */
 
-    const gl = canvas.getContext("webgl", {
-      alpha: false,
-      antialias: false,
-      depth: false,
-      stencil: false,
-      powerPreference: "high-performance",
-      preserveDrawingBuffer: true
-    });
-
-    if (!gl) {
-      fallback.style.display = "grid";
-      return;
-    }
-
-    let program;
-    try {
-      program = createProgram();
-    } catch (error) {
-      console.error(error);
-      fallback.textContent = "The shader could not compile on this browser: " + error.message;
-      fallback.style.display = "grid";
-      return;
-    }
-
-    gl.useProgram(program);
-
-    const mesh = buildMesh((SCENE.maxAspect / 2) * SCENE.z1 / SCENE.focal + 1.2, 20261105);
-
-    const buffer = gl.createBuffer();
-    gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
-    gl.bufferData(gl.ARRAY_BUFFER, mesh.data, gl.STATIC_DRAW);
-
-    const bytes = STRIDE * 4;
-    [["aA", 4, 0], ["aB", 4, 16], ["aCorner", 2, 32]].forEach(([name, size, offset]) => {
-      const loc = gl.getAttribLocation(program, name);
-      gl.enableVertexAttribArray(loc);
-      gl.vertexAttribPointer(loc, size, gl.FLOAT, false, bytes, offset);
-    });
-
-    const U = {};
-    ["uRes", "uTime", "uFlow", "uCam", "uLens", "uFade", "uInk", "uShape", "uInkColor", "uSeed"]
-      .forEach(name => { U[name] = gl.getUniformLocation(program, name); });
-
-    gl.disable(gl.DEPTH_TEST);
-    gl.enable(gl.BLEND);
-    gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
-
-    /* ---------------- controls ---------------- */
-
     const focusInput = document.getElementById("focus");
     const apertureInput = document.getElementById("aperture");
     const swellInput = document.getElementById("swell");
@@ -1084,188 +1362,249 @@
     const apertureOut = document.getElementById("apertureOut");
     const swellOut = document.getElementById("swellOut");
     const pauseButton = document.getElementById("pause");
+    const downloadButton = document.getElementById("download");
 
-    const P = {
-      focus: Number(focusInput.value),
-      aperture: Number(apertureInput.value),
-      swell: Number(swellInput.value)
-    };
+    function showFocus(z) {
+      focusInput.value = z.toFixed(1);
+      focusOut.value = z.toFixed(1);
+    }
 
-    let focusNow = P.focus;
-    let paused = reducedMotion || pinned;
-    let elapsed = pinned ? pinTime : 6;
-    let last = null;
-    let frame = 0;
-    const pointer = { x: 0.5, y: 0.5 };
-    const targetPointer = { x: 0.5, y: 0.5 };
-    const cam = { x: 0, y: SCENE.camY };
+    try {
+      engine = createSwell(canvas, {
+        paper: scheme.paper,
+        ink: scheme.ink,
+        strength: scheme.strength,
+        focus: Number(focusInput.value),
+        aperture: Number(apertureInput.value),
+        swell: Number(swellInput.value),
+        time: pinned ? pinTime : 6,
+        paused: reducedMotion || pinned,
+        onFocus: showFocus // a click on the swell pulled focus there
+      });
+    } catch (error) {
+      console.error(error);
+      fallback.textContent = "The shader could not compile on this browser: " + error.message;
+      fallback.style.display = "grid";
+      return;
+    }
 
-    if (paused) pauseButton.textContent = "Resume";
+    if (!engine) {
+      fallback.style.display = "grid";
+      return;
+    }
+
+    /* ---------------- controls ---------------- */
 
     function setFocus(z) {
-      P.focus = Math.min(12, Math.max(2.4, z));
-      focusInput.value = P.focus.toFixed(1);
-      focusOut.value = P.focus.toFixed(1);
-      if (reducedMotion) focusNow = P.focus;
+      const focus = clampFocus(z);
+      showFocus(focus);
+      engine.set({ focus });
+    }
+
+    function showPaused() {
+      pauseButton.textContent = engine.paused ? "Resume" : "Pause";
     }
 
     focusInput.addEventListener("input", () => setFocus(Number(focusInput.value)));
     apertureInput.addEventListener("input", () => {
-      P.aperture = Number(apertureInput.value);
-      apertureOut.value = P.aperture.toFixed(2);
+      engine.set({ aperture: Number(apertureInput.value) });
+      apertureOut.value = Number(apertureInput.value).toFixed(2);
     });
     swellInput.addEventListener("input", () => {
-      P.swell = Number(swellInput.value);
-      swellOut.value = P.swell.toFixed(2);
+      engine.set({ swell: Number(swellInput.value) });
+      swellOut.value = Number(swellInput.value).toFixed(2);
     });
     pauseButton.addEventListener("click", () => {
-      paused = !paused;
-      pauseButton.textContent = paused ? "Resume" : "Pause";
-      last = null;
+      engine.paused = !engine.paused;
+      showPaused();
     });
 
-    if (!reducedMotion) {
-      addEventListener("pointermove", event => {
-        targetPointer.x = event.clientX / innerWidth;
-        targetPointer.y = 1 - event.clientY / innerHeight;
-      }, { passive: true });
-      document.documentElement.addEventListener("pointerleave", () => {
-        targetPointer.x = 0.5;
-        targetPointer.y = 0.5;
+    // a reload can bring the sliders back where they were; read them out
+    showFocus(engine.settings.focus);
+    apertureOut.value = engine.settings.aperture.toFixed(2);
+    swellOut.value = engine.settings.swell.toFixed(2);
+    showPaused();
+
+    /* ---------------- download ----------------
+       Download hands over this swell, set the way it is now, as a page of
+       its own: the scene and engine sections of this very script, verbatim,
+       so it draws exactly what this page draws, plus its settings. */
+
+    function currentDownload() {
+      const s = engine.settings;
+      const custom = scheme.palette.id === "custom";
+      return buildDownload(SOURCE, {
+        name: custom ? "Custom " + choice.custom : scheme.palette.name,
+        slug: custom ? "custom-" + choice.custom.slice(1) : scheme.palette.name.toLowerCase().replace(/\s+/g, "-"),
+        theme: scheme.theme,
+        paper: rgbHex(scheme.paper),
+        ink: rgbHex(scheme.ink),
+        strength: scheme.strength,
+        focus: s.focus,
+        aperture: s.aperture,
+        swell: s.swell,
+        time: engine.time,
+        from: /^https?:$/.test(location.protocol) ? location.origin + location.pathname : ""
       });
     }
 
-    /* ---------------- lens ---------------- */
-
-    function focalLength() {
-      const aspect = canvas.width / canvas.height;
-      return SCENE.focal * Math.min(1, Math.max(0.7, Math.sqrt(aspect / 1.3)));
-    }
-
-    // Same placement as the vertex shader, for one node, in screen units.
-    function nodeOnScreen(k, t, focal) {
-      const flow = t * SCENE.drift;
-      const z = mesh.nz[k];
-      const x = mesh.nx[k] - (flow + mesh.wrap * Math.floor((mesh.nx[k] - flow) / mesh.wrap + 0.5));
-      const h = (swellAt(x, z, t) + (fract(mesh.ns[k] * 7.31) - 0.5) * SCENE.irregular) * P.swell;
-      return {
-        x: (x - cam.x) * focal / z,
-        y: SCENE.horizon + (h - cam.y) * focal / z,
-        z
-      };
-    }
-
-    // Depth of the visible node nearest the pointer; the mean plane if none is close.
-    function pickDepth(clientX, clientY) {
-      const rect = canvas.getBoundingClientRect();
-      const px = (clientX - rect.left - rect.width / 2) / rect.height;
-      const py = (rect.height / 2 - (clientY - rect.top)) / rect.height;
-      const focal = focalLength();
-      let best = Infinity;
-      let bestZ = NaN;
-      for (let k = 0; k < mesh.nodes; k++) {
-        const z = mesh.nz[k];
-        if (z < SCENE.z0 + 0.6 || z > SCENE.z1 - 1.5) continue;
-        const s = nodeOnScreen(k, elapsed, focal);
-        const d = Math.hypot(s.x - px, s.y - py);
-        if (d < best) { best = d; bestZ = z; }
-      }
-      if (best < 0.045) return bestZ;
-      const below = SCENE.horizon - py;
-      return below > 0.02 ? cam.y * focal / below : SCENE.z1;
-    }
-
-    canvas.addEventListener("click", event => setFocus(pickDepth(event.clientX, event.clientY)));
-
-    /* ---------------- frame ---------------- */
-
-    let dpr = 1;
-    function resize() {
-      dpr = Math.min(devicePixelRatio || 1, 2);
-      const width = Math.max(1, Math.round(innerWidth * dpr));
-      const height = Math.max(1, Math.round(innerHeight * dpr));
-      if (canvas.width !== width || canvas.height !== height) {
-        canvas.width = width;
-        canvas.height = height;
-        gl.viewport(0, 0, width, height);
-      }
-    }
-    addEventListener("resize", resize, { passive: true });
-    resize();
-
-    function draw() {
-      pointer.x += (targetPointer.x - pointer.x) * 0.035;
-      pointer.y += (targetPointer.y - pointer.y) * 0.035;
-      cam.x = (pointer.x - 0.5) * 0.7;
-      cam.y = SCENE.camY + (pointer.y - 0.5) * 0.18;
-
-      gl.clearColor(shown.paper[0], shown.paper[1], shown.paper[2], 1);
-      gl.clear(gl.COLOR_BUFFER_BIT);
-      gl.uniform2f(U.uRes, canvas.width, canvas.height);
-      gl.uniform1f(U.uTime, elapsed);
-      gl.uniform2f(U.uFlow, elapsed * SCENE.drift, mesh.wrap);
-      gl.uniform4f(U.uCam, cam.x, cam.y, SCENE.horizon, focalLength());
-      gl.uniform4f(U.uLens, focusNow, SCENE.aperture * P.aperture, SCENE.hair * dpr / canvas.height, P.swell);
-      gl.uniform2f(U.uFade, SCENE.z0, SCENE.z1);
-      gl.uniform3f(U.uInk, scheme.strength[0], scheme.strength[1], scheme.strength[2]);
-      gl.uniform4f(U.uShape, SCENE.dotR, SCENE.glyph, SCENE.irregular, SCENE.lineWorld);
-      gl.uniform3f(U.uInkColor, shown.ink[0], shown.ink[1], shown.ink[2]);
-      gl.uniform1f(U.uSeed, (frame++ % 61) * 1.37);
-      gl.drawArrays(gl.TRIANGLES, 0, mesh.vertices);
-    }
-
-    function tick(now) {
-      if (last === null) last = now;
-      const delta = Math.min(0.05, Math.max(0, (now - last) / 1000));
-      last = now;
-      if (!paused && !document.hidden) elapsed += delta;
-      // rack focus, about a third of a second to settle
-      focusNow += (P.focus - focusNow) * (1 - Math.exp(-delta * 6));
-      // a new scheme crossfades in, about half a second to settle
-      const fadeStep = 1 - Math.exp(-delta * 7);
-      for (let i = 0; i < 3; i++) {
-        shown.paper[i] += (scheme.paper[i] - shown.paper[i]) * fadeStep;
-        shown.ink[i] += (scheme.ink[i] - shown.ink[i]) * fadeStep;
-      }
-      draw();
-      requestAnimationFrame(tick);
-    }
+    downloadButton.addEventListener("click", () => {
+      const file = currentDownload();
+      const url = URL.createObjectURL(new Blob([file.html], { type: "text/html" }));
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = file.name;
+      document.body.append(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+    });
 
     window.__demo = {
-      P,
-      mesh: { nodes: mesh.nodes, edges: mesh.edges, labels: mesh.labels, quads: mesh.quads, vertices: mesh.vertices },
-      get elapsed() { return elapsed; },
-      get focus() { return focusNow; },
+      engine,
+      get P() { return engine.settings; },
+      mesh: engine.mesh,
+      get elapsed() { return engine.time; },
+      get focus() { return engine.focus; },
       get scheme() {
         return { palette: scheme.palette.id, theme: scheme.theme, paper: rgbHex(scheme.paper), ink: rgbHex(scheme.ink) };
       },
       pin(t) {
-        elapsed = t;
-        paused = true;
-        pauseButton.textContent = "Resume";
-        focusNow = P.focus;
-        draw();
+        engine.time = t;
+        engine.paused = true;
+        showPaused();
+        engine.set({}, true);
+        engine.draw();
       },
       step(dt, steps) {
         const n = steps == null ? 1 : steps;
-        for (let i = 0; i < n; i++) elapsed += dt;
-        draw();
-        return elapsed;
+        for (let i = 0; i < n; i++) engine.time += dt;
+        engine.draw();
+        return engine.time;
       },
       // test hook: switch scheme without the crossfade and without saving
       setScheme(next) {
         Object.assign(choice, next);
         applyScheme(true);
-        draw();
+        engine.draw();
         return this.scheme;
       },
-      setFocus(z) { setFocus(z); focusNow = P.focus; draw(); },
-      pickDepth,
-      nodeOnScreen: k => nodeOnScreen(k, elapsed, focalLength()),
-      draw
+      setFocus(z) {
+        setFocus(z);
+        engine.set({}, true);
+        engine.draw();
+      },
+      // the file Download would hand over, without saving it
+      download: currentDownload,
+      pickDepth: engine.pickDepth,
+      nodeOnScreen: engine.nodeOnScreen,
+      draw: engine.draw
     };
 
-    requestAnimationFrame(tick);
+    /* ---------------- download page ----------------
+       Source text and settings in, a standalone page out. Nothing here
+       touches the page, so a test can run it on the file as it sits. */
+
+    // The lines from the one holding `from` up to the one holding `to`.
+    function sourceBetween(source, from, to) {
+      const start = source.indexOf(from);
+      const end = start < 0 ? -1 : source.indexOf(to, start);
+      if (end < 0) throw new Error("Signal Swell: a section marker is missing from the page source");
+      return source.slice(source.lastIndexOf("\n", start) + 1, source.lastIndexOf("\n", end) + 1);
+    }
+
+    function buildDownload(source, look) {
+      const code =
+        sourceBetween(source, "/* ---------------- the swell ----------------", "/* ---------------- palettes ----------------") +
+        sourceBetween(source, "/* ---------------- engine ----------------", "/* ---------------- palette and theme ----------------");
+      const num = (value, digits) => String(Number(Number(value).toFixed(digits)));
+      const rows = [
+        ["paper", JSON.stringify(look.paper), 'the background: any CSS colour, or "transparent" to show the page behind'],
+        ["ink", JSON.stringify(look.ink), "the lines, nodes and bits"],
+        ["strength", "[" + look.strength.map(v => num(v, 3)).join(", ") + "]", "how much ink each of those carries; 0 hides one"],
+        ["focus", num(look.focus, 2), "the depth held sharp, from 2.4 (near) to 12 (far)"],
+        ["aperture", num(look.aperture, 2), "depth of field, from 0 (all sharp) to 2.5"],
+        ["swell", num(look.swell, 2), "wave height, from 0 (flat calm) to 2"],
+        ["speed", "1", "0 holds still, 2 runs twice as fast"],
+        ["interactive", "true", "the camera trails the pointer, and a click pulls focus"],
+        ["time", num(look.time, 2), "seconds into the swell; it opens where you left it"]
+      ];
+      const lines = rows.map(([key, value], i) => "    " + key + ": " + value + (i < rows.length - 1 ? "," : ""));
+      const width = Math.max(...lines.map(line => line.length)) + 2;
+      const settings = lines.map((line, i) => line.padEnd(width) + "// " + rows[i][2]).join("\n");
+      const from = look.from ? "\n  From " + look.from : "";
+
+      // "<\/script>" and "<\!--" keep this page's own script from ending early.
+      const html = `<!doctype html>
+<\!--
+  Signal Swell: a plexus of nodes and edges riding a slow swell, bits
+  flickering over the far crest, and a lens shallow enough that only one
+  band holds focus. One WebGL draw call, no textures, no libraries.
+
+  Set the way you left it: ${look.name} on the ${look.theme} paper.${from}
+
+  Open this file in a browser and the swell fills the window. Its settings
+  are in SIGNAL_SWELL below: change any of them and reload.
+
+  To run it on a page of your own, copy the first two scripts below into
+  that page, then point the swell at an element:
+
+    <div id="hero" style="height: 70vh">Your words, over the swell</div>
+    <script>
+      const swell = SignalSwell(document.getElementById("hero"), SIGNAL_SWELL);
+    <\/script>
+
+  It fills the element from behind whatever the element holds. Hand it a
+  canvas instead and it draws into that, at the size your CSS gives it.
+  It rests while scrolled out of sight, and holds still for anyone whose
+  system asks for reduced motion.
+
+  SignalSwell returns a controller for changing the swell as it runs:
+    swell.set({ ink: "#ff4136" })   eases to a new ink, or any setting
+    swell.paused = true             holds the moment
+    swell.destroy()                 stops it and lets go of the canvas
+  Where WebGL is missing it returns null and leaves the page as it was.
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="${look.paper}" />
+  <title>Signal Swell · ${look.name}</title>
+  <style>
+    html, body { height: 100%; margin: 0; background: ${look.paper}; }
+    #swell { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; cursor: crosshair; }
+    p { margin: 24px; color: ${look.ink}; font: 16px/1.5 system-ui, sans-serif; }
+  </style>
+</head>
+<body>
+  <canvas id="swell" aria-label="A network mesh rising and falling like a slow swell, binary digits flickering over its far crest while the near rows melt out of focus"></canvas>
+
+  <script>
+  // The settings. SignalSwell reads them as it starts; swell.set() changes them after.
+  const SIGNAL_SWELL = {
+${settings}
+  };
+  <\/script>
+
+  <script>
+  // The engine. SignalSwell(element, settings) starts a swell there and returns its controller.
+  window.SignalSwell = (() => {
+    "use strict";
+
+${code}    return createSwell;
+  })();
+  <\/script>
+
+  <script>
+  const swell = SignalSwell(document.getElementById("swell"), SIGNAL_SWELL);
+  if (!swell) document.body.insertAdjacentHTML("beforeend", "<p>Signal Swell needs WebGL, which this browser has switched off.</p>");
+  <\/script>
+</body>
+</html>
+`;
+      return { name: "signal-swell-" + look.slug + "-" + look.theme + ".html", html };
+    }
   })();
   </script>
 </body>

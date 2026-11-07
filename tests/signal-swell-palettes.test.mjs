@@ -8,7 +8,7 @@ import test from 'node:test';
 // and that the scheme resolver falls back the way the page expects.
 const demoPath = new URL('../shaders/signal-swell-shader-demo.html', import.meta.url);
 const START = '/* ---------------- the swell ----------------';
-const END = 'function compile(type, source) {';
+const END = '/* ---------------- engine ----------------';
 
 async function sceneBlock() {
   const demo = await readFile(demoPath, 'utf8');
