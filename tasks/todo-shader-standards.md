@@ -16,7 +16,7 @@ Out of scope: palette pickers and dark modes for pages that don't have one
 | --- | --- | --- | --- | --- |
 | archive-ember | no | no | no | full-screen fragment shader; Restart button |
 | holographic-formula-drift | no | no | `?t=`, `?seed=` only | border around a table card; theme toggle; title lacks descriptor |
-| greenhouse-vines | no | no | no | border around a panel; duplicate `<body>` tag; shader must stay identical to `greenhouse-todo/ui-vines.js` apart from the demo knobs |
+| greenhouse-vines | no | no | no | border around a panel; shader must stay identical to `greenhouse-todo/ui-vines.js` apart from the demo knobs (an earlier "duplicate `<body>`" note here came from overlapping `sed` ranges in the audit, not the page) |
 | typewriter-letter-drift | no | no | no | border around a card; Google Fonts atlas; shader shared with `learn/index.html` |
 | blood-splat-submit | no | no | `?pin=` (age) + partial `__demo` | overlay on a real submit button; theme toggle; `error` handler rewrites `document.title` (debug leftover) |
 | stillroom-shaft | yes | no | yes | full-screen fragment shader |
@@ -109,11 +109,34 @@ MIT notice heads the file and the engine. Run with `node --test`.
 - 375px wide: back link, heading and controls don't collide.
 
 ## Progress
-- [ ] archive-ember
-- [ ] holographic-formula-drift
-- [ ] greenhouse-vines
-- [ ] typewriter-letter-drift
-- [ ] blood-splat-submit
-- [ ] stillroom-shaft
-- [ ] WebKit check in the Browser pane
-- [ ] commit + push each page
+- [x] archive-ember (513e2ea)
+- [x] holographic-formula-drift (a30da27)
+- [x] greenhouse-vines (34ef26d)
+- [x] typewriter-letter-drift (d49cf76)
+- [x] blood-splat-submit (47180a2)
+- [x] stillroom-shaft (89b3a79)
+- [x] WebKit check in the Browser pane: every page and its download
+- [x] 320px and 375px sweep of all seven pages (b3799f4)
+- [x] commit + push each page
+
+## Review (2026-11-07)
+Each page was upgraded by its own subagent against this file, then
+reviewed, checked in WebKit and committed one page at a time.
+
+- All 47 download and copy tests pass (`node --test tests/*-download.test.mjs
+  tests/signal-swell-*.test.mjs`), and every page script passes `node --check`.
+- Headless Chrome: each refactor drew 0 differing pixels against HEAD at the
+  same moment and settings, and each download matched its page (0 pixels, or
+  a canvas readback byte for byte). Typewriter then moved its canvas 1px on
+  purpose: HEAD centred it on the padding box, not the border box.
+- Shaders shared with other pages are pinned by tests: Greenhouse Vines to
+  `greenhouse-todo/ui-vines.js`, Typewriter Letter Drift to `learn/index.html`.
+- Behaviour fixed along the way: Blood Splat under reduced motion now lands
+  dry and holds (HEAD showed one frame, then nothing); the Greenhouse grow-in
+  no longer stalls at Drift 0; the Typewriter Resume button works under
+  reduced motion; restored slider values are applied after a reload.
+- Blood Splat's download shows a "Bring the button back" link once a hit
+  settles when auto re-enable is off, so the file is not one-shot.
+- Left alone: Signal Swell at widths under ~300px (kicker meets the back
+  link, slider labels crowd), and Blood Splat's masthead/card/panel overlap
+  at 320x640 and 1280x720, which predates this work.
