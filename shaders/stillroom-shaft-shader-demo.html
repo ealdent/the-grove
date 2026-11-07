@@ -3,6 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#050403" />
   <title>Stillroom Shaft — Sunlight and Dust Shader</title>
   <style>
     :root {
@@ -157,7 +158,16 @@
       cursor: pointer;
     }
 
-    button {
+    .actions {
+      display: flex;
+      gap: 8px;
+    }
+
+    .action {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 7px;
       height: 42px;
       padding: 0 16px;
       border: 1px solid rgba(232, 184, 106, 0.24);
@@ -167,16 +177,34 @@
       font: 600 11px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
       letter-spacing: 0.08em;
       text-transform: uppercase;
+      white-space: nowrap;
       cursor: pointer;
       transition: background 0.16s ease, border-color 0.16s ease, transform 0.16s ease;
     }
 
-    button:hover {
+    .action:hover {
       background: rgba(232, 184, 106, 0.15);
       border-color: rgba(232, 184, 106, 0.42);
     }
 
-    button:active { transform: translateY(1px); }
+    .action:active { transform: translateY(1px); }
+
+    /* the way to take it home, a shade bolder than Pause */
+    .download {
+      border-color: rgba(232, 184, 106, 0.46);
+      background: rgba(232, 184, 106, 0.15);
+    }
+    .download:hover {
+      border-color: var(--accent);
+      background: rgba(232, 184, 106, 0.24);
+    }
+    .download svg {
+      width: 15px;
+      height: 15px;
+      flex: none;
+      margin-left: -2px;
+      color: var(--accent);
+    }
 
     .fallback {
       position: fixed;
@@ -193,7 +221,8 @@
     @media (max-width: 680px) {
       .subtitle { display: none; }
       .controls { grid-template-columns: 1fr 1fr; }
-      button { width: 100%; grid-column: 1 / -1; }
+      .actions { grid-column: 1 / -1; }
+      .action { flex: 1; }
     }
 
     @media (prefers-reduced-motion: reduce) {
@@ -224,7 +253,15 @@
       <label for="dust">Dust <output id="dustOut">1.00</output></label>
       <input id="dust" type="range" min="0" max="2.2" value="1" step="0.05" />
     </div>
-    <button id="pause" type="button">Pause</button>
+    <div class="actions">
+      <button id="pause" class="action" type="button">Pause</button>
+      <button id="download" class="action download" type="button" title="Download this room, set the way it is now, as a page of its own">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M12 4v11m-4.5-4.5L12 15l4.5-4.5M5 19.5h14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" />
+        </svg>
+        Download
+      </button>
+    </div>
   </section>
 
   <div id="fallback" class="fallback">
@@ -235,26 +272,22 @@
   (() => {
     "use strict";
 
+    const SOURCE = (document.currentScript || {}).textContent || ""; // Download ships parts of this script
     const canvas = document.getElementById("gl");
     const fallback = document.getElementById("fallback");
     const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
     const params = new URLSearchParams(location.search);
     const pinParam = params.get("pin");
     const pinTime = pinParam === null || pinParam === "" ? null : Number(pinParam);
+    const pinned = pinTime !== null && Number.isFinite(pinTime);
 
-    const gl = canvas.getContext("webgl", {
-      alpha: false,
-      antialias: false,
-      depth: false,
-      stencil: false,
-      powerPreference: "high-performance",
-      preserveDrawingBuffer: true
-    });
-
-    if (!gl) {
-      fallback.style.display = "grid";
-      return;
-    }
+    /* ---------------- the room ----------------
+       One full-screen fragment shader and nothing else: a plaster wall and
+       plank floor in near-black, a chair and a picture frame in silhouette,
+       one shaft of late sun through moving leaves from the upper left, and
+       the patch it lays on the floor. The beam's air absorbs as well as it
+       glows, so the room dims behind it where the light is dense, and the
+       dust motes drift freely but catch only inside it. */
 
     const vertexSource = `
       attribute vec2 aPosition;
@@ -443,38 +476,242 @@
       }
     `;
 
-    function compile(type, source) {
-      const shader = gl.createShader(type);
-      gl.shaderSource(shader, source);
-      gl.compileShader(shader);
-      if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
-        const message = gl.getShaderInfoLog(shader) || "Unknown shader compile error";
-        gl.deleteShader(shader);
-        throw new Error(message);
+    /* ---------------- engine ----------------
+       Everything the room needs to run: WebGL, a loop that rests whenever
+       nothing moves, and the view's slow lean after the pointer.
+       createStillroom(target, settings) draws into a canvas sized by its
+       CSS, or fills any other element from behind what it holds, and
+       returns a controller. Where WebGL is missing it returns null. */
+
+    const STILLROOM_DEFAULTS = {
+      shaft: 1,         // the beam's strength
+      dust: 1,          // how much dust catches the light
+      speed: 1,         // 0 holds still, 2 runs twice as fast
+      interactive: true // the view leans after the pointer
+    };
+
+    function createStillroom(target, options = {}) {
+      const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+      const settings = { ...STILLROOM_DEFAULTS };
+      for (const key in STILLROOM_DEFAULTS) if (options[key] !== undefined) settings[key] = options[key];
+
+      // Anything but a canvas gets a canvas of its own, filling it from the
+      // back: the element becomes a stacking context with the canvas at its
+      // bottom, over its background and under everything it holds.
+      const own = !(target instanceof HTMLCanvasElement);
+      const canvas = own ? document.createElement("canvas") : target;
+      if (own) {
+        canvas.setAttribute("aria-hidden", "true");
+        canvas.style.cssText = "position:absolute;inset:0;width:100%;height:100%;display:block;z-index:-1";
+        if (getComputedStyle(target).position === "static") target.style.position = "relative";
+        target.style.isolation = "isolate";
+        target.prepend(canvas);
       }
-      return shader;
+
+      const gl = canvas.getContext("webgl", {
+        alpha: false,
+        antialias: false,
+        depth: false,
+        stencil: false,
+        powerPreference: "high-performance",
+        preserveDrawingBuffer: true
+      });
+      if (!gl) {
+        if (own) canvas.remove();
+        return null;
+      }
+
+      function compile(type, source) {
+        const shader = gl.createShader(type);
+        gl.shaderSource(shader, source);
+        gl.compileShader(shader);
+        if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+          const message = gl.getShaderInfoLog(shader) || "Unknown shader compile error";
+          gl.deleteShader(shader);
+          throw new Error(message);
+        }
+        return shader;
+      }
+
+      function createProgram() {
+        const program = gl.createProgram();
+        const vertexShader = compile(gl.VERTEX_SHADER, vertexSource);
+        const fragmentShader = compile(gl.FRAGMENT_SHADER, fragmentSource);
+        gl.attachShader(program, vertexShader);
+        gl.attachShader(program, fragmentShader);
+        gl.linkProgram(program);
+        gl.deleteShader(vertexShader);
+        gl.deleteShader(fragmentShader);
+        if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+          const message = gl.getProgramInfoLog(program) || "Unknown shader link error";
+          gl.deleteProgram(program);
+          throw new Error(message);
+        }
+        return program;
+      }
+
+      let program;
+      try {
+        program = createProgram();
+      } catch (error) {
+        if (own) canvas.remove();
+        throw error;
+      }
+      gl.useProgram(program);
+
+      // two triangles over the whole canvas
+      gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
+      gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, -1, 1, 1, -1, 1, 1]), gl.STATIC_DRAW);
+      const aPosition = gl.getAttribLocation(program, "aPosition");
+      gl.enableVertexAttribArray(aPosition);
+      gl.vertexAttribPointer(aPosition, 2, gl.FLOAT, false, 0, 0);
+
+      const U = {};
+      ["uResolution", "uPointer", "uTime", "uShaft", "uDust"]
+        .forEach(name => { U[name] = gl.getUniformLocation(program, name); });
+
+      let elapsed = Number.isFinite(options.time) ? options.time : 8;
+      let paused = options.paused === undefined ? reduced : Boolean(options.paused);
+      const pointer = [0.5, 0.5]; // eased, 0..1 across the window
+      const aim = [0.5, 0.5];
+      const CENTRE = [0.5, 0.5];
+      let last = null;
+      let raf = 0;
+      let dirty = true;
+      let onScreen = true;
+
+      // where the view leans: after the pointer, or square on
+      const lean = () => (settings.interactive && !reduced ? aim : CENTRE);
+
+      // Change any settings; they take effect at once. The view eases back
+      // to square when interactive turns off, or cuts there when instant.
+      function set(changes, instant) {
+        for (const key in STILLROOM_DEFAULTS) if (changes[key] !== undefined) settings[key] = changes[key];
+        if (instant) {
+          pointer[0] = lean()[0];
+          pointer[1] = lean()[1];
+        }
+        dirty = true;
+      }
+
+      /* frame */
+
+      function resize() {
+        const dpr = Math.min(devicePixelRatio || 1, 2);
+        const width = Math.max(1, Math.round(canvas.clientWidth * dpr));
+        const height = Math.max(1, Math.round(canvas.clientHeight * dpr));
+        if (canvas.width === width && canvas.height === height) return false;
+        canvas.width = width;
+        canvas.height = height;
+        gl.viewport(0, 0, width, height);
+        return true;
+      }
+
+      function draw() {
+        resize();
+        gl.uniform2f(U.uResolution, canvas.width, canvas.height);
+        gl.uniform2f(U.uPointer, pointer[0], pointer[1]);
+        gl.uniform1f(U.uTime, elapsed);
+        gl.uniform1f(U.uShaft, settings.shaft);
+        gl.uniform1f(U.uDust, settings.dust);
+        gl.drawArrays(gl.TRIANGLES, 0, 6);
+        dirty = false;
+      }
+
+      // Ease each value toward its goal, snapping the last sliver (a small
+      // fraction of a pixel of lean); true while any is still on its way.
+      function approach(value, to, rate, delta) {
+        const step = 1 - Math.exp(-delta * rate);
+        let moving = false;
+        for (let i = 0; i < value.length; i++) {
+          if (Math.abs(to[i] - value[i]) > 5e-4) {
+            value[i] += (to[i] - value[i]) * step;
+            moving = true;
+          } else {
+            value[i] = to[i];
+          }
+        }
+        return moving;
+      }
+
+      function tick(now) {
+        raf = requestAnimationFrame(tick);
+        const delta = last === null ? 0 : Math.min(0.05, Math.max(0, (now - last) / 1000));
+        last = now;
+        if (!onScreen || document.hidden) return;
+        let moving = resize() || dirty;
+        if (!paused && settings.speed > 0) {
+          elapsed += delta * settings.speed;
+          moving = true;
+        }
+        // the view trails the pointer lazily: 3.5% of the way each frame at
+        // 60 fps, and the same pace at any other frame rate
+        moving = approach(pointer, lean(), 2.14, delta) || moving;
+        if (moving) draw();
+      }
+
+      function onPointerMove(event) {
+        aim[0] = event.clientX / innerWidth;
+        aim[1] = 1 - event.clientY / innerHeight;
+      }
+
+      function onPointerLeave() {
+        aim[0] = 0.5;
+        aim[1] = 0.5;
+      }
+
+      addEventListener("pointermove", onPointerMove, { passive: true });
+      document.documentElement.addEventListener("pointerleave", onPointerLeave);
+
+      // rest while scrolled out of sight
+      const watcher = typeof IntersectionObserver === "function"
+        ? new IntersectionObserver(entries => {
+          onScreen = entries[entries.length - 1].isIntersecting;
+          dirty = true;
+        })
+        : null;
+      if (watcher) watcher.observe(canvas);
+
+      draw();
+      raf = requestAnimationFrame(tick);
+
+      return {
+        get settings() { return { ...settings }; },
+        set,
+        get paused() { return paused; },
+        set paused(value) { paused = Boolean(value); dirty = true; },
+        get time() { return elapsed; },
+        set time(value) { elapsed = Number(value); dirty = true; },
+        draw,
+        destroy() {
+          cancelAnimationFrame(raf);
+          if (watcher) watcher.disconnect();
+          removeEventListener("pointermove", onPointerMove);
+          document.documentElement.removeEventListener("pointerleave", onPointerLeave);
+          const lose = gl.getExtension("WEBGL_lose_context");
+          if (lose) lose.loseContext();
+          if (own) canvas.remove();
+        }
+      };
     }
 
-    function createProgram() {
-      const program = gl.createProgram();
-      const vertexShader = compile(gl.VERTEX_SHADER, vertexSource);
-      const fragmentShader = compile(gl.FRAGMENT_SHADER, fragmentSource);
-      gl.attachShader(program, vertexShader);
-      gl.attachShader(program, fragmentShader);
-      gl.linkProgram(program);
-      gl.deleteShader(vertexShader);
-      gl.deleteShader(fragmentShader);
-      if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
-        const message = gl.getProgramInfoLog(program) || "Unknown shader link error";
-        gl.deleteProgram(program);
-        throw new Error(message);
-      }
-      return program;
-    }
+    /* ---------------- renderer ---------------- */
 
-    let program;
+    const shaftInput = document.getElementById("shaft");
+    const dustInput = document.getElementById("dust");
+    const shaftOut = document.getElementById("shaftOut");
+    const dustOut = document.getElementById("dustOut");
+    const pauseButton = document.getElementById("pause");
+    const downloadButton = document.getElementById("download");
+
+    let engine;
     try {
-      program = createProgram();
+      engine = createStillroom(canvas, {
+        shaft: Number(shaftInput.value),
+        dust: Number(dustInput.value),
+        time: pinned ? pinTime : 8,
+        paused: reducedMotion || pinned
+      });
     } catch (error) {
       console.error(error);
       fallback.textContent = "The shader could not compile on this browser: " + error.message;
@@ -482,126 +719,196 @@
       return;
     }
 
-    gl.useProgram(program);
+    if (!engine) {
+      fallback.style.display = "grid";
+      return;
+    }
 
-    const buffer = gl.createBuffer();
-    gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
-    gl.bufferData(
-      gl.ARRAY_BUFFER,
-      new Float32Array([-1, -1, 1, -1, -1, 1, -1, 1, 1, -1, 1, 1]),
-      gl.STATIC_DRAW
-    );
+    /* ---------------- controls ---------------- */
 
-    const aPosition = gl.getAttribLocation(program, "aPosition");
-    gl.enableVertexAttribArray(aPosition);
-    gl.vertexAttribPointer(aPosition, 2, gl.FLOAT, false, 0, 0);
-
-    const uniforms = {
-      resolution: gl.getUniformLocation(program, "uResolution"),
-      pointer: gl.getUniformLocation(program, "uPointer"),
-      time: gl.getUniformLocation(program, "uTime"),
-      shaft: gl.getUniformLocation(program, "uShaft"),
-      dust: gl.getUniformLocation(program, "uDust")
-    };
-
-    const shaftInput = document.getElementById("shaft");
-    const dustInput = document.getElementById("dust");
-    const shaftOut = document.getElementById("shaftOut");
-    const dustOut = document.getElementById("dustOut");
-    const pauseButton = document.getElementById("pause");
-
-    const P = {
-      shaft: Number(shaftInput.value),
-      dust: Number(dustInput.value)
-    };
-
-    let paused = reducedMotion || (pinTime !== null && Number.isFinite(pinTime));
-    let elapsed = (pinTime !== null && Number.isFinite(pinTime)) ? pinTime : 8;
-    let last = null;
-    let pointer = { x: 0.5, y: 0.5 };
-    let targetPointer = { x: 0.5, y: 0.5 };
-
-    if (paused) pauseButton.textContent = "Resume";
+    function showPaused() {
+      pauseButton.textContent = engine.paused ? "Resume" : "Pause";
+    }
 
     shaftInput.addEventListener("input", () => {
-      P.shaft = Number(shaftInput.value);
-      shaftOut.value = P.shaft.toFixed(2);
+      engine.set({ shaft: Number(shaftInput.value) });
+      shaftOut.value = Number(shaftInput.value).toFixed(2);
     });
     dustInput.addEventListener("input", () => {
-      P.dust = Number(dustInput.value);
-      dustOut.value = P.dust.toFixed(2);
+      engine.set({ dust: Number(dustInput.value) });
+      dustOut.value = Number(dustInput.value).toFixed(2);
     });
     pauseButton.addEventListener("click", () => {
-      paused = !paused;
-      pauseButton.textContent = paused ? "Resume" : "Pause";
-      last = null;
+      engine.paused = !engine.paused;
+      showPaused();
     });
 
-    addEventListener("pointermove", (event) => {
-      targetPointer.x = event.clientX / innerWidth;
-      targetPointer.y = 1 - event.clientY / innerHeight;
-    }, { passive: true });
+    // a reload can bring the sliders back where they were; read them out
+    shaftOut.value = engine.settings.shaft.toFixed(2);
+    dustOut.value = engine.settings.dust.toFixed(2);
+    showPaused();
 
-    addEventListener("pointerleave", () => {
-      targetPointer.x = 0.5;
-      targetPointer.y = 0.5;
+    /* ---------------- download ----------------
+       Download hands over this room, set the way it is now, as a page of
+       its own: the room and engine sections of this very script, verbatim,
+       so it draws exactly what this page draws, plus its settings. */
+
+    function currentDownload() {
+      const s = engine.settings;
+      return buildDownload(SOURCE, {
+        shaft: s.shaft,
+        dust: s.dust,
+        speed: s.speed,
+        interactive: s.interactive,
+        time: engine.time,
+        from: /^https?:$/.test(location.protocol) ? location.origin + location.pathname : ""
+      });
+    }
+
+    downloadButton.addEventListener("click", () => {
+      const file = currentDownload();
+      const url = URL.createObjectURL(new Blob([file.html], { type: "text/html" }));
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = file.name;
+      document.body.append(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
     });
-
-    function resize() {
-      const dpr = Math.min(devicePixelRatio || 1, 2);
-      const width = Math.max(1, Math.round(innerWidth * dpr));
-      const height = Math.max(1, Math.round(innerHeight * dpr));
-      if (canvas.width !== width || canvas.height !== height) {
-        canvas.width = width;
-        canvas.height = height;
-        canvas.style.width = innerWidth + "px";
-        canvas.style.height = innerHeight + "px";
-        gl.viewport(0, 0, width, height);
-      }
-    }
-
-    addEventListener("resize", resize, { passive: true });
-    resize();
-
-    function draw() {
-      pointer.x += (targetPointer.x - pointer.x) * 0.035;
-      pointer.y += (targetPointer.y - pointer.y) * 0.035;
-      gl.uniform2f(uniforms.resolution, canvas.width, canvas.height);
-      gl.uniform2f(uniforms.pointer, pointer.x, pointer.y);
-      gl.uniform1f(uniforms.time, elapsed);
-      gl.uniform1f(uniforms.shaft, P.shaft);
-      gl.uniform1f(uniforms.dust, P.dust);
-      gl.drawArrays(gl.TRIANGLES, 0, 6);
-    }
-
-    function frame(now) {
-      if (last === null) last = now;
-      const delta = Math.min(0.05, Math.max(0, (now - last) / 1000));
-      last = now;
-      if (!paused && !document.hidden) elapsed += delta;
-      draw();
-      requestAnimationFrame(frame);
-    }
 
     window.__demo = {
-      P,
-      get elapsed() { return elapsed; },
+      engine,
+      get P() { return engine.settings; },
+      get elapsed() { return engine.time; },
       pin(t) {
-        elapsed = t;
-        paused = true;
-        pauseButton.textContent = "Resume";
-        draw();
+        engine.time = t;
+        engine.paused = true;
+        showPaused();
+        engine.set({}, true);
+        engine.draw();
       },
       step(dt, steps) {
         const n = steps == null ? 1 : steps;
-        for (let i = 0; i < n; i++) elapsed += dt;
-        draw();
-        return elapsed;
+        for (let i = 0; i < n; i++) engine.time += dt;
+        engine.draw();
+        return engine.time;
       },
-      draw
+      // the file Download would hand over, without saving it
+      download: currentDownload,
+      draw: engine.draw
     };
 
-    requestAnimationFrame(frame);
+    /* ---------------- download page ----------------
+       Source text and settings in, a standalone page out. Nothing here
+       touches the page, so a test can run it on the file as it sits. */
+
+    // The lines from the one holding `from` up to the one holding `to`.
+    function sourceBetween(source, from, to) {
+      const start = source.indexOf(from);
+      const end = start < 0 ? -1 : source.indexOf(to, start);
+      if (end < 0) throw new Error("Stillroom Shaft: a section marker is missing from the page source");
+      return source.slice(source.lastIndexOf("\n", start) + 1, source.lastIndexOf("\n", end) + 1);
+    }
+
+    function buildDownload(source, look) {
+      const code =
+        sourceBetween(source, "/* ---------------- the room ----------------", "/* ---------------- engine ----------------") +
+        sourceBetween(source, "/* ---------------- engine ----------------", "/* ---------------- renderer ----------------");
+      const num = (value, digits) => String(Number(Number(value).toFixed(digits)));
+      const rows = [
+        ["shaft", num(look.shaft, 2), "the beam's strength, from 0.25 (a faint ray) to 1.8 (blazing)"],
+        ["dust", num(look.dust, 2), "the motes lit in the beam, from 0 (clean air) to 2.2"],
+        ["speed", num(look.speed, 2), "0 holds still, 2 runs twice as fast"],
+        ["interactive", String(Boolean(look.interactive)), "the view leans a little after the pointer"],
+        ["time", num(look.time, 2), "seconds in; it opens where you left it"]
+      ];
+      const lines = rows.map(([key, value], i) => "    " + key + ": " + value + (i < rows.length - 1 ? "," : ""));
+      const width = Math.max(...lines.map(line => line.length)) + 2;
+      const settings = lines.map((line, i) => line.padEnd(width) + "// " + rows[i][2]).join("\n");
+      const left = "shaft " + Number(look.shaft).toFixed(2) + ", dust " + Number(look.dust).toFixed(2) +
+        ", " + num(look.time, 2) + " seconds in";
+      const from = look.from ? "\n  From " + look.from : "";
+
+      // In the header for readers, and atop the engine so it travels with copies.
+      const notice = "Copyright (c) 2026 Jason Adams. Released under the MIT License: https://opensource.org/license/mit";
+
+      // "<\/script>" and "<\!--" keep this page's own script from ending early.
+      const html = `<!doctype html>
+<\!--
+  Stillroom Shaft: a dark, still room cut by one ray of late sun from the
+  upper left. The air in the beam absorbs as well as it glows, and dust
+  motes catch the light only inside it. One WebGL fragment shader, no
+  textures, no libraries.
+
+  ${notice}
+
+  Set the way you left it: ${left}.${from}
+
+  Open this file in a browser and the room fills the window. Its settings
+  are in STILLROOM_SHAFT below: change any of them and reload.
+
+  To run it on a page of your own, copy the first two scripts below into
+  that page, then point the room at an element:
+
+    <div id="hero" style="height: 70vh">Your words, in the stillroom</div>
+    <script>
+      const room = StillroomShaft(document.getElementById("hero"), STILLROOM_SHAFT);
+    <\/script>
+
+  It fills the element from behind whatever the element holds. Hand it a
+  canvas instead and it draws into that, at the size your CSS gives it.
+  It rests while paused or scrolled out of sight, and holds still for
+  anyone whose system asks for reduced motion.
+
+  StillroomShaft returns a controller for changing the room as it runs:
+    room.set({ shaft: 1.6 })   strengthens the beam, or changes any setting
+    room.paused = true         holds the moment
+    room.time = 20             moves to 20 seconds in
+    room.destroy()             stops it and lets go of the canvas
+  Where WebGL is missing it returns null and leaves the page as it was.
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#050403" />
+  <title>Stillroom Shaft · Sunlight and Dust</title>
+  <style>
+    html, body { height: 100%; margin: 0; background: #050403; }
+    #room { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+    p { margin: 24px; color: #f0e6d2; font: 16px/1.5 system-ui, sans-serif; }
+  </style>
+</head>
+<body>
+  <canvas id="room" aria-label="A dark still room cut by a single shaft of sunlight, with dust motes in the air"></canvas>
+
+  <script>
+  // The settings. StillroomShaft reads them as it starts; room.set() changes them after.
+  const STILLROOM_SHAFT = {
+${settings}
+  };
+  <\/script>
+
+  <script>
+  // Stillroom Shaft. ${notice}
+  // The engine. StillroomShaft(element, settings) starts a room there and returns its controller.
+  window.StillroomShaft = (() => {
+    "use strict";
+
+${code}    return createStillroom;
+  })();
+  <\/script>
+
+  <script>
+  const room = StillroomShaft(document.getElementById("room"), STILLROOM_SHAFT);
+  if (!room) document.body.insertAdjacentHTML("beforeend", "<p>Stillroom Shaft needs WebGL, which this browser has switched off.</p>");
+  <\/script>
+</body>
+</html>
+`;
+      return { name: "stillroom-shaft.html", html };
+    }
   })();
   </script>
 </body>
