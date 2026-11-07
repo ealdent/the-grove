@@ -101,3 +101,12 @@ test('a custom ink is named for itself, and a page with no web address leaves Fr
   assert.ok(file.html.includes('Set the way you left it: Custom #2fb5c8 on the light paper.\n'));
   assert.ok(!file.html.includes('  From '));
 });
+
+test('the MIT notice heads the file and the engine, so a copied engine keeps it', async () => {
+  const { file } = await download();
+  const notice = 'Copyright (c) 2026 Jason Adams. Released under the MIT License: https://opensource.org/license/mit';
+  const header = file.html.slice(0, file.html.indexOf('-->'));
+  assert.ok(header.includes('\n  ' + notice + '\n'), 'the header should carry the notice');
+  const engine = scriptsOf(file.html)[1];
+  assert.ok(engine.trimStart().startsWith('// Signal Swell. ' + notice + '\n'), 'the engine script should open with the notice');
+});

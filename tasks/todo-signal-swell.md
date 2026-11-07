@@ -163,5 +163,9 @@ of your own that draws exactly what the page showed.
   each, no overflow); a real click on Download (save intercepted) handed
   over `signal-swell-phosphor-green-light.html` with the panel's settings;
   the downloaded cobalt page renders at dpr 2; console clean.
+- MIT notice (Copyright (c) 2026 Jason Adams) in the download's header and
+  on the engine script's first line, so a copied engine keeps it; tested,
+  and a real click in the pane handed over both lines. The repo itself
+  stays unlicensed.
 - Not verified: a real save dialog in Safari or iOS (the pane intercepted
   the save; Chrome's real download path was exercised headless), Firefox.
