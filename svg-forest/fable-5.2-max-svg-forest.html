@@ -1,0 +1,1547 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>LOW NOON · shade is water here</title>
+<meta name="description" content="A first-person walk across a salt plain where every shadow is a pool of the old sea. Drawn entirely in SVG.">
+<meta name="theme-color" content="#0a1230">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230a1230'/%3E%3Ccircle cx='16' cy='16' r='10' fill='none' stroke='%23f6efe6' stroke-width='2.4'/%3E%3Cpath d='M7.2 19a9 9 0 0 0 17.6 0Z' fill='%2335c0b4'/%3E%3Ccircle cx='16' cy='12.5' r='3' fill='%23ffd26a'/%3E%3C/svg%3E">
+<style>
+:root {
+  --ink: #f6efe6;
+  --gold: #ffd26a;
+  --teal: #35c0b4;
+  --night: #0a1230;
+  --font: "Futura", "Avenir Next", "Century Gothic", "Trebuchet MS", system-ui, sans-serif;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body {
+  position: fixed; inset: 0; width: 100%; height: 100%; overflow: hidden;
+  background: var(--night); color: var(--ink); font-family: var(--font);
+  overscroll-behavior: none; touch-action: none;
+  -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent; -webkit-text-size-adjust: 100%;
+}
+#scene { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; cursor: grab; background: var(--night); }
+#scene.drag { cursor: grabbing; }
+#scene path, #scene rect, #scene circle, #scene ellipse, #scene use { pointer-events: none; }
+
+/* twinkle and pulse: cheap opacity animations on whole groups */
+@keyframes tw { 0%, 100% { opacity: 1; } 50% { opacity: .55; } }
+#st1 { animation: tw 3.1s ease-in-out infinite; }
+#st2 { animation: tw 4.3s ease-in-out -1.7s infinite; }
+@keyframes swell { 0%, 100% { opacity: .1; } 50% { opacity: .5; } }
+#swellA { animation: swell 5.2s ease-in-out infinite; }
+#swellB { animation: swell 6.4s ease-in-out -2.9s infinite; }
+@keyframes pulse { 0%, 100% { opacity: .35; } 50% { opacity: 1; } }
+#markNow { animation: pulse 1.8s ease-in-out infinite; }
+.beam { animation: pulse 2.6s ease-in-out infinite; }
+@keyframes nod { 0%, 62%, 100% { transform: rotate(0deg); } 70% { transform: rotate(16deg); } 78% { transform: rotate(-3deg); } 86% { transform: rotate(0deg); } }
+.neck { transform-box: fill-box; transform-origin: 50% 100%; animation: nod 7s ease-in-out infinite; animation-delay: var(--ad, 0s); }
+
+#hud { position: absolute; left: max(14px, env(safe-area-inset-left)); top: max(12px, env(safe-area-inset-top)); pointer-events: none;
+  text-shadow: 0 1px 10px rgba(3, 6, 20, .55); transition: opacity .8s; }
+#hour { display: flex; align-items: center; gap: 10px; }
+#hourGlyph { flex: none; filter: drop-shadow(0 1px 6px rgba(3, 6, 20, .5)); }
+#hourName { font-size: 13px; letter-spacing: .2em; text-transform: uppercase; font-weight: 500; white-space: nowrap; margin-bottom: 5px; }
+#pips { display: block; }
+#pips circle { fill: none; stroke: currentColor; stroke-width: 1.1; opacity: .55; transition: fill .6s, opacity .6s; }
+#pips circle.kept { fill: var(--gold); stroke: var(--gold); opacity: 1; }
+#pips circle.now { opacity: 1; stroke-width: 1.8; }
+
+#help { position: absolute; right: max(14px, env(safe-area-inset-right)); top: max(12px, env(safe-area-inset-top));
+  width: 34px; height: 34px; border-radius: 50%; border: 1.5px solid rgba(246, 239, 230, .7); background: rgba(8, 14, 40, .28);
+  color: var(--ink); font: 500 16px/1 var(--font); cursor: pointer; touch-action: manipulation; }
+#help:hover { background: rgba(8, 14, 40, .5); }
+#help:focus-visible, #begin:focus-visible, #forget:focus-visible { outline: 2px solid var(--gold); outline-offset: 3px; }
+
+#toast { position: absolute; left: 50%; bottom: 13%; transform: translateX(-50%); width: min(34rem, calc(100% - 40px)); text-align: center;
+  pointer-events: none; opacity: 0; transition: opacity .9s; text-shadow: 0 1px 14px rgba(3, 6, 20, .85), 0 0 2px rgba(3, 6, 20, .7); }
+#toast.on { opacity: 1; }
+#toast b { display: block; font-size: 12px; letter-spacing: .28em; text-transform: uppercase; font-weight: 500; color: var(--gold); margin-bottom: 7px; }
+#toast span { font-size: clamp(15px, 2.1vw, 19px); line-height: 1.45; }
+
+/* twin sticks: only shown on touch devices */
+#sticks { display: none; }
+body.touch #sticks { display: block; }
+.stick { position: absolute; bottom: max(26px, calc(env(safe-area-inset-bottom) + 16px)); width: 128px; height: 128px; touch-action: none; }
+.stick::before { content: ""; position: absolute; inset: -34px; }            /* generous hit area */
+#stickL { left: max(26px, calc(env(safe-area-inset-left) + 16px)); }
+#stickR { right: max(26px, calc(env(safe-area-inset-right) + 16px)); }
+.stick .ring { position: absolute; inset: 0; border-radius: 50%; border: 1.5px solid rgba(246, 239, 230, .55);
+  background: radial-gradient(circle, rgba(8, 14, 40, .1) 0, rgba(8, 14, 40, .34) 100%); }
+.stick .knob { position: absolute; left: 50%; top: 50%; width: 54px; height: 54px; margin: -27px 0 0 -27px; border-radius: 50%;
+  background: rgba(246, 239, 230, .82); box-shadow: 0 2px 12px rgba(3, 6, 20, .4); will-change: transform; }
+.stick.on .knob { background: var(--gold); }
+.stick span { position: absolute; left: 0; right: 0; top: -22px; text-align: center; font-size: 10px; letter-spacing: .26em; text-transform: uppercase;
+  opacity: .7; text-shadow: 0 1px 6px rgba(3, 6, 20, .8); transition: opacity .6s; }
+body.walked .stick span { opacity: 0; }
+body.touch #toast { bottom: calc(max(26px, env(safe-area-inset-bottom) + 16px) + 170px); }
+@media (orientation: landscape) and (max-height: 480px) {
+  body.touch #toast { bottom: 16px; width: calc(100% - 400px); }
+  .stick { width: 112px; height: 112px; }
+}
+
+#intro { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding: 20px;
+  background: radial-gradient(ellipse at 50% 45%, rgba(6, 10, 32, .5) 0, rgba(4, 7, 24, .82) 100%); transition: opacity .9s; overflow: auto; }
+#intro.off { opacity: 0; pointer-events: none; }
+#introCard { width: min(33rem, 100%); text-align: center; margin: auto; }
+#wordmark { width: min(27rem, 86%); height: auto; color: var(--ink); display: block; margin: 0 auto 6px; }
+#introCard p { font-size: clamp(14px, 1.9vw, 16.5px); line-height: 1.6; margin: 14px auto 0; max-width: 31rem; color: rgba(246, 239, 230, .92); text-wrap: pretty; }
+#introCard p.tag { font-size: 12px; letter-spacing: .34em; text-transform: uppercase; color: var(--teal); margin-top: 10px; }
+#begin { margin-top: 24px; padding: 13px 34px; border-radius: 999px; border: 0; background: var(--gold); color: #20170a;
+  font: 600 14px/1 var(--font); letter-spacing: .22em; text-transform: uppercase; cursor: pointer; touch-action: manipulation; }
+#begin:hover { background: #ffe08c; }
+#forget { display: block; margin: 14px auto 0; padding: 6px 10px; border: 0; background: none; color: rgba(246, 239, 230, .62); font: 500 11px/1 var(--font);
+  letter-spacing: .16em; text-transform: uppercase; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; touch-action: manipulation; }
+#forget[hidden] { display: none; }
+#forget:hover { color: var(--ink); }
+#introCard p.keys { font-size: 12px; letter-spacing: .06em; color: rgba(246, 239, 230, .7); margin-top: 18px; }
+p.keys b { font-weight: 600; color: var(--ink); letter-spacing: .1em; }
+.for-touch { display: none; }
+body.touch .for-touch { display: block; }
+body.touch .for-mouse { display: none; }
+body.intro #hud, body.intro #help { opacity: 0; }
+body.intro #sticks { opacity: 0; pointer-events: none; }
+#sticks { transition: opacity .8s; }
+#help { transition: opacity .8s; }
+@media (max-height: 520px) {
+  #wordmark { width: min(17rem, 60%); }
+  #introCard p { margin-top: 8px; line-height: 1.45; font-size: 13px; }
+  #begin { margin-top: 12px; padding: 10px 28px; }
+  #introCard p.keys { margin-top: 10px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  #st1, #st2, #swellA, #swellB, #markNow, .beam, .neck { animation: none; }
+}
+</style>
+</head>
+<body class="intro">
+<svg id="scene" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="none" role="img" aria-label="A salt plain of standing stones whose shadows are pools of water, seen in first person">
+  <defs id="defs">
+    <linearGradient id="gSky" gradientUnits="userSpaceOnUse" x1="0" x2="0" y1="0" y2="1">
+      <stop id="sk0" offset="0"/><stop id="sk1" offset=".5"/><stop id="sk2" offset=".82"/><stop id="sk3" offset="1"/>
+    </linearGradient>
+    <linearGradient id="gGround" gradientUnits="userSpaceOnUse" x1="0" x2="0" y1="0" y2="1">
+      <stop id="gr0" offset="0"/><stop id="gr1" offset=".021"/><stop id="gr2" offset=".05"/><stop id="gr3" offset=".125"/><stop id="gr4" offset=".4"/><stop id="gr5" offset="1"/>
+    </linearGradient>
+    <linearGradient id="gWater" gradientUnits="userSpaceOnUse" x1="0" x2="0" y1="0" y2="1">
+      <stop id="wa0" offset="0"/><stop id="wa1" offset=".03"/><stop id="wa2" offset=".14"/><stop id="wa3" offset=".6"/>
+    </linearGradient>
+    <linearGradient id="gCrack" gradientUnits="userSpaceOnUse" x1="0" x2="0" y1="0" y2="1">
+      <stop id="cr0" offset=".07" stop-opacity="0"/><stop id="cr1" offset=".2" stop-opacity=".55"/><stop id="cr2" offset="1" stop-opacity=".9"/>
+    </linearGradient>
+    <linearGradient id="gHaze" x1="0" x2="0" y1="0" y2="1">
+      <stop id="hz0" offset="0" stop-opacity="0"/><stop id="hz1" offset=".62" stop-opacity=".85"/><stop id="hz2" offset=".72" stop-opacity=".7"/><stop id="hz3" offset="1" stop-opacity="0"/>
+    </linearGradient>
+    <radialGradient id="gSunGlow">
+      <stop id="sg0" offset="0" stop-opacity=".95"/><stop id="sg1" offset=".28" stop-opacity=".5"/><stop id="sg2" offset="1" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="gSunHalo">
+      <stop id="sh0" offset="0" stop-opacity=".7"/><stop id="sh1" offset=".45" stop-opacity=".28"/><stop id="sh2" offset="1" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="gKoiGlow">
+      <stop offset="0" stop-color="#ffd7a0" stop-opacity=".75"/><stop offset=".45" stop-color="#ff9a5a" stop-opacity=".28"/><stop offset="1" stop-color="#ff7a4a" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="gBeacon" x1="0" x2="0" y1="0" y2="1">
+      <stop offset="0" stop-color="#ffe9a8" stop-opacity="0"/><stop offset=".55" stop-color="#ffd870" stop-opacity=".5"/><stop offset="1" stop-color="#fff3c8" stop-opacity=".95"/>
+    </linearGradient>
+    <radialGradient id="gVig" cx=".5" cy=".5" r=".75">
+      <stop offset=".55" stop-color="#02040e" stop-opacity="0"/><stop offset="1" stop-color="#02040e" stop-opacity=".42"/>
+    </radialGradient>
+  </defs>
+
+  <rect id="sky" fill="url(#gSky)"/>
+  <g id="stars" fill="none" stroke-linecap="round"><path id="st0" stroke="#fff6dd"/><path id="st1" stroke="#dfe6ff"/><path id="st2" stroke="#cdd6ff"/></g>
+  <path id="arc" fill="none" stroke="#fff" stroke-opacity=".3"/>
+  <path id="marks" fill="none" stroke="#fff" stroke-opacity=".62" stroke-linecap="round"/>
+  <path id="marksLit" fill="none" stroke="#ffd26a" stroke-linecap="round"/>
+  <circle id="markNow" fill="none" stroke="#ffd26a" r="0"/>
+  <ellipse id="sunHalo" fill="url(#gSunHalo)"/>
+  <circle id="sunGlow" fill="url(#gSunGlow)"/>
+  <circle id="sunDisc"/>
+  <g id="clouds"></g>
+  <path id="mtnFar"/><path id="mtnNear"/>
+  <g id="skyKoi"><g id="skGlow" opacity=".55"></g><path id="skW" fill="#fff1dc"/><path id="skO" fill="#ff8a3c"/><path id="skK" fill="#2b2440"/></g>
+
+  <rect id="ground" fill="url(#gGround)"/>
+  <ellipse id="glare" fill="url(#gSunHalo)"/>
+  <path id="cracks" fill="none" stroke="url(#gCrack)" stroke-linecap="round" stroke-linejoin="round"/>
+  <path id="inlay" fill="none" stroke-linecap="round"/>
+  <path id="rim" fill="none" stroke-linejoin="round"/>
+  <path id="water" fill="url(#gWater)"/>
+  <path id="pads"/>
+  <path id="glints" fill="none" stroke-linecap="round" stroke-opacity=".8"/>
+  <rect id="sea" fill="url(#gWater)"/>
+  <use id="starsR" href="#stars"/>
+  <g id="refl"></g>
+  <path id="swellA" fill="none" stroke="#cfe0ff" stroke-linecap="round"/><path id="swellB" fill="none" stroke="#cfe0ff" stroke-linecap="round"/>
+  <path id="ripples" fill="none" stroke="#fff" stroke-opacity=".55"/><path id="ripples2" fill="none" stroke="#fff" stroke-opacity=".25"/>
+  <g id="glows"></g>
+  <g id="koi"><path id="koF" fill="#ffe9c9" fill-opacity=".6"/><path id="koW" fill="#fbf3e4"/><path id="koG" fill="#ffc23a"/><path id="koO" fill="#ff7a2e"/><path id="koR" fill="#e8442a"/><path id="koK" fill="#2b2430"/></g>
+  <rect id="haze" fill="url(#gHaze)"/>
+  <g id="sprites"></g>
+  <rect id="vig" fill="url(#gVig)"/>
+</svg>
+
+<div id="hud" aria-hidden="true">
+  <div id="hour">
+    <svg id="hourGlyph" viewBox="-16 -16 32 22" width="38" height="26" aria-hidden="true">
+      <path d="M-13 3A13 13 0 0 1 13 3" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+      <path d="M-15.5 3H15.5" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" opacity=".5"/>
+      <path id="hourRay" d="M0 3L0 -10" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>
+      <circle id="hourDot" cx="0" cy="-10" r="2.4" fill="currentColor"/>
+    </svg>
+    <div>
+      <div id="hourName">&nbsp;</div>
+      <svg id="pips" viewBox="0 0 142 10" width="142" height="10" aria-hidden="true"></svg>
+    </div>
+  </div>
+</div>
+<button id="help" type="button" aria-label="About this place and how to move">?</button>
+<div id="toast" role="status" aria-live="polite"></div>
+
+<div id="sticks" aria-hidden="true">
+  <div class="stick" id="stickL"><div class="ring"></div><div class="knob"></div><span>walk</span></div>
+  <div class="stick" id="stickR"><div class="ring"></div><div class="knob"></div><span>turn</span></div>
+</div>
+
+<div id="intro" role="dialog" aria-modal="true" aria-labelledby="introTitle">
+  <div id="introCard">
+    <svg id="wordmark" viewBox="-6 0 554 90" role="img" aria-labelledby="introTitle">
+      <title id="introTitle">LOW NOON</title>
+      <g fill="none" stroke="currentColor" stroke-width="7" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M10 15V75H44"/><circle cx="92" cy="45" r="30"/><path d="M140 15L157 75L175 30L193 75L210 15"/>
+        <path d="M258 75V15L308 75V15"/><circle cx="356" cy="45" r="30"/><circle cx="434" cy="45" r="30"/><path d="M482 75V15L532 75V15"/>
+      </g>
+      <circle cx="356" cy="45" r="11" fill="#ffd26a"/>
+      <path d="M408 52A27 27 0 0 0 460 52Z" fill="#35c0b4"/>
+    </svg>
+    <p class="tag">Shade is water here.</p>
+    <p>The sea that died on this plain left its salt and waited. Then someone raised a stone to count the hours, and the sea came up into its shadow: a hand deep at noon, a canal by evening, an ocean by night.</p>
+    <p>The dial-keepers are gone, and you have a pair of their stilts. Walk with the shade. Where a lily opens under it, stand close. That is how an hour is kept.</p>
+    <button id="begin" type="button">Walk in</button>
+    <p class="keys for-mouse"><b>W S</b> or <b>↑ ↓</b> walk · <b>A D</b> or <b>← →</b> turn · drag to look · <b>Shift</b> hurry</p>
+    <p class="keys for-touch">Left stick walks · right stick turns · drag the sky to look</p>
+    <button id="forget" type="button" hidden>Let the kept hours go</button>
+  </div>
+</div>
+
+<script>
+(() => {
+'use strict';
+/* LOW NOON — a salt plain where every shadow is a pool of the old sea. Pure SVG, no canvas. */
+
+const TAU = Math.PI * 2, DEG = Math.PI / 180;
+const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
+const lerp = (a, b, t) => a + (b - a) * t;
+const smooth = (a, b, v) => { const t = clamp((v - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
+const r1 = v => Math.round(v * 10) / 10;
+
+const QS = new URLSearchParams(location.search);
+const qnum = (k, d) => QS.has(k) && QS.get(k) !== '' && isFinite(+QS.get(k)) ? +QS.get(k) : d;
+
+/* Hashing: each input goes through a full avalanche before the next is folded in, so
+   hash(a,b) and hash(-a,-b) share nothing (a plain xor-of-multiplies mirrors the world). */
+const fmix = h => { h ^= h >>> 16; h = Math.imul(h, 0x85ebca6b); h ^= h >>> 13; h = Math.imul(h, 0xc2b2ae35); return (h ^ (h >>> 16)) >>> 0; };
+const SEED = (qnum('seed', 7) * 0x9e3779b1) | 0;
+const hash2 = (a, b) => fmix(fmix((a | 0) ^ SEED) + Math.imul(b | 0, 0x27d4eb2f) | 0);
+const hash3 = (a, b, c) => fmix(hash2(a, b) + Math.imul(c | 0, 0x165667b1) | 0);
+function rng(seed) {
+  let s = seed >>> 0;
+  return () => { s = s + 0x6d2b79f5 | 0; let t = Math.imul(s ^ s >>> 15, 1 | s); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
+}
+
+/* Colour: linear-light float triples; lighting is multiplied in linear space, written out as sRGB hex. */
+const lin = h => { const n = parseInt(h.slice(1), 16); return [Math.pow((n >> 16 & 255) / 255, 2.2), Math.pow((n >> 8 & 255) / 255, 2.2), Math.pow((n & 255) / 255, 2.2)]; };
+const h2 = v => { const s = Math.round(255 * Math.pow(v < 0 ? 0 : v > 1 ? 1 : v, 1 / 2.2)); return (s < 16 ? '0' : '') + s.toString(16); };
+const hex = c => '#' + h2(c[0]) + h2(c[1]) + h2(c[2]);
+const mix = (a, b, t) => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
+const mul = (a, b) => [a[0] * b[0], a[1] * b[1], a[2] * b[2]];
+const sc = (a, k) => [a[0] * k, a[1] * k, a[2] * k];
+const add = (a, b) => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
+
+/* DOM */
+const $ = id => document.getElementById(id);
+const NS = 'http://www.w3.org/2000/svg';
+const mk = (tag, parent) => { const e = document.createElementNS(NS, tag); if (parent) parent.appendChild(e); return e; };
+const setA = (el, k, v) => { if (el['_' + k] !== v) { el['_' + k] = v; el.setAttribute(k, v); } };   // write only on change
+
+/* View: a pinhole camera whose pitch is a lens shift (the horizon line moves, verticals stay vertical),
+   so ground polygons and upright billboards share one exact projection. */
+const V = { W: 1, H: 1, HW: .5, f: 1, hy: 0, eye: 1.65, x: 0, z: 0, yaw: 0, cs: 1, sn: 0, tanX: 1, pitch: 0 };
+const NEAR = 0.3;
+
+/* Scratch polygon in camera space (x right, z forward). gv() adds a world ground point. */
+const SX = new Float64Array(512), SZ = new Float64Array(512);
+let SN = 0;
+const gv = (wx, wz) => { const dx = wx - V.x, dz = wz - V.z; SX[SN] = dx * V.cs - dz * V.sn; SZ[SN++] = dx * V.sn + dz * V.cs; };
+
+/* Project the scratch polygon on a horizontal plane `ph` metres below the eye (negative = above),
+   clipped to the near plane. Returns a closed subpath or ''. */
+function gpoly(ph) {
+  const n = SN; SN = 0;
+  if (n < 3) return '';
+  const k = V.f, hw = V.HW, hy = V.hy;
+  let s = '', c = 0, px = SX[n - 1], pz = SZ[n - 1], pin = pz >= NEAR;
+  for (let i = 0; i < n; i++) {
+    const x = SX[i], z = SZ[i], inn = z >= NEAR;
+    if (inn !== pin) {
+      const t = (NEAR - pz) / (z - pz), ix = px + (x - px) * t;
+      s += (c++ ? 'L' : 'M') + r1(hw + k * ix / NEAR) + ' ' + r1(hy + k * ph / NEAR);
+    }
+    if (inn) s += (c++ ? 'L' : 'M') + r1(hw + k * x / z) + ' ' + r1(hy + k * ph / z);
+    px = x; pz = z; pin = inn;
+  }
+  return c > 2 ? s + 'Z' : '';
+}
+/* Same, as an open polyline (each run that survives clipping becomes its own subpath). */
+function gline(ph) {
+  const n = SN; SN = 0;
+  const k = V.f, hw = V.HW, hy = V.hy;
+  let s = '', pen = false;
+  for (let i = 0; i < n; i++) {
+    const x = SX[i], z = SZ[i], inn = z >= NEAR;
+    if (i > 0) {
+      const px = SX[i - 1], pz = SZ[i - 1], pin = pz >= NEAR;
+      if (inn !== pin) {
+        const t = (NEAR - pz) / (z - pz), ix = px + (x - px) * t;
+        s += (pen ? 'L' : 'M') + r1(hw + k * ix / NEAR) + ' ' + r1(hy + k * ph / NEAR);
+        pen = inn;
+      }
+    }
+    if (inn) { s += (pen ? 'L' : 'M') + r1(hw + k * x / z) + ' ' + r1(hy + k * ph / z); pen = true; }
+  }
+  return s;
+}
+/* A direction on the sky (east, up, north) -> screen, or null when behind the lens. */
+function projDir(e, u, n) {
+  const cz = e * V.sn + n * V.cs;
+  if (cz < 0.04) return null;
+  return [V.HW + V.f * (e * V.cs - n * V.sn) / cz, V.hy - V.f * u / cz, cz];   // fresh array: never alias
+}
+
+/* ---- The day: a real diurnal arc, and every colour in the world derived from where the sun is ---- */
+
+const CYCLE = qnum('cycle', 300);          // seconds for a whole day and night
+const DAYF = 0.72;                         // share of the cycle that is daylight (twelve hours of it)
+const LAT = 60 * DEG, DEC = 8 * DEG;            // a high-latitude sun: even at noon it stands low, so shade is always long
+const SL = Math.sin(LAT), CL = Math.cos(LAT), SD = Math.sin(DEC), CD = Math.cos(DEC);
+const H0 = Math.acos(-SL * SD / (CL * CD));                                  // hour angle of sunrise/sunset
+const hourAngle = T => T < DAYF ? lerp(-H0, H0, T / DAYF) : lerp(H0, TAU - H0, (T - DAYF) / (1 - DAYF));
+/* equatorial (declination, hour angle) -> local [east, up, north] */
+const eqToLocal = (sd, cd, H) => [-cd * Math.sin(H), SL * sd + CL * cd * Math.cos(H), CL * sd - SL * cd * Math.cos(H)];
+
+const KA = [-18, -7, -2, 3, 10, 24, 60];   // sun altitude keys, degrees
+const tbl = a => a.map(lin);
+const SKY = {
+  pm: {
+    zen: tbl(['#040818', '#0c1238', '#1c2666', '#2c4698', '#3566b6', '#2c7ccf', '#1b68cc']),
+    mid: tbl(['#0a1230', '#2b2260', '#6c3f8c', '#b56c98', '#93a0cc', '#66b0e4', '#4fa2ea']),
+    hor: tbl(['#1a2650', '#8a4470', '#ff7448', '#ffae4c', '#ffd691', '#d3ebf2', '#d9f1f7']),
+    sun: tbl(['#ff5a2a', '#ff5a2a', '#ff5a2a', '#ff9a3c', '#ffc978', '#fff0d2', '#fffaf0'])
+  },
+  am: {
+    zen: tbl(['#040818', '#0b1840', '#1f3a78', '#3460a6', '#3a7cc0', '#2c7ccf', '#1b68cc']),
+    mid: tbl(['#0a1230', '#1d3668', '#6f6aa8', '#a9a4cc', '#9cc6de', '#66b0e4', '#4fa2ea']),
+    hor: tbl(['#1a2650', '#5f6f9e', '#ffa98c', '#ffd3a6', '#ffeccb', '#d3ebf2', '#d9f1f7']),
+    sun: tbl(['#ff8a66', '#ff8a66', '#ff8a66', '#ffb88a', '#ffe0b0', '#fff0d2', '#fffaf0'])
+  }
+};
+const SUNI = [0, 0, 0.16, 0.62, 0.88, 1, 1.05];
+function keyIdx(a) { let i = 0; while (i < 5 && a > KA[i + 1]) i++; return i; }
+function key(arr, a) {
+  if (a <= KA[0]) return arr[0];
+  if (a >= KA[6]) return arr[6];
+  const i = keyIdx(a);
+  return mix(arr[i], arr[i + 1], (a - KA[i]) / (KA[i + 1] - KA[i]));
+}
+function keyS(arr, a) {
+  if (a <= KA[0]) return arr[0];
+  if (a >= KA[6]) return arr[6];
+  const i = keyIdx(a);
+  return lerp(arr[i], arr[i + 1], (a - KA[i]) / (KA[i + 1] - KA[i]));
+}
+
+const SALT = lin('#fdebdd'), DEEP = lin('#053f52'), TEAL = [.72, .98, 1], NIGHTFLOOR = [0.004, 0.006, 0.016];
+const FOGD = 120;
+const fogAt = d => 1 - Math.exp(-Math.pow(d / FOGD, 1.6));
+
+const ENV = { T: 0, step: -1 };
+function updateEnv(T) {
+  ENV.T = T;
+  const H = hourAngle(T), s = eqToLocal(SD, CD, H);
+  ENV.H = H; ENV.se = s[0]; ENV.su = s[1]; ENV.sn = s[2];
+  const alt = Math.asin(clamp(s[1], -1, 1)), aD = alt / DEG, hl = Math.hypot(s[0], s[2]) || 1e-6;
+  ENV.alt = alt; ENV.altD = aD;
+  ENV.sdx = -s[0] / hl; ENV.sdz = -s[2] / hl;                // shade points away from the sun
+  ENV.cot = hl / Math.max(s[1], 0.006);                      // shadow length per metre of height
+  ENV.day = smooth(-1.5, 5, aD);                             // how much direct sun there is
+  ENV.flood = 1 - smooth(-5, 1, aD);                         // 1 = night: all shade, all sea
+  ENV.starA = 1 - smooth(-11, -3, aD);
+  ENV.hourF = T < DAYF ? T / DAYF * 12 : -1;
+  ENV.hour = T < DAYF ? Math.min(11, Math.floor(ENV.hourF)) : -1;
+
+  const S = (H >= 0 && H < Math.PI) ? SKY.pm : SKY.am;
+  const zen = key(S.zen, aD), mid = key(S.mid, aD), hor = key(S.hor, aD);
+  ENV.zen = zen; ENV.mid = mid; ENV.hor = hor;
+  ENV.sunTint = key(S.sun, aD);
+  ENV.sunC = sc(ENV.sunTint, keyS(SUNI, aD) * ENV.day);
+  ENV.amb = add(sc(mix(zen, hor, 0.45), lerp(0.42, 0.62, ENV.day)), NIGHTFLOOR);
+  ENV.haze = mix(hor, mid, 0.25);
+  ENV.ground = mul(SALT, add(ENV.amb, sc(ENV.sunC, 0.3 + 0.6 * Math.max(0, s[1]))));
+  ENV.fill = add(ENV.amb, sc(ENV.ground, 0.17));              // sky light plus what the bright salt throws back up
+  /* water mirrors the sky at a grazing angle and shows its own depth from above: four stops, far to near */
+  const deep = mix(DEEP, NIGHTFLOOR, ENV.flood * 0.75);
+  ENV.w0 = mul(mix(hor, mid, 0.1), TEAL); ENV.w1 = mul(mix(hor, mid, 0.38), TEAL);
+  ENV.w2 = mix(mul(mix(hor, mid, 0.72), TEAL), deep, 0.5); ENV.w3 = mix(mul(mix(mid, zen, 0.5), TEAL), deep, 0.84);
+  ENV.step = Math.floor(T * 900);                            // sprite palettes refresh on this beat
+}
+/* One facet of a stone: albedo under ambient sky plus the sun at a given Lambert term. */
+const facet = (alb, lam) => mul(alb, add(ENV.fill, sc(ENV.sunC, lam)));
+
+/* ---- Stones, lilies, herons: every prop is drawn once in <defs>, in centimetres, base at the origin.
+        Colours are CSS variables set per instance: --l / --r are the two lit facets. ---- */
+
+const cm = v => Math.round(v * 100);
+const P = pts => { let s = ''; for (let i = 0; i < pts.length; i++) s += (i ? 'L' : 'M') + cm(pts[i][0]) + ' ' + cm(-pts[i][1]); return s + 'Z'; };
+const poly = (pts, v, extra) => `<path d="${P(pts)}" style="fill:var(--${v})"${extra || ''}/>`;
+const circ = (cx, cy, r, n, cw, a0, a1) => {
+  const out = [], s = a0 === undefined ? 0 : a0, e = a1 === undefined ? TAU : a1, m = a1 === undefined ? n : n - 1;
+  for (let i = 0; i < n; i++) { const t = cw ? e - (e - s) * i / m : s + (e - s) * i / m; out.push([cx + r * Math.cos(t), cy + r * Math.sin(t)]); }
+  return out;
+};
+/* a two-facet prism from a profile of [height, half-width] rows */
+const prism = prof => {
+  const C = prof.map(p => [0, p[0]]).reverse();
+  return poly(prof.map(p => [-p[1], p[0]]).concat(C), 'l') + poly(prof.map(p => [p[1], p[0]]).concat(C), 'r');
+};
+const silProf = prof => prof.map(p => [p[1], p[0]]).concat(prof.map(p => [-p[1], p[0]]).reverse());
+const flat = pts => { const a = new Float32Array(pts.length * 2); pts.forEach((p, i) => { a[i * 2] = p[0]; a[i * 2 + 1] = p[1]; }); return a; };
+const detail = s => `<g style="display:var(--d,inline)">${s}</g>`;
+const stroke = (d, v, w, extra) => `<path d="${d}" fill="none" style="stroke:var(--${v})" stroke-width="${w}" stroke-linecap="round"${extra || ''}/>`;
+
+/* winding number of (p, q) over a silhouette's polygons: nonzero = inside the stone, so inside its shade */
+function windSil(sil, p, q) {
+  let wn = 0;
+  for (const a of sil) for (let i = 0, n = a.length; i < n; i += 2) {
+    const x0 = a[i], y0 = a[i + 1], x1 = a[(i + 2) % n], y1 = a[(i + 3) % n];
+    if (y0 <= q) { if (y1 > q && (x1 - x0) * (q - y0) - (p - x0) * (y1 - y0) > 0) wn++; }
+    else if (y1 <= q && (x1 - x0) * (q - y0) - (p - x0) * (y1 - y0) < 0) wn--;
+  }
+  return wn;
+}
+const KINDS = [];
+const kind = o => {
+  o.i = KINDS.length; o.sil = (o.sil || []).map(flat); o.pts = [];
+  if (o.sil.length) {                        // points inside the silhouette, even along its height: where light glints on its shade
+    const R = rng(977 + o.i * 131), m = Math.max(.03, o.hw * .06), ins = (p, q) => windSil(o.sil, p, q) !== 0, rows = [];
+    for (let j = 0; j < 44; j++) for (let tries = 0; tries < 40; tries++) {
+      const p = (R() * 2 - 1) * o.hw, q = (j + R()) / 44 * o.h;
+      if (ins(p, q) && ins(p - m, q) && ins(p + m, q)) { rows.push([p, q]); break; }
+    }
+    for (let i = rows.length - 1; i > 0; i--) { const j = Math.floor(R() * (i + 1)), t = rows[i]; rows[i] = rows[j]; rows[j] = t; }   // any prefix is an even sample
+    for (const r of rows) o.pts.push(r[0], r[1]);
+  }
+  KINDS.push(o); return o;
+};
+
+/* needle obelisk */
+(() => {
+  const prof = [[0, 1.08], [.22, 1.08], [.22, .86], [.44, .86], [.44, .64], [7.1, .31], [8, 0]];
+  let ticks = ''; for (let y = 1.2; y < 4.3; y += .42) ticks += `M12 ${cm(-y)}h${y * 5 % 2 < 1 ? 16 : 24}`;
+  kind({ id: 'needle', h: 8, hw: 1.08, cr: .9, sil: [silProf(prof)], art:
+    prism(prof) + poly([[-.426, 4.9], [.426, 4.9], [.414, 5.14], [-.414, 5.14]], 'c') +
+    poly([[-.31, 7.1], [0, 7.1], [0, 8]], 'g') + poly([[0, 7.1], [.31, 7.1], [0, 8]], 'g2') +
+    detail(stroke(ticks, 'k', 5, ' opacity=".34"') + poly([[-.86, .2], [.86, .2], [.86, .24], [-.86, .24]], 'k', ' opacity=".22"')) });
+})();
+
+/* stack: four blocks, slabs between, a gold disc on top */
+(() => {
+  const prof = [], hw = [.95, .74, .55, .38]; let y = 0, lines = '';
+  for (const w of hw) {
+    prof.push([y, w], [y + 1.15, w * .94], [y + 1.15, w + .09], [y + 1.29, w + .09]);
+    lines += poly([[-w * .94, y + 1.09], [w * .94, y + 1.09], [w * .94, y + 1.15], [-w * .94, y + 1.15]], 'k', ' opacity=".28"');
+    y += 1.29;
+  }
+  prof.push([y, .12], [y + .28, .12]);
+  kind({ id: 'stack', h: 6.05, hw: 1.04, cr: .9, art:
+    prism(prof) + `<circle cx="0" cy="-575" r="30" style="fill:var(--g)"/><path d="M0 -605A30 30 0 0 1 0 -545Z" style="fill:var(--g2)"/>` + detail(lines),
+    sil: [silProf(prof.concat([[5.5, .22], [5.75, .3], [5.98, .2], [6.05, 0]]))] });
+})();
+
+/* broken column */
+kind({ id: 'stump', h: 1.5, hw: .6, cr: .55, small: true, art:
+  poly([[-.6, 0], [-.6, .18], [-.46, .18], [-.43, 1.2], [-.28, 1.45], [-.1, 1.22], [0, 1.38], [0, 0]], 'l') +
+  poly([[0, 0], [0, 1.38], [.12, 1.5], [.26, 1.24], [.43, 1.34], [.46, .18], [.6, .18], [.6, 0]], 'r'),
+  sil: [silProf([[0, .6], [.18, .6], [.18, .46], [1.38, .43]])] });
+
+/* eye stele: a slab with a hole. Its shadow keeps an island of light. (plate) */
+(() => {
+  const R = 1.25, yc = 4.1, ws = .5, ym = yc - Math.sqrt(R * R - ws * ws), t0 = Math.atan2(ym - yc, ws);
+  const out = [[1.15, 0], [1.15, .3], [ws, .3]].concat(circ(0, yc, R, 22, false, t0, Math.PI - t0), [[-ws, .3], [-1.15, .3], [-1.15, 0]]);
+  let rays = ''; for (let i = 0; i < 12; i++) { const a = i / 12 * TAU, c = Math.cos(a), s = Math.sin(a); rays += `M${cm(c * .82)} ${cm(-yc - s * .82)}L${cm(c * 1.04)} ${cm(-yc - s * 1.04)}`; }
+  kind({ id: 'eye', h: 5.35, hw: 1.25, cr: .7, plate: true, sil: [out, circ(0, yc, .62, 16, true)], art:
+    `<path fill-rule="evenodd" d="${P(out)}M62 ${cm(-yc)}A62 62 0 1 0 -62 ${cm(-yc)}A62 62 0 1 0 62 ${cm(-yc)}Z" style="fill:var(--l)"/>` +
+    `<circle cx="0" cy="${cm(-yc)}" r="69" fill="none" style="stroke:var(--c)" stroke-width="9"/>` +
+    detail(stroke(rays, 'k', 5, ' opacity=".3"') + stroke(`M-62 ${cm(-yc)}A62 62 0 0 1 62 ${cm(-yc)}`, 'k', 8, ' opacity=".3"') +
+      poly([[-1.15, .3], [1.15, .3], [1.15, .26], [-1.15, .26]], 'k', ' opacity=".25"')) });
+})();
+
+/* ring on a stem: casts a hoop of water. (plate) */
+(() => {
+  const yc = 2.55, R = 1.5, r = 1.14, base = [[.7, 0], [.7, .3], [.15, .3], [.15, 1.12], [-.15, 1.12], [-.15, .3], [-.7, .3], [-.7, 0]];
+  const ring = (q) => `M${cm(q)} ${cm(-yc)}A${cm(q)} ${cm(q)} 0 1 0 ${cm(-q)} ${cm(-yc)}A${cm(q)} ${cm(q)} 0 1 0 ${cm(q)} ${cm(-yc)}Z`;
+  kind({ id: 'ring', h: 4.2, hw: 1.5, cr: .5, plate: true, sil: [base, circ(0, yc, R, 28, false), circ(0, yc, r, 24, true)], art:
+    poly(base, 'r') + `<path fill-rule="evenodd" d="${ring(R)}${ring(r)}" style="fill:var(--l)"/>` +
+    `<circle cx="0" cy="${cm(-yc)}" r="132" fill="none" style="stroke:var(--c)" stroke-width="6"/>` +
+    `<circle cx="0" cy="${cm(-yc - R - .1)}" r="14" style="fill:var(--g)"/>` });
+})();
+
+/* blade: the classic sundial fin, long axis to the pole. At noon its shade is a line. (plate) */
+(() => {
+  const out = [[-2.5, 0], [1.35, 0], [1.35, .22], [1.1, .22], [1.1, 3.7], [-2.3, .22], [-2.5, .22]];
+  let notch = ''; for (let i = 0; i < 9; i++) notch += `M${cm(-1.9 + i * .34)} -22v${i % 2 ? -14 : -24}`;
+  kind({ id: 'blade', h: 3.7, hw: 2.5, cr: .5, plate: true, sil: [out, circ(.5, 1.55, .3, 12, true)], art:
+    `<path fill-rule="evenodd" d="${P([[-2.3, .22], [1.1, .22], [1.1, 3.7]])}M80 -155A30 30 0 1 0 20 -155A30 30 0 1 0 80 -155Z" style="fill:var(--l)"/>` +
+    poly([[-2.5, 0], [1.35, 0], [1.35, .22], [-2.5, .22]], 'r') + stroke('M-230 -22L110 -370', 'c', 8) + detail(stroke(notch, 'k', 4, ' opacity=".32"')) });
+})();
+
+/* gate: two pillars and a lintel; a window of light lies in its shade. (plate) */
+(() => {
+  const out = [[1.05, 0], [1.75, 0], [1.75, 3.5], [2.1, 3.5], [2.1, 4.15], [1.6, 4.15], [1.6, 4.4], [-1.6, 4.4], [-1.6, 4.15], [-2.1, 4.15],
+    [-2.1, 3.5], [-1.75, 3.5], [-1.75, 0], [-1.05, 0], [-1.05, 3.5], [1.05, 3.5]];
+  kind({ id: 'gate', h: 4.4, hw: 2.1, cr: .5, plate: true, sil: [out], art: poly(out, 'l') +
+    poly([[-2.1, 3.5], [2.1, 3.5], [2.1, 3.62], [-2.1, 3.62]], 'k', ' opacity=".28"') +
+    poly([[-1.75, 1.2], [-1.05, 1.2], [-1.05, 1.36], [-1.75, 1.36]], 'c') + poly([[1.05, 1.2], [1.75, 1.2], [1.75, 1.36], [1.05, 1.36]], 'c') +
+    `<circle cx="0" cy="-383" r="20" style="fill:var(--g)"/>` });
+})();
+
+/* the Great Gnomon: one stone too tall, with a ring that casts a ring */
+(() => {
+  const prof = [[0, 9], [2.5, 9], [2.5, 7.2], [5.5, 7.2], [5.5, 5.4], [84, 3.4], [84, 4.7], [87, 4.7], [87, 3.1], [110, 2.3], [120, 0]];
+  let slits = ''; for (let i = 0; i < 6; i++) { const y = 14 + i * 11.5, x = i % 2 ? .9 : -1.9; slits += poly([[x, y], [x + 1, y], [x + 1, y + 2.6], [x, y + 2.6]], 'k', ' opacity=".5"'); }
+  const arc = sw => `<path d="M-1150 -8550A1150 150 0 0 ${sw} 1150 -8550" fill="none" style="stroke:var(--c)" stroke-width="70"/>`;
+  kind({ id: 'great', h: 120, hw: 11.5, cr: 9.5, great: true, sil: [silProf(prof)], hr: [85.5, 11.8, 10.4], art:
+    arc(0) + prism(prof) + poly([[-4.7, 84], [4.7, 84], [4.7, 87], [-4.7, 87]], 'c') +
+    poly([[-2.3, 110], [0, 110], [0, 120]], 'g') + poly([[0, 110], [2.3, 110], [0, 120]], 'g2') + slits + arc(1) });
+})();
+const KI = {}; KINDS.forEach(k => { KI[k.id] = k.i; });
+
+/* small billboards with no shade of their own */
+const petal = (a, l, w, v) => `<path transform="rotate(${a})" d="M0 0C${-w} ${-l * .3} ${-w} ${-l * .8} 0 ${-l}C${w} ${-l * .8} ${w} ${-l * .3} 0 0Z" style="fill:var(--${v})"/>`;
+const SPR = {
+  bud: `<path d="M0 0C-12 -4 -13 -14 -6 -20C-2 -10 2 -10 6 -20C13 -14 12 -4 0 0Z" style="fill:var(--lf)"/>` + petal(0, 30, 8, 'p2'),
+  half: petal(-34, 26, 8, 'p2') + petal(34, 26, 8, 'p2') + petal(-14, 32, 8, 'p') + petal(14, 32, 8, 'p') + petal(0, 34, 7, 'p2'),
+  bloom: petal(-78, 27, 9, 'p2') + petal(78, 27, 9, 'p2') + petal(-52, 30, 10, 'p') + petal(52, 30, 10, 'p') + petal(-26, 33, 10, 'p2') + petal(26, 33, 10, 'p2') +
+    petal(0, 35, 10, 'p') + `<circle cx="0" cy="-7" r="6.5" style="fill:var(--y)"/>`,
+  heron: stroke('M-4 0L-2 -62M11 0L4 -62', 'k', 3.6) +
+    `<path d="M-30 -78C-28 -98 8 -102 24 -88C30 -80 20 -66 -4 -64C-18 -63 -30 -68 -30 -78Z" style="fill:var(--b)"/><path d="M-27 -77L-48 -61L-22 -67Z" style="fill:var(--k)"/>` +
+    `<g class="neck">` + stroke('M18 -88C34 -98 16 -118 30 -134', 'b', 7.5) + stroke('M28 -140L11 -151', 'v', 2.8) +
+    `<circle cx="32" cy="-137" r="6.8" style="fill:var(--b)"/><path d="M37 -141L63 -134L37 -132Z" style="fill:var(--g)"/><circle cx="34" cy="-138" r="1.5" style="fill:var(--y)"/></g>`,
+  heronF0: null, heronF1: null,
+  sunA: petal(-72, 30, 5, 'lf2') + petal(72, 30, 5, 'lf2') + petal(-38, 36, 5, 'lf') + petal(38, 36, 5, 'lf') + petal(0, 30, 5, 'lf2') +
+    stroke('M0 -8L0 -74', 'lf', 2.6) + `<g transform="translate(0 -72)">` + petal(0, 17, 5.5, 'y2') + `</g>`,
+  sunB: petal(-72, 30, 5, 'lf2') + petal(72, 30, 5, 'lf2') + petal(-38, 36, 5, 'lf') + petal(38, 36, 5, 'lf') + petal(0, 30, 5, 'lf2') +
+    stroke('M0 -8L0 -76', 'lf', 2.6) + `<g transform="translate(0 -80)">` + [0, 45, 90, 135, 180, 225, 270, 315].map(a => petal(a, 15, 4.2, a % 90 ? 'y2' : 'y')).join('') +
+    `<circle r="4" style="fill:var(--v)"/></g>`,
+  beam: `<rect class="beam" x="-16" y="-1500" width="32" height="1500" fill="url(#gBeacon)"/>`,
+  cloud0: `<path d="M-200 0C-200 -22 -150 -30 -120 -28C-100 -52 -40 -58 -10 -40C20 -62 90 -56 110 -30C160 -34 200 -20 200 0Z" style="fill:var(--c1)"/><path d="M-200 0C-120 -11 120 -11 200 0Z" style="fill:var(--c2)"/>`,
+  cloud1: `<path d="M-260 0C-240 -14 -160 -18 -90 -14C-40 -30 60 -30 110 -16C170 -20 240 -10 260 0Z" style="fill:var(--c1)"/><path d="M-260 0C-150 -7 150 -7 260 0Z" style="fill:var(--c2)"/>`,
+  cloud2: `<path d="M-110 0C-112 -16 -80 -24 -62 -18C-48 -36 -4 -36 8 -20C34 -28 70 -22 76 -8C96 -8 110 -4 110 0Z" style="fill:var(--c1)"/><path d="M-110 0C-60 -6 60 -6 110 0Z" style="fill:var(--c2)"/>`
+};
+/* a heron on the wing, two beats */
+{
+  const body = stroke('M-30 2L-86 9', 'k', 3.2) + `<path d="M-38 2C-30 -9 14 -15 34 -8C22 3 -10 9 -38 2Z" style="fill:var(--b)"/>` + stroke('M30 -8L62 -14', 'b', 6.5) + stroke('M60 -19L44 -27', 'v', 2.6) +
+    `<circle cx="64" cy="-15" r="6.4" style="fill:var(--b)"/><path d="M69 -18L97 -13L69 -10Z" style="fill:var(--g)"/>`;
+  SPR.heronF0 = `<path d="M-12 -7L-34 -66L6 -48L24 -9Z" style="fill:var(--b)"/><path d="M-34 -66L-22 -34L6 -48Z" style="fill:var(--k)"/>` + body;
+  SPR.heronF1 = body + `<path d="M-12 3L-30 46L8 33L24 1Z" style="fill:var(--b)"/><path d="M-30 46L-20 22L8 33Z" style="fill:var(--k)"/>`;
+}
+/* a dial's lily cup, in its three states: one <use> each, stone and flower together */
+const CUP = prism([[0, .22], [.07, .22], [.07, .1], [.2, .1], [.34, .36], [.42, .38]]) + `<ellipse cx="0" cy="-42" rx="38" ry="6" style="fill:var(--k)"/>`;
+for (const st of ['bud', 'half', 'bloom']) SPR['cup' + st] = CUP + `<g transform="translate(0 -40)">${SPR[st]}</g>`;
+function installSymbols() {
+  $('defs').insertAdjacentHTML('beforeend',
+    KINDS.map(k => `<g id="k_${k.id}">${k.art}</g>`).join('') + Object.keys(SPR).map(k => `<g id="k_${k}">${SPR[k]}</g>`).join(''));
+}
+
+/* ---- The plain: an endless hash-streamed field of gnomons. Nothing is stored; a cell is its hash. ---- */
+
+const CELL = 22, LOADR = 8, LMAX = 150, GLMAX = 900, SUPER = 560;
+const TINTS = ['#d9a48c', '#d8b877', '#9a90b4', '#e6dac8', '#b7c2c4'].map(lin);   // rose, ochre, slate-violet, bone, celadon
+const COPPER = lin('#46b8a4'), GOLD = lin('#ffc94a'), INK = lin('#2a2233');
+const PROFS = {};                     // half-width of a round stone at a given height, for placing things in its shade
+PROFS.needle = q => q < .44 ? .86 : lerp(.64, .31, clamp((q - .44) / 6.66, 0, 1));
+PROFS.stack = q => [.95, .74, .55, .38][Math.min(3, Math.floor(q / 1.29))];
+PROFS.eye = () => .5;
+PROFS.great = q => q < 5.5 ? 7.2 : lerp(5.4, 3.2, clamp((q - 5.5) / 80, 0, 1));
+
+const cells = new Map();
+let ENTS = [], GREATS = [], entCell = null, NEXTID = 1;
+
+function greatOf(sx, sz) {
+  if (sx === -1 && sz === -1) return { x: -219, z: -224 };          // the one the walk begins in sight of
+  const h = hash3(sx, sz, 77);
+  return { x: (sx + .5) * SUPER + ((h & 1023) / 1023 - .5) * 300, z: (sz + .5) * SUPER + ((h >>> 10 & 1023) / 1023 - .5) * 300 };
+}
+function makeGreat(sx, sz) {
+  const p = greatOf(sx, sz), h = hash3(sx, sz, 78), s = .82 + (h & 255) / 255 * .4;
+  const g = stone(KI.great, p.x, p.z, s, null, TINTS[h >>> 8 & 3], hash3(sx, sz, 79)), R = rng(hash3(sx, sz, 80));
+  g.koi = [];                                  // the Great Shade keeps the great shoal: each fish holds a reach of the river
+  for (let i = 0; i < 40; i++) g.koi.push({ ph: R() * TAU, ph2: R() * TAU, sp: .55 + R() * .6, len: .5 + R() * .45, kind: Math.floor(R() * 3), home: (i + R()) / 40, x: 0, z: 0, hd: 0, live: false });
+  return g;
+}
+function stone(k, x, z, s, a, tint, seed) {
+  const K = KINDS[k];
+  return { id: NEXTID++, k, K, x, z, s, h: K.h * s, hw: K.hw * s, cr: K.cr * s, a, tint, seed, ax: 0, az: 0, c: 1, L: 1,
+    small: !!K.small, great: !!K.great, heron: null, pads: null, koi: null, suns: null, dial: false };
+}
+/* A dial's lily cups stand where its shade will lie: three to the hour, on the curve the shade's waist draws through the day.
+   A cup opens when the shade is actually on it, so the bloom runs round the dial like a slow wave. */
+const dialAt = (x, z, h, t) => {
+  const s = eqToLocal(SD, CD, lerp(-H0, H0, t)), hl = Math.hypot(s[0], s[2]), r = clamp(0.55 * h * hl / Math.max(s[1], .02), 3.2, 12.5);
+  return [x - s[0] / hl * r, z - s[2] / hl * r];
+};
+function dialSpots(g) {
+  g.spots = []; g.rays = [];
+  for (let j = 0; j < 36; j++) { const p = dialAt(g.x, g.z, g.h, (j + .5) / 36); g.spots.push({ x: p[0], z: p[1], hour: Math.floor(j / 3), open: 0, id: NEXTID++ }); }
+  for (let k = 0; k <= 12; k++) g.rays.push(dialAt(g.x, g.z, g.h, clamp(k / 12, .004, .996)));
+}
+function dress(g, R) {                      // what lives in this stone's shade
+  const id = g.K.id;
+  if (!PROFS[id] || g.h < 3.6) return;
+  const n = 1 + Math.floor(R() * 4);
+  g.koi = [];
+  for (let i = 0; i < n; i++) g.koi.push({ ph: R() * TAU, ph2: R() * TAU, sp: .55 + R() * .6, len: .42 + R() * .3, kind: Math.floor(R() * 3), x: 0, z: 0, hd: 0, live: false });
+  if (R() < .5) { g.pads = []; const m = 1 + Math.floor(R() * 3); for (let i = 0; i < m; i++) g.pads.push({ d: 1.6 + R() * 9, v: (R() - .5) * 1.5, r: .2 + R() * .2, bloom: R() < .55, id: NEXTID++ }); }
+  if (R() < .24 && !g.dial) g.heron = { d: 3 + R() * 9, v: (R() - .5) * .5, flip: R() < .5 ? -1 : 1, ad: -R() * 7, id: NEXTID++, fly: 0, t: 0, fx: 0, fz: 0, ux: 0, uz: 0 };
+}
+function genCell(cx, cz) {
+  const R = rng(hash2(cx, cz)), out = [], ox = cx * CELL, oz = cz * CELL;
+  const reg = hash2((cx >> 2) + 9000, (cz >> 2) - 4000), tintOf = () => TINTS[R() < .72 ? reg % 4 : Math.floor(R() * 5)];
+  const sx = Math.floor((ox + CELL / 2) / SUPER), sz = Math.floor((oz + CELL / 2) / SUPER), gp = greatOf(sx, sz);
+  if (Math.hypot(ox + CELL / 2 - gp.x, oz + CELL / 2 - gp.z) < 34) return out;            // leave the Great Gnomon its court
+  const home = cx === 1 && cz === 2, first = cx === 0 && cz === 1;
+  const roll = home ? .99 : first ? 0 : R();
+  const pick = () => { const r = R(); return r < .34 ? 'needle' : r < .54 ? 'stack' : r < .68 ? 'eye' : r < .8 ? 'ring' : r < .9 ? 'blade' : 'gate'; };
+  const plant = (id, x, z) => {
+    const K = KINDS[KI[id]], s = id === 'needle' ? .7 + R() * R() * 1.5 : .9 + R() * .9;
+    const a = !K.plate ? null : id === 'blade' ? [0, 1] : (t => [Math.cos(t), Math.sin(t)])(R() * TAU);
+    const g = stone(K.i, x, z, s, a, tintOf(), hash3(cx, cz, out.length));
+    dress(g, R); out.push(g);
+    if (R() < .45) {                           // sun-cups on the dry salt round it: they shut when the shade comes over
+      g.suns = []; const m = 2 + Math.floor(R() * 4);
+      for (let i = 0; i < m; i++) { const t = R() * TAU, r = g.hw + 2 + R() * 9; g.suns.push({ x: x + Math.cos(t) * r, z: z + Math.sin(t) * r, s: .7 + R() * .6, open: 0, id: NEXTID++ }); }
+    }
+    return g;
+  };
+  if (roll < .13) {                           // a dial: a needle with its arc of lily cups
+    const x = ox + CELL * (.5 + (R() - .5) * .2), z = oz + CELL * (.5 + (R() - .5) * .2);
+    const g = stone(KI.needle, x, z, 1 + R() * .12, null, tintOf(), hash3(cx, cz, 0));
+    g.dial = true; dress(g, R); dialSpots(g); out.push(g);
+  } else if (roll < .64) plant(pick(), ox + CELL * (.15 + R() * .7), oz + CELL * (.15 + R() * .7));
+  else if (roll < .76) {                      // a grove of two or three
+    const x = ox + CELL * (.3 + R() * .4), z = oz + CELL * (.3 + R() * .4), n = 2 + Math.floor(R() * 2), t0 = R() * TAU;
+    for (let i = 0; i < n; i++) { const t = t0 + i * TAU / n + R() * .6, r = 3.5 + R() * 4; plant(pick(), x + Math.cos(t) * r, z + Math.sin(t) * r); }
+  } else if (roll < .86) {                    // fallen ground: stumps
+    const n = 2 + Math.floor(R() * 3);
+    for (let i = 0; i < n; i++) out.push(stone(KI.stump, ox + CELL * (.2 + R() * .6), oz + CELL * (.2 + R() * .6), .7 + R() * .8, null, tintOf(), hash3(cx, cz, i)));
+  }
+  return out;
+}
+function refreshEnts(force) {
+  const cx = Math.floor(V.x / CELL), cz = Math.floor(V.z / CELL), key = cx + ',' + cz;
+  if (key === entCell && !force) return;
+  entCell = key; ENTS = [];
+  for (let i = -LOADR; i <= LOADR; i++) for (let j = -LOADR; j <= LOADR; j++) {
+    if (i * i + j * j > (LOADR + .5) * (LOADR + .5)) continue;
+    const k = (cx + i) + ',' + (cz + j);
+    let c = cells.get(k);
+    if (!c) { c = genCell(cx + i, cz + j); cells.set(k, c); }
+    for (const g of c) ENTS.push(g);
+  }
+  if (cells.size > 700) for (const k of cells.keys()) { const p = k.split(','); if (Math.abs(p[0] - cx) > LOADR + 3 || Math.abs(p[1] - cz) > LOADR + 3) cells.delete(k); }
+  const sx = Math.floor(V.x / SUPER), sz = Math.floor(V.z / SUPER);
+  GREATS = [];
+  for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) {
+    const k = 'G' + (sx + i) + ',' + (sz + j);
+    let g = cells.get(k);
+    if (!g) { g = makeGreat(sx + i, sz + j); cells.set(k, g); }
+    GREATS.push(g);
+  }
+}
+/* Each frame: the shade frame of a stone. p runs along (ax, az), q is height on the stone, laid along the shade. */
+function shadeFrame(g) {
+  g.c = Math.min(ENV.cot, (g.great ? GLMAX : LMAX) / g.h);
+  g.L = g.c * g.h;
+  if (g.a) { g.ax = g.a[0]; g.az = g.a[1]; } else { g.ax = ENV.sdz; g.az = -ENV.sdx; }
+}
+/* a spot d metres along a stone's shade and v (-1..1) across it: things that live there ride the shade */
+function shadePoint(g, d, v) {
+  const q = Math.min(d, g.L * .84) / g.c, w = PROFS[g.K.id](q / g.s) * g.s * v;
+  return [g.x + g.ax * w + ENV.sdx * q * g.c, g.z + g.az * w + ENV.sdz * q * g.c];
+}
+/* is a ground point inside this stone's shade? (winding number over its silhouette, in stone coordinates) */
+function inShadeOf(g, x, z) {
+  const rx = x - g.x, rz = z - g.z;
+  if (rx * rx + rz * rz > (g.L + g.hw + 14) * (g.L + g.hw + 14)) return false;
+  const det = g.ax * ENV.sdz - g.az * ENV.sdx;
+  if (Math.abs(det) < 1e-4) return false;
+  const p = (rx * ENV.sdz - rz * ENV.sdx) / det / g.s, q = (g.ax * rz - g.az * rx) / det / g.c / g.s;
+  if (g.K.hr) {
+    const h = g.K.hr, ex = rx - ENV.sdx * h[0] * g.s * g.c, ez = rz - ENV.sdz * h[0] * g.s * g.c, d = Math.hypot(ex, ez) / g.s;
+    if (d < h[1] && d > h[2]) return true;
+  }
+  if (q < 0 || q > g.K.h || Math.abs(p) > g.K.hw) return false;
+  return windSil(g.K.sil, p, q) !== 0;
+}
+
+/* ---- Sky: gradient, sun, the sun's road with its twelve hour marks, stars, clouds, far ranges ---- */
+
+const E = {};                               // element refs, filled by initSky()
+const STARS = [], CLOUDS = [];
+const ARC = [], MARKS = [];                 // directions along the sun's daily road, and the twelve mid-hours on it
+const RIDGE = [[3, .9, 1.7], [7, .55, 4.1], [13, .32, 2.3], [29, .16, 5.2], [61, .07, .9]];
+const ridgeFar = az => { let s = 0; for (const r of RIDGE) s += r[1] * Math.sin(az * r[0] + r[2]); return Math.max(.004, .03 + .017 * s); };
+const ridgeNear = az => {
+  const m = Math.sin(az * 5 + 1.1) * .6 + Math.sin(az * 11 + 4) * .4 + Math.sin(az * 23 + 2.2) * .18, p = clamp((m - .2) * 3, 0, 1);
+  return .002 + .026 * p * p * (3 - 2 * p) + .0016 * Math.sin(az * 97);
+};
+
+function initSky() {
+  ['sky', 'stars', 'st0', 'st1', 'st2', 'arc', 'marks', 'marksLit', 'markNow', 'sunHalo', 'sunGlow', 'sunDisc', 'clouds', 'mtnFar', 'mtnNear',
+    'ground', 'glare', 'cracks', 'inlay', 'rim', 'water', 'pads', 'sea', 'starsR', 'refl', 'swellA', 'swellB', 'ripples', 'glows', 'haze', 'sprites', 'vig',
+    'gSky', 'gGround', 'gWater', 'gCrack', 'koF', 'koW', 'koG', 'koO', 'koR', 'koK', 'skK', 'skW', 'skO', 'skyKoi', 'koi', 'ripples2', 'glints', 'skGlow'].forEach(id => { E[id] = $(id); });
+  for (let i = 0; i < 4; i++) E['sk' + i] = $('sk' + i);
+  for (let i = 0; i < 6; i++) E['gr' + i] = $('gr' + i);
+  for (let i = 0; i < 4; i++) { E['wa' + i] = $('wa' + i); E['hz' + i] = $('hz' + i); }
+  for (let i = 0; i < 3; i++) { E['cr' + i] = $('cr' + i); E['sg' + i] = $('sg' + i); E['sh' + i] = $('sh' + i); }
+
+  const R = rng(20261109);
+  const put = (x, y, z, m) => { const cd = Math.hypot(x, y), ra = Math.atan2(y, x); STARS.push({ sd: z, cd, cr: Math.cos(ra), sr: Math.sin(ra), m }); };
+  for (let i = 0; i < 640; i++) { const z = R() * 2 - 1, t = R() * TAU, c = Math.sqrt(1 - z * z), u = R(); put(c * Math.cos(t), c * Math.sin(t), z, u < .08 ? 0 : u < .34 ? 1 : 2); }
+  for (let i = 0; i < 170; i++) {          // a river of faint stars, tilted across the pole
+    const t = R() * TAU, g = (R() + R() + R() - 1.5) * .2, x = Math.cos(t), y0 = Math.sin(t), ca = Math.cos(1.08), sa = Math.sin(1.08);
+    const y = y0 * ca - g * sa, z = y0 * sa + g * ca, l = Math.hypot(x, y, z);
+    put(x / l, y / l, z / l, R() < .12 ? 1 : 2);
+  }
+  for (let i = 0; i <= 48; i++) ARC.push(eqToLocal(SD, CD, lerp(-H0, H0, i / 48)));
+  for (let k = 0; k < 12; k++) MARKS.push(eqToLocal(SD, CD, lerp(-H0, H0, (k + .5) / 12)));
+  for (let i = 0; i < 14; i++) {
+    const el = mk('use', E.clouds), sym = i % 3;
+    el.setAttribute('href', '#k_cloud' + sym);
+    CLOUDS.push({ el, az: R() * TAU, alt: .035 + R() * R() * .26, w: (sym === 1 ? .8 : sym === 0 ? .5 : .3) * (.35 + R() * .5), sp: .0016 + R() * .0026 });
+  }
+}
+
+function drawSky(time, kept) {
+  const W = V.W, H = V.H, f = V.f, hy = V.hy, px = Math.max(1, Math.min(W, H) / 720);
+  /* gradient and haze */
+  setA(E.sky, 'width', W); setA(E.sky, 'height', Math.max(1, r1(hy + 2)));
+  setA(E.gSky, 'y1', r1(hy - 1.5 * f)); setA(E.gSky, 'y2', r1(hy));
+  setA(E.sk0, 'stop-color', hex(ENV.zen)); setA(E.sk1, 'stop-color', hex(mix(ENV.zen, ENV.mid, .62)));
+  setA(E.sk2, 'stop-color', hex(ENV.mid)); setA(E.sk3, 'stop-color', hex(ENV.hor));
+  const hh = f * .13, hz = hex(ENV.haze);
+  setA(E.haze, 'x', 0); setA(E.haze, 'width', W); setA(E.haze, 'y', r1(hy - hh * .64)); setA(E.haze, 'height', r1(hh));
+  for (let i = 0; i < 4; i++) setA(E['hz' + i], 'stop-color', hz);
+  setA(E.vig, 'width', W); setA(E.vig, 'height', H); setA(E.vig, 'opacity', r1(lerp(.3, 1, ENV.flood)));
+
+  /* stars turn about the pole with the hour angle */
+  const sa = ENV.starA;
+  if (sa > .01) {
+    const sh = Math.sin(ENV.H), ch = Math.cos(ENV.H), d = ['', '', ''];
+    for (const s of STARS) {
+      const sH = sh * s.cr - ch * s.sr, cH = ch * s.cr + sh * s.sr;
+      const u = SL * s.sd + CL * s.cd * cH;
+      if (u < .03) continue;
+      const e = -s.cd * sH, n = CL * s.sd - SL * s.cd * cH, cz = e * V.sn + n * V.cs;
+      if (cz < .05) continue;
+      const x = V.HW + f * (e * V.cs - n * V.sn) / cz, y = hy - f * u / cz;
+      if (x < -4 || x > W + 4 || y < -4 - (H - hy)) continue;          // keep the ones whose mirror image is on screen too
+      d[s.m] += 'M' + r1(x) + ' ' + r1(y) + 'h0';
+    }
+    setA(E.st0, 'd', d[0]); setA(E.st1, 'd', d[1]); setA(E.st2, 'd', d[2]);
+    setA(E.st0, 'stroke-width', r1(4.2 * px)); setA(E.st1, 'stroke-width', r1(2.8 * px)); setA(E.st2, 'stroke-width', r1(1.9 * px));
+    setA(E.stars, 'opacity', Math.round(sa * 20) / 20);
+    setA(E.stars, 'display', 'inline');
+    const ro = Math.round(sa * ENV.flood * 5.5) / 10;
+    setA(E.starsR, 'display', ro > 0 ? 'inline' : 'none');
+    if (ro > 0) { setA(E.starsR, 'transform', 'matrix(1 0 0 -1 0 ' + r1(2 * hy) + ')'); setA(E.starsR, 'opacity', ro); }
+  } else { setA(E.stars, 'display', 'none'); setA(E.starsR, 'display', 'none'); }
+
+  /* the sun's road and its hour marks */
+  let d = '', pen = false;
+  for (const a of ARC) { const p = projDir(a[0], a[1], a[2]); if (p && p[0] > -200 && p[0] < W + 200) { d += (pen ? 'L' : 'M') + r1(p[0]) + ' ' + r1(p[1]); pen = true; } else pen = false; }
+  setA(E.arc, 'd', d); setA(E.arc, 'stroke-width', r1(1.1 * px)); setA(E.arc, 'stroke-dasharray', r1(2 * px) + ' ' + r1(7 * px));
+  let dm = '', dl = '', now = null;
+  for (let k = 0; k < 12; k++) {
+    const a = MARKS[k], p = projDir(a[0], a[1], a[2]);
+    if (!p || p[0] < -20 || p[0] > W + 20) continue;
+    const s = 'M' + r1(p[0]) + ' ' + r1(p[1]) + 'h0';
+    if (kept[k]) dl += s; else dm += s;
+    if (k === ENV.hour) now = p;
+  }
+  setA(E.marks, 'd', dm); setA(E.marks, 'stroke-width', r1(4 * px));
+  setA(E.marksLit, 'd', dl); setA(E.marksLit, 'stroke-width', r1(8.5 * px));
+  if (now) { setA(E.markNow, 'cx', r1(now[0])); setA(E.markNow, 'cy', r1(now[1])); setA(E.markNow, 'r', r1(10 * px)); setA(E.markNow, 'stroke-width', r1(1.6 * px)); setA(E.markNow, 'display', 'inline'); }
+  else setA(E.markNow, 'display', 'none');
+
+  /* sun */
+  const sp = ENV.altD > -4 ? projDir(ENV.se, ENV.su, ENV.sn) : null;
+  const low = 1 - smooth(6, 30, ENV.altD), tint = hex(mix(ENV.sunTint, [1, 1, 1], .55 * (1 - low)));
+  if (sp && sp[0] > -f * 1.3 && sp[0] < W + f * 1.3) {
+    const rs = f * .021 * (1 + .9 * low);
+    setA(E.sunDisc, 'cx', r1(sp[0])); setA(E.sunDisc, 'cy', r1(sp[1])); setA(E.sunDisc, 'r', r1(rs)); setA(E.sunDisc, 'fill', tint);
+    setA(E.sunGlow, 'cx', r1(sp[0])); setA(E.sunGlow, 'cy', r1(sp[1])); setA(E.sunGlow, 'r', r1(rs * (5 + 3 * low)));
+    setA(E.sunHalo, 'cx', r1(sp[0])); setA(E.sunHalo, 'cy', r1(sp[1])); setA(E.sunHalo, 'rx', r1(f * 1.15)); setA(E.sunHalo, 'ry', r1(f * .5));
+    const ho = Math.round(low * smooth(-9, -1, ENV.altD) * 9) / 10, st = hex(ENV.sunTint);
+    setA(E.sunHalo, 'opacity', ho); setA(E.sunHalo, 'display', ho > 0 ? 'inline' : 'none');
+    for (let i = 0; i < 3; i++) { setA(E['sg' + i], 'stop-color', i ? st : tint); setA(E['sh' + i], 'stop-color', st); }
+    setA(E.sunDisc, 'display', 'inline'); setA(E.sunGlow, 'display', 'inline');
+    const go = Math.round(low * ENV.day * 6) / 10;                       // the salt under a low sun glares
+    setA(E.glare, 'display', go > 0 ? 'inline' : 'none');
+    if (go > 0) { setA(E.glare, 'cx', r1(sp[0])); setA(E.glare, 'cy', r1(hy)); setA(E.glare, 'rx', r1(f * .7)); setA(E.glare, 'ry', r1(f * .11)); setA(E.glare, 'opacity', go); }
+  } else { setA(E.sunDisc, 'display', 'none'); setA(E.sunGlow, 'display', 'none'); setA(E.sunHalo, 'display', 'none'); setA(E.glare, 'display', 'none'); }
+
+  /* clouds drift round the horizon; their two colours follow the light */
+  if (E.clouds._step !== ENV.step) {
+    E.clouds._step = ENV.step;
+    const top = mix(facet([.86, .86, .9], .8), ENV.hor, .34), und = mix(mix(ENV.mid, ENV.zen, .35), top, .3);
+    E.clouds.style.cssText = '--c1:' + hex(top) + ';--c2:' + hex(und) + ';opacity:' + r1(lerp(.84, .5, ENV.flood));
+  }
+  for (const c of CLOUDS) {
+    const az = c.az + time * c.sp, p = projDir(Math.sin(az), c.alt, Math.cos(az));
+    if (!p) { setA(c.el, 'display', 'none'); continue; }
+    const k = f * c.w / (400 * p[2]);
+    if (p[0] < -k * 280 || p[0] > W + k * 280) { setA(c.el, 'display', 'none'); continue; }
+    setA(c.el, 'display', 'inline');
+    setA(c.el, 'transform', 'matrix(' + r1(k * 100) / 100 + ' 0 0 ' + r1(k * 100) / 100 + ' ' + r1(p[0]) + ' ' + r1(p[1]) + ')');
+  }
+
+  /* far ranges: two silhouettes drawn straight from azimuth */
+  let a = 'M-20 ' + r1(hy + 3), b = a;
+  for (let x = -20; x <= W + 34; x += 14) {
+    const t = (x - V.HW) / f, az = V.yaw + Math.atan(t), k = f * Math.sqrt(1 + t * t);
+    a += 'L' + x + ' ' + r1(hy - k * ridgeFar(az)); b += 'L' + x + ' ' + r1(hy - k * ridgeNear(az));
+  }
+  const tail = 'L' + (W + 34) + ' ' + r1(hy + 3) + 'Z';
+  setA(E.mtnFar, 'd', a + tail); setA(E.mtnNear, 'd', b + tail);
+  setA(E.mtnFar, 'fill', hex(mix(ENV.haze, ENV.zen, .3))); setA(E.mtnNear, 'fill', hex(mix(ENV.haze, mix(ENV.zen, INK, .45), .5)));
+}
+
+/* ---- Ground: salt, its crack network, and the shade of every stone drawn as water ---- */
+
+const HEX = .8, HX = HEX * Math.sqrt(3), HV = [];          // salt-crack honeycomb
+for (let k = 0; k < 4; k++) HV.push([HEX * Math.cos((30 + 60 * k) * DEG), HEX * Math.sin((30 + 60 * k) * DEG)]);
+const RINGS = [];                                            // ripples the walker leaves when wading
+const STAT = { shades: 0, hexes: 0, koi: 0, sprites: 0, moves: 0 };
+
+function cullCircle(wx, wz, rad) {                           // true when a ground disc cannot touch the view
+  const dx = wx - V.x, dz = wz - V.z, cx = dx * V.cs - dz * V.sn, cz = dx * V.sn + dz * V.cs;
+  if (cz + rad < NEAR) return true;
+  return (Math.abs(cx) - cz * V.tanX) * V.cosX > rad;
+}
+
+function shadePath(g) {
+  const K = g.K, s = g.s, ex = ENV.sdx * g.c * s, ez = ENV.sdz * g.c * s, ax = g.ax * s, az = g.az * s;
+  const flip = g.a && (g.ax * ENV.sdz - g.az * ENV.sdx) < 0;     // keep every shade wound the same way on the ground
+  let out = '';
+  for (const a of K.sil) {
+    const n = a.length;
+    if (flip) for (let i = n - 2; i >= 0; i -= 2) gv(g.x + ax * a[i] + ex * a[i + 1], g.z + az * a[i] + ez * a[i + 1]);
+    else for (let i = 0; i < n; i += 2) gv(g.x + ax * a[i] + ex * a[i + 1], g.z + az * a[i] + ez * a[i + 1]);
+    out += gpoly(V.eye);
+  }
+  if (K.hr) {                                                 // a level ring casts a ring: the pool that orbits the Great Gnomon
+    const cx = g.x + ex * K.hr[0], cz = g.z + ez * K.hr[0], Ro = K.hr[1] * s, Ri = K.hr[2] * s;
+    for (let i = 0; i < 28; i++) { const t = i / 28 * TAU; gv(cx + Ro * Math.cos(t), cz + Ro * Math.sin(t)); }
+    out += gpoly(V.eye);
+    for (let i = 27; i >= 0; i--) { const t = i / 28 * TAU; gv(cx + Ri * Math.cos(t), cz + Ri * Math.sin(t)); }
+    out += gpoly(V.eye);
+  }
+  return out;
+}
+
+function drawGround(time, Q) {
+  const W = V.W, H = V.H, f = V.f, hy = V.hy, eye = V.eye, px = Math.max(1, Math.min(W, H) / 720), fl = ENV.flood;
+  const gy = r1(hy), gh = Math.max(1, r1(H - hy + 2)), y2 = r1(hy + f * eye / 2.5);
+  for (const id of ['gGround', 'gWater', 'gCrack']) { setA(E[id], 'y1', gy); setA(E[id], 'y2', y2); }
+  setA(E.ground, 'y', gy); setA(E.ground, 'width', W); setA(E.ground, 'height', gh);
+  const g = ENV.ground, hz = ENV.haze;
+  setA(E.gr0, 'stop-color', hex(mix(g, hz, .97))); setA(E.gr1, 'stop-color', hex(mix(g, hz, fogAt(120))));
+  setA(E.gr2, 'stop-color', hex(mix(g, hz, fogAt(50)))); setA(E.gr3, 'stop-color', hex(mix(g, hz, fogAt(20))));
+  setA(E.gr4, 'stop-color', hex(g)); setA(E.gr5, 'stop-color', hex(sc(g, .93)));
+  setA(E.wa0, 'stop-color', hex(ENV.w0)); setA(E.wa1, 'stop-color', hex(ENV.w1));
+  setA(E.wa2, 'stop-color', hex(ENV.w2)); setA(E.wa3, 'stop-color', hex(ENV.w3));
+
+  /* salt cracks: a jittered honeycomb, only near the walker */
+  let d = ''; STAT.hexes = 0;
+  if (Q.crackR > 0 && fl < .97) {
+    const CR = Q.crackR, r0 = Math.floor((V.z - CR) / (HEX * 1.5)), r1_ = Math.ceil((V.z + CR) / (HEX * 1.5));
+    for (let r = r0; r <= r1_; r++) {
+      const zc = r * HEX * 1.5, q0 = Math.floor((V.x - CR) / HX - r / 2), q1 = Math.ceil((V.x + CR) / HX - r / 2);
+      for (let q = q0; q <= q1; q++) {
+        const xc = HX * (q + r / 2), dx = xc - V.x, dz = zc - V.z;
+        if (dx * dx + dz * dz > CR * CR || cullCircle(xc, zc, HEX * 1.2)) continue;
+        for (let k = 0; k < 4; k++) {
+          const vx = xc + HV[k][0], vz = zc + HV[k][1], h = hash2(Math.round(vx / (HX / 2)), Math.round(vz / (HEX / 2)));
+          gv(vx + ((h & 255) / 255 - .5) * HEX * .74, vz + ((h >>> 8 & 255) / 255 - .5) * HEX * .74);
+        }
+        d += gline(eye); STAT.hexes++;
+      }
+    }
+    const cc = hex(sc(g, .6));
+    for (let i = 0; i < 3; i++) setA(E['cr' + i], 'stop-color', cc);
+    setA(E.cr0, 'offset', r1(25 / (CR * .9)) / 10); setA(E.cr1, 'offset', r1(25 / (CR * .45)) / 10);   // fade out before the network ends
+    setA(E.cracks, 'stroke-width', r1(1.15 * px));
+  }
+  setA(E.cracks, 'd', d);
+
+  /* shade is water: one path for every shadow in view, nonzero fill so overlaps merge and pierced stones keep their islands */
+  let w = '', inl = '', pads = '', gl = ''; STAT.shades = 0;
+  const crx = V.cs, crz = -V.sn;
+  const all = GREATS.length ? ENTS.concat(GREATS) : ENTS;
+  for (const s of all) {
+    if (s.K.sil.length === 0) continue;
+    shadeFrame(s);
+    if (fl > .995) continue;
+    const half = s.L / 2, rad = half + s.hw + (s.K.hr ? s.K.hr[1] * s.s : 0);
+    if (cullCircle(s.x + ENV.sdx * half, s.z + ENV.sdz * half, rad)) continue;
+    w += shadePath(s); STAT.shades++;
+    const dx = s.x - V.x, dz = s.z - V.z, d2 = dx * dx + dz * dz;
+    if (Q.glint > 0 && d2 < (Q.glint + s.L) * (Q.glint + s.L)) {       // light glinting on the pool, always inside it
+      const P = s.K.pts, ex = ENV.sdx * s.c * s.s, ez = ENV.sdz * s.c * s.s, n = Math.min(P.length, 2 * Math.round(clamp(s.L * 1.3, 8, 44)));
+      for (let rep = s.great ? 7 : 0; rep >= 0; rep--) for (let i = 0; i < n; i += 2) {
+        const h = hash3(s.seed, i, 5 + rep), ph = time * (.3 + (h & 255) / 900) + (h >>> 8 & 255) / 255;
+        if (ph - Math.floor(ph) > .5) continue;
+        const pq = rep ? clamp(P[i + 1] + ((h >>> 12 & 15) / 15 - .5) * s.K.h / 44, 0, 108) : P[i + 1], pp = rep ? PROFS.great(pq) * ((h >>> 24) / 255 * 1.7 - .85) : P[i];
+        const x = s.x + s.ax * s.s * pp + ex * pq, z = s.z + s.az * s.s * pp + ez * pq, qx = x - V.x, qz = z - V.z;
+        if (qx * qx + qz * qz > Q.glint * Q.glint || cullCircle(x, z, .5)) continue;
+        const hl = .1 + (h >>> 16 & 255) / 255 * .24;
+        gv(x - crx * hl, z - crz * hl); gv(x + crx * hl, z + crz * hl); gl += gline(eye);
+      }
+    }
+    if (s.dial && d2 < 80 * 80) {                            // the dial face inlaid in the salt: hour lines, and the trough the cups stand in
+      for (const b of s.rays) {
+        const ux = b[0] - s.x, uz = b[1] - s.z, l = Math.hypot(ux, uz);
+        gv(s.x + ux / l * 1.5, s.z + uz / l * 1.5); gv(b[0] + ux / l * .9, b[1] + uz / l * .9); inl += gline(eye);
+      }
+      for (const c of s.spots) gv(c.x, c.z);
+      inl += gline(eye);
+      for (let i = 0; i <= 16; i++) { const t = i / 16 * TAU; gv(s.x + 1.5 * Math.cos(t), s.z + 1.5 * Math.sin(t)); }
+      inl += gline(eye);
+    }
+    if (s.pads && d2 < Q.smallR * Q.smallR) for (const p of s.pads) {
+      const c = shadePoint(s, p.d, p.v * .6); p.x = c[0]; p.z = c[1];
+      for (let i = 0; i < 9; i++) { const t = i / 9 * TAU + .3; gv(c[0] + p.r * Math.cos(t) * (i ? 1 : .35), c[1] + p.r * Math.sin(t) * (i ? 1 : .35)); }
+      pads += gpoly(eye);
+    }
+  }
+  setA(E.water, 'd', w); setA(E.rim, 'd', w); setA(E.inlay, 'd', inl); setA(E.pads, 'd', pads); setA(E.glints, 'd', gl);
+  setA(E.glints, 'stroke', hex(mix(ENV.w0, [1, 1, 1], .55))); setA(E.glints, 'stroke-width', r1(1.5 * px));
+  setA(E.rim, 'stroke', hex(mix(ENV.w1, [1, 1, 1], .3))); setA(E.rim, 'stroke-width', r1(2 * px));
+  setA(E.inlay, 'stroke', hex(mix(facet(COPPER, .45), g, .2))); setA(E.inlay, 'stroke-width', r1(1.7 * px));
+  setA(E.pads, 'fill', hex(facet([.03, .26, .15], .3)));
+
+  /* night: the flood. One rectangle of the same water over everything, then its swell. */
+  const so = Math.round(fl * 50) / 50;
+  setA(E.sea, 'display', so > 0 ? 'inline' : 'none');
+  if (so > 0) { setA(E.sea, 'y', gy); setA(E.sea, 'width', W); setA(E.sea, 'height', gh); setA(E.sea, 'opacity', so); }
+  let sa = '', sb = '';
+  if (fl > .04) {
+    const G = 5, SR = 62, i0 = Math.floor((V.x - SR) / G), i1 = Math.ceil((V.x + SR) / G), j0 = Math.floor((V.z - SR) / G), j1 = Math.ceil((V.z + SR) / G);
+    for (let i = i0; i <= i1; i++) for (let j = j0; j <= j1; j++) {
+      const h = hash2(i + 51000, j - 37000), x = (i + (h & 255) / 255) * G + Math.sin(time * .21 + (h >>> 20)) * 1.1, z = (j + (h >>> 8 & 255) / 255) * G;
+      const dx = x - V.x, dz = z - V.z;
+      if (dx * dx + dz * dz > SR * SR || cullCircle(x, z, 1.6)) continue;
+      const l = .3 + (h >>> 16 & 15) / 15 * .75;
+      gv(x - l, z); gv(x + l, z);
+      if (h & 0x1000000) sa += gline(eye); else sb += gline(eye);
+    }
+  }
+  setA(E.swellA, 'd', sa); setA(E.swellB, 'd', sb);
+  const sw = r1(1.4 * px), sop = r1(fl * .7);
+  setA(E.swellA, 'stroke-width', sw); setA(E.swellB, 'stroke-width', sw); setA(E.swellA, 'stroke-opacity', sop); setA(E.swellB, 'stroke-opacity', sop);
+
+  /* rings left by wading feet */
+  let ry = '', ro = '';
+  for (let i = RINGS.length - 1; i >= 0; i--) {
+    const r = RINGS[i], age = time - r.t;
+    if (age > 2.2 || age < 0) { RINGS.splice(i, 1); continue; }
+    const rad = .22 + age * .75;
+    if (cullCircle(r.x, r.z, rad)) continue;
+    for (let k = 0; k <= 14; k++) { const t = k / 14 * TAU; gv(r.x + rad * Math.cos(t), r.z + rad * Math.sin(t)); }
+    if (age < 1) ry += gline(eye); else ro += gline(eye);
+  }
+  setA(E.ripples, 'd', ry); setA(E.ripples2, 'd', ro);
+  setA(E.ripples, 'stroke-width', r1(1.6 * px)); setA(E.ripples2, 'stroke-width', r1(1.1 * px));
+}
+
+/* ---- Koi: drawn from above on the water plane, so they foreshorten like everything else on the ground ---- */
+
+const KT = [0, .1, .25, .45, .65, .82, .92], KW = [0, .075, .105, .1, .07, .038, .022];
+const KX = new Float64Array(7), KY = new Float64Array(7);
+const KO = { F: '', W: '', G: '', O: '', R: '', K: '' }, KS = { F: '', W: '', G: '', O: '', R: '', K: '' };
+const NKOI = [], SKOI = [], GLOW = [], SGLOW = [];
+const TILE = 56, STILE = 170, SKYH = 30;
+
+function initKoi() {
+  const R = rng(4242);
+  for (let i = 0; i < 40; i++) NKOI.push({ hx: R() * TILE, hz: R() * TILE, rad: 2 + R() * 5.5, w: (R() < .5 ? -1 : 1) * (.1 + R() * .2), ph: R() * TAU, len: .5 + R() * .34, kind: Math.floor(R() * 3) });
+  for (let i = 0; i < 16; i++) SKOI.push({ hx: R() * STILE, hz: R() * STILE, rad: 12 + R() * 30, w: (R() < .5 ? -1 : 1) * (.03 + R() * .035), ph: R() * TAU, len: 6 + R() * 5.5, kind: i % 3 === 1 ? 2 : 0 });
+}
+
+/* one fish: o collects subpaths per colour; ph is the tail-beat phase; plane is metres below the eye */
+function koiShape(o, fx, fz, hd, len, kind, ph, plane) {
+  const ch = Math.cos(hd) * len, sh = Math.sin(hd) * len;
+  const kv = (lx, ly) => gv(fx + lx * ch - ly * sh, fz + lx * sh + ly * ch);
+  for (let i = 0; i < 7; i++) { const t = KT[i]; KX[i] = .5 - t; KY[i] = Math.pow(t, 1.5) * .17 * Math.sin(ph - 4 * t); }
+  const ye = .17 * Math.sin(ph - 4);
+  kv(KX[0], KY[0]);
+  for (let i = 1; i < 7; i++) kv(KX[i], KY[i] + KW[i]);
+  kv(-.52, ye + .12); kv(-.4, ye); kv(-.52, ye - .12);
+  for (let i = 6; i > 0; i--) kv(KX[i], KY[i] - KW[i]);
+  const body = gpoly(plane);
+  if (!body) return false;
+  const patch = (a, b) => { for (let i = a; i <= b; i++) kv(KX[i], KY[i] + KW[i] * .84); for (let i = b; i >= a; i--) kv(KX[i], KY[i] - KW[i] * .84); return gpoly(plane); };
+  if (kind === 0) { o.W += body; o.R += patch(1, 3) + patch(4, 5); }       // white, vermilion saddles
+  else if (kind === 1) { o.G += body; o.R += patch(1, 2); }                  // gold, red crown
+  else { o.O += body; o.K += patch(1, 2) + patch(4, 5); }                    // orange, ink patches
+  for (let s = -1; s <= 1; s += 2) {
+    kv(KX[2], KY[2] + s * KW[2]); kv(KX[2] - .13, KY[2] + s * (KW[2] + .12)); kv(KX[3] + .05, KY[3] + s * KW[3]);
+    o.F += gpoly(plane);
+  }
+  return true;
+}
+const near = (h, p, tile) => h + Math.round((p - h) / tile) * tile;       // nearest copy of a wrapped home to the walker
+
+function drawKoi(time, dt, Q, deep) {
+  for (const k in KO) { KO[k] = ''; KS[k] = ''; }
+  const eye = V.eye, fl = ENV.flood, poolK = 1 - smooth(.6, .95, fl), nightK = smooth(.35, .8, fl);
+  let n = 0, gi = 0;
+  if (poolK > .02) for (const g of (GREATS.length ? ENTS.concat(GREATS) : ENTS)) {
+    if (!g.koi) continue;
+    const dx = g.x - V.x, dz = g.z - V.z, reach = Math.min(g.L * .84, g.great ? 170 : 14), lim = Q.koiR + reach;
+    if (dx * dx + dz * dz > lim * lim) { for (const k of g.koi) k.live = false; continue; }
+    const Lc = Math.max(.6, reach - 1.1);
+    for (const k of g.koi) {
+      if (k.s === undefined) k.s = k.ph;
+      k.s += dt * k.sp * 1.25 / (k.home === undefined ? Math.max(Lc, 1.5) : 9);
+      const along = k.home === undefined ? .8 + Lc * (.5 + .46 * Math.sin(k.s)) : clamp(9 + k.home * (Lc - 9) + 4.2 * Math.sin(k.s), 9, Lc);
+      const p = shadePoint(g, along, .62 * Math.sin(k.ph2 + time * (k.home === undefined ? .55 : .12) * k.sp));
+      if (!k.live) { k.hd = Math.atan2(ENV.sdz, ENV.sdx) + (Math.cos(k.s) < 0 ? Math.PI : 0); k.live = true; }
+      else if (dt > 0) {
+        const mx = p[0] - k.x, mz = p[1] - k.z;
+        if (mx * mx + mz * mz > 1e-9) { const dd = Math.atan2(mz, mx) - k.hd; k.hd += Math.atan2(Math.sin(dd), Math.cos(dd)) * Math.min(1, dt * 7); }
+      }
+      k.x = p[0]; k.z = p[1];
+      const ex = p[0] - V.x, ez = p[1] - V.z;
+      if (ex * ex + ez * ez > Q.koiR * Q.koiR || cullCircle(p[0], p[1], .6)) continue;
+      if (koiShape(KO, p[0], p[1], k.hd, k.len * poolK, k.kind, time * 5.2 * k.sp + k.ph, eye)) n++;
+    }
+  }
+  if (nightK > .02) for (let i = 0; i < Q.nightKoi; i++) {
+    const k = NKOI[i], a = k.ph + time * k.w, x = near(k.hx, V.x, TILE) + k.rad * Math.cos(a), z = near(k.hz, V.z, TILE) + k.rad * .75 * Math.sin(a);
+    const dx = x - V.x, dz = z - V.z, cz = dx * V.sn + dz * V.cs;
+    if (cz < 1 || dx * dx + dz * dz > 34 * 34 || cullCircle(x, z, .8)) continue;
+    const hd = Math.atan2(.75 * Math.cos(a) * k.w, -Math.sin(a) * k.w);
+    if (!koiShape(KO, x, z, hd, k.len * nightK, k.kind, time * 4.6 + k.ph * 3, eye)) continue;
+    n++;
+    let el = GLOW[gi];                                        // a pool of light under each night fish
+    if (!el) { el = GLOW[gi] = mk('ellipse', E.glows); el.setAttribute('fill', 'url(#gKoiGlow)'); }
+    gi++;
+    const rx = V.f * .8 / cz;
+    setA(el, 'display', 'inline'); setA(el, 'cx', r1(V.HW + V.f * (dx * V.cs - dz * V.sn) / cz)); setA(el, 'cy', r1(V.hy + V.f * eye / cz));
+    setA(el, 'rx', r1(rx)); setA(el, 'ry', r1(Math.max(1.2, rx * eye / cz))); setA(el, 'opacity', r1(nightK));
+  }
+  for (let i = gi; i < GLOW.length; i++) setA(GLOW[i], 'display', 'none');
+  setA(E.koF, 'd', KO.F); setA(E.koW, 'd', KO.W); setA(E.koG, 'd', KO.G); setA(E.koO, 'd', KO.O); setA(E.koR, 'd', KO.R); setA(E.koK, 'd', KO.K);
+  STAT.koi = n;
+
+  /* the Deep: once twelve hours are kept, the night tide rises past the walker and the koi swim overhead */
+  const up = deep * nightK;
+  setA(E.skyKoi, 'display', up > .02 ? 'inline' : 'none');
+  if (up > .02) {
+    let si = 0;
+    for (const k of SKOI) {
+      const a = k.ph + time * k.w, x = near(k.hx, V.x, STILE) + k.rad * Math.cos(a), z = near(k.hz, V.z, STILE) + k.rad * Math.sin(a);
+      if (cullCircle(x, z, k.len)) continue;
+      if (!koiShape(KS, x, z, Math.atan2(Math.cos(a) * k.w, -Math.sin(a) * k.w), k.len, k.kind, time * 1.3 + k.ph, eye - SKYH)) continue;
+      const dx = x - V.x, dz = z - V.z, cz = dx * V.sn + dz * V.cs;
+      if (cz < 4) continue;
+      let el = SGLOW[si];
+      if (!el) { el = SGLOW[si] = mk('ellipse', E.skGlow); el.setAttribute('fill', 'url(#gKoiGlow)'); }
+      si++;
+      const rx = V.f * k.len * .85 / cz;
+      setA(el, 'display', 'inline'); setA(el, 'cx', r1(V.HW + V.f * (dx * V.cs - dz * V.sn) / cz)); setA(el, 'cy', r1(V.hy + V.f * (eye - SKYH) / cz));
+      setA(el, 'rx', r1(rx)); setA(el, 'ry', r1(Math.max(2, rx * (SKYH - eye) / cz)));
+    }
+    for (let i = si; i < SGLOW.length; i++) setA(SGLOW[i], 'display', 'none');
+    setA(E.skW, 'd', KS.W + KS.F); setA(E.skO, 'd', KS.O + KS.R); setA(E.skK, 'd', KS.K);
+    setA(E.skyKoi, 'opacity', r1(up * .9));
+  }
+}
+
+/* ---- Billboards: pooled <use> elements that never leave the DOM, re-ordered with a longest-increasing-subsequence
+        diff (moving an attached <use> rebuilds its shadow tree, so moves are the thing to minimise) ---- */
+
+const LIST = [];                        // this frame's sprites
+const ACTIVE = new Map(), RACTIVE = new Map(), FREE = {}, RFREE = {};
+const STYLES = new Map();
+let FRAME = 0, styleStep = -1;
+const SAGE = lin('#6fae9a'), PINK = lin('#ff6fa8'), PINK2 = lin('#e83f86'), LEAF = lin('#2f9a6a'), YOLK = lin('#ffd84a'), SLATE = lin('#3d4a6b'), VERM = lin('#ff5a36'), WHITE = [1, 1, 1];
+const IS2 = Math.SQRT1_2;
+
+const fogc = (c, fq) => hex(mix(c, ENV.haze, fq / 12));
+function stoneStyle(g, fq, qL, qR, aq, det) {
+  const key = g.tintI + '|' + fq + '|' + qL + '|' + qR + '|' + aq + '|' + det;
+  let s = STYLES.get(key);
+  if (!s) {
+    const lL = qL / 8, lR = qR / 8, t = g.tint;
+    s = '--l:' + fogc(facet(t, lL), fq) + ';--r:' + fogc(facet(sc(t, .9), lR), fq) + ';--k:' + fogc(facet(sc(t, .28), 0), fq) +
+      ';--c:' + fogc(facet(COPPER, .2 + .55 * Math.max(lL, lR)), fq) + ';--g:' + fogc(facet(GOLD, .3 + lL), fq) + ';--g2:' + fogc(facet(GOLD, .12 + lR), fq) +
+      ';--d:' + (det ? 'inline' : 'none') + (aq < 10 ? ';opacity:' + aq / 10 : '');
+    STYLES.set(key, s);
+  }
+  return s;
+}
+function smallStyle(kind, fq, aq, extra) {
+  const key = kind + '|' + fq + '|' + aq;
+  let s = STYLES.get(key);
+  if (!s) {
+    if (kind === 'lily' || kind === 'kept') {
+      const a = kind === 'kept' ? GOLD : PINK, b = kind === 'kept' ? lin('#f0a020') : PINK2;
+      s = '--p:' + fogc(facet(a, .55), fq) + ';--p2:' + fogc(facet(b, .45), fq) + ';--y:' + fogc(facet(YOLK, .6), fq) + ';--lf:' + fogc(facet(LEAF, .45), fq);
+    } else if (kind === 'sun') {
+      s = '--lf:' + fogc(facet(SAGE, .55), fq) + ';--lf2:' + fogc(facet(sc(SAGE, .7), .3), fq) + ';--y:' + fogc(facet(GOLD, .8), fq) + ';--y2:' + fogc(facet(lin('#f29a2e'), .6), fq) + ';--v:' + fogc(facet(VERM, .7), fq);
+    } else s = '--b:' + fogc(facet(SLATE, .4), fq) + ';--k:' + fogc(facet(INK, .2), fq) + ';--g:' + fogc(facet(GOLD, .6), fq) +
+      ';--v:' + fogc(facet(VERM, .6), fq) + ';--y:' + fogc(facet(YOLK, .7), fq);
+    if (aq < 10) s += ';opacity:' + aq / 10;
+    STYLES.set(key, s);
+  }
+  return extra ? s + extra : s;
+}
+/* add one billboard to the frame if it is in view */
+function push(key, sym, x, z, y0, scale, mx, hw, style, refl) {
+  const dx = x - V.x, dz = z - V.z, cz = dx * V.sn + dz * V.cs;
+  if (cz < .4) return;
+  const cx = dx * V.cs - dz * V.sn;
+  if (Math.abs(cx) - hw > cz * V.tanX * 1.04 + .5) return;
+  LIST.push({ key, sym, cx, cz, y0, scale, mx, style, d2: dx * dx + dz * dz, refl, el: null });
+}
+
+function collectSprites(dt, Q, kept) {
+  LIST.length = 0;
+  if (styleStep !== ENV.step || STYLES.size > 4000) { STYLES.clear(); styleStep = ENV.step; }
+  const sx = ENV.se, sz = ENV.sn, fl = ENV.flood;
+  const all = GREATS.length ? ENTS.concat(GREATS) : ENTS;
+  for (const g of all) {
+    const dx = g.x - V.x, dz = g.z - V.z, d2 = dx * dx + dz * dz, lim = g.great ? 1500 : g.small ? Q.smallR * 1.7 : Q.drawR;
+    if (d2 > lim * lim) continue;
+    const d = Math.sqrt(d2) || 1e-3, ux = dx / d, uz = dz / d, rx = uz, rz = -ux;      // view ray and its right-hand normal
+    const fq = g.great ? Math.round(Math.min(.8, fogAt(d * .2)) * 12) : Math.round(fogAt(d) * 12);
+    const aq = g.great ? 10 : Math.round((1 - smooth(lim - 24, lim, d)) * 10);
+    if (aq <= 0) continue;
+    let mx = 1, qL, qR;
+    if (g.a) {                                             // a plate: one face, foreshortened by the angle it is seen at
+      const m = g.a[0] * rx + g.a[1] * rz; mx = (m < 0 ? -1 : 1) * Math.max(.14, Math.abs(m));
+      let nx = g.a[1], nz = -g.a[0]; if (nx * ux + nz * uz > 0) { nx = -nx; nz = -nz; }
+      qL = qR = Math.round(Math.max(0, nx * sx + nz * sz) * 8);
+    } else {                                               // a prism: the two faces turned toward the walker
+      qL = Math.round(Math.max(0, (-ux - rx) * sx + (-uz - rz) * sz) * IS2 * 8);
+      qR = Math.round(Math.max(0, (-ux + rx) * sx + (-uz + rz) * sz) * IS2 * 8);
+    }
+    if (g.tintI === undefined) g.tintI = TINTS.indexOf(g.tint);
+    push(g.id, 'k_' + g.K.id, g.x, g.z, 0, g.s, mx, g.hw, stoneStyle(g, fq, qL, qR, aq, d < 60 || g.great ? 1 : 0), !g.small && d < Q.reflR);
+    if (g.dial) {                                          // the lily cups: each opens while the dial's shade lies on it
+      const lit = ENV.day > .25, cr = Q.smallR * 1.9, show = d < cr + 14, ca = Math.min(aq, Math.round((1 - smooth(cr, cr + 14, d)) * 10));
+      for (const c of g.spots) {
+        const ox = g.ax * .34, oz = g.az * .34, kp = kept[c.hour];           // the cup has width: any of it in the shade will do
+        const want = lit && d < 160 && (inShadeOf(g, c.x, c.z) || inShadeOf(g, c.x + ox, c.z + oz) || inShadeOf(g, c.x - ox, c.z - oz)) ? 1 : 0;
+        c.open = want > c.open ? Math.min(1, c.open + dt * 1.5) : Math.max(0, c.open - dt * .9);
+        if (show && ca > 0) push(c.id, c.open < .3 ? 'k_cupbud' : c.open < .75 ? 'k_cuphalf' : 'k_cupbloom', c.x, c.z, 0, 1.05, 1, .5,
+          stoneStyle(g, fq, qL, qR, ca, 0) + ';' + smallStyle(kp ? 'kept' : 'lily', fq, 10));
+        if (c.open > .5 && !kp && d < 150) push(c.id + 'B', 'k_beam', c.x, c.z, .5, 1, 1, .3, 'opacity:' + r1((c.open - .5) * 2 * (1 - smooth(120, 150, d))));
+      }
+    }
+    if (g.pads && d < Q.smallR) for (const p of g.pads) if (p.bloom && p.x !== undefined) push(p.id, 'k_bloom', p.x, p.z, .03, .8, 1, .3, smallStyle('lily', fq, aq));
+    if (g.suns && d < Q.smallR * 1.5) for (const p of g.suns) {
+      const want = ENV.day > .35 && !inShadeOf(g, p.x, p.z) ? 1 : 0;
+      p.open = want > p.open ? Math.min(1, p.open + dt * .7) : Math.max(0, p.open - dt * 1.6);
+      push(p.id, p.open > .5 ? 'k_sunB' : 'k_sunA', p.x, p.z, 0, p.s, 1, .4, smallStyle('sun', fq, aq));
+    }
+    if (g.heron && d < 150) {
+      const h = g.heron;
+      if (!h.fly) {                                        // standing in the shade, until the walker comes too near
+        const p = shadePoint(g, h.d, h.v), ex = p[0] - V.x, ez = p[1] - V.z, e2 = ex * ex + ez * ez;
+        if (e2 < 36 && G.started) {
+          const e = Math.sqrt(e2) || 1, t = (hash2(h.id, 3) & 255) / 255 - .5;
+          h.fly = 1; h.t = G.time; h.fx = p[0]; h.fz = p[1];
+          h.ux = ex / e * Math.cos(t) - ez / e * Math.sin(t); h.uz = ex / e * Math.sin(t) + ez / e * Math.cos(t);
+        } else if (d < Q.smallR * 2.4) push(h.id, 'k_heron', p[0], p[1], 0, 1.15, h.flip, .8, smallStyle('heron', fq, aq, ';--ad:' + r1(h.ad) + 's'));
+      }
+      if (h.fly) {                                         // up and away, low over the canals; it comes back when the walker has gone
+        const a = G.time - h.t;
+        if (a > 24) { if (d > 34) h.fly = 0; }
+        else {
+          const run = 2.5 * a + 5 * a * a / (1 + a * .55), x = h.fx + h.ux * run, z = h.fz + h.uz * run;
+          const fa = Math.round((1 - smooth(9, 22, a)) * 10);
+          if (fa > 0) push(h.id + 'F', (a * 3.4) % 1 < .5 ? 'k_heronF0' : 'k_heronF1', x, z, 1.2 + 11 * (1 - Math.exp(-a * .45)), 1.25,
+            (h.ux * V.cs - h.uz * V.sn) < 0 ? -1 : 1, 1, smallStyle('heron', Math.round(fogAt(Math.hypot(x - V.x, z - V.z)) * 12), fa));
+        }
+      }
+    }
+  }
+  LIST.sort((a, b) => b.d2 - a.d2);
+  return fl;
+}
+
+function makeUse(sym, layer) { const el = mk('use', layer); el.setAttribute('href', '#' + sym); el._sym = sym; return el; }
+function place(el, r, flip) {
+  const k = V.f / r.cz * r.scale / 100, kx = Math.round(k * r.mx * 1e4) / 1e4, ky = Math.round(k * 1e4) / 1e4;
+  setA(el, 'transform', 'matrix(' + kx + ' 0 0 ' + (flip ? -ky * .9 : ky) + ' ' + r1(V.HW + V.f * r.cx / r.cz) + ' ' + r1(V.hy + V.f * (V.eye - r.y0) / r.cz) + ')');
+}
+function syncSprites(Q) {
+  FRAME++;
+  const L = E.sprites, n = LIST.length, fl = ENV.flood, ro = fl > .06 ? Math.round(fl * 4) / 10 : 0;
+  for (let i = 0; i < n; i++) {
+    const r = LIST[i];
+    let el = ACTIVE.get(r.key);
+    if (el && el._sym !== r.sym) { ACTIVE.delete(r.key); setA(el, 'display', 'none'); (FREE[el._sym] || (FREE[el._sym] = [])).push(el); el = null; }
+    if (!el) { const fr = FREE[r.sym]; el = fr && fr.length ? fr.pop() : makeUse(r.sym, L); ACTIVE.set(r.key, el); setA(el, 'display', 'inline'); }
+    el._f = FRAME; el._ord = i; r.el = el;
+    place(el, r, false);
+    if (el._st !== r.style) { el._st = r.style; el.style.cssText = r.style; }
+    if (r.refl && ro > 0) {                               // night: the stone stands on its own mirror image
+      let m = RACTIVE.get(r.key);
+      if (!m) { const fr = RFREE[r.sym]; m = fr && fr.length ? fr.pop() : makeUse(r.sym, E.refl); RACTIVE.set(r.key, m); setA(m, 'display', 'inline'); }
+      m._f = FRAME; place(m, r, true);
+      if (m._st !== r.style) { m._st = r.style; m.style.cssText = r.style; }
+    }
+  }
+  for (const [key, el] of ACTIVE) if (el._f !== FRAME) { ACTIVE.delete(key); setA(el, 'display', 'none'); (FREE[el._sym] || (FREE[el._sym] = [])).push(el); }
+  for (const [key, el] of RACTIVE) if (el._f !== FRAME) { RACTIVE.delete(key); setA(el, 'display', 'none'); (RFREE[el._sym] || (RFREE[el._sym] = [])).push(el); }
+  setA(E.refl, 'opacity', ro); setA(E.refl, 'display', ro > 0 ? 'inline' : 'none');
+
+  /* order far-to-near: keep the longest run already in order, move only the rest */
+  const seq = [], els = [];
+  for (let c = L.firstChild; c; c = c.nextSibling) if (c._f === FRAME) { seq.push(c._ord); els.push(c); }
+  const m = seq.length, tails = [], prev = new Int32Array(m);
+  for (let i = 0; i < m; i++) {
+    const v = seq[i]; let lo = 0, hi = tails.length;
+    while (lo < hi) { const mid = (lo + hi) >> 1; if (seq[tails[mid]] < v) lo = mid + 1; else hi = mid; }
+    prev[i] = lo > 0 ? tails[lo - 1] : -1; tails[lo] = i;
+  }
+  for (let k = tails.length ? tails[tails.length - 1] : -1; k >= 0; k = prev[k]) els[k]._keep = FRAME;
+  let next = null, moves = 0;
+  for (let i = n - 1; i >= 0; i--) { const el = LIST[i].el; if (el._keep !== FRAME) { L.insertBefore(el, next); moves++; } next = el; }
+  STAT.sprites = n; STAT.moves = moves;
+}
+
+/* ---- Input: keys, drag-look, and two captured-pointer sticks that work at the same time ---- */
+
+const KEYS = {};
+const IN = { fwd: 0, strafe: 0, turn: 0, tilt: 0, run: false, dyaw: 0, dpitch: 0, used: false };
+const STICK = { L: { x: 0, y: 0, id: null }, R: { x: 0, y: 0, id: null } };
+
+function initInput(onFirstMove) {
+  const scene = $('scene'), body = document.body;
+  const coarse = (window.matchMedia && matchMedia('(pointer: coarse)').matches) || (navigator.maxTouchPoints > 0 && 'ontouchstart' in window);
+  if (coarse || QS.has('touch')) body.classList.add('touch');
+
+  addEventListener('keydown', e => {
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    if (e.code.startsWith('Arrow') || e.code === 'Space') e.preventDefault();
+    KEYS[e.code] = true;
+  });
+  addEventListener('keyup', e => { KEYS[e.code] = false; });
+  const drop = () => { for (const k in KEYS) KEYS[k] = false; };
+  addEventListener('blur', drop);
+  document.addEventListener('visibilitychange', drop);
+
+  /* drag the world to look: the point under the cursor follows it */
+  let dragId = null, lx = 0, ly = 0;
+  scene.addEventListener('pointerdown', e => {
+    if (e.pointerType === 'touch') body.classList.add('touch');
+    if (dragId !== null || (e.pointerType === 'mouse' && e.button !== 0)) return;
+    dragId = e.pointerId; lx = e.clientX; ly = e.clientY; scene.classList.add('drag');
+    try { scene.setPointerCapture(e.pointerId); } catch (err) { /* synthetic or vanished pointer */ }
+  });
+  scene.addEventListener('pointermove', e => {
+    if (e.pointerId !== dragId) return;
+    IN.dyaw -= (e.clientX - lx) / V.f; IN.dpitch += (e.clientY - ly) / V.H;
+    lx = e.clientX; ly = e.clientY;
+  });
+  const endDrag = e => { if (e.pointerId === dragId) { dragId = null; scene.classList.remove('drag'); } };
+  scene.addEventListener('pointerup', endDrag); scene.addEventListener('pointercancel', endDrag); scene.addEventListener('lostpointercapture', endDrag);
+
+  /* sticks: each one owns the pointer that landed on it, so two thumbs never fight */
+  const bind = (el, st) => {
+    const knob = el.querySelector('.knob');
+    const set = e => {
+      const r = el.getBoundingClientRect(), R = r.width * .36;
+      let x = (e.clientX - (r.left + r.width / 2)) / R, y = (e.clientY - (r.top + r.height / 2)) / R;
+      const l = Math.hypot(x, y); if (l > 1) { x /= l; y /= l; }
+      st.x = x; st.y = y;
+      knob.style.transform = 'translate(' + r1(x * R) + 'px,' + r1(y * R) + 'px)';
+    };
+    const end = e => {
+      if (e.pointerId !== st.id) return;
+      st.id = null; st.x = st.y = 0; knob.style.transform = ''; el.classList.remove('on');
+    };
+    el.addEventListener('pointerdown', e => {
+      if (st.id !== null) return;
+      st.id = e.pointerId; el.classList.add('on');
+      try { el.setPointerCapture(e.pointerId); } catch (err) { /* synthetic pointer */ }
+      set(e); e.preventDefault(); e.stopPropagation();
+    });
+    el.addEventListener('pointermove', e => { if (e.pointerId === st.id) set(e); });
+    el.addEventListener('pointerup', end); el.addEventListener('pointercancel', end); el.addEventListener('lostpointercapture', end);
+  };
+  bind($('stickL'), STICK.L); bind($('stickR'), STICK.R);
+
+  /* keep the browser's own gestures out of it: pull-to-refresh, pinch, double-tap zoom, edge swipes, long-press menus */
+  const ui = t => t && t.closest && t.closest('button, #intro');
+  document.addEventListener('touchstart', e => { if (!ui(e.target) || e.touches.length > 1) e.preventDefault(); }, { passive: false });
+  document.addEventListener('touchmove', e => { if (!(e.target.closest && e.target.closest('#introCard')) || e.touches.length > 1) e.preventDefault(); }, { passive: false });
+  ['gesturestart', 'gesturechange', 'gestureend'].forEach(t => document.addEventListener(t, e => e.preventDefault(), { passive: false }));
+  document.addEventListener('dblclick', e => e.preventDefault());
+  document.addEventListener('contextmenu', e => e.preventDefault());
+  document.addEventListener('selectstart', e => e.preventDefault());
+  addEventListener('wheel', e => { if (e.ctrlKey) e.preventDefault(); }, { passive: false });
+}
+
+const dz = v => Math.abs(v) < .14 ? 0 : (v - Math.sign(v) * .14) / .86;       // stick dead zone
+function readInput() {
+  const k = KEYS, L = STICK.L, R = STICK.R;
+  IN.fwd = clamp((k.KeyW || k.ArrowUp ? 1 : 0) - (k.KeyS || k.ArrowDown ? 1 : 0) - dz(L.y), -1, 1);
+  IN.strafe = clamp((k.KeyE ? 1 : 0) - (k.KeyQ ? 1 : 0) + dz(L.x) * .6, -1, 1);
+  IN.turn = clamp((k.KeyD || k.ArrowRight ? 1 : 0) - (k.KeyA || k.ArrowLeft ? 1 : 0) + dz(R.x), -1, 1);
+  IN.tilt = -dz(R.y) * .55;
+  IN.run = !!(k.ShiftLeft || k.ShiftRight);
+  if (IN.fwd || IN.strafe || IN.turn) IN.used = true;
+}
+
+/* ---- The walker, the hours, and the small amount of interface ---- */
+
+const HOURS = [
+  ['I', 'Kindling', 'The sun finds the salt. The sea, caught out, runs for the stones.'],
+  ['II', 'Long Water', 'Morning canals reach to the edge of the world. We sailed them once, in boats no wider than a shadow.'],
+  ['III', 'The Herons’ Hour', 'They walk as the shade walks. We never taught them that. They taught us.'],
+  ['IV', 'Shortening', 'The canals draw in. Count your fish. They are counting you.'],
+  ['V', 'The Narrow Hour', 'A keeper carries a parasol at this hour, and a little sea goes with her.'],
+  ['VI', 'The Gathering', 'Every pool crowds in close to its stone. Even a sea can be shy.'],
+  ['VII', 'Low Noon', 'The sun climbs no higher than this. The sea draws in to a hand of water and holds its breath.'],
+  ['VIII', 'The Turning', 'The shade has crossed to the east side. The tide has changed its mind.'],
+  ['IX', 'Lengthening', 'We raised ten thousand gnomons so the sea would have room to stretch.'],
+  ['X', 'Gold Water', 'At this hour we lit no lamps. The canals carried the light themselves.'],
+  ['XI', 'The Great Shade', 'We built one stone too tall. Its shadow reached the horizon and did not come back at noon.'],
+  ['XII', 'Evenfall', 'On the last evening the Order walked into the long shade and went down with the tide.']
+];
+const QL = [
+  { drawR: 100, smallR: 22, crackR: 0, koiR: 16, reflR: 0, nightKoi: 14, glint: 0 },
+  { drawR: 125, smallR: 30, crackR: 11, koiR: 22, reflR: 0, nightKoi: 22, glint: 26 },
+  { drawR: 150, smallR: 38, crackR: 15, koiR: 28, reflR: 55, nightKoi: 30, glint: 38 },
+  { drawR: 172, smallR: 46, crackR: 19, koiR: 34, reflR: 75, nightKoi: 40, glint: 50 }
+];
+const EYE = 2.6;
+const STILL = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+const G = {
+  x: qnum('x', 33), z: qnum('z', 52), yaw: qnum('yaw', 229) * DEG, pitch: qnum('pitch', -.05), vf: 0, vs: 0, bob: 0, bobAmt: 0, wade: 0, stepAcc: 0,
+  time: 0, T: qnum('t', .588), rate: QS.has('freeze') ? 0 : qnum('speed', 1), kept: new Array(12).fill(false), nKept: 0,
+  deepOn: false, deep: 0, started: false, lastHour: -2, hintAt: 14, sawNight: false, q: 3
+};
+const SAVE = 'lownoon.kept.v1';
+function loadKept() {
+  if (QS.has('reset')) { try { localStorage.removeItem(SAVE); } catch (e) { /* private mode */ } return; }
+  let m = 0; try { m = parseInt(localStorage.getItem(SAVE) || '0', 10) || 0; } catch (e) { /* private mode */ }
+  for (let k = 0; k < 12; k++) if (m >> k & 1) { G.kept[k] = true; G.nKept++; }
+  if (G.nKept === 12) { G.deepOn = true; G.deep = 1; }
+}
+function saveKept() { let m = 0; G.kept.forEach((v, k) => { if (v) m |= 1 << k; }); try { localStorage.setItem(SAVE, String(m)); } catch (e) { /* private mode */ } }
+
+let toastTimer = 0;
+const TQ = [];
+function toast(title, text, secs) {
+  const el = $('toast');
+  if (el.classList.contains('on') && TQ.length < 3) { TQ.push([title, text, secs]); return; }
+  el.textContent = '';
+  const b = document.createElement('b'), s = document.createElement('span');
+  b.textContent = title; s.textContent = text; el.appendChild(b); el.appendChild(s); el.classList.add('on');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { el.classList.remove('on'); toastTimer = setTimeout(() => { if (TQ.length) toast.apply(null, TQ.shift()); }, 900); }, (secs || 7) * 1000);
+}
+function initHud() {
+  const p = $('pips');
+  for (let k = 0; k < 12; k++) { const c = mk('circle', p); c.setAttribute('cx', 5 + k * 12); c.setAttribute('cy', 5); c.setAttribute('r', 3.4); }
+  syncPips();
+}
+function syncPips() { const cs = $('pips').children; for (let k = 0; k < 12; k++) cs[k].setAttribute('class', (G.kept[k] ? 'kept' : '') + (k === ENV.hour ? ' now' : '')); }
+function hudHour() {
+  const h = ENV.hourF, night = h < 0, ray = $('hourRay'), dot = $('hourDot');
+  setA(ray, 'display', night ? 'none' : 'inline'); setA(dot, 'display', night ? 'none' : 'inline');
+  if (!night) { const t = Math.PI * (1 - h / 12), x = r1(13 * Math.cos(t)), y = r1(3 - 13 * Math.sin(t)); setA(ray, 'd', 'M0 3L' + x + ' ' + y); setA(dot, 'cx', x); setA(dot, 'cy', y); }
+  if (ENV.hour !== G.lastHour) {
+    G.lastHour = ENV.hour;
+    $('hourName').textContent = night ? 'The Deep' : HOURS[ENV.hour][0] + ' · ' + HOURS[ENV.hour][1];
+    syncPips();
+    if (night && G.started && !G.sawNight) { G.sawNight = true; toast('The Deep', G.deepOn ? 'Tonight the tide does not stop at the horizon.' : 'All shade now. All sea.', 6); }
+  }
+}
+function keep(k, bx, bz) {
+  if (G.kept[k]) return;
+  G.kept[k] = true; G.nKept++; saveKept(); syncPips();
+  if (bx !== undefined) for (let i = 0; i < 4; i++) RINGS.push({ x: bx, z: bz, t: G.time + i * .28 });
+  toast(HOURS[k][0] + ' · ' + HOURS[k][1] + ' · kept ' + G.nKept + ' of 12', HOURS[k][2], 8);
+  if (G.nKept === 12) { G.deepOn = true; G.sawNight = false; toast('Twelve hours kept', 'Tonight the tide will not stop at the horizon.', 9); }
+}
+
+function update(dt) {
+  G.time += dt;
+  if (G.started) G.T = (G.T + dt * G.rate / CYCLE) % 1;          // the day waits behind the title card
+  updateEnv(G.T);
+  readInput();
+  if (!G.started) { IN.fwd = IN.strafe = IN.turn = IN.tilt = 0; G.yaw += dt * .016 * Math.cos(G.time * .2); }
+  G.yaw += IN.dyaw + IN.turn * 1.9 * dt;
+  G.pitch = clamp(G.pitch + IN.dpitch + IN.tilt * dt, -.36, .36);
+  IN.dyaw = IN.dpitch = 0;
+  const top = IN.run ? 8.4 : 4.5, k = 1 - Math.exp(-dt * 7);
+  G.vf += (IN.fwd * (IN.fwd < 0 ? top * .6 : top) - G.vf) * k;
+  G.vs += (IN.strafe * 3.2 - G.vs) * k;
+  const sy = Math.sin(G.yaw), cy = Math.cos(G.yaw);
+  let nx = G.x + (sy * G.vf + cy * G.vs) * dt, nz = G.z + (cy * G.vf - sy * G.vs) * dt;
+  let wet = ENV.flood > .5;
+  const all = GREATS.length ? ENTS.concat(GREATS) : ENTS;
+  for (const g of all) {
+    const dx = nx - g.x, dz = nz - g.z, d2 = dx * dx + dz * dz, rr = g.cr + .34;
+    if (d2 < rr * rr) { const d = Math.sqrt(d2) || .001; nx = g.x + dx / d * rr; nz = g.z + dz / d * rr; }       // stones are solid
+    if (!wet && g.K.sil.length && inShadeOf(g, nx, nz)) wet = true;
+    if (g.dial && G.started && d2 < 18 * 18) for (const c of g.spots) {                                      // stand by an open lily: its hour is kept
+      if (c.open > .5 && !G.kept[c.hour] && (nx - c.x) * (nx - c.x) + (nz - c.z) * (nz - c.z) < 2.7 * 2.7) keep(c.hour, c.x, c.z);
+    }
+  }
+  const moved = Math.hypot(nx - G.x, nz - G.z), speed = dt > 0 ? moved / dt : 0;
+  G.x = nx; G.z = nz;
+  G.wade += ((wet ? 1 : 0) - G.wade) * (1 - Math.exp(-dt * 5));
+  G.bob += moved * TAU / lerp(4.2, 4.6, G.wade);                  // one full sway every two long stilt strides
+  G.bobAmt += ((STILL ? 0 : smooth(.3, 3, speed)) - G.bobAmt) * (1 - Math.exp(-dt * 6));
+  G.stepAcc += moved;
+  if (G.wade > .5 && G.stepAcc > .8) { G.stepAcc = 0; RINGS.push({ x: G.x + sy * .5, z: G.z + cy * .5, t: G.time }); if (RINGS.length > 40) RINGS.shift(); }
+  if (moved > .01 && G.started && !document.body.classList.contains('walked') && IN.used) document.body.classList.add('walked');
+  G.deep += ((G.deepOn ? 1 : 0) - G.deep) * (1 - Math.exp(-dt * .5));
+  refreshEnts(false);
+  hudHour();
+  if (G.started && G.hintAt > 0 && G.time > G.hintAt) {
+    G.hintAt = 0;
+    if (G.nKept === 0) toast('How an hour is kept', ENV.hour >= 0 ? 'A dial stands where the gold light rises. Walk to the lily that has opened.' : 'Wait for the sun. The dials wake with it, and a gold light stands on the open lily.', 9);
+  }
+}
+
+function render(dt) {
+  const b = G.bobAmt, sway = Math.sin(G.bob) * .06 * b, cy = Math.cos(G.yaw), sy = Math.sin(G.yaw);
+  V.yaw = G.yaw; V.cs = cy; V.sn = sy;
+  V.x = G.x + cy * sway; V.z = G.z - sy * sway;
+  V.eye = EYE + Math.cos(G.bob * 2) * lerp(.06, .075, G.wade) * b;        // on a keeper's stilts
+  V.hy = V.H / 2 + G.pitch * V.H;
+  const Q = QL[G.q];
+  drawSky(G.time, G.kept);
+  drawGround(G.time, Q);
+  drawKoi(G.time, dt, Q, G.deep);
+  collectSprites(dt, Q, G.kept);
+  syncSprites(Q);
+}
+
+/* ---- Boot, the frame loop, and a quality governor that only keeps a change the frame time agrees with ---- */
+
+function resize() {
+  const W = Math.max(1, window.innerWidth || document.documentElement.clientWidth || 1);
+  const H = Math.max(1, window.innerHeight || document.documentElement.clientHeight || 1);
+  V.W = W; V.H = H; V.HW = W / 2; V.f = .6 * Math.max(W, H * .92);
+  V.tanX = V.HW / V.f; V.cosX = 1 / Math.hypot(1, V.tanX);
+  $('scene').setAttribute('viewBox', '0 0 ' + W + ' ' + H);
+}
+
+/* Quality: 0..3. A step down is a probe: it stays only if frames really got shorter (a display capped at 30 Hz,
+   or a cost that is not ours, gains nothing and the step is undone and locked out). Steps up are probes too. */
+const AD = { on: qnum('adapt', 1) !== 0, ema: 0, n: 0, slow: 0, fast: 0, state: 'watch', t0: 0, before: 0, from: 3, lock: 0, upWait: 18, fails: 0, switches: 0 };
+function adapt(ms, now) {
+  if (!AD.on || ms > 250 || ms <= 0) return;
+  AD.ema = AD.n < 30 ? (AD.ema * AD.n + ms) / (AD.n + 1) : AD.ema + (ms - AD.ema) * .06; AD.n++;
+  if (AD.n < 40) return;                                      // judge only on real samples
+  const t = now / 1000, dt = ms / 1000;
+  const go = (q, state) => { AD.from = G.q; AD.before = AD.ema; G.q = q; AD.state = state; AD.t0 = t; AD.n = 0; AD.ema = 0; AD.slow = AD.fast = 0; AD.switches++; };
+  if (AD.state === 'watch') {
+    AD.slow = AD.ema > 22.5 ? AD.slow + dt : 0;
+    AD.fast = AD.ema < 19.5 ? AD.fast + dt : 0;
+    if (t < AD.lock) return;
+    if (AD.slow > 1.3 && G.q > 0) go(Math.max(0, G.q - (AD.fails > 1 ? 3 : AD.fails + 1)), 'down');
+    else if (AD.fast > AD.upWait && G.q < 3) go(G.q + 1, 'up');
+  } else if (t - AD.t0 > 1.7) {
+    if (AD.state === 'down') {
+      if (AD.ema < AD.before * .94) AD.fails = 0;             // it helped: keep it
+      else { const floor = G.q === 0; G.q = AD.from; AD.fails++; AD.lock = t + (floor ? 1800 : 40 * AD.fails); AD.switches++; AD.n = 0; AD.ema = 0; }
+    } else if (AD.ema > Math.max(AD.before * 1.12, 20.5)) { G.q = AD.from; AD.upWait = Math.min(240, AD.upWait * 2); AD.switches++; AD.n = 0; AD.ema = 0; }
+    AD.state = 'watch'; AD.slow = AD.fast = 0;
+  }
+}
+
+let last = 0, raf = 0;
+function frame(ts) {
+  raf = requestAnimationFrame(frame);
+  if (!last) { last = ts; return; }
+  const ms = ts - last; last = ts;
+  if ((window.innerWidth && window.innerWidth !== V.W) || (window.innerHeight && window.innerHeight !== V.H)) resize();
+  const dt = Math.min(.05, ms / 1000);
+  update(dt); render(dt); adapt(ms, ts);
+}
+
+function begin() {
+  G.started = true; G.hintAt = G.time + 12;
+  document.body.classList.remove('intro'); $('intro').classList.add('off');
+  $('intro').setAttribute('aria-hidden', 'true'); $('hud').removeAttribute('aria-hidden');
+  if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
+}
+function showIntro() {
+  G.started = false; document.body.classList.add('intro'); $('intro').classList.remove('off'); $('intro').removeAttribute('aria-hidden');
+  $('begin').textContent = 'Walk on'; $('forget').hidden = G.nKept === 0; $('begin').focus({ preventScroll: true });
+}
+
+(function boot() {
+  installSymbols(); initSky(); initKoi(); loadKept(); resize();
+  const coarse = document.body.classList.contains('touch');
+  initInput();
+  G.q = clamp(Math.round(qnum('q', document.body.classList.contains('touch') || coarse ? 1 : 3)), 0, 3);
+  updateEnv(G.T); V.x = G.x; V.z = G.z; refreshEnts(true); initHud();
+  addEventListener('resize', resize); addEventListener('orientationchange', resize);
+  if (window.visualViewport) visualViewport.addEventListener('resize', resize);
+  document.addEventListener('visibilitychange', () => { last = 0; });
+  $('begin').addEventListener('click', begin);
+  $('help').addEventListener('click', showIntro);
+  $('forget').hidden = G.nKept === 0;
+  $('forget').addEventListener('click', () => {                 // start the turning over
+    G.kept.fill(false); G.nKept = 0; G.deepOn = false; G.sawNight = false; saveKept(); syncPips(); $('forget').hidden = true;
+  });
+  if (QS.has('nointro')) begin(); else $('begin').focus({ preventScroll: true });
+
+  window.__lownoon = {
+    G, V, AD, STAT, HOURS,
+    env: () => ENV,
+    step(dt, n) { for (let i = 0; i < (n || 1); i++) update(dt); render(dt); return this.stats(); },
+    tp(x, z, yaw, pitch) { G.x = x; G.z = z; if (yaw !== undefined) G.yaw = yaw * DEG; if (pitch !== undefined) G.pitch = pitch; G.vf = G.vs = 0; V.x = x; V.z = z; refreshEnts(true); },
+    hour(h) { G.T = clamp(h, 0, 11.999) / 12 * DAYF; }, setT(T) { G.T = ((T % 1) + 1) % 1; },
+    keep(k) { keep(k); }, q(l) { G.q = clamp(l | 0, 0, 3); AD.on = false; },
+    ents: () => ENTS, greats: () => GREATS,
+    stats() {
+      return Object.assign({}, STAT, { q: G.q, ema: r1(AD.ema), hour: ENV.hour, alt: r1(ENV.altD), flood: r1(ENV.flood), ents: ENTS.length, pool: E.sprites.childElementCount,
+        x: r1(G.x), z: r1(G.z), yaw: r1(G.yaw / DEG), wade: r1(G.wade), kept: G.nKept, eye: Math.round(V.eye * 1000) / 1000, switches: AD.switches });
+    },
+    stop() { cancelAnimationFrame(raf); raf = 0; }, go() { if (!raf) { last = 0; raf = requestAnimationFrame(frame); } }
+  };
+  update(0); render(0);
+  if (!QS.has('manual')) raf = requestAnimationFrame(frame);
+})();
+})();
+</script>
+</body>
+</html>
