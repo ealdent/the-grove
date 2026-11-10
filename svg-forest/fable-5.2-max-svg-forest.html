@@ -36,9 +36,13 @@ html, body {
 #swellB { animation: swell 6.4s ease-in-out -2.9s infinite; }
 @keyframes pulse { 0%, 100% { opacity: .35; } 50% { opacity: 1; } }
 #markNow { animation: pulse 1.8s ease-in-out infinite; }
-.beam { animation: pulse 2.6s ease-in-out infinite; }
-@keyframes nod { 0%, 62%, 100% { transform: rotate(0deg); } 70% { transform: rotate(16deg); } 78% { transform: rotate(-3deg); } 86% { transform: rotate(0deg); } }
-.neck { transform-box: fill-box; transform-origin: 50% 100%; animation: nod 7s ease-in-out infinite; animation-delay: var(--ad, 0s); }
+/* Nothing inside a pooled sprite may carry a CSS animation: re-ordering a <use> in the DOM rebuilds its shadow tree and
+   restarts the animation, which showed as light pillars flashing and herons twitching. Such motion is driven from script. */
+.neck { transform-box: fill-box; transform-origin: 50% 100%; transform: rotate(var(--nk, 0deg)); }
+@keyframes glint { 0%, 100% { opacity: .1; } 50% { opacity: .9; } }
+#gl0 { animation: glint 2.3s ease-in-out infinite; }
+#gl1 { animation: glint 3.1s ease-in-out -1.1s infinite; }
+#gl2 { animation: glint 2.7s ease-in-out -2s infinite; }
 
 #hud { position: absolute; left: max(14px, env(safe-area-inset-left)); top: max(12px, env(safe-area-inset-top)); pointer-events: none;
   text-shadow: 0 1px 10px rgba(3, 6, 20, .55); transition: opacity .8s; }
@@ -115,7 +119,8 @@ body.intro #sticks { opacity: 0; pointer-events: none; }
   #introCard p.keys { margin-top: 10px; }
 }
 @media (prefers-reduced-motion: reduce) {
-  #st1, #st2, #swellA, #swellB, #markNow, .beam, .neck { animation: none; }
+  #st1, #st2, #swellA, #swellB, #markNow, #gl0, #gl1, #gl2 { animation: none; }
+  #gl0, #gl1, #gl2 { opacity: .6; }
 }
 </style>
 </head>
@@ -174,7 +179,7 @@ body.intro #sticks { opacity: 0; pointer-events: none; }
   <path id="rim" fill="none" stroke-linejoin="round"/>
   <path id="water" fill="url(#gWater)"/>
   <path id="pads"/>
-  <path id="glints" fill="none" stroke-linecap="round" stroke-opacity=".8"/>
+  <g id="glints" fill="none" stroke-linecap="round" stroke-opacity=".8"><path id="gl0"/><path id="gl1"/><path id="gl2"/></g>
   <rect id="sea" fill="url(#gWater)"/>
   <use id="starsR" href="#stars"/>
   <g id="refl"></g>
@@ -398,7 +403,8 @@ function updateEnv(T) {
   const deep = mix(DEEP, NIGHTFLOOR, ENV.flood * 0.75);
   ENV.w0 = mul(mix(hor, mid, 0.1), TEAL); ENV.w1 = mul(mix(hor, mid, 0.38), TEAL);
   ENV.w2 = mix(mul(mix(hor, mid, 0.72), TEAL), deep, 0.5); ENV.w3 = mix(mul(mix(mid, zen, 0.5), TEAL), deep, 0.84);
-  ENV.step = Math.abs(aD) < 14 && G.q > 1 ? 100000 + Math.floor(T * 1800) : Math.floor(T * 900);   // sprite palettes refresh on this beat, twice as often while the light is changing fast
+  ENV.tick = Math.floor(T * 7200);                           // 24 ticks a second: sprite palettes refresh every few ticks, each on its own phase
+  ENV.fast = Math.abs(aD) < 14;                              // the light is changing quickly: refresh them twice as often
 }
 /* One facet of a stone: albedo under ambient sky plus the sun at a given Lambert term. */
 const facet = (alb, lam) => mul(alb, add(ENV.fill, sc(ENV.sunC, lam)));
@@ -550,7 +556,7 @@ const SPR = {
   sunB: petal(-72, 30, 5, 'lf2') + petal(72, 30, 5, 'lf2') + petal(-38, 36, 5, 'lf') + petal(38, 36, 5, 'lf') + petal(0, 30, 5, 'lf2') +
     stroke('M0 -8L0 -76', 'lf', 2.6) + `<g transform="translate(0 -80)">` + [0, 45, 90, 135, 180, 225, 270, 315].map(a => petal(a, 15, 4.2, a % 90 ? 'y2' : 'y')).join('') +
     `<circle r="4" style="fill:var(--v)"/></g>`,
-  beam: `<rect class="beam" x="-16" y="-1500" width="32" height="1500" fill="url(#gBeacon)"/>`,
+  beam: `<rect x="-16" y="-1500" width="32" height="1500" fill="url(#gBeacon)"/>`,
   cloud0: `<path d="M-200 0C-200 -22 -150 -30 -120 -28C-100 -52 -40 -58 -10 -40C20 -62 90 -56 110 -30C160 -34 200 -20 200 0Z" style="fill:var(--c1)"/><path d="M-200 0C-120 -11 120 -11 200 0Z" style="fill:var(--c2)"/>`,
   cloud1: `<path d="M-260 0C-240 -14 -160 -18 -90 -14C-40 -30 60 -30 110 -16C170 -20 240 -10 260 0Z" style="fill:var(--c1)"/><path d="M-260 0C-150 -7 150 -7 260 0Z" style="fill:var(--c2)"/>`,
   cloud2: `<path d="M-110 0C-112 -16 -80 -24 -62 -18C-48 -36 -4 -36 8 -20C34 -28 70 -22 76 -8C96 -8 110 -4 110 0Z" style="fill:var(--c1)"/><path d="M-110 0C-60 -6 60 -6 110 0Z" style="fill:var(--c2)"/>`
@@ -729,7 +735,7 @@ const ridgeNear = az => {
 function initSky() {
   ['sky', 'stars', 'st0', 'st1', 'st2', 'arc', 'marks', 'marksLit', 'markNow', 'sunHalo', 'sunGlow', 'sunDisc', 'clouds', 'mtnFar', 'mtnNear',
     'ground', 'glare', 'cracks', 'inlay', 'rim', 'water', 'pads', 'sea', 'starsR', 'refl', 'swellA', 'swellB', 'ripples', 'glows', 'haze', 'sprites', 'vig',
-    'gSky', 'gGround', 'gWater', 'gCrack', 'koF', 'koW', 'koG', 'koO', 'koR', 'koK', 'skK', 'skW', 'skO', 'skyKoi', 'koi', 'ripples2', 'glints', 'skGlow'].forEach(id => { E[id] = $(id); });
+    'gSky', 'gGround', 'gWater', 'gCrack', 'koF', 'koW', 'koG', 'koO', 'koR', 'koK', 'skK', 'skW', 'skO', 'skyKoi', 'koi', 'ripples2', 'glints', 'gl0', 'gl1', 'gl2', 'skGlow'].forEach(id => { E[id] = $(id); });
   for (let i = 0; i < 4; i++) E['sk' + i] = $('sk' + i);
   for (let i = 0; i < 6; i++) E['gr' + i] = $('gr' + i);
   for (let i = 0; i < 4; i++) { E['wa' + i] = $('wa' + i); E['hz' + i] = $('hz' + i); }
@@ -762,7 +768,7 @@ function drawSky(time, kept) {
   const hh = f * .13, hz = hex(ENV.haze);
   setA(E.haze, 'x', 0); setA(E.haze, 'width', W); setA(E.haze, 'y', r1(hy - hh * .64)); setA(E.haze, 'height', r1(hh));
   for (let i = 0; i < 4; i++) setA(E['hz' + i], 'stop-color', hz);
-  setA(E.vig, 'width', W); setA(E.vig, 'height', H); setA(E.vig, 'opacity', r1(lerp(.3, 1, ENV.flood)));
+  setA(E.vig, 'width', W); setA(E.vig, 'height', H); setA(E.vig, 'opacity', Math.round(lerp(.3, 1, ENV.flood) * 50) / 50);
 
   /* stars turn about the pole with the hour angle */
   const sa = ENV.starA;
@@ -780,9 +786,9 @@ function drawSky(time, kept) {
     }
     setA(E.st0, 'd', d[0]); setA(E.st1, 'd', d[1]); setA(E.st2, 'd', d[2]);
     setA(E.st0, 'stroke-width', r1(4.2 * px)); setA(E.st1, 'stroke-width', r1(2.8 * px)); setA(E.st2, 'stroke-width', r1(1.9 * px));
-    setA(E.stars, 'opacity', Math.round(sa * 20) / 20);
+    setA(E.stars, 'opacity', Math.round(sa * 50) / 50);
     setA(E.stars, 'display', 'inline');
-    const ro = Math.round(sa * ENV.flood * 5.5) / 10;
+    const ro = Math.round(sa * ENV.flood * 55) / 100;
     setA(E.starsR, 'display', ro > 0 ? 'inline' : 'none');
     if (ro > 0) { setA(E.starsR, 'transform', 'matrix(1 0 0 -1 0 ' + r1(2 * hy) + ')'); setA(E.starsR, 'opacity', ro); }
   } else { setA(E.stars, 'display', 'none'); setA(E.starsR, 'display', 'none'); }
@@ -813,18 +819,18 @@ function drawSky(time, kept) {
     setA(E.sunDisc, 'cx', r1(sp[0])); setA(E.sunDisc, 'cy', r1(sp[1])); setA(E.sunDisc, 'r', r1(rs)); setA(E.sunDisc, 'fill', tint);
     setA(E.sunGlow, 'cx', r1(sp[0])); setA(E.sunGlow, 'cy', r1(sp[1])); setA(E.sunGlow, 'r', r1(rs * (5 + 3 * low)));
     setA(E.sunHalo, 'cx', r1(sp[0])); setA(E.sunHalo, 'cy', r1(sp[1])); setA(E.sunHalo, 'rx', r1(f * 1.15)); setA(E.sunHalo, 'ry', r1(f * .5));
-    const ho = Math.round(low * smooth(-9, -1, ENV.altD) * 9) / 10, st = hex(ENV.sunTint);
+    const ho = Math.round(low * smooth(-9, -1, ENV.altD) * 90) / 100, st = hex(ENV.sunTint);       // fine steps: this glow covers half the sky
     setA(E.sunHalo, 'opacity', ho); setA(E.sunHalo, 'display', ho > 0 ? 'inline' : 'none');
     for (let i = 0; i < 3; i++) { setA(E['sg' + i], 'stop-color', i ? st : tint); setA(E['sh' + i], 'stop-color', st); }
     setA(E.sunDisc, 'display', 'inline'); setA(E.sunGlow, 'display', 'inline');
-    const go = Math.round(low * ENV.day * 6) / 10;                       // the salt under a low sun glares
+    const go = Math.round(low * ENV.day * 60) / 100;                     // the salt under a low sun glares
     setA(E.glare, 'display', go > 0 ? 'inline' : 'none');
     if (go > 0) { setA(E.glare, 'cx', r1(sp[0])); setA(E.glare, 'cy', r1(hy)); setA(E.glare, 'rx', r1(f * .7)); setA(E.glare, 'ry', r1(f * .11)); setA(E.glare, 'opacity', go); }
   } else { setA(E.sunDisc, 'display', 'none'); setA(E.sunGlow, 'display', 'none'); setA(E.sunHalo, 'display', 'none'); setA(E.glare, 'display', 'none'); }
 
   /* clouds drift round the horizon; their two colours follow the light */
-  if (E.clouds._step !== ENV.step) {
-    E.clouds._step = ENV.step;
+  if (E.clouds._step !== ENV.tick >> 2) {
+    E.clouds._step = ENV.tick >> 2;
     const top = mix(facet([.86, .86, .9], .8), ENV.hor, .34), und = mix(mix(ENV.mid, ENV.zen, .35), top, .3);
     E.clouds.style.cssText = '--c1:' + hex(top) + ';--c2:' + hex(und) + ';opacity:' + r1(lerp(.84, .5, ENV.flood));
   }
@@ -917,7 +923,8 @@ function drawGround(time, Q) {
   setA(E.cracks, 'd', d);
 
   /* shade is water: one path for every shadow in view, nonzero fill so overlaps merge and pierced stones keep their islands */
-  let w = '', inl = '', pads = '', gl = ''; STAT.shades = 0;
+  let w = '', inl = '', pads = ''; STAT.shades = 0;
+  const gl = ['', '', ''];
   const crx = V.cs, crz = -V.sn;
   const all = GREATS.length ? ENTS.concat(GREATS) : ENTS;
   for (const s of all) {
@@ -935,13 +942,13 @@ function drawGround(time, Q) {
     if (Q.glint > 0 && d2 < (Q.glint + s.L) * (Q.glint + s.L)) {       // light glinting on the pool, always inside it
       const P = s.K.pts, ex = ENV.sdx * s.c * s.s, ez = ENV.sdz * s.c * s.s, n = Math.min(P.length, 2 * Math.round(clamp(s.L * 1.3, 8, 44)));
       for (let rep = s.great ? 7 : 0; rep >= 0; rep--) for (let i = 0; i < n; i += 2) {
-        const h = hash3(s.seed, i, 5 + rep), ph = time * (.3 + (h & 255) / 900) + (h >>> 8 & 255) / 255;
-        if (ph - Math.floor(ph) > .5) continue;
+        const h = hash3(s.seed, i, 5 + rep);
+        if (h & 1) continue;                                 // half the sample points carry a glint; they breathe in three groups, never pop
         const pq = rep ? clamp(P[i + 1] + ((h >>> 12 & 15) / 15 - .5) * s.K.h / 44, 0, 108) : P[i + 1], pp = rep ? PROFS.great(pq) * ((h >>> 24) / 255 * 1.7 - .85) : P[i];
         const x = s.x + s.ax * s.s * pp + ex * pq, z = s.z + s.az * s.s * pp + ez * pq, qx = x - V.x, qz = z - V.z;
         if (qx * qx + qz * qz > Q.glint * Q.glint || cullCircle(x, z, .5)) continue;
         const hl = .1 + (h >>> 16 & 255) / 255 * .24;
-        gv(x - crx * hl, z - crz * hl); gv(x + crx * hl, z + crz * hl); gl += gline(eye);
+        gv(x - crx * hl, z - crz * hl); gv(x + crx * hl, z + crz * hl); gl[(h >>> 26) % 3] += gline(eye);
       }
     }
     if (s.dial && d2 < 80 * 80) {                            // the dial face inlaid in the salt: hour lines, and the trough the cups stand in
@@ -960,7 +967,7 @@ function drawGround(time, Q) {
       pads += gpoly(eye);
     }
   }
-  setA(E.water, 'd', w); setA(E.rim, 'd', w); setA(E.inlay, 'd', inl); setA(E.pads, 'd', pads); setA(E.glints, 'd', gl);
+  setA(E.water, 'd', w); setA(E.rim, 'd', w); setA(E.inlay, 'd', inl); setA(E.pads, 'd', pads); setA(E.gl0, 'd', gl[0]); setA(E.gl1, 'd', gl[1]); setA(E.gl2, 'd', gl[2]);
   setA(E.glints, 'stroke', hex(mix(ENV.w0, [1, 1, 1], .55))); setA(E.glints, 'stroke-width', r1(1.5 * px));
   setA(E.rim, 'stroke', hex(mix(ENV.w1, [1, 1, 1], .3))); setA(E.rim, 'stroke-width', r1(2 * px));
   setA(E.inlay, 'stroke', hex(mix(facet(COPPER, .45), g, .2))); setA(E.inlay, 'stroke-width', r1(1.7 * px));
@@ -1112,31 +1119,35 @@ function drawKoi(time, dt, Q, deep) {
 
 const LIST = [];                        // this frame's sprites
 const ACTIVE = new Map(), RACTIVE = new Map(), FREE = {}, RFREE = {};
-const STYLES = new Map();
-let FRAME = 0, styleStep = -1;
+const STYLES = new Map();             // key -> { s: style string, o: phase, b: refresh bucket }
+let FRAME = 0, SEQ = 0, PER = 8;
 const SAGE = lin('#6fae9a'), PINK = lin('#ff6fa8'), PINK2 = lin('#e83f86'), LEAF = lin('#2f9a6a'), YOLK = lin('#ffd84a'), SLATE = lin('#3d4a6b'), VERM = lin('#ff5a36'), WHITE = [1, 1, 1];
 const IS2 = Math.SQRT1_2;
 
 const fogc = (c, fq) => hex(mix(c, ENV.haze, fq / 12));
 function stoneStyle(g, fq, qL, qR, aq, det) {
   const key = g.tintI + '|' + fq + '|' + qL + '|' + qR + '|' + aq + '|' + det;
-  let s = STYLES.get(key);
-  if (!s) {
+  let e = STYLES.get(key);
+  if (!e) STYLES.set(key, e = { s: '', o: SEQ++ & 7, b: -1 });
+  const b = Math.floor((ENV.tick + e.o) / PER);            // each palette is re-lit on its own phase, so the stones never all step at once
+  if (b !== e.b) {
     const lL = qL / 8, lR = qR / 8, t = g.tint;
-    s = '--l:' + fogc(facet(t, lL), fq) + ';--r:' + fogc(facet(sc(t, .9), lR), fq) + ';--k:' + fogc(facet(sc(t, .28), 0), fq) +
+    e.b = b;
+    e.s = '--l:' + fogc(facet(t, lL), fq) + ';--r:' + fogc(facet(sc(t, .9), lR), fq) + ';--k:' + fogc(facet(sc(t, .28), 0), fq) +
       ';--c:' + fogc(facet(COPPER, .2 + .55 * Math.max(lL, lR)), fq) + ';--g:' + fogc(facet(GOLD, .3 + lL), fq) + ';--g2:' + fogc(facet(GOLD, .12 + lR), fq) +
       ';--d:' + (det ? 'inline' : 'none') + (aq < 10 ? ';opacity:' + aq / 10 : '');
-    STYLES.set(key, s);
   }
-  return s;
+  return e.s;
 }
 function smallStyle(kind, fq, aq, extra) {
   const key = kind + '|' + fq + '|' + aq;
-  let s = STYLES.get(key);
-  if (!s) {
+  let e = STYLES.get(key), s;
+  if (!e) STYLES.set(key, e = { s: '', o: SEQ++ & 7, b: -1 });
+  const b = Math.floor((ENV.tick + e.o) / PER);
+  if (b !== e.b) {
     if (kind === 'lily' || kind === 'kept') {
-      const a = kind === 'kept' ? GOLD : PINK, b = kind === 'kept' ? lin('#f0a020') : PINK2;
-      s = '--p:' + fogc(facet(a, .55), fq) + ';--p2:' + fogc(facet(b, .45), fq) + ';--y:' + fogc(facet(YOLK, .6), fq) + ';--lf:' + fogc(facet(LEAF, .45), fq);
+      const pa = kind === 'kept' ? GOLD : PINK, pb = kind === 'kept' ? lin('#f0a020') : PINK2;
+      s = '--p:' + fogc(facet(pa, .55), fq) + ';--p2:' + fogc(facet(pb, .45), fq) + ';--y:' + fogc(facet(YOLK, .6), fq) + ';--lf:' + fogc(facet(LEAF, .45), fq);
     } else if (kind === 'stilt') {
       s = '--b:' + fogc(facet(lin('#6b4a3a'), .55), fq) + ';--c:' + fogc(facet(COPPER, .5), fq);
     } else if (kind === 'sun') {
@@ -1144,9 +1155,9 @@ function smallStyle(kind, fq, aq, extra) {
     } else s = '--b:' + fogc(facet(SLATE, .4), fq) + ';--k:' + fogc(facet(INK, .2), fq) + ';--g:' + fogc(facet(GOLD, .6), fq) +
       ';--v:' + fogc(facet(VERM, .6), fq) + ';--y:' + fogc(facet(YOLK, .7), fq);
     if (aq < 10) s += ';opacity:' + aq / 10;
-    STYLES.set(key, s);
+    e.b = b; e.s = s;
   }
-  return extra ? s + extra : s;
+  return extra ? e.s + extra : e.s;
 }
 /* add one billboard to the frame if it is in view */
 function push(key, sym, x, z, y0, scale, mx, hw, style, refl) {
@@ -1159,7 +1170,8 @@ function push(key, sym, x, z, y0, scale, mx, hw, style, refl) {
 
 function collectSprites(dt, Q, kept) {
   LIST.length = 0;
-  if (styleStep !== ENV.step || STYLES.size > 4000) { STYLES.clear(); styleStep = ENV.step; }
+  if (STYLES.size > 6000) STYLES.clear();
+  PER = ENV.fast && G.q > 1 ? 4 : 8;                          // refresh each palette every 1/6 s in changing light, 1/3 s otherwise
   const sx = ENV.se, sz = ENV.sn, fl = ENV.flood;
   const all = GREATS.length ? ENTS.concat(GREATS) : ENTS;
   for (const g of all) {
@@ -1193,7 +1205,7 @@ function collectSprites(dt, Q, kept) {
         c.open = want > c.open ? Math.min(1, c.open + dt * 1.5) : Math.max(0, c.open - dt * .9);
         if (show && ca > 0) push(c.id, c.open < .3 ? 'k_cupbud' : c.open < .75 ? 'k_cuphalf' : 'k_cupbloom', c.x, c.z, 0, 1.05, 1, .5,
           stoneStyle(g, fq, qL, qR, ca, 0) + ';' + smallStyle(kp ? 'kept' : 'lily', fq, 10));
-        if (c.open > .5 && !kp && c.hour === ENV.hour && d < 150) push(c.id + 'B', 'k_beam', c.x, c.z, .5, 1, 1, .3, 'opacity:' + r1((c.open - .5) * 2 * (1 - smooth(120, 150, d)) * aq / 10));
+        if (c.open > .5 && !kp && c.hour === ENV.hour && d < 150) push(c.id + 'B', 'k_beam', c.x, c.z, .5, 1, 1, .3, 'opacity:' + Math.round((c.open - .5) * 2 * (1 - smooth(120, 150, d)) * aq / 10 * (.8 + .2 * Math.sin(G.time * 1.9 + c.id)) * 50) / 50);   // breathes from script: see style.css
       }
     }
     if (g.pads && d < Q.smallR) for (const p of g.pads) {            // pads ride the shade by night as well, so the blossoms are placed here, not by the water pass
@@ -1213,7 +1225,11 @@ function collectSprites(dt, Q, kept) {
           const e = Math.sqrt(e2) || 1, t = (hash2(h.id, 3) & 255) / 255 - .5;
           h.fly = 1; h.t = G.time; h.fx = p[0]; h.fz = p[1];
           h.ux = ex / e * Math.cos(t) - ez / e * Math.sin(t); h.uz = ex / e * Math.sin(t) + ez / e * Math.cos(t);
-        } else if (d < Q.smallR * 2.4) push(h.id, 'k_heron', p[0], p[1], 0, 1.15, h.flip, .8, smallStyle('heron', fq, aq, ';--ad:' + r1(h.ad) + 's'));
+        } else if (d < Q.smallR * 2.4) {                   // now and then it dips its head: a few frames of a rotation set from here
+          const ph = (((G.time - h.ad) % 7) + 7) % 7 / 7;
+          const nk = STILL || ph < .62 || ph > .86 ? 0 : ph < .7 ? 16 * smooth(.62, .7, ph) : ph < .78 ? lerp(16, -3, smooth(.7, .78, ph)) : lerp(-3, 0, smooth(.78, .86, ph));
+          push(h.id, 'k_heron', p[0], p[1], 0, 1.15, h.flip, .8, smallStyle('heron', fq, aq, nk ? ';--nk:' + r1(nk) + 'deg' : ''));
+        }
       }
       if (h.fly) {                                         // up and away, low over the canals; it comes back when the walker has gone
         const a = G.time - h.t;
@@ -1253,7 +1269,7 @@ function orderLayer(L, want) {
 }
 function syncSprites(Q) {
   FRAME++;
-  const L = E.sprites, n = LIST.length, fl = ENV.flood, ro = fl > .06 ? Math.round(fl * 4) / 10 : 0, SL = [], RL = [];
+  const L = E.sprites, n = LIST.length, fl = ENV.flood, ro = fl > .06 ? Math.round(fl * 40) / 100 : 0, SL = [], RL = [];
   let budget = 5;
   for (let i = 0; i < n; i++) {
     const r = LIST[i];
@@ -1526,18 +1542,24 @@ function adapt(ms, now) {
     else if (AD.fast > AD.upWait && G.q < 3) go(G.q + 1, 'up');
   } else if (t - AD.t0 > 1.7) {
     if (AD.state === 'down') {
-      if (AD.ema < AD.before * .94) AD.fails = 0;             // it helped: keep it
+      if (AD.ema < AD.before * (AD.before > 40 ? 1.02 : .94)) AD.fails = 0;   // it helped: keep it (below 25 fps, keep it unless it made things worse)
       else { const floor = G.q === 0; G.q = AD.from; AD.fails++; AD.lock = t + (floor ? 1800 : 40 * AD.fails); AD.switches++; AD.n = 0; AD.ema = 0; }
     } else if (AD.ema > Math.max(AD.before * 1.12, 17.8)) { G.q = AD.from; AD.upWait = Math.min(240, AD.upWait * 2); AD.switches++; AD.n = 0; AD.ema = 0; }   // a step up must not cost a 120 Hz screen its cadence
     AD.state = 'watch'; AD.slow = AD.fast = 0;
   }
 }
 
-let last = 0, raf = 0;
+/* The loop draws at a steady 60 to 90 frames a second whatever the screen's rate. A whole SVG scene re-rastered at
+   120 Hz in a large window sits right on its deadline, and a rate that wavers looks worse than a lower one that holds. */
+const CAP = qnum('cap', 14);                 // aim for about this many ms between drawn frames; ?cap=0 draws every frame
+let last = 0, lastR = 0, raf = 0, vs = 16.7, nth = 0;
 function frame(ts) {
   raf = requestAnimationFrame(frame);
-  if (!last) { last = ts; return; }
-  const ms = ts - last; last = ts;
+  if (!last) { last = lastR = ts; return; }
+  const gap = ts - last; last = ts;
+  if (gap > 2 && gap < 60) vs += (Math.min(gap, vs * 1.5) - vs) * (gap < vs ? .2 : .02);     // the screen's own interval: follows short gaps fast, late frames slowly
+  if (CAP > 0 && ++nth % Math.max(1, Math.round(CAP / vs))) return;
+  const ms = ts - lastR; lastR = ts;
   if ((window.innerWidth && window.innerWidth !== V.W) || (window.innerHeight && window.innerHeight !== V.H)) resize();
   const dt = Math.min(.05, ms / 1000);
   update(dt); render(dt); adapt(ms, ts);

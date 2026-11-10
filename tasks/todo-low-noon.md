@@ -125,3 +125,23 @@ confirmed. All fixed except where noted:
 was exercised through Chrome's emulation). Frame rate on real phones. The reviewer did not reach
 its robustness list (localStorage throwing, reduced motion, heap growth over a long session); the
 code handles the first two by inspection only.
+
+## Follow-up 2026-11-09 evening: "glitchy and the screen flashes a lot" (Jason, on the deployed page in Chrome)
+
+- **Cause, confirmed.** The gold light pillars and the herons' neck nod were CSS animations inside pooled `<use>` sprites.
+  Chrome restarts such an animation whenever the `<use>` is moved in the DOM, and the depth re-sort moves sprites
+  constantly while walking: 18 pillar restarts in 14 s past the first dial. Minimal test (`tmp/low-noon/usetest.mjs`):
+  a moved `<use>` dropped from luminance 142 to 8; untouched and restyled ones carried on. Brightness trace of a near
+  pillar under re-ordering (`beamtrace.mjs`): deployed build 7 sudden steps in 5 s, fixed build none.
+- **Fix.** No CSS animation lives inside a pooled sprite any more: the pillar breathes through its per-frame opacity
+  and the heron's nod is a custom property set from script.
+- **Also smoothed while there:** water glints breathe in three groups instead of popping on and off; stone palettes
+  refresh on staggered phases so the stones never all step at once; the sun's halo, glare, reflections and stars change
+  in fine steps; the loop draws at a steady 60 to 90 fps on high-refresh screens (in Jason's 1920x929 2x window at
+  120 Hz about 6% of frames were missing the 8.3 ms deadline).
+- **How it got through.** Everything I had run was state or timing assertions and still screenshots, mostly in headless
+  software rendering. None of that can see a flash. New harness pieces: `cast.mjs` / `cast2.mjs` / `cast3.mjs`
+  (screencast of a real GPU window while playing), `flash.py`, `flicker.py`, `beamtrace.mjs`.
+- **Checked after the fix:** real 120 Hz Chrome window at 1728x881 2x, walking and turning: steady 16.7 ms between
+  presented frames (p95 17.8, max 18.6), no flashes; desktop, phone and landscape scenarios pass; console clean.
+- **Not verified:** on Jason's own display (a 1920-wide window on a larger screen than the built-in one).
