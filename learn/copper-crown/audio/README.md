@@ -1,15 +1,24 @@
 # Copper Crown narration
 
-**Not currently used.** These clips describe the earlier machine, a single
-domed lid over one condenser. The page's film is now silent with captions,
-because the crown became a two-cone second effect. Clips 01 and 06 still fit;
-02 to 05 would need re-recording against the 60-second cut.
+Original educational narration generated for this project with ElevenLabs
+(Alice, Eleven Multilingual v2, `mp3_44100_192`). The nine source clips and
+the 60-second FLAC master are retained for reuse. The captions in
+`../assets/copper-crown-captions.vtt` use the same script and timeline.
 
-Original educational narration generated for this project with ElevenLabs (Alice, Eleven Multilingual v2). The six source clips and 48-second FLAC master are retained for reuse. The captions in `../assets/copper-crown-captions.vtt` use the same script and timeline. The video assembly uses clip starts at 0.7, 10.2, 19.1, 29.25, 35.4, and 42.7 seconds. Clip 05 ends after its second sentence; clip 06 supplies the closing line.
+`mix.sh` places the clips at 0.7, 10.4, 16.3, 22.0, 28.6, 36.8, 41.3, 47.1
+and 57.0 seconds and muxes the master with the silent render into
+`../assets/copper-crown-narrated.mp4`. Run it from the repository root after
+re-rendering the film or replacing a clip.
 
 1. Meet the Copper Crown. A stainless steel kettle sits inside an ornamental jacket, above a protected electric heater.
-2. A domed lid catches splashes. The riser carries vapor onward, while a separate open vent gives it another escape.
-3. Vapor enters a descending steel coil inside a second vessel. Cool water surrounds the coil but never touches the product.
-4. A free-draining spout delivers the condensate into a separate, open glass carafe.
-5. Heat turns water into vapor. The coil gives that heat to the cooling water, and vapor returns to liquid.
-6. And there you have it: one journey, two changes of state.
+2. The crown begins with a band and a steel cone. Steam condenses on its underside.
+3. A second cone sits a few millimeters above, under an open basin of cooling water.
+4. A riser carries leftover steam onward. A separate open vent keeps the kettle at room pressure.
+5. The leftover steam enters a descending coil in a second vessel. Its cooling water never touches the product.
+6. Two free-draining lines end above an open glass carafe.
+7. Heat turns water into vapor. Under the first cone it condenses: the first harvest.
+8. The heat it gives up evaporates a film of feed water. That vapor crosses the gap and condenses under the cap: the second harvest.
+9. And there you have it: one heat, two harvests.
+
+Clip 01 is from the first recording; 02 to 09 were recorded for the
+two-cone crown.
