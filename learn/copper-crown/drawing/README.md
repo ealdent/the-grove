@@ -6,9 +6,9 @@ the SVG stroke registration, time-based camera, and morph groups are retained
 and the device geometry, typography, timings, and colors are specific to the
 Copper Crown. The film is 11 seconds, silent, 1920 × 1080, at 30 fps.
 
-The drawing includes the full front elevation, separated components, top and
-right elevations, kettle section, tube section, and the example dimensions
-from the learning page. Overall width and height remain `TBD`. The illustration
+The drawing includes the full front elevation, separated components, a
+section through the twin-cone crown, top and right elevations, kettle
+section, tube section, and the example dimensions from the learning page. The illustration
 is labeled schematic and not to scale.
 
 To regenerate from this directory, use Node 18+, FFmpeg, and Playwright:

@@ -1,7 +1,7 @@
 const { seg, lerp, eo, eio, clamp01 } = kit;
 const DW_NS = 'http://www.w3.org/2000/svg';
 const DW_CAM = [
-  {t:0,cx:700,cy:400,z:3.8}, {t:2.3,cx:700,cy:397,z:3.55},
+  {t:0,cx:700,cy:345,z:3.3}, {t:2.3,cx:700,cy:342,z:3.1},
   {t:4.2,cx:925,cy:470,z:1.32}, {t:5.3,cx:925,cy:470,z:1.3},
   {t:7.2,cx:270,cy:470,z:1.85}, {t:7.8,cx:270,cy:470,z:1.8},
   {t:9.2,cx:950,cy:530,z:.985}, {t:13,cx:950,cy:530,z:.985}
@@ -69,16 +69,34 @@ kit.scene('drawing', {
       line(588,672,812,672,'brass',p); line(588,698,812,698,'brass',p);
       rr(665,677,46,14,2,'thin',p); circ(672,684,2.2,'dot',p);
     };
+    // Inner crown: the band and the evaporator cone (drawn through the seat ring).
     const lid = (p) => {
-      pth('M589 434 C610 415 646 402 700 400 C754 402 790 415 811 434 Z','lid',p);
+      rr(589,384,222,46,3,'copper',p);
+      [392,422].forEach(y=>line(591,y,809,y,'brass',p));
+      for(let x=608;x<=792;x+=23)circ(x,407,2,'rivet',p);
+      pth('M592 384 L692 326 H708 L808 384 Z','obj',p);
       line(592,431,808,431,'rim',p);
-      for(let x=608;x<=792;x+=23)circ(x,427,2,'rivet',p);
+    };
+    // Outer crown: the cooled cone inside its open basin, and the ornamental points.
+    const cap = (p) => {
+      rr(589,304,222,68,2,'waterShell',p);
+      pth('M592 372 L692 314 H708 L808 372 Z','lid',p);
+      [304,372].forEach(y=>line(589,y,811,y,'brass',p));
+      line(593,313,807,313,'waterline',p);
+      for(let i=0;i<9;i++){const x=600+i*25;pth('M'+(x-5)+' 304 L'+x+' '+(i%2?292:284)+' L'+(x+5)+' 304','thin',p);}
+      circ(672,300,3,'dot',p);
     };
     const head = (p) => {
-      pth('M700 400 V366 M700 314 V290 Q700 282 710 282 H1050 Q1057 282 1057 290 V419','pipe',p);
-      circ(700,340,25,'obj',p); line(678,340,722,340,'brass',p);
-      pth('M642 415 V253 Q642 246 635 246 H622','pipe',p);
-      [787,884,982].forEach(x=>line(x,278,x,286,'brass',p));
+      pth('M700 314 V296 M700 246 V222 Q700 214 710 214 H1050 Q1057 214 1057 222 V419','pipe',p);
+      circ(700,271,25,'obj',p); line(678,271,722,271,'brass',p);
+      pth('M589 408 H568 V190 Q568 183 561 183 H548','pipe',p);
+      [787,884,982].forEach(x=>line(x,210,x,218,'brass',p));
+    };
+    // Harvest lines fall all the way; the water link chains the basin to the bath.
+    const lines = (p) => {
+      pth('M811 392 L1057 404','coil',p);
+      pth('M811 378 H840 L1252 590 V630','fine',p);
+      pth('M811 322 H858 V640 H969','fine',p);
     };
     const tank = (p) => {
       pth('M969 409 V658 Q969 668 980 668 H1135 Q1145 668 1145 658 V409','waterShell',p);
@@ -107,19 +125,25 @@ kit.scene('drawing', {
 
     // Front elevation: begin at the still's crown, then grow the entire device.
     at(.05,.06,.75); lid();
-    at(.4,.07,.65); head();
+    at(.3,.05,.7); cap();
+    at(.75,.07,.65); head();
     at(2.25,.025,.72); bore();
     at(2.8,.03,.7); heater(); pad();
     at(3.2,.035,.72); tank();
     at(3.5,.08,.8); coil(); receiver();
+    at(3.8,.1,.7); lines();
     at(4.05,.12,.6);
     line(700,382,700,713,'cl'); line(1057,395,1057,682,'cl');
     tx(930,746,'FRONT ELEVATION','vt',{'text-anchor':'middle'});
     tx(930,766,'SCHEMATIC · NOT TO SCALE','dts',{'text-anchor':'middle'});
     at(4.3,.12,.5);
     dimH(996,1118,385,420,420,'D2');
-    callout(642,254,574,240,'OPEN VENT',-1,'dt');
-    callout(700,341,751,325,'SPLASH HEAD',1,'dt');
+    callout(568,236,522,222,'OPEN VENT',-1,'dt');
+    callout(700,272,751,256,'SPLASH HEAD',1,'dt');
+    callout(786,330,884,268,'COOLING BASIN',1,'dt');
+    callout(770,362,884,296,'TWIN CONES',1,'dt');
+    callout(900,396,915,372,'1ST HARVEST',1,'dt');
+    callout(1178,552,1196,524,'2ND HARVEST',1,'dt');
     callout(1106,490,1160,472,'N1 / 5 TURNS',1,'dt');
     callout(1241,634,1285,615,'AIR GAP',1,'dt');
 
@@ -130,7 +154,8 @@ kit.scene('drawing', {
     bore(mg(0,5.35));
     heater(mg(-25,5.45));
     lid(mg(64,5.55));
-    head(mg(120,5.65));
+    cap(mg(104,5.6));
+    head(mg(150,5.65));
     tank(mg(0,5.55));
     coil(mg(75,5.75));
     receiver(mg(-15,5.85));
@@ -139,7 +164,9 @@ kit.scene('drawing', {
     this.iso=[.48,0,0,.48,-180,280];
     at(6.7,.07,.45);
     line(156,407,156,617,'ph');line(328,392,328,620,'ph');
-    callout(150,290,170,240,'CROWN / VENT',-1,'dts');
+    callout(347,292,366,280,'RISER / VENT',1,'dts');
+    callout(205,335,236,316,'OUTER CROWN',1,'dts');
+    callout(208,410,224,388,'INNER CROWN',1,'dts');
     callout(157,530,109,520,'KETTLE',-1,'dts');
     callout(153,625,109,642,'HEATER',-1,'dts');
     callout(328,451,373,426,'COIL',1,'dts');
@@ -155,7 +182,7 @@ kit.scene('drawing', {
     at(8.0,.07,.5);
     tx(68,66,'THE COPPER CROWN','eyebrow');
     tx(68,118,'Water, made visible.','mast');
-    tx(777,73,'ATMOSPHERIC WATER DISTILLATION','header');
+    tx(777,73,'TWO-EFFECT WATER DISTILLATION','header');
     tx(777,103,'A study in heat, vapor & separation','subhead');
     tx(1535,70,'WORKSHOP / 01','header');
     tx(1535,104,'SCHEMATIC · NOT TO SCALE','header');
@@ -164,6 +191,20 @@ kit.scene('drawing', {
 
     // Physical-product support views: plan, section, right, and tube detail.
     at(8.45,.035,.6);
+    // Section through the crown: both cones, the gap, the gutters and the basin.
+    line(150,800,150,940,'obj');line(350,800,350,940,'obj');
+    pth('M152 890 L242 838 M258 838 L348 890','obj');
+    pth('M150 876 L242 823 M258 823 L350 876','copperShell');
+    pth('M242 800 V838 M258 800 V838','thin');
+    line(153,808,347,808,'waterline');
+    pth('M150 902 h12 v-6 M350 902 h-12 v-6','rim');
+    pth('M350 886 h-10 v-5','rim');
+    line(250,790,250,950,'cl');
+    callout(305,859,376,836,'G1',1,'dt');
+    callout(196,872,118,852,'A1',-1,'dt');
+    callout(338,900,376,912,'GUTTER',1,'dts');
+    tx(150,962,'SECTION · CROWN','vt');
+
     // Plan of kettle, with section line.
     circ(605,863,75,'obj');circ(605,863,70,'thin');circ(605,863,63,'fine');
     line(520,863,690,863,'cl');line(605,779,605,947,'cl');
@@ -208,8 +249,8 @@ kit.scene('drawing', {
       ['ID','COIL TUBE INSIDE','~10 mm'],
       ['L1','COILED LENGTH','~2.2 m'],
       ['N1','DESCENDING TURNS','5'],
-      ['W1','OVERALL WIDTH','TBD'],
-      ['H2','OVERALL HEIGHT','TBD'],
+      ['G1','CONE AIR GAP','~6 mm'],
+      ['A1','CONE SLOPE','~30°'],
     ];
     rows.forEach((r,i)=>{let y=245+i*35;tx(1460,y,r[0],'keycode');tx(1510,y,r[1],'keyname');tx(1825,y,r[2],'keyvalue',{'text-anchor':'end'});line(1460,y+11,1828,y+11,'tablerule');});
     tx(1460,650,'THE MATERIAL PALETTE','header');
@@ -220,7 +261,7 @@ kit.scene('drawing', {
     tx(1460,818,'2 L EXAMPLE CHARGE','small');
     tx(1460,848,'300 W HEATER EXAMPLE','small');
     tx(1460,906,'OPEN TO ATMOSPHERE','small');
-    tx(1460,936,'SEPARATE COOLING WATER','small');
+    tx(1460,936,'ONE HEAT / TWO HARVESTS','small');
   },
   render(t) {
     t = t / 0.85;

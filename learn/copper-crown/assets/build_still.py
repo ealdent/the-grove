@@ -94,6 +94,8 @@ steam = material('Warm vapor flow guide', (.98, .76, .37), .1, .24, 1, (.45, .24
 distillate = material('Condensate flow guide', (.25, .87, .94), .05, .2, 1, (.08, .52, .58))
 glow = material('Heater indicator', (.95, .22, .035), .1, .25, 1, (.75, .10, .01))
 floor_mat = material('Stage', (.037, .041, .036), .08, .59)
+wick = material('Stainless wick | feed film', (.60, .62, .56), .25, .78)
+ruby = material('Ruby metering jewel', (.50, .03, .05), .1, .14, 1, (.55, .03, .04))
 
 
 def own(o, group, mat=None):
@@ -337,12 +339,14 @@ def instrument(name, center, radius, label, parent, needle=.1):
 
 base = group('00 | shared plinth')
 boiler = group('01 | heater and boiler')
-lid = group('02 | removable lid')
+lid = group('02 | inner crown: band and evaporator cone')
+cap = group('02b | outer crown: condensing cone and cooling basin')
 header = group('03 | vapor line and demister')
 vent_group = group('03b | independent open boiler vent')
 bath = group('04 | open cooling bath')
 coil = group('05 | descending condenser coil and outlet')
 receiver = group('06 | freely open collection carafe')
+lines = group('03c | harvest and water lines')
 flow = group('07 | animated flow illustration')
 
 cube('Black iron display plinth', (.06, 0, .07), (5.35, 1.83, .18), dark, base, .09)
@@ -420,51 +424,116 @@ o=cylinder('Black heater knob',(dial_x,-.809,.31),.046,.02,dark,boiler,32,.003);
 path('Knob index',[(dial_x,-.823,.31),(dial_x+.005,-.823,.346)],.004,cream,boiler)
 text_obj('OFF     HEAT','Dial positions',(dial_x,-.786,.397),.035,cream,boiler)
 
-# Smooth capped dome: decorative outer surface, with stainless underside and fittings.
-lathe('Removable domed lid', bx, 0, [(0,1.95),(.16,1.945),(.34,1.91),(.51,1.84),(.62,1.76),(.67,1.69)], copper_lid, lid)
-lathe('Stainless lid liner (wetted face)', bx, 0, [(0,1.927),(.16,1.922),(.34,1.887),(.51,1.817),(.62,1.737),(.67,1.667)], steel, lid)
+# --- The crown ---------------------------------------------------------------
+# Two nested 30-degree cones. Kettle steam condenses under the inner cone; the
+# heat it gives up evaporates a film of feed water on the cone's upper face.
+# That second vapor crosses a narrow air gap (drawn wider than its ~6 mm) and
+# condenses under the outer cone, which an open basin of cooling water chills.
+BAND_TOP = 2.16
+TAN30 = math.tan(math.radians(30))
+RISE = .72  # the vapor line sits this much higher than on the single-dome lid
+
+lathe('Stainless crown band (wetted face)', bx, 0, [(.69,1.69),(.69,BAND_TOP),(.66,BAND_TOP),(.66,1.69)], steel, lid)
+lathe('Decorative copper band jacket', bx, 0, [(.72,1.75),(.72,2.11),(.70,2.11),(.70,1.75)], copper, lid)
 torus('Lid steel gasket rim', (bx, 0, 1.69), .67, .035, steel, lid)
-torus('Lid collar', (bx, 0, 1.94), .16, .025, brass, lid)
-for i in range(14):
-    a = 2*math.pi*i/14
-    uvball('Lid perimeter rivet', (bx+.66*math.cos(a), .66*math.sin(a),1.72), (.03,.03,.03), brass, lid, 12, 8)
-for z,r in ((1.73,.65),(1.78,.60),(1.84,.49)):
-    torus('Dome turned detail',(bx,0,z),r,.008,brass,lid)
+for z in (1.77, 2.09):
+    torus('Crown band brass bead', (bx, 0, z), .72, .024, brass, lid)
+for i in range(28):
+    a = 2*math.pi*i/28
+    uvball('Crown band rivet', (bx+.727*math.cos(a), .727*math.sin(a), 1.93), (.024,.024,.024), brass, lid, 12, 8)
 for i in range(6):
     a=2*math.pi*i/6+math.pi/6
     x,y=bx+.655*math.cos(a),.655*math.sin(a)
     clip=cube('Lid external clamp',(x,y,1.735),(.13,.070,.036),dark,lid,.008)
     clip.rotation_euler.z=a
     uvball('Lid clamp polished pin',(x,y,1.76),(.022,.022,.022),brass,lid,12,8)
+inner_apex = BAND_TOP + (.66-.09)*TAN30
+lathe('Evaporator cone, stainless (condensing underside)', bx, 0, [(.09,inner_apex),(.66,BAND_TOP)], steel, lid)
+lathe('Wetted wick on the evaporator cone', bx, 0, [(.12,inner_apex-.03*TAN30+.012),(.62,BAND_TOP+.04*TAN30+.012)], wick, lid)
+torus('First-harvest gutter under the cone rim', (bx,0,2.125), .625, .022, steel, lid)
+torus('Feed runoff trough', (bx,0,BAND_TOP+.02), .645, .012, steel, lid)
+for a in (math.radians(100), math.radians(260)):
+    # Downcomers return unevaporated feed to the kettle below its water line.
+    path('Liquid-sealed feed downcomer', [(bx+.645*math.cos(a),.645*math.sin(a),BAND_TOP+.02),
+         (bx+.645*math.cos(a),.645*math.sin(a),.80)], .014, steel, lid)
+
+SEAT = BAND_TOP + .002
+outer_rim = BAND_TOP + .081
+outer_apex = outer_rim + (.66-.10)*TAN30
+lathe('Outer crown seat ring', bx, 0, [(.69,SEAT),(.69,outer_rim+.004),(.66,outer_rim+.004),(.66,SEAT)], steel, cap)
+lathe('Condensing cone, copper-clad basin face', bx, 0, [(.10,outer_apex),(.66,outer_rim)], copper_lid, cap)
+lathe('Condensing cone, stainless product face', bx, 0, [(.10,outer_apex-.012),(.66,outer_rim-.012)], steel, cap)
+torus('Second-harvest gutter under the cap rim', (bx,0,outer_rim-.03), .64, .014, steel, cap)
+torus('Riser apex collar', (bx,0,outer_apex+.004), .10, .022, brass, cap)
+full_shell('Crown basin glass wall', bx, .69, outer_rim, 2.72, glass, cap)
+lathe('Illustrative basin cooling water', bx, 0, [(.105,outer_apex+.008),(.655,outer_rim+.014),(.655,2.64),(.07,2.64)], water, cap)
+torus('Basin water surface glint', (bx,0,2.641), .60, .005, cream, cap)
+for z in (outer_rim, 2.72):
+    torus('Crown basin brass hoop', (bx,0,z), .69, .026, brass, cap)
+for i in range(6):
+    a = 2*math.pi*i/6
+    x,y = bx+.705*math.cos(a), .705*math.sin(a)
+    path('Crown basin post', [(x,y,outer_rim),(x,y,2.72)], .016, brass, cap)
+# The points are ornament; the working crown is the pair of cones beneath.
+for i in range(12):
+    a = 2*math.pi*i/12 + math.pi/12
+    tall = i % 2 == 0
+    h = .24 if tall else .14
+    x,y = bx+.69*math.cos(a), .69*math.sin(a)
+    bpy.ops.mesh.primitive_cone_add(vertices=4, radius1=.085, radius2=.010, depth=h, location=(x,y,2.74+h/2))
+    o = bpy.context.object
+    o.name = 'Crown point'
+    o.rotation_euler.z = a
+    o.scale = (.30, 1, 1)
+    own(o, cap, brass)
+    uvball('Crown point pearl', (x,y,2.755+h), (.026,.026,.026) if tall else (.019,.019,.019), brass, cap, 12, 8)
+# Metering jewel: a needle valve that drips basin water onto the wick.
+jx, jy = bx, -.24
+jz = outer_apex - (.24-.10)*TAN30
+path('Feed metering valve stem', [(jx,jy,jz),(jx,jy,2.78)], .012, brass, cap)
+hollow_fitting('Feed metering valve seat', (jx,jy,jz+.02), .034, .013, .04, (0,0,1), brass, cap, 8)
+hollow_fitting('Feed metering valve gland', (jx,jy,2.67), .030, .013, .05, (0,0,1), brass, cap, 8)
+uvball('Ruby metering jewel', (jx,jy,2.815), (.048,.048,.048), ruby, cap, 24, 12)
+torus('Jewel setting', (jx,jy,2.79), .040, .010, brass, cap)
+# Cold water arrives at the crown first, low on the basin wall.
+sa = math.radians(150)
+sx, sy = bx+.70*math.cos(sa), .70*math.sin(sa)
+sdir = (math.cos(sa), math.sin(sa), 0)
+hollow_fitting('Cold water supply connection', (sx,sy,2.33), .060, .031, .10, sdir, steel, cap, 12)
+for d in (.04,.065):
+    ring_axis('Supply hose barb', (sx+d*sdir[0], sy+d*sdir[1], 2.33), .050, .006, sdir, brass, cap)
+hollow_fitting('Supply port hex gland', (sx+.01*sdir[0], sy+.01*sdir[1], 2.33), .072, .032, .040, sdir, brass, cap, 8)
 
 # The entire wetted vapor route is modeled as stainless; decorative collars are external.
-path('Central riser', [(bx,0,1.92),(bx,0,2.13)], .065, steel, header)
-uvball('Demister separator vessel', (bx,0,2.25), (.20,.20,.22), steel, header, 48,24)
-torus('Demister external brass collar', (bx,0,2.25), .20, .018, brass, header)
+path('Central riser', [(bx,0,inner_apex-.02),(bx,0,2.13+RISE)], .065, steel, header)
+uvball('Demister separator vessel', (bx,0,2.25+RISE), (.20,.20,.22), steel, header, 48,24)
+torus('Demister external brass collar', (bx,0,2.25+RISE), .20, .018, brass, header)
 for z in (2.16,2.34):
     r=.20*math.sqrt(1-((z-2.25)/.22)**2)
-    torus('Demister turned collar',(bx,0,z),r,.008,brass,header)
+    torus('Demister turned collar',(bx,0,z+RISE),r,.008,brass,header)
 for z in (1.995,2.105,2.46,2.53):
-    hollow_fitting('Riser sanitary union',(bx,0,z),.085,.066,.048,(0,0,1),brass,header,8)
+    hollow_fitting('Riser sanitary union',(bx,0,z+RISE),.085,.066,.048,(0,0,1),brass,header,8)
 # Fine crossing stainless wires describe a removable demister mesh inside the
 # sphere. It is intentionally visible only when the outer shell is hidden.
 for i in range(-6, 7):
     off=i*.022
     half=math.sqrt(max(0,.17*.17-off*off))
-    path('Demister mesh wire X', [(bx-half,off,2.25),(bx+half,off,2.25)],.0025,steel,header)
-    path('Demister mesh wire Y', [(bx+off,-half,2.255),(bx+off,half,2.255)],.0025,steel,header)
-vapor = [(bx,0,2.42), (bx,0,2.55),(-1.17,0,2.61),(-1.08,0,2.63),(.88,0,2.63),(1.02,0,2.59),(1.06,-.10,2.53),(1.06,-.44,2.42),(1.06,-.44,1.78)]
+    path('Demister mesh wire X', [(bx-half,off,2.25+RISE),(bx+half,off,2.25+RISE)],.0025,steel,header)
+    path('Demister mesh wire Y', [(bx+off,-half,2.255+RISE),(bx+off,half,2.255+RISE)],.0025,steel,header)
+BRIDGE = 2.63+RISE
+vapor = [(bx,0,2.42+RISE), (bx,0,2.55+RISE),(-1.17,0,2.61+RISE),(-1.08,0,BRIDGE),(.88,0,BRIDGE),(1.02,0,2.59+RISE),(1.06,-.10,2.53+RISE),(1.06,-.44,2.42+RISE),(1.06,-.44,1.78)]
 path('Stainless vapor bridge', vapor, .065, steel, header)
 for x in (-.75,.10,.75):
-    hollow_fitting('Bored vapor-line union',(x,0,2.63),.09,.066,.085,(1,0,0),brass,header,8)
-    ring_axis('Vapor union shoulder',(x-.047,0,2.63),.075,.009,(1,0,0),steel,header)
-# Vent leaves lid separately, rises continuously and remains open, no valve or cap.
-vent = [(bx-.34,.04,1.82),(bx-.34,.04,1.95),(bx-.43,.04,2.05),(bx-.45,.04,2.93),(bx-.50,.04,3.03),(bx-.63,.04,3.06)]
+    hollow_fitting('Bored vapor-line union',(x,0,BRIDGE),.09,.066,.085,(1,0,0),brass,header,8)
+    ring_axis('Vapor union shoulder',(x-.047,0,BRIDGE),.075,.009,(1,0,0),steel,header)
+# The vent leaves the band below the cones, so it opens the kettle itself. It
+# rises continuously and remains open, with no valve or cap.
+vent = [(bx-.69,.04,1.93),(bx-.80,.04,1.94),(bx-.87,.04,2.03),(bx-.87,.04,3.46),(bx-.92,.04,3.56),(bx-1.05,.04,3.59)]
 path('Independent open boiler vent', vent, .047, steel, header)
 bpy.context.collection.objects['Independent open boiler vent'].parent = vent_group
-torus('Vent entry collar', (bx-.34,.04,1.82), .07,.014,brass,vent_group)
+ring_axis('Vent entry collar', (bx-.725,.04,1.93), .07,.014,(1,0,0),brass,vent_group)
 hollow_fitting('Open vent tip ferrule',vent[-1],.062,.048,.055,(-.13,0,.03),brass,vent_group,12)
-hollow_fitting('Open vent stem union',(bx-.45,.04,2.46),.063,.048,.055,(0,0,1),brass,vent_group,8)
+hollow_fitting('Open vent stem union',(bx-.87,.04,2.80),.063,.048,.055,(0,0,1),brass,vent_group,8)
 
 cx = 1.06
 cylinder('Bath steel bottom', (cx,0,.36), .72,.14,steel,bath)
@@ -481,14 +550,15 @@ for a in (math.radians(32),math.radians(148),math.radians(235),math.radians(305)
     path('Bath exterior support post',[(x,y,.43),(x,y,1.90)],.022,brass,bath)
     for z in (.50,1.03,1.84):
         uvball('Support hoop clamp',(x,y,z),(.042,.042,.035),brass,bath,12,8)
-for z in (.63,1.66):
-    # Low supply and high overflow nipples are outside the product coil.
-    hollow_fitting('Open cooling-water hose connection',(cx+.70,.05,z),.060,.031,.10,(1,0,0),steel,bath,12)
+# High overflow nipple on the far side; the low inlet faces the kettle and is
+# fed by the crown basin. Both are outside the product coil.
+for px, py, z, d in ((cx+.70,.05,1.66,1), (cx-.70*math.cos(math.radians(15)), .70*math.sin(math.radians(15)), .63, -1)):
+    hollow_fitting('Open cooling-water hose connection',(px,py,z),.060,.031,.10,(1,0,0),steel,bath,12)
     for dx in (.04,.065):
-        ring_axis('Cooling hose barb',(cx+.70+dx,.05,z),.050,.006,(1,0,0),brass,bath)
-    hollow_fitting('Cooling port hex gland',(cx+.71,.05,z),.072,.032,.040,(1,0,0),brass,bath,8)
+        ring_axis('Cooling hose barb',(px+d*dx,py,z),.050,.006,(1,0,0),brass,bath)
+    hollow_fitting('Cooling port hex gland',(px+d*.01,py,z),.072,.032,.040,(1,0,0),brass,bath,8)
     for dz in (-.11,.11):
-        uvball('Cooling port flange screw',(cx+.69,.05,z+dz),(.022,.022,.022),brass,bath,12,8)
+        uvball('Cooling port flange screw',(px-d*.01,py,z+dz),(.022,.022,.022),brass,bath,12,8)
 instrument('Cooling water thermometer',(cx+.56,-.48,1.39),.145,'COOL',bath,.36)
 path('Coolant thermometer sensing lead',[(cx+.55,-.46,1.28),(cx+.64,-.42,1.20),
      (cx+.69,-.30,1.13),(cx+.67,-.22,1.07)],.009,steel,bath)
@@ -518,6 +588,26 @@ for i in range(5):
 cube('Collector name plate',(rx,ry-.32,.24),(.30,.025,.055),brass,receiver,.008)
 text_obj('COLLECT', 'Receiver identifier',(rx,ry-.338,.24),.032,dark,receiver)
 
+# Harvest and water lines. Every one falls continuously and ends open.
+fa = math.radians(-10.9)
+first_line = [(bx+.69*math.cos(fa),.69*math.sin(fa),2.11),(-.45,-.15,2.10),(.95,-.42,2.02),(1.06,-.44,2.00)]
+path('First-harvest line, gutter to coil', first_line, .030, steel, lines)
+hollow_fitting('First-harvest band union', (bx+.735*math.cos(fa),.735*math.sin(fa),2.11), .052, .031, .06, (math.cos(fa),math.sin(fa),0), brass, lines, 8)
+hollow_fitting('First-harvest tee at the coil leg', (1.06,-.44,2.00), .088, .066, .09, (0,0,1), brass, lines, 8)
+ga = math.radians(35)
+second_line = [(bx+.69*math.cos(ga),.69*math.sin(ga),2.20),(-.56,.62,2.19),(-.40,.86,2.16),(1.80,.86,1.20),
+               (2.30,.55,1.08),(2.46,0,1.00),(2.44,-.30,.94),(2.30,-.42,.90),(2.26,-.42,.86)]
+path('Second-harvest line, open to the carafe', second_line, .022, steel, lines)
+hollow_fitting('Second-harvest cap union', (bx+.73*math.cos(ga),.73*math.sin(ga),2.20), .042, .023, .05, (math.cos(ga),math.sin(ga),0), brass, lines, 8)
+hollow_fitting('Second-harvest free outlet lip', second_line[-1], .030, .023, .034, (0,0,1), steel, lines, 12)
+hollow_fitting('Second-harvest service union', (.70,.86,1.68), .040, .023, .06, (2.2,0,-.96), brass, lines, 8)
+wa = math.radians(18)
+water_link = [(bx+.69*math.cos(wa),.69*math.sin(wa),2.62),(-.47,.25,2.61),(-.43,.26,2.52),(-.43,.26,.74),
+              (-.38,.26,.65),(.24,.20,.63),(cx-.70*math.cos(math.radians(15)),.70*math.sin(math.radians(15)),.63)]
+path('Basin overflow to the bath inlet', water_link, .030, steel, lines)
+hollow_fitting('Basin overflow union', (bx+.735*math.cos(wa),.735*math.sin(wa),2.62), .052, .031, .06, (math.cos(wa),math.sin(wa),0), brass, lines, 8)
+hollow_fitting('Water link stem union', (-.43,.26,1.60), .048, .031, .06, (0,0,1), brass, lines, 8)
+
 # Flow dots are a graphic overlay, not material particles or a fluid simulation.
 def interpolate(pts, u):
     lengths=[0]
@@ -530,22 +620,29 @@ def interpolate(pts, u):
             return Vector(pts[i]).lerp(Vector(pts[i+1]),v)
     return Vector(pts[-1])
 
-vaporguide=[(bx,-.10,.70),(bx,-.10,1.3),(bx,-.10,1.95),(bx,-.1,2.38)]+[(x,y-.1,z) for x,y,z in vapor[1:]]
-condguide=[(x,y-.075,z) for x,y,z in coil_points]+[(x,y-.075,z) for x,y,z in outlet[1:]]
-for phase, route, mat, count in [('Vapor',vaporguide,steam,10),('Condensate',condguide,distillate,12)]:
+STILL_FRAME = 505   # everything assembled, before the flow overlay appears
+FLOW_START = 510
+LAST_FRAME = 720
+vaporguide=[(bx,-.10,2.38+RISE)]+[(x,y-.1,z) for x,y,z in vapor[1:]]
+firstguide=[(x,y-.06,z+.02) for x,y,z in first_line]+[(x,y-.075,z) for x,y,z in coil_points]+[(x,y-.075,z) for x,y,z in outlet[1:]]
+secondguide=[(x,y-.05,z+.03) for x,y,z in second_line]
+# Gold: steam the crown did not take, on its way to the trim coil. Blue: the
+# two harvests. (phase, route, material, beads, bead size, frames per circuit)
+for phase, route, mat, count, size, period in [('Trim vapor',vaporguide,steam,5,.060,60),
+                                               ('First harvest',firstguide,distillate,14,.060,108),
+                                               ('Second harvest',secondguide,distillate,8,.045,84)]:
     for i in range(count):
-        o=uvball(phase+' moving illustration', (0,0,0), (.065,)*3, mat, flow, 12,8)
-        for f in (1, 414):
+        o=uvball(phase+' moving illustration', (0,0,0), (size,)*3, mat, flow, 12,8)
+        for f in (1, FLOW_START-6):
             o.scale=(0,0,0)
             o.keyframe_insert(data_path='scale',frame=f)
-        o.scale=(.065,.065,.065)
-        o.keyframe_insert(data_path='scale',frame=425)
+        o.scale=(size,size,size)
+        o.keyframe_insert(data_path='scale',frame=FLOW_START+5)
         # Key every rendered frame. Sampling every third frame lets Blender
         # interpolate across the modulo wrap and briefly sends a bead through
         # empty space rather than along the tubing.
-        for f in range(420,577):
-            # A complete route repeats every five seconds. Beads advance through it.
-            u=((f-420)/60+i/count)%1
+        for f in range(FLOW_START,LAST_FRAME+1):
+            u=((f-FLOW_START)/period+i/count)%1
             o.location=interpolate(route,u)
             o.keyframe_insert(data_path='location',frame=f)
 
@@ -558,14 +655,16 @@ def assembly(o, first, last, shift):
     o.keyframe_insert(data_path='location', frame=last)
 
 
-# 12 fps, 48 seconds: physical components arrive before the flow illustration.
-assembly(boiler, 18, 106, (0,0,5.0))
-assembly(lid, 126, 168, (0,0,5.0))
-assembly(header, 150, 228, (-.2,0,5.0))
-assembly(vent_group, 150, 228, (-.2,0,5.0))
-assembly(bath, 228, 275, (0,0,5.0))
-assembly(coil, 266, 335, (0,0,5.0))
-assembly(receiver, 350, 411, (0,0,5.0))
+# 12 fps, 60 seconds: physical components arrive before the flow illustration.
+assembly(boiler, 18, 106, (0,0,6.0))
+assembly(lid, 126, 176, (0,0,6.0))
+assembly(cap, 196, 250, (0,0,6.0))
+assembly(header, 262, 330, (-.2,0,6.0))
+assembly(vent_group, 262, 330, (-.2,0,6.0))
+assembly(bath, 336, 384, (0,0,6.0))
+assembly(coil, 372, 432, (0,0,6.0))
+assembly(receiver, 440, 492, (0,0,6.0))
+assembly(lines, 448, 500, (0,0,6.0))
 
 # Stage, lights, and camera remain outside the export collection.
 bpy.ops.mesh.primitive_plane_add(size=200,location=(0,0,-.065))
@@ -596,9 +695,9 @@ area('Soft front fill',(3,-6,3),400,4.0,(1,.9,.73),(0,0,1))
 bpy.ops.object.camera_add(location=(5.5,-10,5.0))
 cam=bpy.context.object
 cam.name='Cinematic camera'
-cam.rotation_euler=(Vector((0,0,1.42))-cam.location).to_track_quat('-Z','Y').to_euler()
+cam.rotation_euler=(Vector((0,0,1.80))-cam.location).to_track_quat('-Z','Y').to_euler()
 cam.data.type='ORTHO'
-cam.data.ortho_scale=7.2
+cam.data.ortho_scale=8.7
 scene=bpy.context.scene
 scene.camera=cam
 scene.render.engine='CYCLES' if '--cycles' in ARGS else 'BLENDER_EEVEE'
@@ -607,7 +706,7 @@ scene.render.resolution_y=540
 scene.render.resolution_percentage=100
 scene.render.fps=12
 scene.frame_start=1
-scene.frame_end=576
+scene.frame_end=LAST_FRAME
 scene.render.image_settings.file_format='PNG'
 scene.render.film_transparent=False
 scene.render.image_settings.color_mode='RGBA'
@@ -617,13 +716,13 @@ scene.render.image_settings.color_depth='8'
 scene.render.fps=12
 scene.render.resolution_percentage=100
 
-scene.frame_set(412)
+scene.frame_set(STILL_FRAME)
 bpy.ops.wm.save_as_mainfile(filepath=os.path.join(ASSETS,'copper-crown.blend'))
 
 # The editable scene keeps individual screws, tubes, and rigged part groups.
 # The web copy combines evaluated geometry by parent group and material so the
 # browser can still explode the eight named groups without hundreds of draws.
-export_groups={base,boiler,lid,header,vent_group,bath,coil,receiver}
+export_groups={base,boiler,lid,cap,header,vent_group,lines,bath,coil,receiver}
 depsgraph=bpy.context.evaluated_depsgraph_get()
 batches={}
 for original in list(scene.objects):
@@ -667,8 +766,15 @@ for ob in merged: ob.select_set(True)
 bpy.ops.export_scene.gltf(filepath=os.path.join(ASSETS,'copper-crown.glb'), export_format='GLB', use_selection=True, export_animations=False, export_current_frame=True)
 for ob in merged: bpy.data.objects.remove(ob,do_unlink=True)
 
+if '--preview' in ARGS:
+    # Quick EEVEE look at the assembled machine; writes nothing into ASSETS.
+    scene.frame_set(STILL_FRAME)
+    scene.render.filepath=ARGS[ARGS.index('--preview')+1]
+    scene.render.resolution_percentage=200
+    bpy.ops.render.render(write_still=True)
+    scene.render.resolution_percentage=100
 if '--still' in ARGS:
-    scene.frame_set(412)
+    scene.frame_set(STILL_FRAME)
     scene.render.resolution_percentage=200
     # Poster only: physically rendered reflections and contact shadows. The
     # saved scene and assembly animation remain EEVEE for practical speed.
@@ -682,6 +788,9 @@ if '--still' in ARGS:
     scene.render.engine=original_engine
     scene.render.resolution_percentage=100
 if '--render' in ARGS:
-    os.makedirs(os.path.join(ASSETS,'frames'),exist_ok=True)
-    scene.render.filepath=os.path.join(ASSETS,'frames','frame_')
+    # Frames go wherever --frames points, so they need not land in the repository.
+    frames=os.path.abspath(ARGS[ARGS.index('--frames')+1]) if '--frames' in ARGS else os.path.join(ASSETS,'frames')
+    os.makedirs(frames,exist_ok=True)
+    scene.eevee.taa_render_samples=16
+    scene.render.filepath=os.path.join(frames,'frame_')
     bpy.ops.render.render(animation=True)
