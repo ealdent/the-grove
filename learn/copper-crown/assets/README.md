@@ -6,7 +6,7 @@ fasteners, as well as the full 1–720 frame animation at 12 frames per second.
 The static glTF retains ten named component groups and embeds the generated
 metal surface maps. Opaque details are batched by group and material for the
 browser; transparent glass and water remain separate. The film is **60
-seconds**, silent, with a separate caption track. Gold and blue moving dots
+seconds**, narrated, with a separate caption track. Gold and blue moving dots
 are an explanatory flow overlay, not a fluid simulation: gold for the steam
 the crown leaves to the coil, blue for the two harvests. Their positions are
 keyed at every rendered frame to keep them on the illustrated route.
@@ -62,8 +62,8 @@ python3 learn/copper-crown/build-standalone.py \
 To render the entire animation without placing frame files in the
 repository, add `--render --frames DIR` to the build command above (EEVEE,
 16 samples), then encode the frames with the opening card from
-`create_title.py`. The film has no soundtrack; the English captions are the
-separate WebVTT track `copper-crown-captions.vtt`, timed to the assembly:
+`create_title.py`. This silent render is the picture source; the English
+captions are the separate WebVTT track `copper-crown-captions.vtt`:
 
 ```sh
 python3 learn/copper-crown/assets/create_title.py
@@ -75,5 +75,9 @@ ffmpeg -framerate 12 -start_number 1 -i DIR/frame_%04d.png \
   learn/copper-crown/assets/copper-crown-assembly-silent.mp4
 ```
 
-The narration in `../audio/` was recorded for the earlier single-condenser
-machine and is not used by the page; see the note there.
+Then lay the narration over it. The page plays the result,
+`copper-crown-narrated.mp4`; the script and clip timings are in `../audio/`:
+
+```sh
+sh learn/copper-crown/audio/mix.sh
+```
