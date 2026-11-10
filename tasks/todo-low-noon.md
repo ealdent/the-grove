@@ -52,8 +52,14 @@ the Great Shade, Evenfall. Night is the Deep.
 - [x] Game: head-bob, wading, keeping hours, sky marks, the Deep finale, HUD + intro
 - [x] Adaptive quality, debug hook, URL params
 - [x] Verify: desktop + phone portrait/landscape, real multitouch, fps, console clean
-- [ ] Independent review pass, fix findings
-- [ ] Index tile, commit, push to main
+- [x] Independent review pass, fix findings
+- [x] Index tile, commit, push to main
+
+## Pause
+
+Jason paused the work from 15:58 to 19:00 EST on 2026-11-09 ("pause until 7pm"). The reviewer was
+stopped early for it, so its pass was partial (see Review). Work resumed at 19:04 from notes kept
+here and finished the same evening.
 
 ## Changes of course while building
 
@@ -70,4 +76,52 @@ the Great Shade, Evenfall. Night is the Deep.
 
 ## Review
 
-(filled in at the end)
+**What shipped.** `svg-forest/fable-5.2-max-svg-forest.html` (one file, about 100 KB, no canvas,
+WebGL or images), a `dial` tile in `svg-forest/index.html` between Fable 5.1 and Fugu, and a
+README line. Sources and the test harness stay in the gitignored `tmp/low-noon/`.
+
+**Checked by running it** (headless Chrome over CDP with real key, mouse and touch events):
+- Desktop: click or Space/Enter to begin, W/S/arrows walk, A/D/arrows turn, drag look (also out
+  of the window and back), right/middle buttons ignored, head-bob (eye 2.55 to 2.66 m), an hour
+  kept by standing at an open lily, key release on blur and under Cmd.
+- Phone portrait and landscape: tap to begin, both sticks at once (walks and turns), one thumb
+  lifted while the other keeps working, a thumb sliding off a stick, touchcancel, a second finger
+  ignored while one drags the sky, no page scroll or zoom.
+- Layout at 320x480, 360x640, 568x320, 820x1180, 1280x720 and 2560x1080; rotation and a 1x1
+  window mid-game.
+- 60 fps at 1280x720 in software raster (script about 1 to 2 ms a frame) by day, dusk and night.
+  Under 6x CPU throttle: 33 to 40 fps at quality 3, 54 to 59 at 1, 60 at 0; the governor steps
+  3 > 2 > 1 on its own there, and 3 > 2 > 1 > 0 at 20x, without flapping.
+- Rendering looked at in Chromium (headless and the app pane at 120 fps), iOS 26.5 Safari in the
+  simulator, and Firefox.
+
+**Independent review** (general-purpose agent, stopped early by the pause): 18 findings, 10
+confirmed. All fixed except where noted:
+1. Great Gnomons and their canals popped at super-cell borders: 5x5 super cells are loaded, the
+   sprite fades in over 850 to 1080 m, the shade cap came down to 700 m.
+2. Koi popped where their wrapped homes jumped (worst in the finale): fish shrink to nothing
+   before the wrap; pops are now 3 to 5 px.
+3. Gates blocked their opening and not their pillars, and a pillar slab swept the view inside
+   one: colliders are per kind (two pillars; a row along a blade), and a plate fades out in its
+   last 2 m.
+4. Koi, pads and herons sat on the dry island in an eye stele's shade (27% of frames): its reach
+   stops at the stem; 0% now.
+5. Lily pads froze all night and jumped 12 m at dawn: they are placed every frame.
+6. Keeping an hour showed one ring, not four. 7. The gold beam popped in at full strength on low
+   quality. 8. An hour could be kept while the HUD named its neighbour: keeping and the beam now
+   need the lily's hour to be the current one. 10. Stumps overlapped.
+11. The faded intro's buttons stayed focusable (Enter could wipe the save): `inert` plus
+    `visibility: hidden`. 12. Stone palettes stepped at 3 Hz in twilight: 6 Hz there at quality 2
+    and 3. 13. Stuck key under Cmd. 14. Toast showing through the reopened intro. 15. Governor
+    ignoring frames over 250 ms. 16. Great Gnomon cache eviction. 17. Night reflections unsorted.
+    18. A fourth toast jumping the queue.
+- Found while re-testing: Space on the focused Walk in button was swallowed by the game's key
+  handler; the first night's reflections were all created in one frame (now five a frame);
+  low quality now also draws less shade (the main cost at dusk).
+- Left as it is: 9. wading rings are born at the feet, which the view never shows while walking
+  forward; they now last long enough to reach the view when the walker stops or looks back.
+
+**Not verified.** Touch input on a real phone (the simulator check covered rendering only; touch
+was exercised through Chrome's emulation). Frame rate on real phones. The reviewer did not reach
+its robustness list (localStorage throwing, reduced motion, heap growth over a long session); the
+code handles the first two by inspection only.

@@ -79,13 +79,15 @@ body.touch #sticks { display: block; }
 body.walked .stick span { opacity: 0; }
 body.touch #toast { bottom: calc(max(26px, env(safe-area-inset-bottom) + 16px) + 170px); }
 @media (orientation: landscape) and (max-height: 480px) {
-  body.touch #toast { bottom: 16px; width: calc(100% - 400px); }
+  body.touch #toast { bottom: 12px; width: calc(100% - 316px); }
+  #toast b { font-size: 11px; margin-bottom: 4px; }
+  #toast span { font-size: 14px; line-height: 1.35; }
   .stick { width: 112px; height: 112px; }
 }
 
 #intro { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding: 20px;
   background: radial-gradient(ellipse at 50% 45%, rgba(6, 10, 32, .5) 0, rgba(4, 7, 24, .82) 100%); transition: opacity .9s; overflow: auto; }
-#intro.off { opacity: 0; pointer-events: none; }
+#intro.off { opacity: 0; pointer-events: none; visibility: hidden; transition: opacity .9s, visibility 0s linear .9s; }
 #introCard { width: min(33rem, 100%); text-align: center; margin: auto; }
 #wordmark { width: min(27rem, 86%); height: auto; color: var(--ink); display: block; margin: 0 auto 6px; }
 #introCard p { font-size: clamp(14px, 1.9vw, 16.5px); line-height: 1.6; margin: 14px auto 0; max-width: 31rem; color: rgba(246, 239, 230, .92); text-wrap: pretty; }
@@ -102,7 +104,7 @@ p.keys b { font-weight: 600; color: var(--ink); letter-spacing: .1em; }
 .for-touch { display: none; }
 body.touch .for-touch { display: block; }
 body.touch .for-mouse { display: none; }
-body.intro #hud, body.intro #help { opacity: 0; }
+body.intro #hud, body.intro #help, body.intro #toast { opacity: 0; }
 body.intro #sticks { opacity: 0; pointer-events: none; }
 #sticks { transition: opacity .8s; }
 #help { transition: opacity .8s; }
@@ -396,7 +398,7 @@ function updateEnv(T) {
   const deep = mix(DEEP, NIGHTFLOOR, ENV.flood * 0.75);
   ENV.w0 = mul(mix(hor, mid, 0.1), TEAL); ENV.w1 = mul(mix(hor, mid, 0.38), TEAL);
   ENV.w2 = mix(mul(mix(hor, mid, 0.72), TEAL), deep, 0.5); ENV.w3 = mix(mul(mix(mid, zen, 0.5), TEAL), deep, 0.84);
-  ENV.step = Math.floor(T * 900);                            // sprite palettes refresh on this beat
+  ENV.step = Math.abs(aD) < 14 && G.q > 1 ? 100000 + Math.floor(T * 1800) : Math.floor(T * 900);   // sprite palettes refresh on this beat, twice as often while the light is changing fast
 }
 /* One facet of a stone: albedo under ambient sky plus the sun at a given Lambert term. */
 const facet = (alb, lam) => mul(alb, add(ENV.fill, sc(ENV.sunC, lam)));
@@ -435,6 +437,7 @@ function windSil(sil, p, q) {
 const KINDS = [];
 const kind = o => {
   o.i = KINDS.length; o.sil = (o.sil || []).map(flat); o.pts = [];
+  o.col = o.col || [[0, o.cr]];              // what the walker bumps into: circles [offset along the plate, radius]
   if (o.sil.length) {                        // points inside the silhouette, even along its height: where light glints on its shade
     const R = rng(977 + o.i * 131), m = Math.max(.03, o.hw * .06), ins = (p, q) => windSil(o.sil, p, q) !== 0, rows = [];
     for (let j = 0; j < 44; j++) for (let tries = 0; tries < 40; tries++) {
@@ -482,7 +485,7 @@ kind({ id: 'stump', h: 1.5, hw: .6, cr: .55, small: true, art:
   const R = 1.25, yc = 4.1, ws = .5, ym = yc - Math.sqrt(R * R - ws * ws), t0 = Math.atan2(ym - yc, ws);
   const out = [[1.15, 0], [1.15, .3], [ws, .3]].concat(circ(0, yc, R, 22, false, t0, Math.PI - t0), [[-ws, .3], [-1.15, .3], [-1.15, 0]]);
   let rays = ''; for (let i = 0; i < 12; i++) { const a = i / 12 * TAU, c = Math.cos(a), s = Math.sin(a); rays += `M${cm(c * .82)} ${cm(-yc - s * .82)}L${cm(c * 1.04)} ${cm(-yc - s * 1.04)}`; }
-  kind({ id: 'eye', h: 5.35, hw: 1.25, cr: .7, plate: true, sil: [out, circ(0, yc, .62, 16, true)], art:
+  kind({ id: 'eye', h: 5.35, hw: 1.25, cr: .85, reach: .5, plate: true, sil: [out, circ(0, yc, .62, 16, true)], art:
     `<path fill-rule="evenodd" d="${P(out)}M62 ${cm(-yc)}A62 62 0 1 0 -62 ${cm(-yc)}A62 62 0 1 0 62 ${cm(-yc)}Z" style="fill:var(--l)"/>` +
     `<circle cx="0" cy="${cm(-yc)}" r="69" fill="none" style="stroke:var(--c)" stroke-width="9"/>` +
     detail(stroke(rays, 'k', 5, ' opacity=".3"') + stroke(`M-62 ${cm(-yc)}A62 62 0 0 1 62 ${cm(-yc)}`, 'k', 8, ' opacity=".3"') +
@@ -503,7 +506,7 @@ kind({ id: 'stump', h: 1.5, hw: .6, cr: .55, small: true, art:
 (() => {
   const out = [[-2.5, 0], [1.35, 0], [1.35, .22], [1.1, .22], [1.1, 3.7], [-2.3, .22], [-2.5, .22]];
   let notch = ''; for (let i = 0; i < 9; i++) notch += `M${cm(-1.9 + i * .34)} -22v${i % 2 ? -14 : -24}`;
-  kind({ id: 'blade', h: 3.7, hw: 2.5, cr: .5, plate: true, sil: [out, circ(.5, 1.55, .3, 12, true)], art:
+  kind({ id: 'blade', h: 3.7, hw: 2.5, cr: .5, col: [[-1.9, .32], [-1.1, .32], [-.3, .32], [.5, .34], [1.1, .34]], plate: true, sil: [out, circ(.5, 1.55, .3, 12, true)], art:
     `<path fill-rule="evenodd" d="${P([[-2.3, .22], [1.1, .22], [1.1, 3.7]])}M80 -155A30 30 0 1 0 20 -155A30 30 0 1 0 80 -155Z" style="fill:var(--l)"/>` +
     poly([[-2.5, 0], [1.35, 0], [1.35, .22], [-2.5, .22]], 'r') + stroke('M-230 -22L110 -370', 'c', 8) + detail(stroke(notch, 'k', 4, ' opacity=".32"')) });
 })();
@@ -512,7 +515,7 @@ kind({ id: 'stump', h: 1.5, hw: .6, cr: .55, small: true, art:
 (() => {
   const out = [[1.05, 0], [1.75, 0], [1.75, 3.5], [2.1, 3.5], [2.1, 4.15], [1.6, 4.15], [1.6, 4.4], [-1.6, 4.4], [-1.6, 4.15], [-2.1, 4.15],
     [-2.1, 3.5], [-1.75, 3.5], [-1.75, 0], [-1.05, 0], [-1.05, 3.5], [1.05, 3.5]];
-  kind({ id: 'gate', h: 4.4, hw: 2.1, cr: .5, plate: true, sil: [out], art: poly(out, 'l') +
+  kind({ id: 'gate', h: 4.4, hw: 2.1, cr: .5, col: [[-1.4, .52], [1.4, .52]], plate: true, sil: [out], art: poly(out, 'l') +
     poly([[-2.1, 3.5], [2.1, 3.5], [2.1, 3.62], [-2.1, 3.62]], 'k', ' opacity=".28"') +
     poly([[-1.75, 1.2], [-1.05, 1.2], [-1.05, 1.36], [-1.75, 1.36]], 'c') + poly([[1.05, 1.2], [1.75, 1.2], [1.75, 1.36], [1.05, 1.36]], 'c') +
     `<circle cx="0" cy="-383" r="20" style="fill:var(--g)"/>` });
@@ -541,6 +544,7 @@ const SPR = {
     `<g class="neck">` + stroke('M18 -88C34 -98 16 -118 30 -134', 'b', 7.5) + stroke('M28 -140L11 -151', 'v', 2.8) +
     `<circle cx="32" cy="-137" r="6.8" style="fill:var(--b)"/><path d="M37 -141L63 -134L37 -132Z" style="fill:var(--g)"/><circle cx="34" cy="-138" r="1.5" style="fill:var(--y)"/></g>`,
   heronF0: null, heronF1: null,
+  stilts: stroke('M-16 0L5 -242M17 0L-5 -238', 'b', 5) + stroke('M-6 -112h-19M7 -110h19', 'b', 6) + stroke('M-3 -206L4 -214', 'c', 9),
   sunA: petal(-72, 30, 5, 'lf2') + petal(72, 30, 5, 'lf2') + petal(-38, 36, 5, 'lf') + petal(38, 36, 5, 'lf') + petal(0, 30, 5, 'lf2') +
     stroke('M0 -8L0 -74', 'lf', 2.6) + `<g transform="translate(0 -72)">` + petal(0, 17, 5.5, 'y2') + `</g>`,
   sunB: petal(-72, 30, 5, 'lf2') + petal(72, 30, 5, 'lf2') + petal(-38, 36, 5, 'lf') + petal(38, 36, 5, 'lf') + petal(0, 30, 5, 'lf2') +
@@ -568,7 +572,7 @@ function installSymbols() {
 
 /* ---- The plain: an endless hash-streamed field of gnomons. Nothing is stored; a cell is its hash. ---- */
 
-const CELL = 22, LOADR = 8, LMAX = 150, GLMAX = 900, SUPER = 560;
+const CELL = 22, LOADR = 8, LMAX = 150, GLMAX = 700, SUPER = 560;
 const TINTS = ['#d9a48c', '#d8b877', '#9a90b4', '#e6dac8', '#b7c2c4'].map(lin);   // rose, ochre, slate-violet, bone, celadon
 const COPPER = lin('#46b8a4'), GOLD = lin('#ffc94a'), INK = lin('#2a2233');
 const PROFS = {};                     // half-width of a round stone at a given height, for placing things in its shade
@@ -577,7 +581,7 @@ PROFS.stack = q => [.95, .74, .55, .38][Math.min(3, Math.floor(q / 1.29))];
 PROFS.eye = () => .5;
 PROFS.great = q => q < 5.5 ? 7.2 : lerp(5.4, 3.2, clamp((q - 5.5) / 80, 0, 1));
 
-const cells = new Map();
+const cells = new Map(), greats = new Map();
 let ENTS = [], GREATS = [], entCell = null, NEXTID = 1;
 
 function greatOf(sx, sz) {
@@ -588,6 +592,8 @@ function greatOf(sx, sz) {
 function makeGreat(sx, sz) {
   const p = greatOf(sx, sz), h = hash3(sx, sz, 78), s = .82 + (h & 255) / 255 * .4;
   const g = stone(KI.great, p.x, p.z, s, null, TINTS[h >>> 8 & 3], hash3(sx, sz, 79)), R = rng(hash3(sx, sz, 80));
+  g.stilts = [];                               // where the Order went down with the tide: their stilts, left standing round the court
+  for (let i = 0; i < 11; i++) { const t = (i + R() * .7) / 11 * TAU, r = g.cr + 11 + R() * 9; g.stilts.push({ x: p.x + Math.cos(t) * r, z: p.z + Math.sin(t) * r, s: .9 + R() * .25, flip: R() < .5 ? -1 : 1, id: NEXTID++ }); }
   g.koi = [];                                  // the Great Shade keeps the great shoal: each fish holds a reach of the river
   for (let i = 0; i < 40; i++) g.koi.push({ ph: R() * TAU, ph2: R() * TAU, sp: .55 + R() * .6, len: .5 + R() * .45, kind: Math.floor(R() * 3), home: (i + R()) / 40, x: 0, z: 0, hd: 0, live: false });
   return g;
@@ -617,13 +623,20 @@ function dress(g, R) {                      // what lives in this stone's shade
   if (R() < .5) { g.pads = []; const m = 1 + Math.floor(R() * 3); for (let i = 0; i < m; i++) g.pads.push({ d: 1.6 + R() * 9, v: (R() - .5) * 1.5, r: .2 + R() * .2, bloom: R() < .55, id: NEXTID++ }); }
   if (R() < .24 && !g.dial) g.heron = { d: 3 + R() * 9, v: (R() - .5) * .5, flip: R() < .5 ? -1 : 1, ad: -R() * 7, id: NEXTID++, fly: 0, t: 0, fx: 0, fz: 0, ux: 0, uz: 0 };
 }
+/* smooth value noise over cells: the plain has open flats and thick stands of stone */
+function thick(cx, cz) {
+  const x = cx / 6, z = cz / 6, xi = Math.floor(x), zi = Math.floor(z), u = x - xi, v = z - zi, su = u * u * (3 - 2 * u), sv = v * v * (3 - 2 * v);
+  const h = (a, b) => (hash2(a + 7000, b - 3000) & 1023) / 1023;
+  return lerp(lerp(h(xi, zi), h(xi + 1, zi), su), lerp(h(xi, zi + 1), h(xi + 1, zi + 1), su), sv);
+}
 function genCell(cx, cz) {
   const R = rng(hash2(cx, cz)), out = [], ox = cx * CELL, oz = cz * CELL;
   const reg = hash2((cx >> 2) + 9000, (cz >> 2) - 4000), tintOf = () => TINTS[R() < .72 ? reg % 4 : Math.floor(R() * 5)];
   const sx = Math.floor((ox + CELL / 2) / SUPER), sz = Math.floor((oz + CELL / 2) / SUPER), gp = greatOf(sx, sz);
   if (Math.hypot(ox + CELL / 2 - gp.x, oz + CELL / 2 - gp.z) < 34) return out;            // leave the Great Gnomon its court
   const home = cx === 1 && cz === 2, first = cx === 0 && cz === 1;
-  const roll = home ? .99 : first ? 0 : R();
+  const near = Math.hypot(cx - 1, cz - 2) < 6;                    // the country round the first dial is always well furnished
+  const roll = home ? .99 : first ? 0 : R() * lerp(1.7, .9, near ? .8 : smooth(.25, .75, thick(cx, cz)));
   const pick = () => { const r = R(); return r < .34 ? 'needle' : r < .54 ? 'stack' : r < .68 ? 'eye' : r < .8 ? 'ring' : r < .9 ? 'blade' : 'gate'; };
   const plant = (id, x, z) => {
     const K = KINDS[KI[id]], s = id === 'needle' ? .7 + R() * R() * 1.5 : .9 + R() * .9;
@@ -646,7 +659,10 @@ function genCell(cx, cz) {
     for (let i = 0; i < n; i++) { const t = t0 + i * TAU / n + R() * .6, r = 3.5 + R() * 4; plant(pick(), x + Math.cos(t) * r, z + Math.sin(t) * r); }
   } else if (roll < .86) {                    // fallen ground: stumps
     const n = 2 + Math.floor(R() * 3);
-    for (let i = 0; i < n; i++) out.push(stone(KI.stump, ox + CELL * (.2 + R() * .6), oz + CELL * (.2 + R() * .6), .7 + R() * .8, null, tintOf(), hash3(cx, cz, i)));
+    for (let i = 0; i < n; i++) for (let tries = 0; tries < 8; tries++) {          // never one stump inside another
+      const s = .7 + R() * .8, x = ox + CELL * (.2 + R() * .6), z = oz + CELL * (.2 + R() * .6);
+      if (out.every(o => Math.hypot(o.x - x, o.z - z) > o.cr + KINDS[KI.stump].cr * s + .6)) { out.push(stone(KI.stump, x, z, s, null, tintOf(), hash3(cx, cz, i))); break; }
+    }
   }
   return out;
 }
@@ -663,13 +679,14 @@ function refreshEnts(force) {
   }
   if (cells.size > 700) for (const k of cells.keys()) { const p = k.split(','); if (Math.abs(p[0] - cx) > LOADR + 3 || Math.abs(p[1] - cz) > LOADR + 3) cells.delete(k); }
   const sx = Math.floor(V.x / SUPER), sz = Math.floor(V.z / SUPER);
-  GREATS = [];
-  for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) {
-    const k = 'G' + (sx + i) + ',' + (sz + j);
-    let g = cells.get(k);
-    if (!g) { g = makeGreat(sx + i, sz + j); cells.set(k, g); }
+  GREATS = [];                                 // every Great whose stone or shade could be in sight: 5x5 super cells
+  for (let i = -2; i <= 2; i++) for (let j = -2; j <= 2; j++) {
+    const k = (sx + i) + ',' + (sz + j);
+    let g = greats.get(k);
+    if (!g) { g = makeGreat(sx + i, sz + j); greats.set(k, g); }
     GREATS.push(g);
   }
+  if (greats.size > 90) for (const k of greats.keys()) { const p = k.split(','); if (Math.abs(p[0] - sx) > 4 || Math.abs(p[1] - sz) > 4) greats.delete(k); }
 }
 /* Each frame: the shade frame of a stone. p runs along (ax, az), q is height on the stone, laid along the shade. */
 function shadeFrame(g) {
@@ -679,7 +696,7 @@ function shadeFrame(g) {
 }
 /* a spot d metres along a stone's shade and v (-1..1) across it: things that live there ride the shade */
 function shadePoint(g, d, v) {
-  const q = Math.min(d, g.L * .84) / g.c, w = PROFS[g.K.id](q / g.s) * g.s * v;
+  const q = Math.min(d, g.L * (g.K.reach || .84)) / g.c, w = PROFS[g.K.id](q / g.s) * g.s * v;
   return [g.x + g.ax * w + ENV.sdx * q * g.c, g.z + g.az * w + ENV.sdz * q * g.c];
 }
 /* is a ground point inside this stone's shade? (winding number over its silhouette, in stone coordinates) */
@@ -772,7 +789,8 @@ function drawSky(time, kept) {
 
   /* the sun's road and its hour marks */
   let d = '', pen = false;
-  for (const a of ARC) { const p = projDir(a[0], a[1], a[2]); if (p && p[0] > -200 && p[0] < W + 200) { d += (pen ? 'L' : 'M') + r1(p[0]) + ' ' + r1(p[1]); pen = true; } else pen = false; }
+  const am = Math.max(700, W);                               // keep segments that run off a wide screen
+  for (const a of ARC) { const p = projDir(a[0], a[1], a[2]); if (p && p[0] > -am && p[0] < W + am) { d += (pen ? 'L' : 'M') + r1(p[0]) + ' ' + r1(p[1]); pen = true; } else pen = false; }
   setA(E.arc, 'd', d); setA(E.arc, 'stroke-width', r1(1.1 * px)); setA(E.arc, 'stroke-dasharray', r1(2 * px) + ' ' + r1(7 * px));
   let dm = '', dl = '', now = null;
   for (let k = 0; k < 12; k++) {
@@ -906,6 +924,10 @@ function drawGround(time, Q) {
     if (s.K.sil.length === 0) continue;
     shadeFrame(s);
     if (fl > .995) continue;
+    if (!s.great) {                                           // lower quality draws only the shade that comes within reach of the walker
+      const bx = s.x - V.x, bz = s.z - V.z, t = clamp(-(bx * ENV.sdx + bz * ENV.sdz) / s.L, 0, 1), ex = bx + ENV.sdx * s.L * t, ez = bz + ENV.sdz * s.L * t;
+      if (ex * ex + ez * ez > Q.shadeR * Q.shadeR) continue;
+    }
     const half = s.L / 2, rad = half + s.hw + (s.K.hr ? s.K.hr[1] * s.s : 0);
     if (cullCircle(s.x + ENV.sdx * half, s.z + ENV.sdz * half, rad)) continue;
     w += shadePath(s); STAT.shades++;
@@ -955,8 +977,8 @@ function drawGround(time, Q) {
       const h = hash2(i + 51000, j - 37000), x = (i + (h & 255) / 255) * G + Math.sin(time * .21 + (h >>> 20)) * 1.1, z = (j + (h >>> 8 & 255) / 255) * G;
       const dx = x - V.x, dz = z - V.z;
       if (dx * dx + dz * dz > SR * SR || cullCircle(x, z, 1.6)) continue;
-      const l = .3 + (h >>> 16 & 15) / 15 * .75;
-      gv(x - l, z); gv(x + l, z);
+      const l = (.3 + (h >>> 16 & 15) / 15 * .75) * clamp(Math.sqrt(dx * dx + dz * dz) / 14, .3, 1);     // wavelets face the walker; near ones stay small
+      gv(x - crx * l, z - crz * l); gv(x + crx * l, z + crz * l);
       if (h & 0x1000000) sa += gline(eye); else sb += gline(eye);
     }
   }
@@ -968,11 +990,12 @@ function drawGround(time, Q) {
   let ry = '', ro = '';
   for (let i = RINGS.length - 1; i >= 0; i--) {
     const r = RINGS[i], age = time - r.t;
-    if (age > 2.2 || age < 0) { RINGS.splice(i, 1); continue; }
-    const rad = .22 + age * .75;
+    if (age > 5.5) { RINGS.splice(i, 1); continue; }
+    if (age < 0) continue;                                    // a ring of a burst that has not started yet
+    const rad = .25 + age * 1.15, m = rad > 2.4 ? 22 : 14;    // they spread far enough to come into view ahead of the walker
     if (cullCircle(r.x, r.z, rad)) continue;
-    for (let k = 0; k <= 14; k++) { const t = k / 14 * TAU; gv(r.x + rad * Math.cos(t), r.z + rad * Math.sin(t)); }
-    if (age < 1) ry += gline(eye); else ro += gline(eye);
+    for (let k = 0; k <= m; k++) { const t = k / m * TAU; gv(r.x + rad * Math.cos(t), r.z + rad * Math.sin(t)); }
+    if (age < 2.2) ry += gline(eye); else ro += gline(eye);
   }
   setA(E.ripples, 'd', ry); setA(E.ripples2, 'd', ro);
   setA(E.ripples, 'stroke-width', r1(1.6 * px)); setA(E.ripples2, 'stroke-width', r1(1.1 * px));
@@ -984,12 +1007,12 @@ const KT = [0, .1, .25, .45, .65, .82, .92], KW = [0, .075, .105, .1, .07, .038,
 const KX = new Float64Array(7), KY = new Float64Array(7);
 const KO = { F: '', W: '', G: '', O: '', R: '', K: '' }, KS = { F: '', W: '', G: '', O: '', R: '', K: '' };
 const NKOI = [], SKOI = [], GLOW = [], SGLOW = [];
-const TILE = 56, STILE = 170, SKYH = 30;
+const TILE = 72, STILE = 400, SKYH = 30, NR = 28, SR = 155;     // fish are drawn only inside NR / SR, short of where their wrapped homes jump
 
 function initKoi() {
   const R = rng(4242);
-  for (let i = 0; i < 40; i++) NKOI.push({ hx: R() * TILE, hz: R() * TILE, rad: 2 + R() * 5.5, w: (R() < .5 ? -1 : 1) * (.1 + R() * .2), ph: R() * TAU, len: .5 + R() * .34, kind: Math.floor(R() * 3) });
-  for (let i = 0; i < 16; i++) SKOI.push({ hx: R() * STILE, hz: R() * STILE, rad: 12 + R() * 30, w: (R() < .5 ? -1 : 1) * (.03 + R() * .035), ph: R() * TAU, len: 6 + R() * 5.5, kind: i % 3 === 1 ? 2 : 0 });
+  for (let i = 0; i < 64; i++) NKOI.push({ hx: R() * TILE, hz: R() * TILE, rad: 2 + R() * 5.5, w: (R() < .5 ? -1 : 1) * (.1 + R() * .2), ph: R() * TAU, len: .5 + R() * .34, kind: Math.floor(R() * 3) });
+  for (let i = 0; i < 72; i++) SKOI.push({ hx: R() * STILE, hz: R() * STILE, rad: 12 + R() * 30, w: (R() < .5 ? -1 : 1) * (.03 + R() * .035), ph: R() * TAU, len: 6 + R() * 5.5, kind: i % 3 === 1 ? 2 : 0 });
 }
 
 /* one fish: o collects subpaths per colour; ph is the tail-beat phase; plane is metres below the eye */
@@ -1022,7 +1045,7 @@ function drawKoi(time, dt, Q, deep) {
   let n = 0, gi = 0;
   if (poolK > .02) for (const g of (GREATS.length ? ENTS.concat(GREATS) : ENTS)) {
     if (!g.koi) continue;
-    const dx = g.x - V.x, dz = g.z - V.z, reach = Math.min(g.L * .84, g.great ? 170 : 14), lim = Q.koiR + reach;
+    const dx = g.x - V.x, dz = g.z - V.z, reach = Math.min(g.L * (g.K.reach || .84), g.great ? 170 : 14), lim = Q.koiR + reach;
     if (dx * dx + dz * dz > lim * lim) { for (const k of g.koi) k.live = false; continue; }
     const Lc = Math.max(.6, reach - 1.1);
     for (const k of g.koi) {
@@ -1044,14 +1067,15 @@ function drawKoi(time, dt, Q, deep) {
   if (nightK > .02) for (let i = 0; i < Q.nightKoi; i++) {
     const k = NKOI[i], a = k.ph + time * k.w, x = near(k.hx, V.x, TILE) + k.rad * Math.cos(a), z = near(k.hz, V.z, TILE) + k.rad * .75 * Math.sin(a);
     const dx = x - V.x, dz = z - V.z, cz = dx * V.sn + dz * V.cs;
-    if (cz < 1 || dx * dx + dz * dz > 34 * 34 || cullCircle(x, z, .8)) continue;
+    const dd = Math.sqrt(dx * dx + dz * dz), sz = nightK * (1 - smooth(NR - 8, NR, dd));       // shrinks to nothing before the wrap, so nothing pops
+    if (cz < 1 || sz < .05 || cullCircle(x, z, .8)) continue;
     const hd = Math.atan2(.75 * Math.cos(a) * k.w, -Math.sin(a) * k.w);
-    if (!koiShape(KO, x, z, hd, k.len * nightK, k.kind, time * 4.6 + k.ph * 3, eye)) continue;
+    if (!koiShape(KO, x, z, hd, k.len * sz, k.kind, time * 4.6 + k.ph * 3, eye)) continue;
     n++;
     let el = GLOW[gi];                                        // a pool of light under each night fish
     if (!el) { el = GLOW[gi] = mk('ellipse', E.glows); el.setAttribute('fill', 'url(#gKoiGlow)'); }
     gi++;
-    const rx = V.f * .8 / cz;
+    const rx = V.f * .8 * sz / nightK / cz;
     setA(el, 'display', 'inline'); setA(el, 'cx', r1(V.HW + V.f * (dx * V.cs - dz * V.sn) / cz)); setA(el, 'cy', r1(V.hy + V.f * eye / cz));
     setA(el, 'rx', r1(rx)); setA(el, 'ry', r1(Math.max(1.2, rx * eye / cz))); setA(el, 'opacity', r1(nightK));
   }
@@ -1066,14 +1090,14 @@ function drawKoi(time, dt, Q, deep) {
     let si = 0;
     for (const k of SKOI) {
       const a = k.ph + time * k.w, x = near(k.hx, V.x, STILE) + k.rad * Math.cos(a), z = near(k.hz, V.z, STILE) + k.rad * Math.sin(a);
-      if (cullCircle(x, z, k.len)) continue;
-      if (!koiShape(KS, x, z, Math.atan2(Math.cos(a) * k.w, -Math.sin(a) * k.w), k.len, k.kind, time * 1.3 + k.ph, eye - SKYH)) continue;
-      const dx = x - V.x, dz = z - V.z, cz = dx * V.sn + dz * V.cs;
+      const dx = x - V.x, dz = z - V.z, cz = dx * V.sn + dz * V.cs, sz = 1 - smooth(SR - 50, SR, Math.sqrt(dx * dx + dz * dz));
+      if (sz < .05 || cullCircle(x, z, k.len)) continue;
+      if (!koiShape(KS, x, z, Math.atan2(Math.cos(a) * k.w, -Math.sin(a) * k.w), k.len * sz, k.kind, time * 1.3 + k.ph, eye - SKYH)) continue;
       if (cz < 4) continue;
       let el = SGLOW[si];
       if (!el) { el = SGLOW[si] = mk('ellipse', E.skGlow); el.setAttribute('fill', 'url(#gKoiGlow)'); }
       si++;
-      const rx = V.f * k.len * .85 / cz;
+      const rx = V.f * k.len * sz * .85 / cz;
       setA(el, 'display', 'inline'); setA(el, 'cx', r1(V.HW + V.f * (dx * V.cs - dz * V.sn) / cz)); setA(el, 'cy', r1(V.hy + V.f * (eye - SKYH) / cz));
       setA(el, 'rx', r1(rx)); setA(el, 'ry', r1(Math.max(2, rx * (SKYH - eye) / cz)));
     }
@@ -1113,6 +1137,8 @@ function smallStyle(kind, fq, aq, extra) {
     if (kind === 'lily' || kind === 'kept') {
       const a = kind === 'kept' ? GOLD : PINK, b = kind === 'kept' ? lin('#f0a020') : PINK2;
       s = '--p:' + fogc(facet(a, .55), fq) + ';--p2:' + fogc(facet(b, .45), fq) + ';--y:' + fogc(facet(YOLK, .6), fq) + ';--lf:' + fogc(facet(LEAF, .45), fq);
+    } else if (kind === 'stilt') {
+      s = '--b:' + fogc(facet(lin('#6b4a3a'), .55), fq) + ';--c:' + fogc(facet(COPPER, .5), fq);
     } else if (kind === 'sun') {
       s = '--lf:' + fogc(facet(SAGE, .55), fq) + ';--lf2:' + fogc(facet(sc(SAGE, .7), .3), fq) + ';--y:' + fogc(facet(GOLD, .8), fq) + ';--y2:' + fogc(facet(lin('#f29a2e'), .6), fq) + ';--v:' + fogc(facet(VERM, .7), fq);
     } else s = '--b:' + fogc(facet(SLATE, .4), fq) + ';--k:' + fogc(facet(INK, .2), fq) + ';--g:' + fogc(facet(GOLD, .6), fq) +
@@ -1137,11 +1163,11 @@ function collectSprites(dt, Q, kept) {
   const sx = ENV.se, sz = ENV.sn, fl = ENV.flood;
   const all = GREATS.length ? ENTS.concat(GREATS) : ENTS;
   for (const g of all) {
-    const dx = g.x - V.x, dz = g.z - V.z, d2 = dx * dx + dz * dz, lim = g.great ? 1500 : g.small ? Q.smallR * 1.7 : Q.drawR;
+    const dx = g.x - V.x, dz = g.z - V.z, d2 = dx * dx + dz * dz, lim = g.great ? 1100 : g.small ? Q.smallR * 1.7 : Q.drawR;
     if (d2 > lim * lim) continue;
     const d = Math.sqrt(d2) || 1e-3, ux = dx / d, uz = dz / d, rx = uz, rz = -ux;      // view ray and its right-hand normal
     const fq = g.great ? Math.round(Math.min(.8, fogAt(d * .2)) * 12) : Math.round(fogAt(d) * 12);
-    const aq = g.great ? 10 : Math.round((1 - smooth(lim - 24, lim, d)) * 10);
+    const aq = Math.round((1 - (g.great ? smooth(850, 1080, d) : smooth(lim - 24, lim, d))) * 10);       // every stone fades in at its limit, the Greats too
     if (aq <= 0) continue;
     let mx = 1, qL, qR;
     if (g.a) {                                             // a plate: one face, foreshortened by the angle it is seen at
@@ -1153,7 +1179,12 @@ function collectSprites(dt, Q, kept) {
       qR = Math.round(Math.max(0, (-ux + rx) * sx + (-uz + rz) * sz) * IS2 * 8);
     }
     if (g.tintI === undefined) g.tintI = TINTS.indexOf(g.tint);
-    push(g.id, 'k_' + g.K.id, g.x, g.z, 0, g.s, mx, g.hw, stoneStyle(g, fq, qL, qR, aq, d < 60 || g.great ? 1 : 0), !g.small && d < Q.reflR);
+    const sq = g.a ? Math.min(aq, Math.round(smooth(1.6, 3.4, d) * 10)) : aq;      // a plate cannot be drawn from inside its own plane: it lets the walker through
+    if (sq > 0) push(g.id, 'k_' + g.K.id, g.x, g.z, 0, g.s, mx, g.hw, stoneStyle(g, fq, qL, qR, sq, d < 60 || g.great ? 1 : 0), !g.small && d < Q.reflR);
+    if (g.stilts && d < 190) for (const p of g.stilts) {
+      const e = Math.hypot(p.x - V.x, p.z - V.z), fa = Math.round((1 - smooth(110, 140, e)) * 10);
+      if (fa > 0) push(p.id, 'k_stilts', p.x, p.z, 0, p.s, p.flip, .4, smallStyle('stilt', Math.round(fogAt(e) * 12), fa));
+    }
     if (g.dial) {                                          // the lily cups: each opens while the dial's shade lies on it
       const lit = ENV.day > .25, cr = Q.smallR * 1.9, show = d < cr + 14, ca = Math.min(aq, Math.round((1 - smooth(cr, cr + 14, d)) * 10));
       for (const c of g.spots) {
@@ -1162,10 +1193,13 @@ function collectSprites(dt, Q, kept) {
         c.open = want > c.open ? Math.min(1, c.open + dt * 1.5) : Math.max(0, c.open - dt * .9);
         if (show && ca > 0) push(c.id, c.open < .3 ? 'k_cupbud' : c.open < .75 ? 'k_cuphalf' : 'k_cupbloom', c.x, c.z, 0, 1.05, 1, .5,
           stoneStyle(g, fq, qL, qR, ca, 0) + ';' + smallStyle(kp ? 'kept' : 'lily', fq, 10));
-        if (c.open > .5 && !kp && d < 150) push(c.id + 'B', 'k_beam', c.x, c.z, .5, 1, 1, .3, 'opacity:' + r1((c.open - .5) * 2 * (1 - smooth(120, 150, d))));
+        if (c.open > .5 && !kp && c.hour === ENV.hour && d < 150) push(c.id + 'B', 'k_beam', c.x, c.z, .5, 1, 1, .3, 'opacity:' + r1((c.open - .5) * 2 * (1 - smooth(120, 150, d)) * aq / 10));
       }
     }
-    if (g.pads && d < Q.smallR) for (const p of g.pads) if (p.bloom && p.x !== undefined) push(p.id, 'k_bloom', p.x, p.z, .03, .8, 1, .3, smallStyle('lily', fq, aq));
+    if (g.pads && d < Q.smallR) for (const p of g.pads) {            // pads ride the shade by night as well, so the blossoms are placed here, not by the water pass
+      const c = shadePoint(g, p.d, p.v * .6); p.x = c[0]; p.z = c[1];
+      if (p.bloom) push(p.id, 'k_bloom', p.x, p.z, .03, .8, 1, .3, smallStyle('lily', fq, aq));
+    }
     if (g.suns && d < Q.smallR * 1.5) for (const p of g.suns) {
       const want = ENV.day > .35 && !inShadeOf(g, p.x, p.z) ? 1 : 0;
       p.open = want > p.open ? Math.min(1, p.open + dt * .7) : Math.max(0, p.open - dt * 1.6);
@@ -1202,29 +1236,8 @@ function place(el, r, flip) {
   const k = V.f / r.cz * r.scale / 100, kx = Math.round(k * r.mx * 1e4) / 1e4, ky = Math.round(k * 1e4) / 1e4;
   setA(el, 'transform', 'matrix(' + kx + ' 0 0 ' + (flip ? -ky * .9 : ky) + ' ' + r1(V.HW + V.f * r.cx / r.cz) + ' ' + r1(V.hy + V.f * (V.eye - r.y0) / r.cz) + ')');
 }
-function syncSprites(Q) {
-  FRAME++;
-  const L = E.sprites, n = LIST.length, fl = ENV.flood, ro = fl > .06 ? Math.round(fl * 4) / 10 : 0;
-  for (let i = 0; i < n; i++) {
-    const r = LIST[i];
-    let el = ACTIVE.get(r.key);
-    if (el && el._sym !== r.sym) { ACTIVE.delete(r.key); setA(el, 'display', 'none'); (FREE[el._sym] || (FREE[el._sym] = [])).push(el); el = null; }
-    if (!el) { const fr = FREE[r.sym]; el = fr && fr.length ? fr.pop() : makeUse(r.sym, L); ACTIVE.set(r.key, el); setA(el, 'display', 'inline'); }
-    el._f = FRAME; el._ord = i; r.el = el;
-    place(el, r, false);
-    if (el._st !== r.style) { el._st = r.style; el.style.cssText = r.style; }
-    if (r.refl && ro > 0) {                               // night: the stone stands on its own mirror image
-      let m = RACTIVE.get(r.key);
-      if (!m) { const fr = RFREE[r.sym]; m = fr && fr.length ? fr.pop() : makeUse(r.sym, E.refl); RACTIVE.set(r.key, m); setA(m, 'display', 'inline'); }
-      m._f = FRAME; place(m, r, true);
-      if (m._st !== r.style) { m._st = r.style; m.style.cssText = r.style; }
-    }
-  }
-  for (const [key, el] of ACTIVE) if (el._f !== FRAME) { ACTIVE.delete(key); setA(el, 'display', 'none'); (FREE[el._sym] || (FREE[el._sym] = [])).push(el); }
-  for (const [key, el] of RACTIVE) if (el._f !== FRAME) { RACTIVE.delete(key); setA(el, 'display', 'none'); (RFREE[el._sym] || (RFREE[el._sym] = [])).push(el); }
-  setA(E.refl, 'opacity', ro); setA(E.refl, 'display', ro > 0 ? 'inline' : 'none');
-
-  /* order far-to-near: keep the longest run already in order, move only the rest */
+/* Put a layer's live elements in far-to-near order with as few moves as possible: keep the longest run already in order. */
+function orderLayer(L, want) {
   const seq = [], els = [];
   for (let c = L.firstChild; c; c = c.nextSibling) if (c._f === FRAME) { seq.push(c._ord); els.push(c); }
   const m = seq.length, tails = [], prev = new Int32Array(m);
@@ -1235,8 +1248,38 @@ function syncSprites(Q) {
   }
   for (let k = tails.length ? tails[tails.length - 1] : -1; k >= 0; k = prev[k]) els[k]._keep = FRAME;
   let next = null, moves = 0;
-  for (let i = n - 1; i >= 0; i--) { const el = LIST[i].el; if (el._keep !== FRAME) { L.insertBefore(el, next); moves++; } next = el; }
-  STAT.sprites = n; STAT.moves = moves;
+  for (let i = want.length - 1; i >= 0; i--) { const el = want[i]; if (el._keep !== FRAME) { L.insertBefore(el, next); moves++; } next = el; }
+  return moves;
+}
+function syncSprites(Q) {
+  FRAME++;
+  const L = E.sprites, n = LIST.length, fl = ENV.flood, ro = fl > .06 ? Math.round(fl * 4) / 10 : 0, SL = [], RL = [];
+  let budget = 5;
+  for (let i = 0; i < n; i++) {
+    const r = LIST[i];
+    let el = ACTIVE.get(r.key);
+    if (el && el._sym !== r.sym) { ACTIVE.delete(r.key); setA(el, 'display', 'none'); (FREE[el._sym] || (FREE[el._sym] = [])).push(el); el = null; }
+    if (!el) { const fr = FREE[r.sym]; el = fr && fr.length ? fr.pop() : makeUse(r.sym, L); ACTIVE.set(r.key, el); setA(el, 'display', 'inline'); }
+    el._f = FRAME; el._ord = i; r.el = el; SL.push(el);
+    place(el, r, false);
+    if (el._st !== r.style) { el._st = r.style; el.style.cssText = r.style; }
+    if (r.refl && ro > 0) {                               // night: the stone stands on its own mirror image
+      let m = RACTIVE.get(r.key);
+      if (!m) {                                           // dusk asks for all of them at once: make a few a frame, they are still faint
+        const fr = RFREE[r.sym];
+        if (fr && fr.length) m = fr.pop(); else if (budget-- > 0) m = makeUse(r.sym, E.refl); else continue;
+        RACTIVE.set(r.key, m); setA(m, 'display', 'inline');
+      }
+      m._f = FRAME; m._ord = RL.length; RL.push(m); place(m, r, true);
+      if (m._st !== r.style) { m._st = r.style; m.style.cssText = r.style; }
+    }
+  }
+  for (const [key, el] of ACTIVE) if (el._f !== FRAME) { ACTIVE.delete(key); setA(el, 'display', 'none'); (FREE[el._sym] || (FREE[el._sym] = [])).push(el); }
+  for (const [key, el] of RACTIVE) if (el._f !== FRAME) { RACTIVE.delete(key); setA(el, 'display', 'none'); (RFREE[el._sym] || (RFREE[el._sym] = [])).push(el); }
+  setA(E.refl, 'opacity', ro); setA(E.refl, 'display', ro > 0 ? 'inline' : 'none');
+
+  STAT.sprites = n; STAT.moves = orderLayer(L, SL);
+  if (RL.length > 1) orderLayer(E.refl, RL);
 }
 
 /* ---- Input: keys, drag-look, and two captured-pointer sticks that work at the same time ---- */
@@ -1251,8 +1294,8 @@ function initInput(onFirstMove) {
   if (coarse || QS.has('touch')) body.classList.add('touch');
 
   addEventListener('keydown', e => {
-    if (e.metaKey || e.ctrlKey || e.altKey) return;
-    if (e.code.startsWith('Arrow') || e.code === 'Space') e.preventDefault();
+    if (e.metaKey || e.ctrlKey || e.altKey) { drop(); return; }   // macOS never reports the keyup of a key released under Cmd, so let everything go
+    if ((e.code.startsWith('Arrow') || e.code === 'Space') && !(e.target && e.target.closest && e.target.closest('button'))) e.preventDefault();   // never swallow Space on a focused button
     KEYS[e.code] = true;
   });
   addEventListener('keyup', e => { KEYS[e.code] = false; });
@@ -1340,17 +1383,17 @@ const HOURS = [
   ['XII', 'Evenfall', 'On the last evening the Order walked into the long shade and went down with the tide.']
 ];
 const QL = [
-  { drawR: 100, smallR: 22, crackR: 0, koiR: 16, reflR: 0, nightKoi: 14, glint: 0 },
-  { drawR: 125, smallR: 30, crackR: 11, koiR: 22, reflR: 0, nightKoi: 22, glint: 26 },
-  { drawR: 150, smallR: 38, crackR: 15, koiR: 28, reflR: 55, nightKoi: 30, glint: 38 },
-  { drawR: 172, smallR: 46, crackR: 19, koiR: 34, reflR: 75, nightKoi: 40, glint: 50 }
+  { drawR: 100, smallR: 22, crackR: 0, koiR: 16, reflR: 0, nightKoi: 22, glint: 0, shadeR: 80 },
+  { drawR: 125, smallR: 30, crackR: 11, koiR: 22, reflR: 0, nightKoi: 34, glint: 26, shadeR: 110 },
+  { drawR: 150, smallR: 38, crackR: 15, koiR: 28, reflR: 55, nightKoi: 48, glint: 38, shadeR: 150 },
+  { drawR: 172, smallR: 46, crackR: 19, koiR: 34, reflR: 75, nightKoi: 64, glint: 50, shadeR: 400 }
 ];
 const EYE = 2.6;
 const STILL = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
 const G = {
-  x: qnum('x', 33), z: qnum('z', 52), yaw: qnum('yaw', 229) * DEG, pitch: qnum('pitch', -.05), vf: 0, vs: 0, bob: 0, bobAmt: 0, wade: 0, stepAcc: 0,
+  x: qnum('x', 27.5), z: qnum('z', 47.5), yaw: qnum('yaw', 228.7) * DEG, pitch: qnum('pitch', -.05), vf: 0, vs: 0, bob: 0, bobAmt: 0, wade: 0, stepAcc: 0,
   time: 0, T: qnum('t', .588), rate: QS.has('freeze') ? 0 : qnum('speed', 1), kept: new Array(12).fill(false), nKept: 0,
-  deepOn: false, deep: 0, started: false, lastHour: -2, hintAt: 14, sawNight: false, q: 3
+  deepOn: false, deep: 0, started: false, lastHour: -2, hintAt: 14, sawNight: false, q: 3, ringT: 0
 };
 const SAVE = 'lownoon.kept.v1';
 function loadKept() {
@@ -1361,16 +1404,14 @@ function loadKept() {
 }
 function saveKept() { let m = 0; G.kept.forEach((v, k) => { if (v) m |= 1 << k; }); try { localStorage.setItem(SAVE, String(m)); } catch (e) { /* private mode */ } }
 
-let toastTimer = 0;
+let toastBusy = false;
 const TQ = [];
-function toast(title, text, secs) {
-  const el = $('toast');
-  if (el.classList.contains('on') && TQ.length < 3) { TQ.push([title, text, secs]); return; }
-  el.textContent = '';
-  const b = document.createElement('b'), s = document.createElement('span');
-  b.textContent = title; s.textContent = text; el.appendChild(b); el.appendChild(s); el.classList.add('on');
-  clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => { el.classList.remove('on'); toastTimer = setTimeout(() => { if (TQ.length) toast.apply(null, TQ.shift()); }, 900); }, (secs || 7) * 1000);
+function toast(title, text, secs) {                    // one caption at a time; later ones wait their turn
+  if (toastBusy) { if (TQ.length >= 4) TQ.shift(); TQ.push([title, text, secs]); return; }
+  toastBusy = true;
+  const el = $('toast'), b = document.createElement('b'), s = document.createElement('span');
+  el.textContent = ''; b.textContent = title; s.textContent = text; el.appendChild(b); el.appendChild(s); el.classList.add('on');
+  setTimeout(() => { el.classList.remove('on'); setTimeout(() => { toastBusy = false; if (TQ.length) toast.apply(null, TQ.shift()); }, 900); }, (secs || 7) * 1000);
 }
 function initHud() {
   const p = $('pips');
@@ -1414,11 +1455,14 @@ function update(dt) {
   let wet = ENV.flood > .5;
   const all = GREATS.length ? ENTS.concat(GREATS) : ENTS;
   for (const g of all) {
-    const dx = nx - g.x, dz = nz - g.z, d2 = dx * dx + dz * dz, rr = g.cr + .34;
-    if (d2 < rr * rr) { const d = Math.sqrt(d2) || .001; nx = g.x + dx / d * rr; nz = g.z + dz / d * rr; }       // stones are solid
+    const dx = nx - g.x, dz = nz - g.z, d2 = dx * dx + dz * dz, far = g.hw + 3;
+    if (d2 < far * far) for (const c of g.K.col) {            // stones are solid: one circle, or several along a plate (a gate's two pillars)
+      const ox = g.a ? g.a[0] * c[0] * g.s : 0, oz = g.a ? g.a[1] * c[0] * g.s : 0, ex = nx - g.x - ox, ez = nz - g.z - oz, rr = c[1] * g.s + .34, e2 = ex * ex + ez * ez;
+      if (e2 < rr * rr) { const e = Math.sqrt(e2) || .001; nx = g.x + ox + ex / e * rr; nz = g.z + oz + ez / e * rr; }
+    }
     if (!wet && g.K.sil.length && inShadeOf(g, nx, nz)) wet = true;
     if (g.dial && G.started && d2 < 18 * 18) for (const c of g.spots) {                                      // stand by an open lily: its hour is kept
-      if (c.open > .5 && !G.kept[c.hour] && (nx - c.x) * (nx - c.x) + (nz - c.z) * (nz - c.z) < 2.7 * 2.7) keep(c.hour, c.x, c.z);
+      if (c.open > .5 && c.hour === ENV.hour && !G.kept[c.hour] && (nx - c.x) * (nx - c.x) + (nz - c.z) * (nz - c.z) < 2.7 * 2.7) keep(c.hour, c.x, c.z);
     }
   }
   const moved = Math.hypot(nx - G.x, nz - G.z), speed = dt > 0 ? moved / dt : 0;
@@ -1427,7 +1471,9 @@ function update(dt) {
   G.bob += moved * TAU / lerp(4.2, 4.6, G.wade);                  // one full sway every two long stilt strides
   G.bobAmt += ((STILL ? 0 : smooth(.3, 3, speed)) - G.bobAmt) * (1 - Math.exp(-dt * 6));
   G.stepAcc += moved;
-  if (G.wade > .5 && G.stepAcc > .8) { G.stepAcc = 0; RINGS.push({ x: G.x + sy * .5, z: G.z + cy * .5, t: G.time }); if (RINGS.length > 40) RINGS.shift(); }
+  if (G.wade > .5 && (G.stepAcc > .9 || G.time - G.ringT > 1.7)) {          // wading leaves rings; so does standing in water, slowly
+    G.stepAcc = 0; G.ringT = G.time; RINGS.push({ x: G.x, z: G.z, t: G.time }); if (RINGS.length > 60) RINGS.shift();
+  }
   if (moved > .01 && G.started && !document.body.classList.contains('walked') && IN.used) document.body.classList.add('walked');
   G.deep += ((G.deepOn ? 1 : 0) - G.deep) * (1 - Math.exp(-dt * .5));
   refreshEnts(false);
@@ -1466,7 +1512,8 @@ function resize() {
    or a cost that is not ours, gains nothing and the step is undone and locked out). Steps up are probes too. */
 const AD = { on: qnum('adapt', 1) !== 0, ema: 0, n: 0, slow: 0, fast: 0, state: 'watch', t0: 0, before: 0, from: 3, lock: 0, upWait: 18, fails: 0, switches: 0 };
 function adapt(ms, now) {
-  if (!AD.on || ms > 250 || ms <= 0) return;
+  if (!AD.on || ms <= 0) return;
+  if (ms > 250) ms = 250;                                     // a device this slow must still be allowed to step down
   AD.ema = AD.n < 30 ? (AD.ema * AD.n + ms) / (AD.n + 1) : AD.ema + (ms - AD.ema) * .06; AD.n++;
   if (AD.n < 40) return;                                      // judge only on real samples
   const t = now / 1000, dt = ms / 1000;
@@ -1481,7 +1528,7 @@ function adapt(ms, now) {
     if (AD.state === 'down') {
       if (AD.ema < AD.before * .94) AD.fails = 0;             // it helped: keep it
       else { const floor = G.q === 0; G.q = AD.from; AD.fails++; AD.lock = t + (floor ? 1800 : 40 * AD.fails); AD.switches++; AD.n = 0; AD.ema = 0; }
-    } else if (AD.ema > Math.max(AD.before * 1.12, 20.5)) { G.q = AD.from; AD.upWait = Math.min(240, AD.upWait * 2); AD.switches++; AD.n = 0; AD.ema = 0; }
+    } else if (AD.ema > Math.max(AD.before * 1.12, 17.8)) { G.q = AD.from; AD.upWait = Math.min(240, AD.upWait * 2); AD.switches++; AD.n = 0; AD.ema = 0; }   // a step up must not cost a 120 Hz screen its cadence
     AD.state = 'watch'; AD.slow = AD.fast = 0;
   }
 }
@@ -1499,11 +1546,11 @@ function frame(ts) {
 function begin() {
   G.started = true; G.hintAt = G.time + 12;
   document.body.classList.remove('intro'); $('intro').classList.add('off');
-  $('intro').setAttribute('aria-hidden', 'true'); $('hud').removeAttribute('aria-hidden');
+  $('intro').setAttribute('aria-hidden', 'true'); $('intro').inert = true; $('hud').removeAttribute('aria-hidden');
   if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
 }
 function showIntro() {
-  G.started = false; document.body.classList.add('intro'); $('intro').classList.remove('off'); $('intro').removeAttribute('aria-hidden');
+  G.started = false; document.body.classList.add('intro'); $('intro').classList.remove('off'); $('intro').removeAttribute('aria-hidden'); $('intro').inert = false;
   $('begin').textContent = 'Walk on'; $('forget').hidden = G.nKept === 0; $('begin').focus({ preventScroll: true });
 }
 
