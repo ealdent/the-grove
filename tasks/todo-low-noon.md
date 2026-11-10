@@ -145,3 +145,18 @@ code handles the first two by inspection only.
 - **Checked after the fix:** real 120 Hz Chrome window at 1728x881 2x, walking and turning: steady 16.7 ms between
   presented frames (p95 17.8, max 18.6), no flashes; desktop, phone and landscape scenarios pass; console clean.
 - **Not verified:** on Jason's own display (a 1920-wide window on a larger screen than the built-in one).
+
+## Follow-up 2: "back to flickering like mad" when another window is clicked (game on the second monitor)
+
+- Fine while Jason plays; flickers as soon as the game's window is in the background on his second monitor.
+- **Not reproduced.** An unfocused real Chrome window on the built-in display presents steady frames (16.7 ms apart, no
+  flicker in the recorded frames). In Jason's own Chrome the page also draws a steady frame every 16.7 ms.
+- **What is odd on his setup:** the second monitor is an ASUS MG28U at 60 Hz, but Chrome drives the game's window there
+  at 120 Hz (8.3 ms between rAF callbacks), the built-in display's rate; `screen` reports the built-in display's size
+  for a window positioned on the other one. So frames for a 60 Hz monitor are being timed off a 120 Hz screen. That
+  the flicker comes from this mismatch is an inference: I could not observe the monitor.
+- **Change:** the game stops drawing whenever its window loses focus or is hidden (rAF cancelled, CSS animations
+  paused, a small "Paused · click to walk on" note). Focus, a key press or a pointer press resumes it. `?bg` keeps it
+  running in the background. Verified: after a blur the browser presents one last frame and then nothing for 3 s; game
+  time stands still; focus/key/drag resume; desktop, phone, landscape and input checks pass.
+- **Not verified:** on the ASUS monitor itself.

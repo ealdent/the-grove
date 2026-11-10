@@ -60,6 +60,11 @@ html, body {
 #help:hover { background: rgba(8, 14, 40, .5); }
 #help:focus-visible, #begin:focus-visible, #forget:focus-visible { outline: 2px solid var(--gold); outline-offset: 3px; }
 
+#paused { position: absolute; left: 50%; bottom: 6%; transform: translateX(-50%); padding: 9px 18px; border-radius: 999px; background: rgba(8, 14, 40, .55);
+  font-size: 11px; letter-spacing: .24em; text-transform: uppercase; white-space: nowrap; pointer-events: none; opacity: 0; transition: opacity .25s; }
+body.paused:not(.intro) #paused { opacity: 1; }
+body.paused #scene * { animation-play-state: paused !important; }      /* a paused game presents nothing new at all */
+body.paused #toast { opacity: 0; }
 #toast { position: absolute; left: 50%; bottom: 13%; transform: translateX(-50%); width: min(34rem, calc(100% - 40px)); text-align: center;
   pointer-events: none; opacity: 0; transition: opacity .9s; text-shadow: 0 1px 14px rgba(3, 6, 20, .85), 0 0 2px rgba(3, 6, 20, .7); }
 #toast.on { opacity: 1; }
@@ -208,6 +213,7 @@ body.intro #sticks { opacity: 0; pointer-events: none; }
 </div>
 <button id="help" type="button" aria-label="About this place and how to move">?</button>
 <div id="toast" role="status" aria-live="polite"></div>
+<div id="paused" aria-hidden="true">Paused · click to walk on</div>
 
 <div id="sticks" aria-hidden="true">
   <div class="stick" id="stickL"><div class="ring"></div><div class="knob"></div><span>walk</span></div>
@@ -1565,6 +1571,19 @@ function frame(ts) {
   update(dt); render(dt); adapt(ms, ts);
 }
 
+/* When this is not the window in use, stop drawing altogether. A background window gains nothing from sixty new
+   pictures a second, and on a second monitor whose refresh rate differs from the main display's the browser can time
+   those pictures off the wrong screen (a window on a 60 Hz monitor was being driven at 120 Hz), which shows as violent
+   flicker. A still picture cannot flicker. ?bg keeps it running for anyone who wants it as an ambient display. */
+const KEEP = QS.has('bg'), MANUAL = QS.has('manual');
+let paused = false;
+function setPaused(p) {
+  if (p === paused || (p && KEEP)) return;
+  paused = p; document.body.classList.toggle('paused', p);
+  if (p) { cancelAnimationFrame(raf); raf = 0; G.vf = G.vs = 0; }
+  else { last = 0; vs = 16.7; nth = 0; if (!MANUAL) raf = requestAnimationFrame(frame); }
+}
+
 function begin() {
   G.started = true; G.hintAt = G.time + 12;
   document.body.classList.remove('intro'); $('intro').classList.add('off');
@@ -1582,9 +1601,14 @@ function showIntro() {
   initInput();
   G.q = clamp(Math.round(qnum('q', document.body.classList.contains('touch') || coarse ? 1 : 3)), 0, 3);
   updateEnv(G.T); V.x = G.x; V.z = G.z; refreshEnts(true); initHud();
-  addEventListener('resize', resize); addEventListener('orientationchange', resize);
-  if (window.visualViewport) visualViewport.addEventListener('resize', resize);
-  document.addEventListener('visibilitychange', () => { last = 0; });
+  const sized = () => { resize(); if (paused) render(0); };                 // a paused picture still follows its window
+  addEventListener('resize', sized); addEventListener('orientationchange', sized);
+  if (window.visualViewport) visualViewport.addEventListener('resize', sized);
+  addEventListener('blur', () => setPaused(true));
+  addEventListener('focus', () => setPaused(false));
+  document.addEventListener('visibilitychange', () => { last = 0; if (document.hidden) setPaused(true); else if (document.hasFocus()) setPaused(false); });
+  addEventListener('pointerdown', () => setPaused(false), true);              // any touch of the game means it is in use again
+  addEventListener('keydown', () => setPaused(false), true);
   $('begin').addEventListener('click', begin);
   $('help').addEventListener('click', showIntro);
   $('forget').hidden = G.nKept === 0;
@@ -1605,10 +1629,11 @@ function showIntro() {
       return Object.assign({}, STAT, { q: G.q, ema: r1(AD.ema), hour: ENV.hour, alt: r1(ENV.altD), flood: r1(ENV.flood), ents: ENTS.length, pool: E.sprites.childElementCount,
         x: r1(G.x), z: r1(G.z), yaw: r1(G.yaw / DEG), wade: r1(G.wade), kept: G.nKept, eye: Math.round(V.eye * 1000) / 1000, switches: AD.switches });
     },
-    stop() { cancelAnimationFrame(raf); raf = 0; }, go() { if (!raf) { last = 0; raf = requestAnimationFrame(frame); } }
+    stop() { cancelAnimationFrame(raf); raf = 0; }, go() { if (!raf) { last = 0; raf = requestAnimationFrame(frame); } },
+    paused: () => paused, running: () => !!raf
   };
   update(0); render(0);
-  if (!QS.has('manual')) raf = requestAnimationFrame(frame);
+  if (!MANUAL) raf = requestAnimationFrame(frame);
 })();
 })();
 </script>
