@@ -160,3 +160,28 @@ code handles the first two by inspection only.
   running in the background. Verified: after a blur the browser presents one last frame and then nothing for 3 s; game
   time stands still; focus/key/drag resume; desktop, phone, landscape and input checks pass.
 - **Not verified:** on the ASUS monitor itself.
+
+## Follow-up 3: still glitching on the ASUS while moving, "exponentially" worse at night
+
+- After the pause fix the background flicker was gone, but play itself got worse the longer Jason moved, and far worse
+  at night.
+- **Found by measuring in a test Chrome window placed on the ASUS** (`tmp/low-noon/asus.mjs`, `layers*.mjs`: CDP
+  `Browser.setWindowBounds` puts the window there; `LayerTree` lists the compositor layers). The frame loop itself was
+  steady (16.7 ms between drawn frames, day and night). The compositor was not being handed one picture, though: the
+  scene was cut into **3 to 17 layers by day and 8 to 24 at night, a different set every frame**, some of them
+  59,000 x 10,000 px, all re-rastered every frame, and frames were presented at about 100 a second to a 60 Hz monitor.
+- **Causes, all in how Chrome turns an SVG into layers:**
+  1. Eight CSS opacity animations inside the scene (star twinkle, glints, swell, hour marker). Each animated element is
+     a compositor layer, everything painted after it is cut into more, and the compositor ticks them at 120 Hz.
+  2. Opacity on a group of separately placed `<use>` elements (the clouds, the night's mirror images). Chrome only
+     flattens such a group if its children can share one layer; children far apart cannot, so the group is composited.
+  3. Pieces that reach outside the window (a cloud at the edge, the ground paths) cannot merge into the picture so far.
+- **Changes:** the eight animations are attributes written from the frame loop (`breath()`); clouds and mirror images
+  fade per element through custom properties (`--o`, `--a`, `--ro`); everything after the sky sits in a nested
+  `<svg id="view">` viewport clip.
+- **Checked on the ASUS:** the scene is one layer through a whole sped-up day and night of walking (3 layers in all with
+  the page background; the only extras are small HUD fades), layer area a constant 75 MB (was up to 2.5 GB nominal),
+  about 60 frames a second presented, 16.7 ms between every drawn frame. Old and new builds render the same picture
+  (day, dusk, night: under 0.3 mean difference per channel). Desktop, phone, landscape, input and pause checks pass.
+- **Not observed:** the glitch itself. My test Chrome showed no flashes with the old build either, even with its GPU
+  memory capped, so that the layer churn is what Jason sees is an inference from what changes with movement and night.

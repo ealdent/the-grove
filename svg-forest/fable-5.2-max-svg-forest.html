@@ -27,22 +27,19 @@ html, body {
 #scene.drag { cursor: grabbing; }
 #scene path, #scene rect, #scene circle, #scene ellipse, #scene use { pointer-events: none; }
 
-/* twinkle and pulse: cheap opacity animations on whole groups */
-@keyframes tw { 0%, 100% { opacity: 1; } 50% { opacity: .55; } }
-#st1 { animation: tw 3.1s ease-in-out infinite; }
-#st2 { animation: tw 4.3s ease-in-out -1.7s infinite; }
-@keyframes swell { 0%, 100% { opacity: .1; } 50% { opacity: .5; } }
-#swellA { animation: swell 5.2s ease-in-out infinite; }
-#swellB { animation: swell 6.4s ease-in-out -2.9s infinite; }
-@keyframes pulse { 0%, 100% { opacity: .35; } 50% { opacity: 1; } }
-#markNow { animation: pulse 1.8s ease-in-out infinite; }
+/* The whole scene must stay ONE compositor layer. In a 4K window Chrome was cutting it into as many as two dozen, a
+   different set every frame, some of them tens of thousands of pixels wide, and re-rastering all of them. Three rules:
+   1. No CSS animation inside the scene: an animated element is a layer of its own and everything painted after it is
+      cut into more. Twinkle, glint, swell and pulse are attributes set from the frame loop (breath() in the script).
+   2. No opacity on a group of separately placed things (clouds, mirror images): unless its children are close enough
+      to share a layer the group is composited, and all that follows with it. Each child fades by itself instead.
+   3. Everything inside one viewport clip (#view), so nothing reaches past the picture it has to merge into. */
+#clouds use { opacity: var(--o, 1); }
+#sprites use { opacity: var(--a, 1); }
+#refl use { opacity: calc(var(--a, 1) * var(--ro, 1)); }
 /* Nothing inside a pooled sprite may carry a CSS animation: re-ordering a <use> in the DOM rebuilds its shadow tree and
    restarts the animation, which showed as light pillars flashing and herons twitching. Such motion is driven from script. */
 .neck { transform-box: fill-box; transform-origin: 50% 100%; transform: rotate(var(--nk, 0deg)); }
-@keyframes glint { 0%, 100% { opacity: .1; } 50% { opacity: .9; } }
-#gl0 { animation: glint 2.3s ease-in-out infinite; }
-#gl1 { animation: glint 3.1s ease-in-out -1.1s infinite; }
-#gl2 { animation: glint 2.7s ease-in-out -2s infinite; }
 
 #hud { position: absolute; left: max(14px, env(safe-area-inset-left)); top: max(12px, env(safe-area-inset-top)); pointer-events: none;
   text-shadow: 0 1px 10px rgba(3, 6, 20, .55); transition: opacity .8s; }
@@ -63,7 +60,6 @@ html, body {
 #paused { position: absolute; left: 50%; bottom: 6%; transform: translateX(-50%); padding: 9px 18px; border-radius: 999px; background: rgba(8, 14, 40, .55);
   font-size: 11px; letter-spacing: .24em; text-transform: uppercase; white-space: nowrap; pointer-events: none; opacity: 0; transition: opacity .25s; }
 body.paused:not(.intro) #paused { opacity: 1; }
-body.paused #scene * { animation-play-state: paused !important; }      /* a paused game presents nothing new at all */
 body.paused #toast { opacity: 0; }
 #toast { position: absolute; left: 50%; bottom: 13%; transform: translateX(-50%); width: min(34rem, calc(100% - 40px)); text-align: center;
   pointer-events: none; opacity: 0; transition: opacity .9s; text-shadow: 0 1px 14px rgba(3, 6, 20, .85), 0 0 2px rgba(3, 6, 20, .7); }
@@ -123,10 +119,6 @@ body.intro #sticks { opacity: 0; pointer-events: none; }
   #begin { margin-top: 12px; padding: 10px 28px; }
   #introCard p.keys { margin-top: 10px; }
 }
-@media (prefers-reduced-motion: reduce) {
-  #st1, #st2, #swellA, #swellB, #markNow, #gl0, #gl1, #gl2 { animation: none; }
-  #gl0, #gl1, #gl2 { opacity: .6; }
-}
 </style>
 </head>
 <body class="intro">
@@ -165,6 +157,9 @@ body.intro #sticks { opacity: 0; pointer-events: none; }
   </defs>
 
   <rect id="sky" fill="url(#gSky)"/>
+  <!-- Everything else sits inside one viewport clip. The browser will not merge a piece of the scene that reaches past
+       the picture so far into the same compositor layer; clipped to the window, every piece fits inside the sky. -->
+  <svg id="view" width="100%" height="100%">
   <g id="stars" fill="none" stroke-linecap="round"><path id="st0" stroke="#fff6dd"/><path id="st1" stroke="#dfe6ff"/><path id="st2" stroke="#cdd6ff"/></g>
   <path id="arc" fill="none" stroke="#fff" stroke-opacity=".3"/>
   <path id="marks" fill="none" stroke="#fff" stroke-opacity=".62" stroke-linecap="round"/>
@@ -184,7 +179,7 @@ body.intro #sticks { opacity: 0; pointer-events: none; }
   <path id="rim" fill="none" stroke-linejoin="round"/>
   <path id="water" fill="url(#gWater)"/>
   <path id="pads"/>
-  <g id="glints" fill="none" stroke-linecap="round" stroke-opacity=".8"><path id="gl0"/><path id="gl1"/><path id="gl2"/></g>
+  <g id="glints" fill="none" stroke-linecap="round"><path id="gl0"/><path id="gl1"/><path id="gl2"/></g>
   <rect id="sea" fill="url(#gWater)"/>
   <use id="starsR" href="#stars"/>
   <g id="refl"></g>
@@ -195,6 +190,7 @@ body.intro #sticks { opacity: 0; pointer-events: none; }
   <rect id="haze" fill="url(#gHaze)"/>
   <g id="sprites"></g>
   <rect id="vig" fill="url(#gVig)"/>
+  </svg>
 </svg>
 
 <div id="hud" aria-hidden="true">
@@ -279,6 +275,11 @@ const add = (a, b) => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
 const $ = id => document.getElementById(id);
 const NS = 'http://www.w3.org/2000/svg';
 const mk = (tag, parent) => { const e = document.createElementNS(NS, tag); if (parent) parent.appendChild(e); return e; };
+/* A slow breath between a and b, for twinkle, glint and swell. These were CSS opacity animations once. Every animated
+   element inside the SVG makes the browser cut the scene into separate compositor layers (twenty-odd of them, some far
+   larger than the window, all re-rastered every frame), which a 4K window could not hold. As plain attributes written
+   from the frame loop the whole scene stays one layer. */
+const breath = (time, a, b, per, ph) => Math.round((a + (b - a) * (STILL ? .5 : .5 - .5 * Math.cos((time + ph) * TAU / per))) * 100) / 100;
 const setA = (el, k, v) => { if (el['_' + k] !== v) { el['_' + k] = v; el.setAttribute(k, v); } };   // write only on change
 
 /* View: a pinhole camera whose pitch is a lens shift (the horizon line moves, verticals stay vertical),
@@ -792,6 +793,7 @@ function drawSky(time, kept) {
     }
     setA(E.st0, 'd', d[0]); setA(E.st1, 'd', d[1]); setA(E.st2, 'd', d[2]);
     setA(E.st0, 'stroke-width', r1(4.2 * px)); setA(E.st1, 'stroke-width', r1(2.8 * px)); setA(E.st2, 'stroke-width', r1(1.9 * px));
+    setA(E.st1, 'stroke-opacity', breath(time, 1, .55, 3.1, 0)); setA(E.st2, 'stroke-opacity', breath(time, 1, .55, 4.3, 1.7));
     setA(E.stars, 'opacity', Math.round(sa * 50) / 50);
     setA(E.stars, 'display', 'inline');
     const ro = Math.round(sa * ENV.flood * 55) / 100;
@@ -814,7 +816,7 @@ function drawSky(time, kept) {
   }
   setA(E.marks, 'd', dm); setA(E.marks, 'stroke-width', r1(4 * px));
   setA(E.marksLit, 'd', dl); setA(E.marksLit, 'stroke-width', r1(8.5 * px));
-  if (now) { setA(E.markNow, 'cx', r1(now[0])); setA(E.markNow, 'cy', r1(now[1])); setA(E.markNow, 'r', r1(10 * px)); setA(E.markNow, 'stroke-width', r1(1.6 * px)); setA(E.markNow, 'display', 'inline'); }
+  if (now) { setA(E.markNow, 'cx', r1(now[0])); setA(E.markNow, 'cy', r1(now[1])); setA(E.markNow, 'r', r1(10 * px)); setA(E.markNow, 'stroke-width', r1(1.6 * px)); setA(E.markNow, 'stroke-opacity', breath(time, .35, 1, 1.8, 0)); setA(E.markNow, 'display', 'inline'); }
   else setA(E.markNow, 'display', 'none');
 
   /* sun */
@@ -838,7 +840,7 @@ function drawSky(time, kept) {
   if (E.clouds._step !== ENV.tick >> 2) {
     E.clouds._step = ENV.tick >> 2;
     const top = mix(facet([.86, .86, .9], .8), ENV.hor, .34), und = mix(mix(ENV.mid, ENV.zen, .35), top, .3);
-    E.clouds.style.cssText = '--c1:' + hex(top) + ';--c2:' + hex(und) + ';opacity:' + r1(lerp(.84, .5, ENV.flood));
+    E.clouds.style.cssText = '--c1:' + hex(top) + ';--c2:' + hex(und) + ';--o:' + r1(lerp(.84, .5, ENV.flood));     // per cloud, not on the group: see style.css
   }
   for (const c of CLOUDS) {
     const az = c.az + time * c.sp, p = projDir(Math.sin(az), c.alt, Math.cos(az));
@@ -975,6 +977,7 @@ function drawGround(time, Q) {
   }
   setA(E.water, 'd', w); setA(E.rim, 'd', w); setA(E.inlay, 'd', inl); setA(E.pads, 'd', pads); setA(E.gl0, 'd', gl[0]); setA(E.gl1, 'd', gl[1]); setA(E.gl2, 'd', gl[2]);
   setA(E.glints, 'stroke', hex(mix(ENV.w0, [1, 1, 1], .55))); setA(E.glints, 'stroke-width', r1(1.5 * px));
+  if (gl[0] || gl[1] || gl[2]) { setA(E.gl0, 'stroke-opacity', breath(time, .08, .72, 2.3, 0)); setA(E.gl1, 'stroke-opacity', breath(time, .08, .72, 3.1, 1.1)); setA(E.gl2, 'stroke-opacity', breath(time, .08, .72, 2.7, 2)); }
   setA(E.rim, 'stroke', hex(mix(ENV.w1, [1, 1, 1], .3))); setA(E.rim, 'stroke-width', r1(2 * px));
   setA(E.inlay, 'stroke', hex(mix(facet(COPPER, .45), g, .2))); setA(E.inlay, 'stroke-width', r1(1.7 * px));
   setA(E.pads, 'fill', hex(facet([.03, .26, .15], .3)));
@@ -996,8 +999,9 @@ function drawGround(time, Q) {
     }
   }
   setA(E.swellA, 'd', sa); setA(E.swellB, 'd', sb);
-  const sw = r1(1.4 * px), sop = r1(fl * .7);
-  setA(E.swellA, 'stroke-width', sw); setA(E.swellB, 'stroke-width', sw); setA(E.swellA, 'stroke-opacity', sop); setA(E.swellB, 'stroke-opacity', sop);
+  const sw = r1(1.4 * px), sop = fl * .7;
+  setA(E.swellA, 'stroke-width', sw); setA(E.swellB, 'stroke-width', sw);
+  if (sa || sb) { setA(E.swellA, 'stroke-opacity', breath(time, .1 * sop, .5 * sop, 5.2, 0)); setA(E.swellB, 'stroke-opacity', breath(time, .1 * sop, .5 * sop, 6.4, 2.9)); }
 
   /* rings left by wading feet */
   let ry = '', ro = '';
@@ -1141,7 +1145,7 @@ function stoneStyle(g, fq, qL, qR, aq, det) {
     e.b = b;
     e.s = '--l:' + fogc(facet(t, lL), fq) + ';--r:' + fogc(facet(sc(t, .9), lR), fq) + ';--k:' + fogc(facet(sc(t, .28), 0), fq) +
       ';--c:' + fogc(facet(COPPER, .2 + .55 * Math.max(lL, lR)), fq) + ';--g:' + fogc(facet(GOLD, .3 + lL), fq) + ';--g2:' + fogc(facet(GOLD, .12 + lR), fq) +
-      ';--d:' + (det ? 'inline' : 'none') + (aq < 10 ? ';opacity:' + aq / 10 : '');
+      ';--d:' + (det ? 'inline' : 'none') + (aq < 10 ? ';--a:' + aq / 10 : '');
   }
   return e.s;
 }
@@ -1160,7 +1164,7 @@ function smallStyle(kind, fq, aq, extra) {
       s = '--lf:' + fogc(facet(SAGE, .55), fq) + ';--lf2:' + fogc(facet(sc(SAGE, .7), .3), fq) + ';--y:' + fogc(facet(GOLD, .8), fq) + ';--y2:' + fogc(facet(lin('#f29a2e'), .6), fq) + ';--v:' + fogc(facet(VERM, .7), fq);
     } else s = '--b:' + fogc(facet(SLATE, .4), fq) + ';--k:' + fogc(facet(INK, .2), fq) + ';--g:' + fogc(facet(GOLD, .6), fq) +
       ';--v:' + fogc(facet(VERM, .6), fq) + ';--y:' + fogc(facet(YOLK, .7), fq);
-    if (aq < 10) s += ';opacity:' + aq / 10;
+    if (aq < 10) s += ';--a:' + aq / 10;
     e.b = b; e.s = s;
   }
   return extra ? e.s + extra : e.s;
@@ -1298,7 +1302,8 @@ function syncSprites(Q) {
   }
   for (const [key, el] of ACTIVE) if (el._f !== FRAME) { ACTIVE.delete(key); setA(el, 'display', 'none'); (FREE[el._sym] || (FREE[el._sym] = [])).push(el); }
   for (const [key, el] of RACTIVE) if (el._f !== FRAME) { RACTIVE.delete(key); setA(el, 'display', 'none'); (RFREE[el._sym] || (RFREE[el._sym] = [])).push(el); }
-  setA(E.refl, 'opacity', ro); setA(E.refl, 'display', ro > 0 ? 'inline' : 'none');
+  if (E.refl._ro !== ro) { E.refl._ro = ro; E.refl.style.setProperty('--ro', ro); }      // each mirror image fades by itself: a group opacity here splits the scene into layers
+  setA(E.refl, 'display', ro > 0 ? 'inline' : 'none');
 
   STAT.sprites = n; STAT.moves = orderLayer(L, SL);
   if (RL.length > 1) orderLayer(E.refl, RL);
