@@ -64,7 +64,7 @@ What is in it
   a glossy checker floor and the sea. A half-resolution mirrored sprite pass feeds planar
   reflections, so every bulb, tent and firework shows in the wet boards. HDR target, bloom,
   ACES-style grade. Falls back to 8-bit targets and a half-size atlas on weak GPUs.
-- About 70 sprites are painted with Canvas 2D at load into one atlas; the hero is repainted every
+- About 85 sprites are painted with Canvas 2D at load into one atlas; the hero is repainted every
   frame (gallop cycle, banking, flowing tail, paint chips per lost bulb, turning to wood).
 - 11 enemy kinds, 17 prop kinds, 3 bosses with 13 attacks between them, all tell-then-strike.
 - Band-organ music from PeriodicWave pipes with a tremulant: a D-minor waltz (Midway), a C-minor
@@ -75,7 +75,7 @@ What is in it
 Proof (headless Chromium + SwiftShader through Playwright, debug hooks behind `#debug`)
 
 - Autopilot soak with god mode, twice end to end: Midway, Claw, Funhouse, Jack, Long Pier,
-  Gallopers, ending, win screen. ~355 s of game time, zero console errors or exceptions.
+  Gallopers, ending, win screen, plus a full second night. 350-390 s of game time each, zero console errors or exceptions.
 - Every boss state was entered and screenshotted with the loop frozen (grab tell, lunge, stuck,
   prize drop, sweep; crank, pop, out, gloves; volley, slam, charge, organ open, roundabout, death).
 - Real keyboard and mouse events (not debug calls): start, move, fire, bolt, pause, resume, mute,
@@ -88,6 +88,19 @@ Proof (headless Chromium + SwiftShader through Playwright, debug hooks behind `#
   every one of the 35 effects produces signal and none clips.
 - Checked at device pixel ratio 2 (buffer capped at 1.5x, CSS size correct, canvas receives the
   clicks) and with float render targets disabled.
+
+Independent review (a separate agent ran the script in node against stubbed DOM/GL/audio, two
+bot nights plus three 40-minute random-input runs, no exceptions). Its findings, all fixed:
+
+- Gallopers pole slams outlived their wiped tells and could kill during the death animation.
+- Timers kept firing after death, so dying just after a boss advanced the stage behind the
+  game-over card. Timers are now dropped on death and nothing left on the pier can hurt once a
+  boss is down.
+- "Siblings freed" carried into the second night; second-night cooldowns were unclamped.
+- Input while paused resumed the audio; a Space tap could dismiss the win card too early; the
+  bonus toast ignored the night multiplier; accuracy counted hits on scenery.
+- Shader `smoothstep` calls with reversed edges rewritten; a fallback message now shows if boot
+  throws; the resolution scaler no longer collapses on 30 fps-capped displays.
 
 Not verified, said plainly
 

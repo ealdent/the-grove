@@ -197,6 +197,8 @@ const cv = $('gl');
 let gl = null;
 try { gl = cv.getContext('webgl2', { antialias: false, alpha: false, depth: false, stencil: false, powerPreference: 'high-performance' }); } catch (e) { gl = null; }
 if (!gl) { $('fallback').style.display = 'flex'; return; }
+let booted = false;
+addEventListener('error', () => { if (!booted) $('fallback').style.display = 'flex'; });
 let HDR = !!gl.getExtension('EXT_color_buffer_float');
 
 function compile(type, src) {
@@ -252,7 +254,7 @@ vec3 sky(vec3 d){
     vec2 s=vec2(az*46.,d.y*70.); vec2 ci=floor(s),cf=fract(s)-.5; float r=h21(ci);
     vec2 off=(vec2(h21(ci+7.3),h21(ci+19.1))-.5)*.7;
     float tw=.65+.35*sin(uTime*(1.5+r*5.)+r*40.);
-    c+=uStars*step(.8,r)*smoothstep(.12,0.,length(cf-off))*tw*(r-.78)*7.*smoothstep(.02,.2,d.y);
+    c+=uStars*step(.8,r)*(1.-smoothstep(0.,.12,length(cf-off)))*tw*(r-.78)*7.*smoothstep(.02,.2,d.y);
   }
   c+=uMoon*(vec3(.2,.25,.45)*pow(md,60.)*.5+vec3(.5,.55,.75)*pow(md,700.)*.7);
   float disc=smoothstep(.99885,.99905,md);
@@ -289,7 +291,7 @@ vec3 lights(vec3 p,float gz){
       float d2=dot(dl,dl);
       s+=col*uLampI*(uLampH*inversesqrt(d2))*105./(d2+30.);
     }
-    s+=col*uLampI*uBand*exp(-dz*dz/26.)*smoothstep(uLampX+3.,uLampX-8.,abs(p.x));
+    s+=col*uLampI*uBand*exp(-dz*dz/26.)*(1.-smoothstep(uLampX-8.,uLampX+3.,abs(p.x)));
   }
   for(int i=0;i<10;i++){
     vec3 dl=uL[i].xyz-p; float d2=dot(dl,dl); float r2=uL[i].w*uL[i].w;
@@ -351,7 +353,7 @@ void main(){
       float ts=-(uCam.y+4.)/d.y; vec3 ps=uCam+d*ts;
       fog=1.-exp(-ts*uFogD);
       if(abs(ps.x)<uPierW&&ps.z<uPierEnd){
-        float pil=smoothstep(.3,.0,abs(fract((ps.z+uScroll)/8.)-.5)-.38);
+        float pil=(1.-smoothstep(0.,.3,abs(fract((ps.z+uScroll)/8.)-.5)-.38));
         col=vec3(.004,.005,.008)+uAmbG*.05*pil;
       }else{
         vec2 gs=vec2(ps.x,ps.z+uScroll); vec2 w=gs*.16; float tt=uTime*.5;
@@ -362,7 +364,7 @@ void main(){
         col=sky(r)*.5+vec3(.002,.008,.013);
         col+=uMoon*vec3(1.,.93,.78)*pow(max(dot(r,uMoonD),0.),160.)*2.6;
         col+=texture(uRefl,vUv+nn*.035).rgb*.55*uRefK;
-        col+=(uLampA+uLampB)*.012*uLampI*smoothstep(uPierW+26.,uPierW,abs(ps.x));
+        col+=(uLampA+uLampB)*.012*uLampI*(1.-smoothstep(uPierW,uPierW+26.,abs(ps.x)));
       }
     }else{
       float wet; vec2 nr; vec3 a;
@@ -578,7 +580,7 @@ function perfTick(ms) {
   RS.acc += ms; RS.n++;
   if (RS.n < 50) return;
   const avg = RS.acc / RS.n; RS.acc = 0; RS.n = 0;
-  if (avg > 21 && RS.scale > .5) { RS.scale = Math.max(.5, RS.scale * .86); resize(); }
+  if ((avg > 40 || (avg > 21 && RS.scale > .75)) && RS.scale > .5) { RS.scale = Math.max(.5, RS.scale * .86); resize(); }
   else if (avg < 12.5 && RS.scale < 1) { RS.scale = Math.min(1, RS.scale * 1.08); resize(); }
 }
 
@@ -1398,13 +1400,13 @@ function textDots(s) {
 // ───────────────────────────── audio: a fairground band organ, synthesised ─────────────────────────────
 const AU = (() => {
   let ctx = null, comp, master, musicBus, organBus, sfxBus, revIn, lp, noiseBuf, sea = null;
-  let muted = false;
+  let muted = false, held = false;
   const waves = {};
   const mtof = m => 440 * Math.pow(2, (m - 69) / 12);
   const NOTE = { c: 0, d: 2, e: 4, f: 5, g: 7, a: 9, b: 11 };
 
   function init() {
-    if (ctx) { if (ctx.state === 'suspended') ctx.resume(); return; }
+    if (ctx) { if (ctx.state === 'suspended' && !held) ctx.resume(); return; }
     const AC = window.AudioContext || window.webkitAudioContext; if (!AC) return;
     try { build(new AC()); } catch (e) { ctx = null; }
   }
@@ -1614,7 +1616,7 @@ const AU = (() => {
     if (M.pending) { const p = M.pending; M.pending = null; M.name = ''; music.play(p); }
     if (!M.song) return;
     const t = now();
-    if (M.t < t - .3) M.t = t + .05;
+    if (M.t < t) M.t = t + .03;
     while (M.t < t + .14) {
       playStep(M.song, M.i, M.t); M.i++;
       if (M.wind) { M.tempo *= 1.11; M.det -= 55; M.wind++; if (M.wind > 15) { M.song = null; M.name = ''; break; } }
@@ -1626,7 +1628,7 @@ const AU = (() => {
     get ready() { return ok(); },
     get muted() { return muted; },
     setMuted(m) { muted = m; if (ctx) master.gain.setTargetAtTime(m ? 0 : .85, now(), .03); },
-    suspend(s) { if (!ctx) return; if (s) ctx.suspend(); else ctx.resume(); },
+    suspend(s) { held = s; if (!ctx) return; if (s) ctx.suspend(); else ctx.resume(); },
     // debug-only: render songs and effects offline so their loudness can be measured
     _offline(secs) { build(new OfflineAudioContext(2, 44100 * secs, 44100)); },
     _at(t) { tOff = t; }, _fx: fx,
@@ -1784,7 +1786,7 @@ function hurt(x, y, z) {
   return true;
 }
 function die() {
-  G.mode = 'dying'; G.modeT = 0; G.tSpeed = 0; P.ctl = false; AU.music.windDown(); AU.sfx.whinny(1.1, .18, .85);
+  G.mode = 'dying'; G.modeT = 0; G.tSpeed = 0; P.ctl = false; timers = []; AU.music.windDown(); AU.sfx.whinny(1.1, .18, .85);
   G.hitstop = .25; G.shake = 1.6;
 }
 function updPlayer(dt) {
@@ -1843,8 +1845,8 @@ function updShots(dt) {
       if (p.z < z0 - .8 || p.z > s.z + .8 || p.ghost) continue;
       if (p.aim && p.aim.hp > 0 && Math.abs(s.x - p.aim.x) < p.aim.rx + .5 && Math.abs(s.y - p.aim.y) < p.aim.ry + .5) { s.dead = true; p.onHead(p, s); break; }
       if (Math.abs(s.x - p.x) < p.hw + .3 && s.y < p.top + .3 && s.y > p.bot - .3) {
-        s.dead = true; G.landed++;
-        if (p.hp > 0) { p.hp -= s.dmg; p.flash = 1; AU.sfx.tink(p.x / 16); sparks(s.x, s.y, p.z - .5, 4, 1.8, 1.4, .6, 8, .3, .7); if (p.hp <= 0) killProp(p); }
+        s.dead = true;
+        if (p.hp > 0) { G.landed++; p.hp -= s.dmg; p.flash = 1; AU.sfx.tink(p.x / 16); sparks(s.x, s.y, p.z - .5, 4, 1.8, 1.4, .6, 8, .3, .7); if (p.hp <= 0) killProp(p); }
         else { AU.sfx.tink(p.x / 16); sparks(s.x, s.y, p.z - .5, 3, 1.6, 1.3, .7, 7, .25, .6); }
         break;
       }
@@ -1940,7 +1942,7 @@ function killProp(p) {
 function updCart(p, dt) {
   if (p.z > 170 || p.z < 42) return;
   p.cd = (p.cd === undefined ? rnd(.3, 1) : p.cd) - dt;
-  if (p.cd <= 0) { p.cd = 1.7 - G.loop * .3; for (let i = -1; i <= 1; i++) shootAt('corn', p.x, p.h - .6, p.z, 52, i * .09, rs() * .03, .3); AU.sfx.pop(p.x / 16); sparks(p.x, p.h, p.z, 5, 1.6, 1.4, .8, 8, .3, .6); }
+  if (p.cd <= 0) { p.cd = Math.max(.9, 1.7 - G.loop * .3); for (let i = -1; i <= 1; i++) shootAt('corn', p.x, p.h - .6, p.z, 52, i * .09, rs() * .03, .3); AU.sfx.pop(p.x / 16); sparks(p.x, p.h, p.z, 5, 1.6, 1.4, .8, 8, .3, .6); }
 }
 // a little jack-in-the-box: a low crate until you are close
 function updJackProp(p, dt) {
@@ -2000,7 +2002,7 @@ function killEnemy(e, byShot) {
   if (byShot) { addScore(e.pts, x, y, z); chainUp(); }
   if (e.grp !== undefined && groups[e.grp]) { const g = groups[e.grp]; if (byShot) g.got++; g.left--; if (!g.left) { if (g.got === g.n) { addScore(g.n * 150, x, y + 1.5, z, true); popup('BUNCH!', x, y + 2.6, z, 1.9, 1.5, .6, 1.1); drop(g.drop || 'ticket', x, y, z); AU.sfx.pickup(); } delete groups[e.grp]; } }
   switch (e.k) {
-    case 'balloon': AU.sfx.pop(pan); confetti(x, y, z, 9, 9, [e.col]); ringFx(x, y, z, e.col[0], e.col[1], e.col[2], 1.4, .22); break;
+    case 'balloon': if (z > 2) { AU.sfx.pop(pan); confetti(x, y, z, 9, 9, [e.col]); ringFx(x, y, z, e.col[0], e.col[1], e.col[2], 1.4, .22); } break;
     case 'duck': AU.sfx.ding(pan); sparks(x, y, z, 10, 1.9, 1.5, .5, 12, .4, .8); tumble(SP.duck, x, y, z, 2.6, rs() * 6, 11, 14); if (e.gold) drop(G.hp < G.maxHp ? 'apple' : 'ring', x, y, z); break;
     case 'gull': AU.sfx.pop(pan); for (let i = 0; i < 12; i++) part(SP.flake, x, y, z, rs() * 9, rnd(-2, 9), rs() * 6, rnd(.7, 1.3), rnd(.3, .6), 1.4, 1.4, 1.5, 0, 6, 2.5, rs() * 10); break;
     case 'dodgem': AU.sfx.boom(1, pan); sparks(x, y, z, 16, 1.9, 1.4, .5, 14, .5, 1); smoke(x, y, z, 5, .2, .18, .2, 3); tumble(SP.dodgem, x, y, z, 2.6, rs() * 8, 14, 16, e.col); G.shake = Math.max(G.shake, .35); break;
@@ -2032,7 +2034,7 @@ const EB = {
     }
     if (R.lead.dead) R.lead = e;
     e.x = R.cx + e.off; e.z = R.z; e.dir = R.dir; e.y = R.y + Math.sin(e.t * 5 + e.off) * .12;
-    if (R.st === 1) { e.cd -= dt; if (e.cd <= 0) { e.cd = rnd(2.4, 4.2) - G.loop * .6; shootAt('cork', e.x, e.y, e.z, 56, 0, 0, .35); AU.sfx.pop(e.x / 16); e.flash = .5; } }
+    if (R.st === 1) { e.cd -= dt; if (e.cd <= 0) { e.cd = Math.max(1.1, rnd(2.4, 4.2) - G.loop * .6); shootAt('cork', e.x, e.y, e.z, 56, 0, 0, .35); AU.sfx.pop(e.x / 16); e.flash = .5; } }
     if (R.st === 2 && Math.abs(e.x) > 60) e.dead = true;
   },
   gull(e, dt) {
@@ -2071,7 +2073,7 @@ const EB = {
     if (e.st === 1) {
       e.cd -= dt;
       if (e.cd <= .5 && !e.open) { e.open = true; AU.sfx.laugh(e.x / 16); }
-      if (e.cd <= 0) { e.cd = rnd(1.7, 2.7) - G.loop * .4; e.open = false; for (let i = -1; i <= 1; i++) shootAt('ball', e.x, e.y - .6, e.z, 50, i * .11, 0, .3); }
+      if (e.cd <= 0) { e.cd = Math.max(1, rnd(1.7, 2.7) - G.loop * .4); e.open = false; for (let i = -1; i <= 1; i++) shootAt('ball', e.x, e.y - .6, e.z, 50, i * .11, 0, .3); }
       if (e.life > e.stay) { e.st = 2; e.t = 0; }
     }
     if (e.st === 2) { e.y += (4 + e.t * 30) * dt; if (e.y > 34) e.dead = true; }
@@ -2081,7 +2083,7 @@ const EB = {
     if (e.st < 2) {
       e.x = approach(e.x, clamp(-P.x * e.mir + e.ox, -XR, XR), 3.2, dt); e.y = approach(e.y, P.y, 3, dt);
       e.cd -= dt; e.charge = e.cd < .35;
-      if (e.cd <= 0 && e.st === 1) { e.cd = 1.5 - G.loop * .3; shootAt('shard', e.x, e.y, e.z, 58, 0, 0, .5); AU.sfx.tink(e.x / 16); }
+      if (e.cd <= 0 && e.st === 1) { e.cd = Math.max(.8, 1.5 - G.loop * .3); shootAt('shard', e.x, e.y, e.z, 58, 0, 0, .5); AU.sfx.tink(e.x / 16); }
       if (e.st === 1 && e.t > 7.5) { e.st = 2; e.t = 0; tell({ type: 'air', x: e.x, y: e.y, z: PZ, r: 2.2, dur: .7, fol: e }); }
     } else if (e.t > .7) { e.z -= 95 * dt; if (e.z < -3) e.dead = true; }
   },
@@ -2115,7 +2117,7 @@ function updEnemies(dt) {
       continue;
     }
     if (Math.abs(e.z - PZ) < 1.5 + (e.zp - e.z) * .5 && Math.abs(e.x - P.x) < e.rx + .7 && Math.abs(e.y - P.y) < e.ry + .9) {
-      if (e.soft) { addScore(e.pts, e.x, e.y, e.z); chainUp(); killEnemy(e, false); G.landed += 0; }
+      if (e.soft) { addScore(e.pts, e.x, e.y, e.z); chainUp(); killEnemy(e, false); }
       else if (hurt(e.x, e.y, PZ)) { if (e.hp < 4) killEnemy(e, false); }
     } else if (!e.soft && !e.grazed && e.zp > PZ && e.z <= PZ && P.inv <= 0 && Math.abs(e.x - P.x) < e.rx + 2.6 && Math.abs(e.y - P.y) < e.ry + 2.8) { e.grazed = true; graze(e.x, e.y, PZ); }
   }
@@ -2183,7 +2185,7 @@ function ducks(n, y, o) {
   for (let i = 0; i < n; i++) { const e = enemy('duck', 0, y, FAR, { row: R, off: (i - (n - 1) / 2) * 5.4, cd: rnd(1, 3.5), gold: o.gold && i === (n >> 1), dir: 1 }); if (!i) R.lead = e; }
 }
 function gulls(n, side) {
-  for (let i = 0; i < n; i++) after(i * .4, () => { const sx = side * rnd(34, 46), sy = rnd(15, 21); enemy('gull', sx, sy, 135, { sx, sy, sz: 135, hx: side * rnd(2, 11) * (i % 2 ? 1 : -.5), hy: rnd(9, 12.5), dive: 1.2 - G.loop * .15, tx: 0, ty: 5 }); });
+  for (let i = 0; i < n; i++) after(i * .4, () => { const sx = side * rnd(34, 46), sy = rnd(15, 21); enemy('gull', sx, sy, 135, { sx, sy, sz: 135, hx: side * rnd(2, 11) * (i % 2 ? 1 : -.5), hy: rnd(9, 12.5), dive: Math.max(.8, 1.2 - G.loop * .15), tx: 0, ty: 5 }); });
 }
 function dodgems(n) { for (let i = 0; i < n; i++) enemy('dodgem', 0, 1.75, FAR + i * 30, { bx: rnd(-8, 8), ax: rnd(3, 5.5), ph: rnd(TAU), col: pick([[1.5, .3, .3], [.3, .6, 1.6], [1.6, 1.3, .3], [.3, 1.4, .6]]) }); }
 function swing(x) { const h = enemy('swing', x, 10.8, FAR, { spin: rnd(TAU), R: 5 }); for (let i = 0; i < 8; i++) enemy('chair', x, 6, FAR, { par: h, off: i * TAU / 8, a: 0 }); }
@@ -2311,9 +2313,9 @@ function bossDown() {
   const b = G.boss; G.boss = null; HUD.dirty = true;
   let bonus = G.hp * 1000; if (G.noHit) bonus += 10000;
   G.score += bonus * (1 + G.loop);
-  toast((G.noHit ? 'UNTOUCHED +10000   ' : '') + 'BULBS LIT +' + (G.hp * 1000), 3.2);
+  toast((G.noHit ? 'UNTOUCHED +' + 10000 * (1 + G.loop) + '   ' : '') + 'BULBS LIT +' + G.hp * 1000 * (1 + G.loop), 3.2);
   AU.sfx.fanfare(); if (G.stage < 2) AU.music.play('title', 4); else AU.music.stop();
-  bullets.length = 0; tells.length = 0;
+  bullets.length = 0; tells.length = 0; enemies.length = 0; for (const p of props) p.ghost = true;
   if (G.stage < 2) after(2.2, () => startTransition(G.stage + 1));
   else after(2.4, beginEnding);
 }
@@ -2367,7 +2369,7 @@ BOSS.claw = () => {
     switch (B.st) {
       case 'enter': B.y = lerp(40, HOVY, easeOut(sat(B.stT / 2.2))); if (B.stT > 2.7) set('idle'); break;
       case 'idle': hov();
-        if (p2) { B.tok -= dt; if (B.tok <= 0) { B.tok = .62 - G.loop * .12; shootAt('token', B.x, B.y - 2.5, B.z, 50, 0, 0, .4); AU.sfx.tink(B.x / 16); } }
+        if (p2) { B.tok -= dt; if (B.tok <= 0) { B.tok = Math.max(.34, .62 - G.loop * .12); shootAt('token', B.x, B.y - 2.5, B.z, 50, 0, 0, .4); AU.sfx.tink(B.x / 16); } }
         if (B.stT > (p2 ? .9 : 1.3)) next(); break;
       case 'grabTell': {
         const D = B.gD; B.open = approach(B.open, 1, 8, dt);
@@ -2574,11 +2576,11 @@ BOSS.gallopers = () => {
         sparks(h.x, h.y, h.z, 40, 2, 1.7, .8, 20, .8, 1.2); ringFx(h.x, h.y, h.z, 2, 1.7, .8, 3, .5); flashFx(h.x, h.y, h.z, 2, 1.7, 1, 9);
         tumble(SP.brasspole, h.x, h.y + 4, h.z, 9, rs() * 4, 4, 8);
         B.gone.push({ x: h.x, y: h.y, z: h.z, t: 0, dir: h.dir, tint: h.tint });
-        if (!left()) { set('opening'); bullets.length = 0; tells.length = 0; B.spk = null; AU.sfx.whinny(1, .12, 1.2); toast('THE ORGAN IS OPEN', 2.4); }
+        if (!left()) { set('opening'); bullets.length = 0; tells.length = 0; B.slams.length = 0; B.spk = null; AU.sfx.whinny(1, .12, 1.2); toast('THE ORGAN IS OPEN', 2.4); }
       }
     } else { B.organ -= n; B.flash = 1; AU.sfx.tink(0); }
     B.hp = B.horses.reduce((s, h) => s + Math.max(0, h.hp), 0) + Math.max(0, B.organ);
-    if (B.organ <= 0 && B.st !== 'dying') { B.hp = 0; set('dying'); bullets.length = 0; tells.length = 0; B.spk = null; AU.music.stop(); AU.sfx.organDie(); }
+    if (B.organ <= 0 && B.st !== 'dying') { B.hp = 0; set('dying'); bullets.length = 0; tells.length = 0; B.slams.length = 0; B.spk = null; AU.music.stop(); AU.sfx.organDie(); }
   };
   AU.music.onBeat = (i, d) => { if (G.boss === B) B.beatQ.push(Math.max(0, d)); };
   const volley = big => {
@@ -2586,7 +2588,8 @@ BOSS.gallopers = () => {
     for (let i = -n; i <= n; i++) shootAt('note', B.x + i * 2.4, B.y - 4, B.z - 3, 46 + G.loop * 5, i * .13 + sw, rs() * .02, .2);
   };
   const slam = () => {
-    const x = clamp(P.x + P.vx * .3 + rs(), -XR, XR), T = tell({ type: 'ground', x, z: PZ, r: 3.1, dur: .95 });
+    const x = clamp(P.x + P.vx * .3 + rs(), -XR, XR);
+    tell({ type: 'ground', x, z: PZ, r: 3.1, dur: .95 });
     B.slams.push({ x, t: .95 });
   };
   const next = () => {
@@ -2953,10 +2956,10 @@ function drawSign() {
   const z = G.signZ, T = textDots('GALLOPER'), pt = 1.5, w = T.w * pt, y0 = 26.6, t = G.t;
   spr(SP.white, 0, y0 - 3 * pt, z + .3, w + 9, 7 * pt + 7, .012, .01, .03, .82);
   for (const s of [-1, 1]) spr(SP.pole, s * (w / 2 + 6.5), 15.5, z + .2, 3.4, 31, 1, 1, 1, 1);
-  const d = T.d, live = G.mode === 'title' ? 1 : 1;
+  const d = T.d;
   for (let i = 0; i < d.length; i += 2) {
     const x = (d[i] - T.w / 2) * pt, y = y0 - d[i + 1] * pt, wave = .75 + .25 * Math.sin(t * 2.2 - d[i] * .22), fl = (i === 46 && Math.sin(t * 31) * Math.sin(t * 7.3) > .1) ? .15 : 1;
-    glow(SP.bulb, x, y, z, 1.3, 3.4 * wave * fl * live, 2.4 * wave * fl * live, 1.1 * wave * fl * live, 1);
+    glow(SP.bulb, x, y, z, 1.3, 3.4 * wave * fl, 2.4 * wave * fl, 1.1 * wave * fl, 1);
     glow(SP.glow, x, y, z + .1, 3.6, .5 * fl, .05 * fl, .04 * fl, 1);
   }
   // chase lights round the frame
@@ -3065,12 +3068,13 @@ const UI = {
   confirm() {
     if (G.paused) return UI.togglePause();
     if (G.mode === 'title') startRun(0, 0, false, false);
-    else if ((G.mode === 'over' || G.mode === 'win') && G.modeT > .7) startRun(0, 0, false, true);
+    else if ((G.mode === 'over' && G.modeT > .7) || (G.mode === 'win' && G.modeT > 2.2)) startRun(0, 0, false, true);
   },
   togglePause() {
     if (!(G.mode === 'play' || G.mode === 'intro' || G.mode === 'ending' || G.mode === 'dying')) return;
+    if (G.paused) AU.sfx.ui();
     G.paused = !G.paused; $('pause').classList.toggle('on', G.paused); AU.suspend(G.paused);
-    IN.l = IN.r = IN.u = IN.d = IN.fire = IN.mfire = IN.bolt = 0; AU.sfx.ui();
+    IN.l = IN.r = IN.u = IN.d = IN.fire = IN.mfire = IN.bolt = 0;
   },
   toggleMute() { AU.setMuted(!AU.muted); $('bMute').classList.toggle('off', AU.muted); try { localStorage.setItem('galloper.mute', AU.muted ? '1' : '0'); } catch (e) { /* private mode */ } },
   restartKey() { if (G.paused) { UI.togglePause(); startRun(0, 0, false, true); } else if ((G.mode === 'over' || G.mode === 'win') && G.modeT > .7) startRun(0, 0, false, true); },
@@ -3086,7 +3090,6 @@ const click = (id, fn) => $(id).addEventListener('click', e => { e.stopPropagati
 click('bResume', () => UI.togglePause()); click('bRestart', () => UI.restartKey()); click('bMute2', () => UI.toggleMute());
 click('bAgain', () => UI.confirm()); click('bCont', () => UI.continueKey());
 click('bPause', () => UI.togglePause()); click('bMute', () => UI.toggleMute()); click('bFull', () => UI.fullscreen());
-$('title').addEventListener('mousedown', () => { }, { passive: true });
 
 // ───────────────────────────── run control ─────────────────────────────
 function resetRun() {
@@ -3106,7 +3109,8 @@ function toTitle() {
 function startRun(stage, loop, keep, quick) {
   const fromTitle = G.mode === 'title';
   resetRun();
-  if (!keep) { G.score = 0; HUD.disp = 0; G.grazes = 0; G.fired = 0; G.landed = 0; G.freed = 0; G.bestChain = 0; }
+  if (!keep) { G.score = 0; HUD.disp = 0; G.grazes = 0; G.fired = 0; G.landed = 0; G.bestChain = 0; }
+  G.freed = 0;
   G.hp = G.maxHp; G.power = 1; G.loop = loop; G.stage = stage; G.paused = false;
   G.bounds = [{ z: -1e9, s: stage }]; ENVB = envCopy(ENVS[stage]);
   G.mode = 'intro'; G.modeT = 0; G.quick = !fromTitle; G.snapped = false;
@@ -3167,7 +3171,7 @@ function update(dt) {
   updPlayer(dt);
   if (mode === 'ending' || mode === 'win') { P.ctl = mode === 'ending'; if (G.leapt) P.y = approach(P.y, Math.max(P.y, 4.5), 2, dt); }
   updShots(dt); updEnemies(dt);
-  if (G.boss && (mode === 'play')) G.boss.upd(dt);
+  if (G.boss && G.mode === 'play') G.boss.upd(dt);
   updBullets(dt); updProps(dt); updPickups(dt); updTells(dt); updParts(dt); updAmbient(dt); updEnv(dt);
   for (const p of pops) p.t += dt * 1.15; pops = pops.filter(p => p.t < 1);
   for (const g of ghosts) g.t -= dt; ghosts = ghosts.filter(g => g.t > 0);
@@ -3180,6 +3184,7 @@ function update(dt) {
 let lastT = null;
 function frame(now) {
   requestAnimationFrame(frame);
+  booted = true;
   if (lastT === null) lastT = now;
   const raw = now - lastT; lastT = now;
   const dt = Math.min(raw / 1000, 1 / 20);
