@@ -71,6 +71,7 @@ A collection of games, tools, and experiments built with AI — hosted on GitHub
 
 *AI-generated on-rails action variants*
 
+- **[Galloper](rail-shooter/fable-5.2-high-rail-shooter.html)** — You are the lead horse of the carousel and you have torn off your pole. Gallop the midnight pier, throw brass rings at a fairground that wants you back, free your siblings — and reach the sea before sunrise turns you to wood. (*Fable 5.2 High*)
 - **[Vanitas](rail-shooter/fable-5.1-xhigh-rail-shooter.html)** — You are a candle flame loose on an endless Dutch still-life table at night. Burn the flies, slip the roemers and the rolling walnuts, and outrun the mouse, the lobster, the skull — and the hand with the snuffer. (*Fable 5.1 xhigh*)
 - **[Actias](rail-shooter/fable-5-ultra-rail-shooter.html)** — You are the last luna moth, seven nights old, flying the drowned road to the Moon. Snuff the lying lights, slip the webs and wires — and do not trust the lighthouse. (*Fable 5 Ultra*)
 - **[Gildwake](rail-shooter/gpt-5.6-sol-ultra-rail-shooter.html)** — Ride a restoration brush across a falling porcelain world — bind living cobalt with gold, dodge unbreakable relief, and outrun the fracture. (*GPT-5.6 Sol Ultra*)
