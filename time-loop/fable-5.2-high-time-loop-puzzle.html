@@ -1,0 +1,1818 @@
+<!DOCTYPE html>
+<!--
+================================================================================
+  THE UNTOLD HOUR
+  a time-loop puzzle in one file · vanilla JS + one canvas · no assets, no network
+================================================================================
+
+  DESIGN DOCUMENT
+
+  1. TITLE
+     The Untold Hour.
+     ("Told" as a dial tells the hour. An hour no dial can tell does not pass.)
+
+  2. PREMISE
+     You are the youngest apprentice at an observatory built of masonry: stairs
+     that point at the pole, marble rules cut with every mark of the day. This
+     morning a tremor shook the styles (the brass blades that throw the shadow)
+     out of the dials. A dial without its style throws no shadow; an hour that
+     throws no shadow cannot be told; and here, where the country's noon is
+     kept, an hour that cannot be told does not pass. So the same forty marks
+     come round again, court by court, until somebody carries each style back
+     to its Seat. You are the somebody.
+
+     The courts are barred, and the bars are kept by sun-eyes: brass lids in
+     the paving that hold their bars up for as long as they can see the sun.
+     One body cannot shade an eye and also walk through its bars. But the sun
+     will not cast one hour two ways. Whatever shadow you threw the last time
+     the hour ran is still owed to the ground, so it gets up from the Threshold
+     without you and walks the hour again, key for key, solid enough to shade
+     an eye or put its shoulder to a stone globe. These are your shades. A
+     court will bear four.
+
+     The debt runs both ways. If a shade reaches for a globe that is no longer
+     there, or meets bars where it met none, the sky has been asked to tell two
+     stories about one hour and tells neither: eclipse, until the contradiction
+     is unsaid.
+
+     The Astronomer watches from the gallery and writes it down. In the last
+     court you learn why she knows the rules so well: the Great Dial's style
+     fell forty years ago, on her watch, and one of her shades is still walking.
+
+  3. ART DIRECTION
+     A sun-bleached court seen from the gallery, against the light. Reference:
+     the masonry observatories of the 1720s and 30s (stair-gnomons, marble
+     quadrants, lime-wash over sandstone) and the engraved almanacs of the same
+     century. Nothing glows; the only darkness is shadow, and shadow is the
+     whole mechanism.
+       Light      one hard sun, north of the court, sweeping east to west over
+                  the forty marks, so every shadow falls toward the viewer and
+                  swings left to right. The shadows are the clock.
+       Shapes     wedges, stairs, arcs and graduated rules. Right triangles
+                  (gnomons, the style) and circle segments (eyes, the Seat, the
+                  globes). No outlines except engraved lines.
+       Palette    paving        #E9D3A8 #E2C898   joints  #C9A772
+                  sandstone     #DE9A76 #EDB594   in shade #A85F49 #8C4A3C
+                  marble        #F6EFE2 #D9CFC0 #B9AC9A
+                  lime-wash     #EBDDBD #DCC89F   ochre   #E3B23C
+                  shadow        #4A2F3F           a shade #33202E
+                  brass         #B8862B #E6C36A #7A5518
+                  inlays        copper #C8442E  lapis #2F5D8C  jade #2E8B6A  jet #3B3038
+                  the apprentice  madder #A8321F, ochre head-wrap, skin #8A5A3C
+                  daybook       paper #F2E6CB  ink #3A2A22  rubric #A8321F
+                  eclipse       #2A1B22 with a corona of #F8E7B0
+                  evening       #F0A66B #C96A5A #6B4660, first star #FFF6DA
+       Type       one serif throughout (Baskerville, falling back through
+                  Hoefler Text, Palatino and Georgia), mostly italic, mixed case:
+                  the daybook is a hand, the kerb letters are cut stone. Roman
+                  numerals for courts and shades. No monospace, no capitals with
+                  air between them.
+       Motion     the shadows swing with the hour and are put back when it is
+                  taken again; kites cross the court as shadows only; a pennant
+                  on the gnomon; dust in the light; the eyes' rays turn.
+
+  4. VOICE
+     Every word is the Astronomer's daybook, written to you in the second
+     person (what is observed in the present tense, what is remembered in the
+     past): dry and exact as an observation, never raising its voice, and
+     fonder of you than it lets the page show.
+
+  WHAT THE NOUNS ARE (and why they cannot be swapped back)
+     the hour, 40 marks .... one iteration of N ticks; the marks are the
+                             graduations of the marble rule under the court
+     a casting ............. one run of the hour (you cast a shadow)
+     a shade ............... a recording: last hour's shadow, still owed, which
+                             replays your keys. It throws no shadow of its own;
+                             it is one.
+     the Threshold ......... the start flag; the only flag shades may share
+     a sun-eye, its bars ... the occupancy mechanism. It is opened by SHADE, so
+                             a walker, a globe, or a gnomon's moving shadow all
+                             work, and the last of those is on a timetable
+     a stone globe ......... the pushable thing (it rolls; nothing pulls it)
+     the style ............. the carried thing, and the reason the hour is stuck
+     the Seat .............. the goal: the socket of that court's dial
+     an eclipse ............ the catastrophe: a shade met a different hour
+     unsay ................. undo (the daybook strikes a line)
+
+  HIDDEN
+     T on the title page (or #proofs in the address) runs the proofs: every
+     court's intended solution, undo-to-nothing-and-replay, seven deliberate
+     contradictions checked for casting, mark, expected and found, and the two
+     limit rules. ] on the title page opens every court without earning it.
+
+  The rules decided where the brief was silent are listed once, at the head of
+  the engine below. The intended solutions are written beside each court.
+================================================================================
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>The Untold Hour</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #EBDDBD; overflow: hidden; overscroll-behavior: none; }
+  canvas { position: fixed; left: 0; top: 0; display: block; touch-action: none; background: #EBDDBD; -webkit-user-select: none; user-select: none; }
+</style>
+</head>
+<body>
+<canvas id="court" aria-label="The Untold Hour: a court of an observatory, a marble hour scale, and the Astronomer's daybook."></canvas>
+<script>
+(function () {
+'use strict';
+
+// @@ENGINE-BEGIN
+// ---------------------------------------------------------------------------
+// THE ENGINE. Pure: state = simulate(court, log). No clocks, no randomness,
+// no DOM. The log is a string, one character per key the apprentice pressed:
+//   U D L R  step north / south / west / east (a refused step still spends a mark)
+//   .        stand a mark
+//   X        take up the style at your feet, or set it down there
+//   E        sit out the rest of the hour (runs the remaining marks as '.')
+// Undo is log.slice(0, -1) and a fresh simulate; nothing else is remembered.
+//
+// RULES DECIDED WHERE THE BRIEF WAS SILENT (kept in one place on purpose):
+//  1. Order within a mark. Sun-eyes are read once, at the start of the mark,
+//     from where everyone stood when it began; bars answer a mark late. Then
+//     each walker acts in turn and completely: shades eldest first, the
+//     apprentice last. A later walker meets the world the earlier ones left.
+//  2. Same-flag conflicts. Walkers are solid. Two walkers wanting one flag:
+//     the elder has it, the younger is refused (and spends the mark). Two
+//     walkers swapping places: both refused. The Threshold is the exception:
+//     any number may stand on it, since every casting begins there.
+//  3. A shade replays KEYS, not places. After each key it compares what came
+//     of it (stepped / stepped and took the style / rolled a drum / refused /
+//     took / set down / nothing) with what came of it in its own hour. Any
+//     difference, lucky or unlucky, is an eclipse, and the mark stops there.
+//     Only what the shade itself touched is compared, never the whole court.
+//  4. A globe rolls one flag when walked into, if the flag beyond is free:
+//     not masonry, not shut bars, not another globe, not a walker, not the
+//     Threshold, not the Seat, and not a flag where the style lies.
+//     (In the code a globe is a `drum`, the Threshold is `porch`.)
+//  5. Walking onto the style takes it up. X sets it down underfoot, or takes
+//     it up again. One walker carries it at a time.
+//  6. Bars never fall on an occupant; they only refuse entry.
+//  7. The hour is won the instant the apprentice (not a shade) stands on the
+//     Seat with the style. Shades are released at once; the unspent marks
+//     are not run.
+//  8. Sitting out (E) runs the remaining marks at once, so a shade is always
+//     a full hour long and an eclipse hidden later in the hour is found now.
+//     It was one key, so one unsaying takes the whole sitting-out back.
+//  9. The court bears four shades. If the hour runs out with four already
+//     standing, the hour is spent: nothing more can be pressed but undo.
+// 10. A tall gnomon's shadow is the sweep of its foot along the sun's line
+//     for that mark. A sun-eye is shaded when its centre lies in the sweep,
+//     or when a walker or a globe is on it.
+// ---------------------------------------------------------------------------
+var HOUR = 40;            // marks in the hour
+var MAX_SHADES = 4;       // shades the court will bear
+var SUN_AX = 1.25, SUN_BY = 0.75, GNOMON_H = 3;
+var DIRS = { U: [0, -1], D: [0, 1], L: [-1, 0], R: [1, 0] };
+var TOKENS = 'UDLR.XE';
+
+// Shadow offset, in flags, of a thing one flag tall at mark t (t may be fractional).
+function sunVec(t) { return [SUN_AX * (2 * t / HOUR - 1), SUN_BY]; }
+
+function gnomonCovers(px, py, ex, ey, t) {
+  var v = sunVec(t), dx = v[0] * GNOMON_H, dy = v[1] * GNOMON_H;
+  var qx = ex - px, qy = ey - py, lo = 0, hi = 1, a, b, m;
+  if (Math.abs(dx) < 1e-9) { if (Math.abs(qx) > 0.5) return false; }
+  else { a = (qx - 0.5) / dx; b = (qx + 0.5) / dx; if (a > b) { m = a; a = b; b = m; } if (a > lo) lo = a; if (b < hi) hi = b; }
+  a = (qy - 0.5) / dy; b = (qy + 0.5) / dy; if (a > b) { m = a; a = b; b = m; }
+  if (a > lo) lo = a; if (b < hi) hi = b;
+  return lo <= hi - 1e-9;
+}
+
+function parseCourt(def) {
+  var rows = def.map, h = rows.length, w = rows[0].length, x, y, ch, k;
+  var L = { def: def, w: w, h: h, tiles: [], eyes: [], gates: [], gnomons: [], drums0: [], style0: null, start: null, seat: null, given: [], colours: 0 };
+  for (y = 0; y < h; y++) {
+    if (rows[y].length !== w) throw new Error('ragged court ' + def.id + ' row ' + y);
+    for (x = 0; x < w; x++) {
+      ch = rows[y][x]; k = { k: 'floor', c: -1 };
+      if (ch === '#') k.k = 'wall';
+      else if (ch === '=') k.k = 'marble';
+      else if (ch === '^') { k.k = 'gnomon'; L.gnomons.push({ x: x, y: y }); }
+      else if (ch === 'P') { k.k = 'porch'; L.start = { x: x, y: y }; }
+      else if (ch === 'S') { k.k = 'seat'; L.seat = { x: x, y: y }; }
+      else if (ch === 'i') L.style0 = { x: x, y: y };
+      else if (ch === 'o') L.drums0.push({ x: x, y: y });
+      else if (ch >= 'a' && ch <= 'd') { k.k = 'eye'; k.c = ch.charCodeAt(0) - 97; L.eyes.push({ x: x, y: y, c: k.c }); }
+      else if (ch >= 'A' && ch <= 'D') { k.k = 'gate'; k.c = ch.charCodeAt(0) - 65; L.gates.push({ x: x, y: y, c: k.c }); }
+      else if (ch !== '.') throw new Error('unknown flag "' + ch + '" in ' + def.id);
+      if (k.c >= L.colours) L.colours = k.c + 1;
+      L.tiles.push(k);
+    }
+  }
+  // The almanac: for each sun-eye, the marks at which a gnomon's shadow covers it.
+  L.sunShade = L.eyes.map(function (e) {
+    var out = [], t, g, s;
+    for (t = 0; t < HOUR; t++) {
+      s = false;
+      for (g = 0; g < L.gnomons.length; g++) if (gnomonCovers(L.gnomons[g].x, L.gnomons[g].y, e.x, e.y, t)) s = true;
+      out.push(s);
+    }
+    return out;
+  });
+  // A shade that was here before you: its keys are written in the court, and
+  // what came of each key is worked out alone, with the bars named in `open`
+  // standing open all hour, as her own (now vanished) shades once held them.
+  (def.given || []).forEach(function (g) {
+    var inputs = g.inputs; while (inputs.length < HOUR) inputs += '.';
+    var W = freshWorld(L, 1), outs = [], t, c, open, held = g.open || '';
+    for (t = 0; t < HOUR; t++) {
+      open = openColours(L, W);
+      for (c = 0; c < held.length; c++) open[held.charCodeAt(c) - 65] = true;
+      outs.push(act(L, W, 0, inputs[t], open).code); W.t++;
+    }
+    L.given.push({ inputs: inputs, outs: outs, given: true });
+  });
+  return L;
+}
+
+function tileAt(L, x, y) { return (x < 0 || y < 0 || x >= L.w || y >= L.h) ? null : L.tiles[y * L.w + x]; }
+function solid(k) { return !k || k.k === 'wall' || k.k === 'marble' || k.k === 'gnomon'; }
+
+function freshWorld(L, nWalkers) {
+  var W = { t: 0, walkers: [], drums: [], style: L.style0 ? { x: L.style0.x, y: L.style0.y } : null, seated: false }, i;
+  for (i = 0; i < nWalkers; i++) W.walkers.push({ x: L.start.x, y: L.start.y, carry: false, face: 'D', did: 'W' });
+  for (i = 0; i < L.drums0.length; i++) W.drums.push({ x: L.drums0[i].x, y: L.drums0[i].y });
+  return W;
+}
+
+function walkerAt(W, x, y, except) {
+  for (var i = 0; i < W.walkers.length; i++) if (i !== except && W.walkers[i].x === x && W.walkers[i].y === y) return i;
+  return -1;
+}
+function drumAt(W, x, y) {
+  for (var i = 0; i < W.drums.length; i++) if (W.drums[i].x === x && W.drums[i].y === y) return i;
+  return -1;
+}
+
+// Which eyes are shaded right now, and so which colours of bars stand open.
+function eyeShaded(L, W, i) {
+  var e = L.eyes[i];
+  return (W.t < HOUR && L.sunShade[i][W.t]) || walkerAt(W, e.x, e.y, -1) >= 0 || drumAt(W, e.x, e.y) >= 0;
+}
+function openColours(L, W) {
+  var open = [], i;
+  for (i = 0; i < L.colours; i++) open.push(false);
+  for (i = 0; i < L.eyes.length; i++) if (eyeShaded(L, W, i)) open[L.eyes[i].c] = true;
+  return open;
+}
+
+// One walker spends one key. Mutates W; returns what came of it.
+function act(L, W, i, tok, open) {
+  var a = W.walkers[i], d, tx, ty, k, who, di, bx, by, k2, code;
+  if (tok === '.') { a.did = 'W'; return { code: 'W', x: a.x, y: a.y }; }
+  if (tok === 'X') {
+    if (a.carry) { a.carry = false; W.style = { x: a.x, y: a.y }; a.did = 'D'; return { code: 'D', x: a.x, y: a.y }; }
+    if (W.style && W.style.x === a.x && W.style.y === a.y) { a.carry = true; W.style = null; a.did = 'T'; return { code: 'T', x: a.x, y: a.y }; }
+    a.did = 'N'; return { code: 'N', x: a.x, y: a.y };
+  }
+  d = DIRS[tok]; tx = a.x + d[0]; ty = a.y + d[1]; a.face = tok; k = tileAt(L, tx, ty);
+  if (solid(k)) { a.did = 'B'; return { code: 'B', why: 'wall', x: tx, y: ty, dir: tok }; }
+  if (k.k === 'gate' && !open[k.c]) { a.did = 'B'; return { code: 'B', why: 'bars', c: k.c, x: tx, y: ty, dir: tok }; }
+  if (k.k !== 'porch') {
+    who = walkerAt(W, tx, ty, i);
+    if (who >= 0) { a.did = 'B'; return { code: 'B', why: 'walker', who: who, x: tx, y: ty, dir: tok }; }
+  }
+  di = drumAt(W, tx, ty); code = 'M';
+  if (di >= 0) {
+    bx = tx + d[0]; by = ty + d[1]; k2 = tileAt(L, bx, by);
+    if (solid(k2) || (k2.k === 'gate' && !open[k2.c]) || k2.k === 'porch' || k2.k === 'seat' ||
+        drumAt(W, bx, by) >= 0 || walkerAt(W, bx, by, -1) >= 0 || (W.style && W.style.x === bx && W.style.y === by)) {
+      a.did = 'B'; return { code: 'B', why: 'drum', x: tx, y: ty, dir: tok };
+    }
+    W.drums[di].x = bx; W.drums[di].y = by; code = 'P';
+  }
+  a.x = tx; a.y = ty; a.did = code;
+  if (W.style && W.style.x === tx && W.style.y === ty && !a.carry) { a.carry = true; W.style = null; code += '+'; }
+  return { code: code, x: tx, y: ty, dir: tok };
+}
+
+function cloneWorld(W) {
+  return {
+    t: W.t, seated: W.seated, style: W.style ? { x: W.style.x, y: W.style.y } : null,
+    walkers: W.walkers.map(function (a) { return { x: a.x, y: a.y, carry: a.carry, face: a.face, did: a.did }; }),
+    drums: W.drums.map(function (d) { return { x: d.x, y: d.y }; })
+  };
+}
+
+// The whole game. Returns everything a caller could want to know about the
+// court after `log`, including (in .frames) the worlds the LAST key passed
+// through, so the picture can be animated without the engine keeping time.
+function simulate(L, log) {
+  var recs = L.given.map(function (g) { return g; });
+  var W = freshWorld(L, recs.length + 1);
+  var cur = { inputs: '', outs: [] };
+  var S = { status: 'play', halt: null, used: 0, frames: [], last: null, turned: false };
+  var n, tok;
+
+  function tick(tk) {
+    var open = openColours(L, W), i, res, r;
+    for (i = 0; i < recs.length; i++) {
+      r = recs[i];
+      res = act(L, W, i, r.inputs[W.t], open);
+      if (res.code !== r.outs[W.t]) {
+        S.status = 'eclipse';
+        S.halt = { shade: i, mark: W.t, key: r.inputs[W.t], expected: r.outs[W.t], found: res, casting: recs.length };
+        return;
+      }
+    }
+    res = act(L, W, recs.length, tk, open);
+    cur.inputs += tk; cur.outs.push(res.code); S.last = res;
+    W.t++;
+    var me = W.walkers[recs.length];
+    if (me.carry && me.x === L.seat.x && me.y === L.seat.y) { S.status = 'won'; W.seated = true; }
+  }
+  function turn() {
+    if (recs.length >= MAX_SHADES) { S.status = 'spent'; return; }
+    recs.push({ inputs: cur.inputs, outs: cur.outs, given: false });
+    cur = { inputs: '', outs: [] };
+    W = freshWorld(L, recs.length + 1);
+    S.turned = true;
+  }
+
+  for (n = 0; n < log.length; n++) {
+    if (S.status !== 'play') break;          // keys after a halt are not history
+    tok = log[n]; S.used = n + 1; S.frames = []; S.turned = false; S.last = null;
+    if (tok === 'E') {
+      do { tick('.'); S.frames.push({ W: cloneWorld(W), status: S.status }); } while (S.status === 'play' && W.t < HOUR);
+    } else {
+      tick(tok); S.frames.push({ W: cloneWorld(W), status: S.status });
+    }
+    if (S.status === 'play' && W.t >= HOUR) { turn(); S.frames.push({ W: cloneWorld(W), status: S.status, turn: true }); }
+  }
+  S.W = W; S.recs = recs; S.cur = cur;
+  S.t = W.t;
+  S.shades = recs.length;                       // shades standing in the court
+  S.casting = recs.length - L.given.length + 1; // which casting of yours this is
+  S.open = openColours(L, W);
+  return S;
+}
+
+function stateKey(S) {
+  return JSON.stringify([S.status, S.W, S.recs.map(function (r) { return r.inputs + '|' + r.outs.join(''); }), S.cur.inputs, S.cur.outs.join(''), S.halt]);
+}
+// @@ENGINE-END
+
+// @@COURTS-BEGIN
+// Four courts, 14 flags by 12. Map letters:
+//   #  parapet        =  old marble (also masonry)     ^  tall gnomon
+//   P  the Threshold  S  the Seat      i  the style     o  a stone globe
+//   a b c d  sun-eyes (copper, lapis, jade, jet)   A B C D  the bars each keeps
+// `solution` is the INTENDED SOLUTION, one string of keys per casting
+// (U D L R step, . stand, X take up or set down, E sit out the hour).
+// The proofs replay every one of them.
+var COURTS = [
+  // I. One eye, one set of bars, one body: so, two castings.
+  //    Casting 1  RUUU E         walk onto the copper eye at D6 and sit the hour out.
+  //    Casting 2  UUUU RRRR R    up the west side and through the copper bars at H5
+  //               RRR DDD        (the shade is on the eye from mark 5), take the style at K8,
+  //               UUUUU          and carry it up to the Seat at K3.
+  {
+    id: 'small', numeral: 'I', name: 'The Apprentices’ Dial',
+    map: [
+      '##############',
+      '#......#.....#',
+      '#..^...#..S..#',
+      '#......#.....#',
+      '#......A.....#',
+      '#..a...#.....#',
+      '#......#.=...#',
+      '#......#..i..#',
+      '#.P....#.....#',
+      '#......#.....#',
+      '#......#.....#',
+      '##############'
+    ],
+    solution: ['RUUUE', 'UUUURRRRRRRRDDDUUUUU']
+  },
+  // II. Two eyes, each in a pocket a globe cannot leave; one globe, plugging the door.
+  //    Casting 1  D RRRR U       shove the globe out of the doorway (two rolls) and step round it,
+  //               RRRRRR DDD E   then stand in the lapis pocket at M10 for the rest of the hour.
+  //    Casting 2  . D RRRRR      wait a mark (the shade has the first flag), follow it through
+  //               U R DD         the door, roll the globe the shade left at H8 east, then south
+  //               UUU L UUU      twice into the copper pocket at I10; through the copper bars
+  //               DDD RRRR UUU   for the style at H3, back out, and through the lapis bars to L3.
+  {
+    id: 'drums', numeral: 'II', name: 'The Court of Globes',
+    map: [
+      '##############',
+      '#....#...#...#',
+      '#....#.i.#.S.#',
+      '#....#...#...#',
+      '#....##A###B##',
+      '#....#.......#',
+      '#.P..#.......#',
+      '#....o.......#',
+      '#....#.......#',
+      '#....#.#a#.#b#',
+      '#....#.###.###',
+      '##############'
+    ],
+    solution: ['DRRRRURRRRRRDDDE', '.DRRRRRURDDUUULUUUDDDRRRRUUU']
+  },
+  // III. The lapis eye (C6) is walled in; only the gnomon's shadow shades it, marks 1 to 8.
+  //    The style lies in the lane, so whoever enters carries it, and the copper eye
+  //    is two flags short of its own bars: the one who went in cannot come out.
+  //    Casting 1  LLL UUU R      run: through the lapis bars at C8 on the seventh key;
+  //               RRRRRR X L E   take the style in passing, set it down at I8, step back
+  //                              onto the copper eye at H8 and sit the hour out.
+  //    Casting 2  RRRRRRR UUU L  round the outside to K8, wait four marks for the
+  //               .... LL RRR    copper bars, step in for the style at I8 and out again,
+  //               UUUUU LLLLLLLL then north and west to the Seat at D3.
+  {
+    id: 'meridian', numeral: 'III', name: 'The Meridian Lane',
+    map: [
+      '##############',
+      '#............#',
+      '#..S.........#',
+      '#............#',
+      '#.#.^........#',
+      '##b#.........#',
+      '###########..#',
+      '#.Bi...a.A...#',
+      '#.#########..#',
+      '#............#',
+      '#...P........#',
+      '##############'
+    ],
+    solution: ['LLLUUURRRRRRRXLE', 'RRRRRRRUUUL....LLRRRUUUUULLLLLLLL']
+  },
+  // IV. The Astronomer's fourth shade is already in the court (`given`). Her keys:
+  //    she rolls the globe onto the lapis eye (E11), takes the style at I11, walks
+  //    through the copper bars at K8 on mark 16 (one of her lost shades held them:
+  //    `open: 'A'`), is REFUSED by the jade bars at H5 on mark 22, stands three
+  //    marks, sets the style down at H6, and goes to stand on the jet eye at L7
+  //    from mark 32, holding the Seat's inner bars for a fifth casting she never had.
+  //    The obvious things (take the style, borrow the globe, park a shade on the
+  //    jade eye all hour) each contradict her. Intended:
+  //    Casting 1  RRR . RRRRR E          wait for her globe to open the lapis bars; stand
+  //                                      on the copper eye at K10 for the hour. She is kept.
+  //    Casting 2  . RR . RRRRR D RR      follow; go round to L11 and wait there until
+  //               ......... R E          she has been refused, THEN step onto the jade eye.
+  //    Casting 3  ..... RRRRR .. RR      follow her (never onto a flag she is coming back
+  //               U R UU LLLL U ...      to), through the copper bars behind her, round to
+  //               R U ... UU             G6; take the style from H6 as she leaves it, into
+  //                                      the jade bars, wait for her to reach the jet eye,
+  //                                      and up to the Seat at H3.
+  //    (Two castings will also do it: one shade can hold copper until mark 17 and
+  //    reach the jade eye after mark 22.)
+  {
+    id: 'great', numeral: 'IV', name: 'The Great Dial',
+    map: [
+      '##############',
+      '#......^.....#',
+      '#.....#S#....#',
+      '#.....#D#....#',
+      '#.....#C#....#',
+      '#............#',
+      '#..........d.#',
+      '##########A###',
+      '#.....#......#',
+      '#.P...B...a..#',
+      '#.o.b.#.i...c#',
+      '##############'
+    ],
+    given: [{ inputs: 'LDRRURRRRRDURURUUULLLU...XRRRRD', open: 'A' }],
+    solution: ['RRR.RRRRRE', '.RR.RRRRRDRR.........RE', '.....RRRRR..RRURUULLLLU...RU...UU']
+  }
+];
+// @@COURTS-END
+
+// @@VOICE-BEGIN
+// ---------------------------------------------------------------------------
+// THE DAYBOOK. Every word the game shows is written here, by the Astronomer,
+// to the apprentice. Pure functions of engine state, so the proofs can read
+// an eclipse entry without a canvas.
+// ---------------------------------------------------------------------------
+var ORD = ['first', 'second', 'third', 'fourth', 'fifth'];
+var ROMAN = ['I', 'II', 'III', 'IV', 'V'];
+var COLOUR = ['copper', 'lapis', 'jade', 'jet'];
+var DIRWORD = { U: 'north', D: 'south', L: 'west', R: 'east' };
+function cap(s) { return s.charAt(0).toUpperCase() + s.slice(1); }
+function flagName(x, y) { return 'ABCDEFGHIJKLMN'.charAt(x) + (y + 1); }
+
+var TEXT = {
+  title: 'The Untold Hour',
+  titleUnder: 'from the daybook of the Observatory',
+  premise: [
+    'The tremor this morning shook the styles from the dials.',
+    'A dial without its style throws no shadow.',
+    'An hour that throws no shadow cannot be told,',
+    'and an hour that cannot be told does not pass.',
+    'So it is the same hour again, apprentice, and will be',
+    'until you have carried each style back to its Seat.'
+  ],
+  begin: 'Press any key, and step onto the Threshold.',
+  beginTouch: 'Touch the page, and step onto the Threshold.',
+  resume: 'The daybook lies open at court ',
+  pickCourt: 'A numeral opens another.',
+  pickCourtTouch: 'Touch a numeral for another.',
+  turnPage: 'Any key turns the page.',
+  turnPageTouch: 'Touch the page to turn it.',
+  legendHead: 'For the apprentice',
+  legend: 'Arrows or W A S D: a step, and a mark spent. Space: stand a mark. X: take up the style, or set it down. Enter: sit out the hour. Z: unsay what you last did. B, twice: unsay the casting. R, twice: begin the court again. M: bells. Esc: shut the book.',
+  legendTouch: 'Stroke the court to step. The brass does the rest.',
+  plaque: { stand: 'stand', take: 'take · set down', sit: 'sit out the hour', unsay: 'unsay', strike: 'unsay the casting', again: 'begin again', sure: 'once more, to be sure', shut: 'shut the book', bellsOn: 'still the bells', bellsOff: 'ring the bells' },
+  shadesWord: 'shades in the court',
+  again: 'Press R once more and the court begins again, every casting unsaid.',
+  againTouch: 'Touch it once more and the court begins again, every casting unsaid.',
+  strikeAsk: 'Press B once more and the whole casting is unsaid.',
+  strikeAskTouch: 'Touch it once more and the whole casting is unsaid.',
+  secondPlain: 'That is your shade. It does what you did, mark for mark, and nothing you did not.',
+  begun: 'The court is as it was before your first casting.',
+  nothingToUnsay: 'There is nothing yet to unsay.',
+  belled: 'The bells are rung.', unbelled: 'The bells are stilled.',
+  courts: {
+    small: {
+      intro: [
+        'We begin small. The style of the apprentices’ dial lies past the copper bars, and the bars are kept by a sun-eye. While the eye can see the sun, they stand. Shade it, and they sink.',
+        'You cannot shade an eye and walk through its bars. You have one body. But this hour is being held, and a held hour comes round again, and the sun does not cast the same hour two ways: whatever shadow you threw the last time, it still owes the ground.',
+        'Stand on the eye. Then sit the hour out, and see what gets up from the Threshold beside you.'
+      ],
+      first: 'The copper eye is at D6. Stand on it, then sit out the hour.',
+      second: 'That is your shade. It will do what you did, mark for mark. If it shades the eye, the bars are yours to walk through.',
+      won: ['Observed: a shadow on the apprentices’ dial. Its hour is told, and passes.', 'Your shade is let go. You will have noticed that it did not thank you.']
+    },
+    drums: {
+      intro: [
+        'A shade does not remember where you went. It remembers what you did: this step, that shove, mark for mark. Each time the hour comes round the stone globes are back where they lay, and your shade puts its shoulder to them again.',
+        'A globe on a sun-eye shades it as well as you would, and does not get bored. Here there are two eyes and one globe.',
+        'One thing more. Your shade steps first. If you both want one flag, it has it, and you have spent a mark wanting.'
+      ],
+      first: 'Two eyes: copper keeps the style, lapis keeps the Seat. One globe. One of you.',
+      second: 'Your shade rolls the globe where you rolled it, when you rolled it. Build on that. Do not get under its feet.', secondNeeds: 'P',
+      won: ['Observed: a shadow on the dial of the globe court. That hour is told.', 'Two of you did that. I counted.']
+    },
+    meridian: {
+      intro: [
+        'Some eyes are walled in where nobody can stand. The lapis eye is one. Only the gnomon’s shadow reaches it, at the start of the hour; then the shadow moves on, the eye opens, and the lapis bars come up. The inlay on the scale under the court shows how long you have. Do not dawdle.',
+        'The style lies in the lane, and whoever walks the lane takes it up. Remember what I said: what you do, your shade does. What you carry, it carries. If a later you is to have the style, set it down where a later you can come.',
+        'And a shade is as solid as whoever cast it. You will not walk through one.'
+      ],
+      first: 'The lapis bars at C8 stand open only while the gnomon’s shadow lies on the lapis eye. Run.',
+      second: 'Your shade is in the lane with the style. You are not. Go round to the copper bars.', secondNeeds: 'M+',
+      won: ['Observed: a shadow on the meridian dial.', 'You handed yourself the style across a quarter of an hour. I have seen worse done between two people.']
+    },
+    great: {
+      intro: [
+        'I have not told you everything. The style of the Great Dial did not fall this morning. It fell forty years ago, in the last tremor, when I was the apprentice.',
+        'I cast my four shades and the hour ran out on me. The Master seated a style of painted wood so that the day could go on, and the Great Dial has told the country a slightly wrong noon ever since. This morning the wood split.',
+        'Three of my shades have worn through. The fourth still gets up when the hour is held. She is on the Threshold now, beside you.',
+        'Do not correct her. What she walks through must be open. What she rolls must lie where she found it. What she takes up must be there to take. Where my other shades stood for her, somebody must stand. And where she was refused, she must be refused again.'
+      ],
+      first: 'That one is mine. Watch what she does before you do anything clever. Sit the hour out, if you like, and read what the sky says.',
+      second: 'She is kept, this hour and every hour after it. Now think what you need for yourself.',
+      last: 'Four shades. The court will bear no more. This casting is the last you have.',
+      won: []
+    }
+  },
+  ending: [
+    'Observed: a shadow on the Great Dial. It is moving.',
+    'My shade held the jet bars for you. She has held them for forty years. I had only never sent anyone through.',
+    'Your shades lie down where they stand, and so does mine. They are shadows again, and getting longer.',
+    'Observed: evening. The first in this court since I was your age.',
+    'The hour is told. Go and eat something.'
+  ],
+  endingClose: 'Here the daybook is closed.',
+  endingAgain: 'Any key opens it again at the first page.',
+  endingAgainTouch: 'Touch the page to open it again at the first.'
+};
+
+function shadeName(L, i) { return i < L.given.length ? 'my shade' : 'your ' + ORD[i - L.given.length] + ' shade'; }
+function shadeTag(L, i) { return i < L.given.length ? '*' : ROMAN[i - L.given.length]; }
+
+// The lines the daybook gains when a key is spent.
+function narrate(L, before, after, tok) {
+  var out = [], T = TEXT.courts[L.def.id], r = after.last, i, mine = L.given.length, n;
+  if (after.status === 'eclipse' || after.status === 'spent') return out;
+  if (r && tok !== 'E') {
+    if (r.code === 'B') {
+      if (r.why === 'bars') out.push('The ' + COLOUR[r.c] + ' bars at ' + flagName(r.x, r.y) + ' are up. Their eye can see the sun. A mark spent.');
+      else if (r.why === 'walker') out.push(cap(shadeName(L, r.who)) + ' has ' + flagName(r.x, r.y) + '. The elder steps first; you have spent a mark wanting.');
+      else if (r.why === 'drum') out.push('The globe at ' + flagName(r.x, r.y) + ' will not roll ' + DIRWORD[r.dir] + '. A mark spent.');
+      else out.push('Masonry. A mark spent on it all the same.');
+    } else if (r.code === 'M+' || r.code === 'T') out.push('You have the style, from ' + flagName(r.x, r.y) + '. It is heavier than it looks. They all are.');
+    else if (r.code === 'D') out.push('Set down at ' + flagName(r.x, r.y) + '. It will lie there for whoever comes, this hour.');
+    else if (r.code === 'N') out.push('There is nothing at your feet to take up, and nothing in your hands to set down. A mark spent.');
+  }
+  // Sun-eyes that the gnomon has just let go of.
+  if (!after.turned && after.status === 'play' && after.casting === 1) {
+    for (i = 0; i < L.eyes.length; i++) {
+      if (after.t > 0 && after.t < HOUR && L.sunShade[i][after.t - 1] && !L.sunShade[i][after.t]) {
+        out.push('The gnomon’s shadow has left the ' + COLOUR[L.eyes[i].c] + ' eye at ' + flagName(L.eyes[i].x, L.eyes[i].y) + '.');
+      }
+    }
+  }
+  if (after.turned) {
+    n = after.shades;
+    out.push('The hour is taken again. ' + cap(ORD[after.casting - 1]) + ' casting. ' +
+      (after.shades - mine === 1 ? 'Your shade gets up from the Threshold.' : 'Your shades get up from the Threshold, eldest first.'));
+    if (n >= MAX_SHADES) out.push(TEXT.courts.great.last);
+    else if (after.casting === 2 && T.second) out.push(!T.secondNeeds || after.recs[after.recs.length - 1].outs.indexOf(T.secondNeeds) >= 0 ? T.second : TEXT.secondPlain);
+  }
+  return out;
+}
+
+// The eclipse entry: which casting, which mark, whose shade, what it did in
+// its own hour, what it expected, what it found.
+function eclipseEntry(L, S) {
+  var h = S.halt, f = h.found, given = h.shade < L.given.length;
+  var who = cap(shadeName(L, h.shade)), it = given ? 'she' : 'it', its = given ? 'her' : 'its';
+  var when = given ? 'as she did in my own hour, forty years ago' : 'as you did in your ' + ORD[h.shade - L.given.length] + ' casting';
+  var flag = flagName(f.x, f.y), dir = DIRWORD[h.key], k = tileAt(L, f.x, f.y);
+  var gate = k && k.k === 'gate' ? COLOUR[k.c] : null;
+  var act1, exp, found;
+  if (h.key === 'X') act1 = who + ' stoops at ' + flag + ', ' + when + '.';
+  else act1 = who + ' turns ' + dir + ' for ' + flag + ', ' + when + '.';
+  switch (h.expected) {
+    case 'M': exp = gate ? 'the ' + gate + ' bars down, and a clear step onto ' + flag : 'a clear step onto ' + flag; break;
+    case 'M+': exp = 'the style lying at ' + flag + ', to be taken up'; break;
+    case 'P': exp = 'a globe at ' + flag + ', to be rolled ' + dir; break;
+    case 'B': exp = 'to be turned back from ' + flag + (gate ? ' by the ' + gate + ' bars' : ''); break;
+    case 'T': exp = 'the style at ' + its + ' feet, to be taken up'; break;
+    case 'D': exp = 'the style in ' + its + ' hands, to be set down'; break;
+    default: exp = 'nothing at ' + its + ' feet and nothing in ' + its + ' hands';
+  }
+  switch (f.code) {
+    case 'B':
+      if (f.why === 'bars') found = 'the ' + COLOUR[f.c] + ' bars standing';
+      else if (f.why === 'walker') found = (f.who === S.W.walkers.length - 1 ? 'you' : shadeName(L, f.who)) + ', standing on ' + flag;
+      else if (f.why === 'drum') found = 'a globe at ' + flag + ' that will not roll ' + dir;
+      else found = 'masonry';
+      break;
+    case 'M':
+      if (h.expected === 'P') found = 'no globe at ' + flag + ', only paving';
+      else if (h.expected === 'M+') found = 'bare paving at ' + flag + ', and the style gone';
+      else found = gate ? 'the ' + gate + ' bars down, and the way open' : 'the way open';
+      break;
+    case 'M+': found = h.expected === 'B' ? 'the way open, and the style lying at ' + flag : 'the style lying at ' + flag + ', where none lay'; break;
+    case 'P': found = h.expected === 'B' ? 'the globe at ' + flag + ' free to roll ' + dir + ', and rolled it' : 'a globe at ' + flag + ', where none lay, and rolled it'; break;
+    case 'T': found = 'the style at ' + its + ' feet, where none lay'; break;
+    case 'D': found = 'the style in ' + its + ' hands'; break;
+    default: found = 'nothing at ' + its + ' feet';
+  }
+  return {
+    head: 'Eclipse.',
+    where: cap(ORD[S.casting - 1]) + ' casting, mark ' + (h.mark + 1) + '.',
+    lines: [act1, 'Expected: ' + exp + '.', 'Found: ' + found + '.'],
+    close: 'The sun will not tell one hour two ways. It has gone in, and will stay in until this is unsaid.',
+    choices: 'Z unsays what you last did. B, twice, unsays this casting. R, twice, begins the court again.',
+    choicesTouch: 'Unsay what you last did, unsay the casting, or begin again.'
+  };
+}
+function spentEntry(L, S) {
+  return {
+    head: 'The hour is spent.',
+    where: cap(ORD[S.casting - 1]) + ' casting, mark ' + HOUR + '.',
+    lines: ['The court bears four shades, and four are standing in it. This casting cannot leave a fifth, and it has run out with the style unseated.'],
+    close: 'Nothing is broken. Nothing is finished either.',
+    choices: 'Z unsays what you last did. B, twice, unsays this casting. R, twice, begins the court again.',
+    choicesTouch: 'Unsay what you last did, unsay the casting, or begin again.'
+  };
+}
+function wonEntry(L, S) {
+  var own = S.casting;
+  return 'Seated at mark ' + S.t + ' of your ' + ORD[own - 1] + ' casting.';
+}
+// @@VOICE-END
+
+// ---------------------------------------------------------------------------
+// THE PICTURE. Everything below draws; nothing below decides.
+// ---------------------------------------------------------------------------
+var P = {
+  paper: '#F2E6CB', paperEdge: '#E0CDA6', ink: '#3A2A22', inkSoft: '#8A7462', rubric: '#A8321F',
+  wash: '#EBDDBD', washDark: '#DCC89F',
+  flagA: '#E9D3A8', flagB: '#E2C898', joint: '#C9A772',
+  wallTop: '#DE9A76', wallTopHi: '#EDB594', wallFace: '#A85F49', wallFaceDark: '#8C4A3C',
+  marble: '#F6EFE2', marbleShade: '#D9CFC0', marbleFace: '#B9AC9A',
+  ochre: '#E3B23C', shadow: '#4A2F3F', shade: '#33202E',
+  brass: '#B8862B', brassHi: '#E6C36A', brassDk: '#7A5518',
+  inlay: ['#C8442E', '#2F5D8C', '#2E8B6A', '#3B3038'],
+  skin: '#8A5A3C', tunic: '#A8321F', trews: '#5A3B2E',
+  sun: '#FFF4D0', eclipse: '#2A1B22', corona: '#F8E7B0',
+  eveA: '#F0A66B', eveB: '#C96A5A', eveC: '#6B4660', star: '#FFF6DA'
+};
+var SERIF = '"Baskerville","Libre Baskerville","Hoefler Text","Palatino Linotype","Book Antiqua",Palatino,Georgia,serif';
+function fnt(px, style) { return (style ? style + ' ' : '') + Math.max(6.5, Math.round(px * 10) / 10) + 'px ' + SERIF; }
+
+var cv, cx, G = { vw: 0, vh: 0, dpr: 1, S: 40 };
+var groundCv = null, shadowCv = null, shadowCx = null, bgCv = null;
+var WALL_H = 0.36, FIG_H = 0.45, GLOBE_H = 0.4;
+
+function hash2(x, y) { var n = Math.sin(x * 127.1 + y * 311.7) * 43758.5453; return n - Math.floor(n); }
+function lerp(a, b, t) { return a + (b - a) * t; }
+function clamp(v, a, b) { return v < a ? a : v > b ? b : v; }
+function ease(t) { return t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2; }
+function hexRgb(h) { return [parseInt(h.substr(1, 2), 16), parseInt(h.substr(3, 2), 16), parseInt(h.substr(5, 2), 16)]; }
+function mix(h1, h2, t) { var a = hexRgb(h1), b = hexRgb(h2); return 'rgb(' + Math.round(lerp(a[0], b[0], t)) + ',' + Math.round(lerp(a[1], b[1], t)) + ',' + Math.round(lerp(a[2], b[2], t)) + ')'; }
+function rgba(h, a) { var c = hexRgb(h); return 'rgba(' + c[0] + ',' + c[1] + ',' + c[2] + ',' + a + ')'; }
+
+function wrapLines(c, str, maxW) {
+  var words = str.split(' '), lines = [], line = '', i, t;
+  for (i = 0; i < words.length; i++) {
+    t = line ? line + ' ' + words[i] : words[i];
+    if (line && c.measureText(t).width > maxW) { lines.push(line); line = words[i]; } else line = t;
+  }
+  if (line) lines.push(line);
+  return lines;
+}
+// Draws a wrapped paragraph; returns the y below it. With dry=true only measures.
+function para(c, str, x, y, maxW, lh, dry, align) {
+  var lines = wrapLines(c, str, maxW), i;
+  if (!dry) for (i = 0; i < lines.length; i++) c.fillText(lines[i], align === 'center' ? x + maxW / 2 : x, y + i * lh);
+  return y + lines.length * lh;
+}
+
+// ---- layout ---------------------------------------------------------------
+function layout() {
+  var dpr = Math.min(window.devicePixelRatio || 1, 2.5);
+  var vw = Math.max(280, window.innerWidth || document.documentElement.clientWidth || 800);
+  var vh = Math.max(280, window.innerHeight || document.documentElement.clientHeight || 600);
+  G.vw = vw; G.vh = vh; G.dpr = dpr;
+  cv.width = Math.round(vw * dpr); cv.height = Math.round(vh * dpr);
+  cv.style.width = vw + 'px'; cv.style.height = vh + 'px';
+  var m = Math.max(8, Math.min(vw, vh) * 0.02), cols = 14, rows = 12;
+  G.m = m;
+  G.landscape = vw >= vh * 1.18 && vw >= 640;
+  var scaleRows = 2.25, liftRows = 0.4, S, pageW;
+  if (G.landscape) {
+    S = Math.floor(Math.min((vw - 230 - m * 3) / cols, (vh - m * 2) / (rows + liftRows + scaleRows + 0.25)));
+    S = Math.max(14, S);
+    var boardW = S * cols, blockH = S * (rows + liftRows + scaleRows + 0.25);
+    pageW = clamp(vw - boardW - m * 3, 230, 460);
+    var freeW = vw - pageW - m * 3 - boardW;
+    G.bx = Math.round(m + freeW / 2); G.by = Math.round((vh - blockH) / 2 + S * liftRows);
+    G.page = { x: Math.round(G.bx + boardW + m + freeW / 2), y: Math.round(m), w: Math.round(pageW), h: Math.round(vh - m * 2) };
+  } else {
+    S = Math.floor(Math.min((vw - m * 2) / cols, (vh * 0.62) / (rows + liftRows + scaleRows + 0.25)));
+    S = Math.max(14, S);
+    G.bx = Math.round((vw - S * cols) / 2); G.by = Math.round(m + S * liftRows);
+    var py = G.by + S * (rows + scaleRows + 0.25) + m * 0.6;
+    G.page = { x: Math.round(m), y: Math.round(py), w: Math.round(vw - m * 2), h: Math.round(vh - py - m) };
+  }
+  G.S = S; G.lift = Math.round(S * 0.24);
+  G.scale = { x: G.bx, y: G.by + S * rows + Math.round(S * 0.22), w: S * cols, h: Math.round(S * (scaleRows - 0.1)) };
+  shadowCv = document.createElement('canvas'); shadowCv.width = Math.round(S * cols * dpr); shadowCv.height = Math.round(S * rows * dpr);
+  shadowCx = shadowCv.getContext('2d');
+  buildBackground(); groundCv = null;
+}
+
+function buildBackground() {
+  bgCv = document.createElement('canvas'); bgCv.width = cv.width; bgCv.height = cv.height;
+  var c = bgCv.getContext('2d'), w = G.vw, h = G.vh, i, x, y, r, g;
+  c.scale(G.dpr, G.dpr);
+  g = c.createLinearGradient(0, 0, 0, h); g.addColorStop(0, '#EFE2C4'); g.addColorStop(1, P.washDark);
+  c.fillStyle = g; c.fillRect(0, 0, w, h);
+  // limewash: broad soft patches, then brush drag
+  for (i = 0; i < 140; i++) {
+    x = hash2(i, 1.3) * w; y = hash2(i, 7.7) * h; r = 30 + hash2(i, 3.1) * 120;
+    c.fillStyle = hash2(i, 9.2) > 0.5 ? 'rgba(255,248,226,0.07)' : 'rgba(170,130,80,0.05)';
+    c.beginPath(); c.ellipse(x, y, r * 1.6, r * 0.6, 0, 0, 6.2832); c.fill();
+  }
+  c.strokeStyle = 'rgba(150,110,70,0.05)'; c.lineWidth = 1;
+  for (i = 0; i < h; i += 5) { c.beginPath(); c.moveTo(0, i + hash2(i, 2) * 3); c.lineTo(w, i + hash2(i, 5) * 3); c.stroke(); }
+}
+
+function buildGround(L) {
+  var S = G.S, dpr = G.dpr, x, y, c, t, i;
+  groundCv = document.createElement('canvas'); groundCv.width = Math.round(L.w * S * dpr); groundCv.height = Math.round(L.h * S * dpr);
+  c = groundCv.getContext('2d'); c.scale(dpr, dpr);
+  for (y = 0; y < L.h; y++) for (x = 0; x < L.w; x++) {
+    t = hash2(x + 3, y + 11);
+    c.fillStyle = mix(P.flagA, P.flagB, t); c.fillRect(x * S, y * S, S, S);
+    c.fillStyle = 'rgba(255,246,220,' + (0.10 * hash2(x * 3, y * 5)).toFixed(3) + ')'; c.fillRect(x * S + 2, y * S + 2, S - 4, S - 4);
+    for (i = 0; i < 5; i++) {
+      c.fillStyle = 'rgba(140,100,60,0.16)';
+      c.fillRect(x * S + hash2(x * 7 + i, y * 3) * S, y * S + hash2(x + i * 5, y * 13) * S, 1.2, 1.2);
+    }
+  }
+  c.strokeStyle = rgba(P.joint, 0.75); c.lineWidth = 1;
+  for (x = 0; x <= L.w; x++) { c.beginPath(); c.moveTo(x * S + 0.5, 0); c.lineTo(x * S + 0.5, L.h * S); c.stroke(); }
+  for (y = 0; y <= L.h; y++) { c.beginPath(); c.moveTo(0, y * S + 0.5); c.lineTo(L.w * S, y * S + 0.5); c.stroke(); }
+}
+
+// ---- small drawing pieces --------------------------------------------------
+function motif(c, k, x, y, r) {            // one shape per inlay, for eyes that cannot tell colours apart
+  c.beginPath();
+  if (k === 0) { c.moveTo(x, y - r); c.lineTo(x + r * 0.9, y + r * 0.7); c.lineTo(x - r * 0.9, y + r * 0.7); c.closePath(); }
+  else if (k === 1) c.arc(x, y, r * 0.8, 0, 6.2832);
+  else if (k === 2) c.rect(x - r * 0.72, y - r * 0.72, r * 1.44, r * 1.44);
+  else { c.moveTo(x, y - r); c.lineTo(x + r, y); c.lineTo(x, y + r); c.lineTo(x - r, y); c.closePath(); }
+}
+
+// Sweep of a box footprint along the sun's line: the shadow of a prism.
+function shadowBox(c, x0, y0, x1, y1, dx, dy) {
+  c.beginPath();
+  if (dx >= 0) { c.moveTo(x0, y0); c.lineTo(x1, y0); c.lineTo(x1 + dx, y0 + dy); c.lineTo(x1 + dx, y1 + dy); c.lineTo(x0 + dx, y1 + dy); c.lineTo(x0, y1); }
+  else { c.moveTo(x1, y0); c.lineTo(x0, y0); c.lineTo(x0 + dx, y0 + dy); c.lineTo(x0 + dx, y1 + dy); c.lineTo(x1 + dx, y1 + dy); c.lineTo(x1, y1); }
+  c.closePath(); c.fill();
+}
+
+// The walker, as a list of plain shapes so the same figure can be painted,
+// thrown on the ground as a shadow, or filled in one piece as a shade.
+function limb(x1, y1, x2, y2, w, col) {
+  var dx = x2 - x1, dy = y2 - y1, n = Math.sqrt(dx * dx + dy * dy) || 1, px = -dy / n * w, py = dx / n * w;
+  return [{ t: 'p', col: col, pts: [[x1 + px, y1 + py], [x2 + px, y2 + py], [x2 - px, y2 - py], [x1 - px, y1 - py]] }, { t: 'c', col: col, x: x2, y: y2, r: w }];
+}
+function figureShapes(pose, pal) {
+  var u = pose.u, f = pose.face, side = f === 'L' ? -1 : f === 'R' ? 1 : 0, s = Math.sin(pose.walk * 6.2832) * (pose.walking ? 1 : 0);
+  var out = [], tall = pose.hers ? 1.07 : 1, bob = pose.bob || 0, lean = (pose.lean || 0) * side;
+  function Y(v) { return v * u * tall + bob; }
+  var fx1 = -0.075 * u, fx2 = 0.075 * u, fy1 = 0, fy2 = 0;
+  if (side) { fx1 = (-0.03 + s * 0.09) * u; fx2 = (0.03 - s * 0.09) * u; } else { fy1 = s * 0.05 * u; fy2 = -s * 0.05 * u; }
+  out = out.concat(limb(-0.055 * u, Y(-0.36), fx1, fy1 - 0.03 * u, 0.04 * u, pal.trews));
+  out = out.concat(limb(0.055 * u, Y(-0.36), fx2, fy2 - 0.03 * u, 0.04 * u, pal.trews));
+  if (pose.hers) out.push({ t: 'p', col: pal.hair, pts: [[-0.02 * u, Y(-0.9)], [0.07 * u - side * 0.1 * u, Y(-0.86)], [0.1 * u - side * 0.16 * u, Y(-0.4)], [0.03 * u - side * 0.16 * u, Y(-0.38)]] });
+  // back arm
+  var sw = s * 0.05 * u;
+  out = out.concat(limb(-0.125 * u + lean * u, Y(-0.68), -0.175 * u - (side ? sw : 0), Y(-0.42) + (side ? 0 : sw), 0.03 * u, pal.sleeve));
+  out.push({ t: 'p', col: pal.tunic, pts: [[-0.125 * u + lean * u, Y(-0.72)], [0.125 * u + lean * u, Y(-0.72)], [0.18 * u, Y(-0.28)], [-0.18 * u, Y(-0.28)]] });
+  out.push({ t: 'p', col: pal.sash, detail: true, pts: [[-0.15 * u + lean * 0.6 * u, Y(-0.52)], [0.15 * u + lean * 0.6 * u, Y(-0.52)], [0.158 * u + lean * 0.5 * u, Y(-0.46)], [-0.158 * u + lean * 0.5 * u, Y(-0.46)]] });
+  if (pose.carry) out = out.concat(limb(0.125 * u + lean * u, Y(-0.68), 0.17 * u, Y(-0.84), 0.03 * u, pal.sleeve));
+  else out = out.concat(limb(0.125 * u + lean * u, Y(-0.68), 0.175 * u + (side ? sw : 0), Y(-0.42) - (side ? 0 : sw), 0.03 * u, pal.sleeve));
+  var hx = (side * 0.02 + lean) * u, hy = Y(-0.84);
+  out.push({ t: 'c', col: pal.skin, x: hx, y: hy, r: 0.105 * u });
+  out.push({ t: 'cap', col: pal.wrap, x: hx, y: hy - 0.02 * u, r: 0.112 * u, face: f });
+  if (pose.carry) out.push({ t: 'p', col: pal.style, hi: true, pts: [[0.13 * u, Y(-1.08)], [0.33 * u, Y(-0.8)], [0.13 * u, Y(-0.8)]] });
+  return out;
+}
+function tracePath(c, shapes, skipDetail) {
+  var i, s, j;
+  c.beginPath();
+  for (i = 0; i < shapes.length; i++) {
+    s = shapes[i]; if (skipDetail && (s.detail || s.hi)) continue;
+    if (s.t === 'c' || s.t === 'cap') { c.moveTo(s.x + s.r, s.y); c.arc(s.x, s.y, s.r, 0, 6.2832); }
+    else { c.moveTo(s.pts[0][0], s.pts[0][1]); for (j = 1; j < s.pts.length; j++) c.lineTo(s.pts[j][0], s.pts[j][1]); c.closePath(); }
+  }
+}
+function paintShapes(c, shapes) {
+  var i, s, j;
+  for (i = 0; i < shapes.length; i++) {
+    s = shapes[i]; c.fillStyle = s.col; c.beginPath();
+    if (s.t === 'c') c.arc(s.x, s.y, s.r, 0, 6.2832);
+    else if (s.t === 'cap') {
+      c.arc(s.x, s.y, s.r, 3.1416, 6.2832); c.closePath(); c.fill();
+      c.beginPath(); c.fillStyle = s.col;
+      if (s.face === 'U') c.arc(s.x, s.y + s.r * 0.15, s.r * 0.98, 0, 6.2832);
+      else c.ellipse(s.x, s.y - s.r * 0.25, s.r * 1.02, s.r * 0.55, 0, 0, 6.2832);
+    } else { c.moveTo(s.pts[0][0], s.pts[0][1]); for (j = 1; j < s.pts.length; j++) c.lineTo(s.pts[j][0], s.pts[j][1]); c.closePath(); }
+    c.fill();
+    if (s.hi) { c.strokeStyle = P.brassHi; c.lineWidth = 1.2; c.beginPath(); c.moveTo(s.pts[0][0], s.pts[0][1]); c.lineTo(s.pts[1][0], s.pts[1][1]); c.stroke(); }
+  }
+}
+var PAL_BODY = { trews: P.trews, sleeve: '#8E2A1B', tunic: P.tunic, sash: P.ochre, skin: P.skin, wrap: P.ochre, hair: '#2B1D1A', style: P.brass };
+
+function drawStyleLying(c, x, y, S, glint) {
+  c.save(); c.translate(x, y);
+  c.fillStyle = rgba(P.shadow, 0.35); c.beginPath(); c.ellipse(S * 0.03, S * 0.1, S * 0.26, S * 0.07, 0, 0, 6.2832); c.fill();
+  c.fillStyle = P.brass; c.beginPath(); c.moveTo(-S * 0.24, S * 0.08); c.lineTo(S * 0.24, S * 0.08); c.lineTo(-S * 0.16, -S * 0.2); c.closePath(); c.fill();
+  c.strokeStyle = P.brassHi; c.lineWidth = Math.max(1, S * 0.035); c.beginPath(); c.moveTo(-S * 0.16, -S * 0.2); c.lineTo(S * 0.24, S * 0.08); c.stroke();
+  c.fillStyle = P.brassDk; c.fillRect(-S * 0.24, S * 0.06, S * 0.48, S * 0.04);
+  if (glint > 0) {
+    c.strokeStyle = 'rgba(255,250,225,' + (0.85 * glint).toFixed(3) + ')'; c.lineWidth = 1;
+    c.beginPath(); c.moveTo(-S * 0.02, -S * 0.2); c.lineTo(-S * 0.02, -S * 0.02); c.moveTo(-S * 0.11, -S * 0.11); c.lineTo(S * 0.07, -S * 0.11); c.stroke();
+  }
+  c.restore();
+}
+
+function drawGlobe(c, x, y, S, roll, axis) {
+  var r = S * 0.34, cy = y - r * 0.82, i, a;
+  c.fillStyle = P.marbleFace; c.beginPath(); c.arc(x, cy, r, 0, 6.2832); c.fill();
+  var g = c.createRadialGradient(x - r * 0.25, cy - r * 0.45, r * 0.1, x, cy, r);
+  g.addColorStop(0, '#FFFBF0'); g.addColorStop(0.6, P.marble); g.addColorStop(1, P.marbleFace);
+  c.fillStyle = g; c.beginPath(); c.arc(x, cy, r, 0, 6.2832); c.fill();
+  c.save(); c.beginPath(); c.arc(x, cy, r, 0, 6.2832); c.clip();
+  c.strokeStyle = rgba(P.brassDk, 0.55); c.lineWidth = Math.max(1, S * 0.022);
+  for (i = 0; i < 4; i++) {          // engraved great circles, turning as it rolls
+    a = roll * 3.1416 + i * 0.7854;
+    var k = Math.cos(a);
+    c.beginPath();
+    if (axis === 'x') c.ellipse(x, cy, Math.abs(k) * r + 0.01, r, 0, 0, 6.2832); else c.ellipse(x, cy, r, Math.abs(k) * r + 0.01, 0, 0, 6.2832);
+    c.stroke();
+  }
+  c.fillStyle = rgba(P.brassDk, 0.6);
+  for (i = 0; i < 5; i++) { c.beginPath(); c.arc(x + (hash2(i, 4) - 0.5) * r * 1.3, cy + (hash2(i, 8) - 0.5) * r * 1.3, S * 0.018, 0, 6.2832); c.fill(); }
+  c.restore();
+  c.strokeStyle = rgba(P.marbleFace, 0.9); c.lineWidth = 1; c.beginPath(); c.arc(x, cy, r, 0, 6.2832); c.stroke();
+}
+
+function chalkGlyph(c, key, out, x, y, s, col) {
+  c.save(); c.translate(x, y); c.fillStyle = col; c.strokeStyle = col; c.lineWidth = Math.max(1, s * 0.16);
+  if (key === '.') { c.beginPath(); c.arc(0, 0, s * 0.13, 0, 6.2832); c.fill(); }
+  else if (key === 'X') { c.beginPath(); c.arc(0, 0, s * 0.3, 0, 6.2832); c.stroke(); if (out === 'N') { c.beginPath(); c.moveTo(-s * 0.3, s * 0.3); c.lineTo(s * 0.3, -s * 0.3); c.stroke(); } }
+  else {
+    c.rotate(key === 'U' ? 0 : key === 'R' ? 1.5708 : key === 'D' ? 3.1416 : -1.5708);
+    c.beginPath(); c.moveTo(0, -s * 0.42); c.lineTo(s * 0.36, s * 0.3); c.lineTo(-s * 0.36, s * 0.3); c.closePath();
+    if (out === 'B') c.stroke(); else c.fill();
+    if (out === 'P') { c.beginPath(); c.arc(0, -s * 0.62, s * 0.14, 0, 6.2832); c.fill(); }
+    if (out === 'M+') { c.beginPath(); c.arc(0, s * 0.02, s * 0.5, 0, 6.2832); c.stroke(); }
+  }
+  c.restore();
+}
+
+function paperSheet(c, x, y, w, h, tilt) {
+  c.save();
+  c.fillStyle = 'rgba(74,47,63,0.22)'; c.fillRect(x + 4, y + 6, w, h);
+  c.fillStyle = P.paper; c.fillRect(x, y, w, h);
+  var g = c.createLinearGradient(x, y, x + w, y + h); g.addColorStop(0, 'rgba(255,250,235,0.5)'); g.addColorStop(1, 'rgba(190,150,100,0.14)');
+  c.fillStyle = g; c.fillRect(x, y, w, h);
+  c.strokeStyle = P.paperEdge; c.lineWidth = 1; c.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
+  c.strokeStyle = rgba(P.rubric, 0.35); c.beginPath(); c.moveTo(x + Math.max(10, w * 0.045) + 0.5, y + 6); c.lineTo(x + Math.max(10, w * 0.045) + 0.5, y + h - 6); c.stroke();
+  c.restore();
+}
+
+// A brass plaque you can press. Returns its rectangle for the hit list.
+function plaque(c, id, label, x, y, w, h, on, hot) {
+  c.save();
+  c.fillStyle = 'rgba(74,47,63,0.25)'; c.fillRect(x + 1.5, y + 2.5, w, h);
+  var g = c.createLinearGradient(0, y, 0, y + h); g.addColorStop(0, on ? P.brassHi : '#D8CBA8'); g.addColorStop(1, on ? P.brass : '#BDAE8A');
+  c.fillStyle = g; c.fillRect(x, y, w, h);
+  c.strokeStyle = on ? P.brassDk : '#9A8B6A'; c.lineWidth = 1; c.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
+  if (hot) { c.fillStyle = 'rgba(255,250,225,0.35)'; c.fillRect(x, y, w, h); }
+  c.fillStyle = on ? '#3A2607' : '#7A6C50'; c.textAlign = 'center'; c.textBaseline = 'middle';
+  var px = Math.min(h * 0.5, 15); c.font = fnt(px, 'italic');
+  while (px > 6.5 && c.measureText(label).width > w - 6) { px -= 0.5; c.font = fnt(px, 'italic'); }
+  c.fillText(label, x + w / 2, y + h / 2 + 0.5);
+  c.restore();
+  return { id: id, x: x, y: y, w: w, h: h, on: on };
+}
+function arrowPlaque(c, id, dir, x, y, w, h, hot) {
+  var r = plaque(c, id, '', x, y, w, h, true, hot);
+  c.save(); c.translate(x + w / 2, y + h / 2); c.rotate(dir === 'U' ? 0 : dir === 'R' ? 1.5708 : dir === 'D' ? 3.1416 : -1.5708);
+  c.fillStyle = '#3A2607'; c.beginPath(); c.moveTo(0, -h * 0.24); c.lineTo(w * 0.2, h * 0.16); c.lineTo(-w * 0.2, h * 0.16); c.closePath(); c.fill();
+  c.restore(); return r;
+}
+
+// ---- the observatory, seen from outside (title and ending) ----------------
+function drawObservatory(c, w, h, now, ev, creep) {
+  var e = clamp(ev, 0, 1), g, i, a;
+  var skyTop = e < 0.5 ? mix('#F6E9C6', P.eveA, e * 2) : mix(P.eveA, P.eveC, (e - 0.5) * 2);
+  var skyLow = e < 0.5 ? mix('#F3DDAE', '#F7C489', e * 2) : mix('#F7C489', P.eveB, (e - 0.5) * 2);
+  var hz = h * 0.64, k = Math.min(w, h * 1.25);
+  g = c.createLinearGradient(0, 0, 0, hz); g.addColorStop(0, skyTop); g.addColorStop(1, skyLow);
+  c.fillStyle = g; c.fillRect(0, 0, w, hz + 1);
+  // sun
+  var sx = lerp(w * 0.74, w * 0.9, e), sy = lerp(h * 0.16, hz - h * 0.02, e), sr = k * lerp(0.05, 0.075, e);
+  g = c.createRadialGradient(sx, sy, sr * 0.5, sx, sy, sr * 5); g.addColorStop(0, rgba(P.sun, 0.75)); g.addColorStop(1, rgba(P.sun, 0));
+  c.fillStyle = g; c.fillRect(0, 0, w, hz);
+  c.fillStyle = e > 0.5 ? mix(P.sun, '#FFD9A0', (e - 0.5) * 2) : P.sun; c.beginPath(); c.arc(sx, sy, sr, 0, 6.2832); c.fill();
+  if (e > 0.72) { // the first star
+    a = clamp((e - 0.72) / 0.2, 0, 1) * (0.8 + 0.2 * Math.sin(now / 400));
+    c.strokeStyle = rgba(P.star, a); c.lineWidth = 1.4; var stx = w * 0.9, sty = h * 0.075, sl = k * 0.014;
+    c.beginPath(); c.moveTo(stx - sl, sty); c.lineTo(stx + sl, sty); c.moveTo(stx, sty - sl); c.lineTo(stx, sty + sl); c.stroke();
+  }
+  // far parapet and small instruments
+  c.fillStyle = e < 0.5 ? mix('#E4BE93', '#D99872', e * 2) : mix('#D99872', '#7E4F60', (e - 0.5) * 2);
+  c.fillRect(0, hz - h * 0.035, w, h * 0.04);
+  for (i = 0; i < 7; i++) {
+    var ix = w * (0.04 + i * 0.15 + hash2(i, 2) * 0.04), iw = k * (0.03 + hash2(i, 5) * 0.03), ih = k * (0.03 + hash2(i, 9) * 0.05);
+    if (i % 3 === 0) { c.beginPath(); c.arc(ix, hz - h * 0.035, iw, 3.1416, 6.2832); c.fill(); }
+    else if (i % 3 === 1) { c.beginPath(); c.moveTo(ix - iw, hz - h * 0.035); c.lineTo(ix + iw, hz - h * 0.035); c.lineTo(ix + iw, hz - h * 0.035 - ih); c.closePath(); c.fill(); }
+    else c.fillRect(ix - iw * 0.4, hz - h * 0.035 - ih, iw * 0.8, ih);
+  }
+  // ground
+  g = c.createLinearGradient(0, hz, 0, h);
+  g.addColorStop(0, e < 0.5 ? mix('#EBD3A4', '#EDBE8A', e * 2) : mix('#EDBE8A', '#9A6468', (e - 0.5) * 2));
+  g.addColorStop(1, e < 0.5 ? mix('#E2C593', '#DDA070', e * 2) : mix('#DDA070', '#6E4558', (e - 0.5) * 2));
+  c.fillStyle = g; c.fillRect(0, hz, w, h - hz);
+  c.strokeStyle = 'rgba(120,80,50,0.12)'; c.lineWidth = 1;
+  for (i = 1; i < 9; i++) { var gy = hz + (h - hz) * Math.pow(i / 9, 1.7); c.beginPath(); c.moveTo(0, gy); c.lineTo(w, gy); c.stroke(); }
+  for (i = -8; i < 16; i++) { c.beginPath(); c.moveTo(w * 0.5 + (i - 4) * w * 0.07, hz); c.lineTo(w * 0.5 + (i - 4) * w * 0.3, h); c.stroke(); }
+  // the great gnomon: a stair that points at the pole
+  var bx0 = w * 0.5 - k * 0.2, bx1 = w * 0.5 + k * 0.26, gy0 = hz + (h - hz) * 0.34, ax = bx1, ay = gy0 - k * 0.5;
+  // marble quadrant, lying on the ground before the stair
+  var qx = (bx0 + bx1) / 2, qy = gy0 + (h - hz) * 0.07, qrx = k * 0.62, qry = (h - hz) * 0.36;
+  c.strokeStyle = e < 0.6 ? mix(P.marble, '#F1D2B0', e / 0.6) : mix('#F1D2B0', '#A9828A', (e - 0.6) / 0.4);
+  c.lineWidth = Math.max(6, k * 0.03); c.beginPath(); c.ellipse(qx, qy, qrx, qry, 0, 0.12, 3.02); c.stroke();
+  c.strokeStyle = rgba(P.brassDk, 0.6); c.lineWidth = 1;
+  for (i = 0; i <= 40; i++) {
+    a = 0.14 + (2.86 * i) / 40; var tl = (i % 5 === 0 ? 0.03 : 0.016) * k;
+    c.beginPath(); c.moveTo(qx + Math.cos(a) * (qrx - tl * 0.5), qy + Math.sin(a) * (qry - tl * 0.3)); c.lineTo(qx + Math.cos(a) * (qrx + tl * 0.5), qy + Math.sin(a) * (qry + tl * 0.3)); c.stroke();
+  }
+  // its shadow: crawls a mark, and is put back (held), or runs on into evening
+  var u = ev > 0 ? 0.42 + ev * 0.75 : 0.42 + creep * 0.035;
+  var tipA = lerp(1.0, 2.75, clamp(u, -2, 1)), tx = qx + Math.cos(tipA) * qrx * (1 + Math.max(0, e - 0.3) * 2.2), ty = qy + Math.sin(tipA) * qry * (1 - Math.max(0, e - 0.3) * 0.5);
+  c.fillStyle = rgba(P.shadow, lerp(0.42, 0.5, e));
+  c.beginPath(); c.moveTo(bx0, gy0); c.lineTo(bx1, gy0); c.lineTo(tx + k * 0.02, ty); c.lineTo(tx - k * 0.035, ty - k * 0.004); c.closePath(); c.fill();
+  // the stair itself, seen against the light
+  c.fillStyle = e < 0.5 ? mix(P.wallFace, '#8E4B40', e * 2) : mix('#8E4B40', '#4C2E40', (e - 0.5) * 2);
+  c.beginPath(); c.moveTo(bx0, gy0); c.lineTo(ax, ay); c.lineTo(ax, gy0); c.closePath(); c.fill();
+  c.strokeStyle = e < 0.5 ? mix(P.wallTopHi, '#F6C48F', e * 2) : mix('#F6C48F', '#D48A78', (e - 0.5) * 2);
+  c.lineWidth = Math.max(2, k * 0.008); c.beginPath(); c.moveTo(bx0, gy0); c.lineTo(ax, ay); c.stroke();
+  c.strokeStyle = 'rgba(40,20,25,0.25)'; c.lineWidth = 1;
+  for (i = 1; i < 26; i++) { var st = i / 26, px1 = lerp(bx0, ax, st), py1 = lerp(gy0, ay, st); c.beginPath(); c.moveTo(px1, py1 + 2); c.lineTo(px1, py1 + k * 0.016); c.stroke(); }
+  c.fillStyle = e < 0.5 ? mix(P.wallFaceDark, '#7A3E38', e * 2) : mix('#7A3E38', '#3E2538', (e - 0.5) * 2);
+  var kw = k * 0.05; c.fillRect(ax - kw * 0.75, ay - kw * 1.05, kw * 1.2, kw * 1.1);
+  c.beginPath(); c.arc(ax - kw * 0.15, ay - kw * 1.05, kw * 0.62, 3.1416, 6.2832); c.fill();
+  c.fillStyle = skyLow; c.beginPath(); c.arc(ax - kw * 0.15, ay - kw * 0.42, kw * 0.22, 3.1416, 6.2832); c.rect(ax - kw * 0.37, ay - kw * 0.42, kw * 0.44, kw * 0.36); c.fill();
+  // the empty seat: where the style should stand, a small bright ring
+  var seatX = qx + Math.cos(1.0) * qrx, seatY = qy + Math.sin(1.0) * qry;
+  if (ev <= 0) {
+    c.strokeStyle = rgba(P.brassHi, 0.6 + 0.3 * Math.sin(now / 500)); c.lineWidth = 2;
+    c.beginPath(); c.ellipse(seatX, seatY, k * 0.022, k * 0.009, 0, 0, 6.2832); c.stroke();
+  } else {
+    c.fillStyle = rgba(P.shadow, 0.5); c.beginPath(); c.moveTo(seatX - k * 0.014, seatY); c.lineTo(seatX + k * 0.014, seatY); c.lineTo(seatX - k * (0.05 + e * 0.2), seatY + k * 0.012); c.closePath(); c.fill();
+    c.fillStyle = P.brass; c.beginPath(); c.moveTo(seatX - k * 0.014, seatY); c.lineTo(seatX + k * 0.014, seatY); c.lineTo(seatX + k * 0.014, seatY - k * 0.036); c.closePath(); c.fill();
+  }
+  // the apprentice, and what is owed to the ground behind her
+  var fxp = w * 0.5 - k * 0.3, fyp = gy0 + (h - hz) * 0.3, fu = k * 0.11, sh, n = 3;
+  for (i = n; i >= 1; i--) {
+    c.save(); c.translate(fxp - i * fu * 0.62, fyp + i * fu * 0.05);
+    sh = figureShapes({ u: fu, face: 'R', walk: 0, bob: 0 }, PAL_BODY);
+    if (ev > 0.25) { // lying down: a shadow again
+      var ld = clamp((ev - 0.25) / 0.3, 0, 1);
+      c.transform(1, 0, lerp(0, 1.5 + e * 1.6, ld), lerp(1, -0.3, ld), 0, 0);
+    }
+    c.globalAlpha = (0.78 - i * 0.12) * (0.92 + 0.08 * Math.sin(now / 700 + i));
+    c.fillStyle = P.shade; tracePath(c, sh, true); c.fill(); c.restore();
+  }
+  c.save(); c.translate(fxp, fyp); sh = figureShapes({ u: fu, face: 'R', walk: 0, bob: Math.sin(now / 900) * fu * 0.008 }, PAL_BODY);
+  c.save(); c.transform(1, 0, lerp(1.1, 3.4, e), lerp(-0.34, -0.2, e), 0, 0); c.globalAlpha = 0.42; c.fillStyle = P.shadow; tracePath(c, sh, true); c.fill(); c.restore();
+  paintShapes(c, sh); c.restore();
+  // kites turning in the heat
+  c.strokeStyle = rgba(P.ink, 0.5); c.lineWidth = 1.3;
+  for (i = 0; i < 3; i++) {
+    a = now / (5200 + i * 900) + i * 2.1; var kx = w * (0.5 + i * 0.1) + Math.cos(a) * k * 0.08, ky = h * (0.06 + i * 0.035) + Math.sin(a) * k * 0.02, ks = k * 0.012 * (1 + 0.3 * Math.sin(a));
+    c.beginPath(); c.moveTo(kx - ks, ky - ks * 0.4); c.quadraticCurveTo(kx - ks * 0.4, ky - ks * 0.6, kx, ky); c.quadraticCurveTo(kx + ks * 0.4, ky - ks * 0.6, kx + ks, ky - ks * 0.4); c.stroke();
+  }
+  // heat lying on the far paving
+  if (e < 0.6) {
+    c.strokeStyle = 'rgba(255,250,230,' + (0.3 * (1 - e / 0.6)).toFixed(3) + ')'; c.lineWidth = 1.5;
+    for (i = 0; i < 9; i++) {
+      var hy = hz + 3 + i * 3, hx0 = (hash2(i, 3) * w + now * 0.012 * (i % 2 ? 1 : -1)) % w; if (hx0 < 0) hx0 += w;
+      c.beginPath(); c.moveTo(hx0, hy); c.lineTo(hx0 + w * 0.06, hy + Math.sin(now / 300 + i)); c.stroke();
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// THE TABLE. Holds the log, asks the engine what it means, queues the frames.
+// ---------------------------------------------------------------------------
+var game = {
+  mode: 'title', ci: 0, L: null, log: '', S: null, entries: [],
+  anim: { a: null, b: null, t0: 0, dur: 0, queue: [], flash: -1e9, haltAt: -1e9, wonAt: -1e9 },
+  keys: [], lids: [], bars: [], rolls: [], now: 0, modeAt: 0,
+  reached: 0, bells: true, touch: false, hits: [], hot: null, hotAt: 0, armAt: -1e9, armId: '', proofs: null, swipe: null
+};
+var STORE = 'untold-hour-v1', CY = 0.44, FOOT = 0.66;
+function loadStore() {
+  try { var o = JSON.parse(window.localStorage.getItem(STORE) || '{}'); game.reached = clamp(o.reached | 0, 0, COURTS.length); if (o.bells === false) game.bells = false; } catch (e) { /* a shut cupboard is not an error */ }
+}
+function saveStore() { try { window.localStorage.setItem(STORE, JSON.stringify({ reached: game.reached, bells: game.bells })); } catch (e) { /* likewise */ } }
+
+function note(text, kind) { game.entries.push({ text: text, at: game.log.length, kind: kind || 'note' }); if (game.entries.length > 40) game.entries.shift(); }
+
+function openCourt(i) {
+  game.ci = i; game.L = parseCourt(COURTS[i]); game.log = ''; game.S = simulate(game.L, '');
+  game.entries = []; game.anim.a = game.anim.b = game.S.W; game.anim.queue = []; game.anim.dur = 0;
+  game.anim.haltAt = game.anim.wonAt = game.anim.flash = -1e9;
+  game.lids = game.L.eyes.map(function (e, k) { return eyeShaded(game.L, game.S.W, k) ? 1 : 0; });
+  game.bars = game.S.open.map(function (o) { return o ? 1 : 0; });
+  game.rolls = game.L.drums0.map(function () { return 0; });
+  game.keys = []; groundCv = null; game.armAt = -1e9;
+  note(TEXT.courts[game.L.def.id].first, 'hint');
+  setMode('intro');
+}
+function setMode(m) { game.mode = m; game.modeAt = game.now; }
+
+function settle() {           // finish whatever is still moving
+  var an = game.anim;
+  if (an.queue.length) { an.b = an.queue[an.queue.length - 1].W; an.queue = []; }
+  an.a = an.b; an.dur = 0;
+}
+function playFrames(frames, fast) {
+  var an = game.anim; settle();
+  an.queue = frames.slice(); an.fast = fast; nextFrame();
+}
+function nextFrame() {
+  var an = game.anim, f = an.queue.shift(), i;
+  if (!f) return;
+  an.a = an.b; an.b = f.W; an.t0 = game.now;
+  if (f.turn || an.a.walkers.length !== an.b.walkers.length) { an.dur = 0; an.a = an.b; an.flash = game.now; }
+  else an.dur = an.fast ? 42 : 118;
+  for (i = 0; i < an.b.drums.length; i++) {
+    if (!f.turn && an.a.drums[i] && (an.a.drums[i].x !== an.b.drums[i].x || an.a.drums[i].y !== an.b.drums[i].y)) game.rolls[i] += 0.5;
+  }
+}
+
+function press(tok) {
+  var S0 = game.S, S1, lines, i, o0, o1;
+  if (S0.status !== 'play') return;
+  game.log += tok; S1 = simulate(game.L, game.log); game.S = S1;
+  playFrames(S1.frames, tok === 'E');
+  lines = narrate(game.L, S0, S1, tok);
+  for (i = 0; i < lines.length; i++) note(lines[i]);
+  game.armAt = -1e9;
+  // bells
+  if (S1.status === 'eclipse') { game.anim.haltAt = game.now + (tok === 'E' ? S1.frames.length * 42 : 120); sfx('eclipse'); }
+  else if (S1.status === 'spent') { game.anim.haltAt = game.now + (tok === 'E' ? S1.frames.length * 42 : 120); sfx('spent'); }
+  else if (S1.status === 'won') { game.anim.wonAt = game.now + 140; sfx('won'); if (game.reached < game.ci + 1) { game.reached = game.ci + 1; saveStore(); } }
+  else if (S1.turned) sfx('turn');
+  else if (S1.last) {
+    if (S1.last.code === 'B') sfx('bump'); else if (S1.last.code === 'P') sfx('globe');
+    else if (S1.last.code === 'M+' || S1.last.code === 'T' || S1.last.code === 'D') sfx('take'); else if (S1.last.code !== 'W' && S1.last.code !== 'N') sfx('step'); else sfx('stand');
+    o0 = S0.open; o1 = S1.open; for (i = 0; i < o1.length; i++) if (o0[i] !== o1[i]) { sfx('bars'); break; }
+  }
+}
+function unsay() {
+  if (!game.log.length) { if (!game.entries.length || game.entries[game.entries.length - 1].text !== TEXT.nothingToUnsay) note(TEXT.nothingToUnsay, 'hint'); return; }
+  setLog(game.log.slice(0, -1));
+}
+// The two large unsayings want asking twice: once arms, a second within four seconds does it.
+function armed(id, askKey, askTouch) {
+  if (game.now - game.armAt < 4000 && game.armId === id) { game.armAt = -1e9; return true; }
+  game.armAt = game.now; game.armId = id; note(game.touch ? askTouch : askKey, 'hint'); return false;
+}
+function unsayCasting() {
+  var want = game.S.recs.length, log = game.log, s;
+  if (!log.length) { unsay(); return; }
+  if (!armed('strike', TEXT.strikeAsk, TEXT.strikeAskTouch)) return;
+  if (game.S.status === 'play' && game.S.t === 0) want--;       // nothing said this casting: take back the one before
+  while (log.length) {
+    log = log.slice(0, -1); s = simulate(game.L, log);
+    if (s.status === 'play' && s.t === 0 && s.recs.length <= want) break;
+  }
+  setLog(log);
+}
+function setLog(log) {
+  var an = game.anim, same;
+  settle();
+  game.log = log; game.S = simulate(game.L, log);
+  game.entries = game.entries.filter(function (e) { return e.at <= log.length && e.text !== TEXT.strikeAsk && e.text !== TEXT.strikeAskTouch && e.text !== TEXT.again && e.text !== TEXT.againTouch; });
+  if (!game.entries.length) note(TEXT.courts[game.L.def.id].first, 'hint');
+  same = an.b.walkers.length === game.S.W.walkers.length;
+  an.a = same ? an.b : game.S.W; an.b = game.S.W; an.t0 = game.now; an.dur = same ? 80 : 0; an.undo = true;
+  an.haltAt = an.wonAt = -1e9; game.armAt = -1e9;
+  sfx('unsay');
+}
+function beginAgain() {
+  if (!game.log.length || !armed('again', TEXT.again, TEXT.againTouch)) return;
+  setLog(''); game.entries = []; note(TEXT.begun, 'hint'); note(TEXT.courts[game.L.def.id].first, 'hint');
+}
+
+// ---- the court -------------------------------------------------------------
+function view(now) {
+  var an = game.anim, p = an.dur > 0 ? clamp((now - an.t0) / an.dur, 0, 1) : 1;
+  if (p >= 1 && an.queue.length) { nextFrame(); p = an.dur > 0 ? 0 : 1; }
+  if (p >= 1) an.undo = false;
+  return { a: an.a, b: an.b, p: p, e: ease(p), undo: an.undo };
+}
+
+function drawCourt(now, v) {
+  var L = game.L, S = G.S, bx = G.bx, by = G.by, lift = G.lift, c = cx, x, y, i, k, px, py, t;
+  var W = v.b, A = v.a, same = A.walkers.length === W.walkers.length;
+  var tf = (same && A.t <= W.t) ? lerp(A.t, W.t, v.e) : W.t;
+  var sv = sunVec(Math.min(tf, HOUR)), dt = Math.min(50, now - (game.lastDraw || now)); game.lastDraw = now;
+  var halted = game.S.status === 'eclipse' && now >= game.anim.haltAt && !game.anim.queue.length;
+  var wonK = game.S.status === 'won' ? clamp((now - game.anim.wonAt) / 1200, 0, 1) : 0;
+  if (!groundCv) buildGround(L);
+
+  // where everybody is, this instant
+  var pos = [], stack = {}, key;
+  for (i = 0; i < W.walkers.length; i++) {
+    var wb = W.walkers[i], wa = same ? A.walkers[i] : wb, fx = lerp(wa.x, wb.x, v.e), fy = lerp(wa.y, wb.y, v.e), moving = v.p < 1 && (wa.x !== wb.x || wa.y !== wb.y), bump = 0;
+    if (v.p < 1 && !v.undo && wb.did === 'B') { bump = Math.sin(v.p * 3.1416) * 0.2; fx += DIRS[wb.face][0] * bump; fy += DIRS[wb.face][1] * bump; }
+    pos.push({ i: i, x: fx, y: fy, w: wb, moving: moving, body: i === W.walkers.length - 1, off: 0 });
+    key = wb.x + ',' + wb.y; if (!moving) (stack[key] = stack[key] || []).push(pos[i]);
+  }
+  for (key in stack) if (stack[key].length > 1) for (i = 0; i < stack[key].length; i++) { stack[key][i].off = (i - (stack[key].length - 1) / 2) * 0.2; stack[key][i].stacked = !stack[key][i].body; }
+  var globes = W.drums.map(function (d, j) { var a0 = same && A.drums[j] ? A.drums[j] : d; return { x: lerp(a0.x, d.x, v.e), y: lerp(a0.y, d.y, v.e), axis: a0.y !== d.y ? 'y' : 'x', j: j, moving: v.p < 1 && (a0.x !== d.x || a0.y !== d.y) }; });
+
+  // smoothed lids and bars
+  var open = openColours(L, W);
+  for (i = 0; i < L.eyes.length; i++) game.lids[i] += ((eyeShaded(L, W, i) ? 1 : 0) - game.lids[i]) * Math.min(1, dt / 90);
+  for (i = 0; i < open.length; i++) game.bars[i] += ((open[i] ? 1 : 0) - game.bars[i]) * Math.min(1, dt / 110);
+
+  // ground
+  c.fillStyle = 'rgba(74,47,63,0.2)'; c.fillRect(bx + 5, by + 7, L.w * S, L.h * S);
+  c.drawImage(groundCv, bx, by, L.w * S, L.h * S);
+  for (y = 0; y < L.h; y++) for (x = 0; x < L.w; x++) {
+    k = L.tiles[y * L.w + x]; px = bx + x * S; py = by + y * S;
+    if (k.k === 'porch') {
+      c.fillStyle = P.marbleShade; c.fillRect(px + S * 0.08, py + S * 0.06, S * 0.84, S * 0.68);
+      c.fillStyle = P.marble; c.fillRect(px + S * 0.12, py + S * 0.1, S * 0.76, S * 0.6);
+      c.save(); c.beginPath(); c.rect(px + S * 0.12, py + S * 0.1, S * 0.76, S * 0.6); c.clip();
+      c.strokeStyle = rgba(P.brass, 0.9); c.lineWidth = Math.max(1, S * 0.03);
+      c.beginPath(); c.arc(px + S / 2, py + S * 0.7, S * 0.17, 3.1416, 6.2832); c.stroke();
+      for (i = 0; i < 7; i++) { t = 3.1416 + (i + 0.5) * 3.1416 / 7; c.beginPath(); c.moveTo(px + S / 2 + Math.cos(t) * S * 0.23, py + S * 0.7 + Math.sin(t) * S * 0.23); c.lineTo(px + S / 2 + Math.cos(t) * S * 0.56, py + S * 0.7 + Math.sin(t) * S * 0.56); c.stroke(); }
+      c.restore();
+    } else if (k.k === 'seat') {
+      c.fillStyle = P.marbleShade; c.beginPath(); c.arc(px + S / 2, py + S * CY + S * 0.03, S * 0.4, 0, 6.2832); c.fill();
+      c.fillStyle = P.marble; c.beginPath(); c.arc(px + S / 2, py + S * CY, S * 0.4, 0, 6.2832); c.fill();
+      c.strokeStyle = rgba(P.brassDk, 0.7); c.lineWidth = 1;
+      for (i = 0; i < 9; i++) { t = 0.3 + i * (2.54 / 8); c.beginPath(); c.moveTo(px + S / 2 + Math.cos(t) * S * 0.16, py + S * CY + Math.sin(t) * S * 0.16); c.lineTo(px + S / 2 + Math.cos(t) * S * 0.4, py + S * CY + Math.sin(t) * S * 0.4); c.stroke(); }
+      c.fillStyle = P.brassDk; c.beginPath(); c.arc(px + S / 2, py + S * CY, S * 0.085, 0, 6.2832); c.fill();
+      if (!W.seated) { c.strokeStyle = rgba(P.brassHi, 0.55 + 0.35 * Math.sin(now / 480)); c.lineWidth = Math.max(1.5, S * 0.04); c.beginPath(); c.arc(px + S / 2, py + S * CY, S * 0.13, 0, 6.2832); c.stroke(); }
+    } else if (k.k === 'eye') {
+      drawEye(c, px + S / 2, py + S * CY, S, k.c, game.lids[eyeIndex(L, x, y)], now);
+    } else if (k.k === 'gate') {
+      c.fillStyle = rgba(P.inlay[k.c], 0.9); motif(c, k.c, px + S / 2, py + S * CY, S * 0.11); c.fill();
+      c.strokeStyle = P.brass; c.lineWidth = 1; motif(c, k.c, px + S / 2, py + S * CY, S * 0.16); c.stroke();
+    }
+  }
+
+  // shadows, all on one sheet so that two shadows are no darker than one
+  var s = shadowCx; s.setTransform(1, 0, 0, 1, 0, 0); s.clearRect(0, 0, shadowCv.width, shadowCv.height); s.scale(G.dpr, G.dpr); s.fillStyle = P.shadow;
+  for (y = 0; y < L.h; y++) for (x = 0; x < L.w; x++) {
+    k = L.tiles[y * L.w + x];
+    if (k.k === 'wall' || k.k === 'marble') shadowBox(s, x * S, y * S, x * S + S, y * S + S, sv[0] * WALL_H * S, sv[1] * WALL_H * S);
+    else if (k.k === 'gnomon') shadowBox(s, x * S, y * S, x * S + S, y * S + S, sv[0] * GNOMON_H * S, sv[1] * GNOMON_H * S);
+    else if (k.k === 'gate' && game.bars[k.c] < 0.9) shadowBox(s, x * S + S * 0.15, y * S + S * 0.4, x * S + S * 0.85, y * S + S * 0.6, sv[0] * 0.3 * S * (1 - game.bars[k.c]), sv[1] * 0.3 * S * (1 - game.bars[k.c]));
+  }
+  for (i = 0; i < globes.length; i++) { s.beginPath(); s.ellipse((globes[i].x + 0.5) * S + sv[0] * GLOBE_H * S * 0.6, (globes[i].y + 0.56) * S + sv[1] * GLOBE_H * S * 0.6, S * 0.36, S * 0.2, 0, 0, 6.2832); s.fill(); shadowBox(s, (globes[i].x + 0.22) * S, (globes[i].y + 0.46) * S, (globes[i].x + 0.78) * S, (globes[i].y + 0.66) * S, sv[0] * GLOBE_H * S * 0.6, sv[1] * GLOBE_H * S * 0.6); }
+  for (i = 0; i < pos.length; i++) if (pos[i].body) {      // only the living throw a shadow; a shade is one
+    s.save(); s.translate((pos[i].x + 0.5 + pos[i].off) * S, (pos[i].y + FOOT) * S); s.transform(1, 0, -sv[0] * FIG_H * 1.9, -sv[1] * FIG_H * 1.2, 0, 0);
+    tracePath(s, figureShapes(poseOf(pos[i], v, now, S), PAL_BODY), true); s.fill(); s.restore();
+  }
+  for (i = 0; i < 2; i++) {       // kites over the court
+    t = (now / (17000 + i * 6100) + i * 0.37) % 1; var kx = lerp(-1.5, L.w + 1.5, t) * S, ky = (L.h * (0.25 + i * 0.4) + Math.sin(t * 9 + i) * 1.2) * S, ks = S * 0.2;
+    s.beginPath(); s.moveTo(kx - ks * 1.6, ky - ks * 0.3); s.quadraticCurveTo(kx - ks * 0.6, ky - ks * 0.9, kx, ky); s.quadraticCurveTo(kx + ks * 0.6, ky - ks * 0.9, kx + ks * 1.6, ky - ks * 0.3); s.quadraticCurveTo(kx + ks * 0.5, ky - ks * 0.2, kx, ky + ks * 0.5); s.quadraticCurveTo(kx - ks * 0.5, ky - ks * 0.2, kx - ks * 1.6, ky - ks * 0.3); s.fill();
+  }
+  c.save(); c.globalAlpha = 0.44; c.drawImage(shadowCv, bx, by, L.w * S, L.h * S); c.restore();
+
+  // the style lying on a flag is drawn above the shadows so that it glints
+  if (W.style) drawStyleLying(c, bx + (W.style.x + 0.5) * S, by + (W.style.y + 0.5) * S, S, 0.5 + 0.5 * Math.sin(now / 420));
+
+  // everything that stands, north to south
+  for (y = 0; y < L.h; y++) {
+    for (x = 0; x < L.w; x++) {
+      k = L.tiles[y * L.w + x]; px = bx + x * S; py = by + y * S;
+      if (k.k === 'wall' || k.k === 'marble') drawWall(c, L, x, y, px, py, S, lift, k.k === 'marble', sv);
+      else if (k.k === 'gnomon') drawGnomon(c, px, py, S, now);
+      else if (k.k === 'gate') drawGate(c, L, x, y, px, py, S, k.c, game.bars[k.c]);
+      else if (k.k === 'seat' && W.seated) drawSeated(c, px + S / 2, py + S * CY, S, sv, wonK, now);
+    }
+    for (i = 0; i < globes.length; i++) if (Math.round(globes[i].y + 0.49) === y) drawGlobe(c, bx + (globes[i].x + 0.5) * S, by + (globes[i].y + 0.79) * S, S, game.rolls[globes[i].j] - (globes[i].moving ? (1 - v.e) * 0.5 : 0), globes[i].axis);
+    for (i = 0; i < pos.length; i++) if (Math.round(pos[i].y + 0.49) === y) drawWalker(c, pos[i], v, now, S, 1 - (pos[i].body ? 0 : wonK), false);
+  }
+
+  // dust in the light
+  for (i = 0; i < 16; i++) {
+    t = now / 9000 + i * 0.61; var dx = bx + ((hash2(i, 1) + t * 0.13 * (0.5 + hash2(i, 3))) % 1) * L.w * S, dy = by + ((hash2(i, 2) + Math.sin(t + i) * 0.03 + 1) % 1) * L.h * S;
+    c.fillStyle = 'rgba(255,250,228,' + (0.25 + 0.25 * Math.sin(t * 5 + i)).toFixed(3) + ')'; c.fillRect(dx, dy, 1.6, 1.6);
+  }
+  // the hour is taken again: a wash of plain light
+  if (now - game.anim.flash < 520) { c.fillStyle = 'rgba(255,246,214,' + (0.62 * (1 - (now - game.anim.flash) / 520)).toFixed(3) + ')'; c.fillRect(bx, by - lift, L.w * S, L.h * S + lift); }
+
+  // eclipse: the court goes dark, and the one shade and the one flag are picked out
+  if (halted) {
+    var hk = clamp((now - game.anim.haltAt) / 700, 0, 1), h = game.S.halt, f = h.found;
+    c.fillStyle = rgba(P.eclipse, 0.66 * hk); c.fillRect(bx, by - lift, L.w * S, L.h * S + lift);
+    c.save(); c.globalAlpha = hk;
+    c.strokeStyle = P.corona; c.lineWidth = Math.max(2, S * 0.06); c.setLineDash([S * 0.16, S * 0.1]); c.lineDashOffset = -now / 60;
+    c.strokeRect(bx + f.x * S + 2, by + f.y * S + 2, S - 4, S - 4); c.setLineDash([]);
+    var po = pos[h.shade], ox = bx + (po.x + 0.5 + po.off) * S, oy = by + (po.y + 0.3) * S, pulse = 1 + 0.06 * Math.sin(now / 240);
+    for (i = 0; i < 28; i++) { t = i * 6.2832 / 28 + now / 5000; var r0 = S * 0.62 * pulse, r1 = S * (0.78 + 0.22 * hash2(i, 7)) * pulse; c.strokeStyle = rgba(P.corona, 0.8); c.lineWidth = 1.5; c.beginPath(); c.moveTo(ox + Math.cos(t) * r0, oy + Math.sin(t) * r0); c.lineTo(ox + Math.cos(t) * r1, oy + Math.sin(t) * r1); c.stroke(); }
+    c.restore();
+    drawWalker(c, po, v, now, S, 1, true);
+  }
+  // court won: light opens from the Seat
+  if (wonK > 0) {
+    var sx = bx + (L.seat.x + 0.5) * S, sy = by + (L.seat.y + CY) * S;
+    c.save(); c.globalAlpha = 0.5 * (1 - wonK * 0.6); c.strokeStyle = P.sun; c.lineWidth = Math.max(1.5, S * 0.04);
+    for (i = 0; i < 24; i++) { t = i * 6.2832 / 24; c.beginPath(); c.moveTo(sx + Math.cos(t) * S * (0.5 + wonK * 0.8), sy + Math.sin(t) * S * (0.5 + wonK * 0.8)); c.lineTo(sx + Math.cos(t) * S * (0.6 + wonK * 2.6), sy + Math.sin(t) * S * (0.6 + wonK * 2.6)); c.stroke(); }
+    c.restore();
+  }
+  return tf;
+}
+function eyeIndex(L, x, y) { for (var i = 0; i < L.eyes.length; i++) if (L.eyes[i].x === x && L.eyes[i].y === y) return i; return 0; }
+
+function drawEye(c, x, y, S, col, lid, now) {
+  var r = S * 0.3, i, t;
+  if (lid < 0.5) { c.strokeStyle = rgba(P.brass, 0.75 * (1 - lid * 2)); c.lineWidth = Math.max(1, S * 0.03); for (i = 0; i < 12; i++) { t = i * 0.5236 + now / 4200; c.beginPath(); c.moveTo(x + Math.cos(t) * r * 1.12, y + Math.sin(t) * r * 1.12); c.lineTo(x + Math.cos(t) * r * 1.36, y + Math.sin(t) * r * 1.36); c.stroke(); } }
+  c.fillStyle = P.brassDk; c.beginPath(); c.arc(x, y + S * 0.02, r, 0, 6.2832); c.fill();
+  c.fillStyle = P.brass; c.beginPath(); c.arc(x, y, r, 0, 6.2832); c.fill();
+  c.fillStyle = P.inlay[col]; c.beginPath(); c.arc(x, y, r * 0.74, 0, 6.2832); c.fill();
+  c.fillStyle = 'rgba(255,246,220,0.92)'; motif(c, col, x, y, r * 0.36); c.fill();
+  c.fillStyle = 'rgba(255,255,255,' + (0.7 * (1 - lid)).toFixed(3) + ')'; c.beginPath(); c.arc(x - r * 0.3, y - r * 0.34, r * 0.13, 0, 6.2832); c.fill();
+  if (lid > 0.02) {       // the lid comes down from the north
+    c.save(); c.beginPath(); c.rect(x - r, y - r, r * 2, r * 2 * lid); c.clip();
+    c.fillStyle = P.brassHi; c.beginPath(); c.arc(x, y, r * 0.8, 0, 6.2832); c.fill();
+    c.strokeStyle = P.brassDk; c.lineWidth = 1; for (i = 1; i < 4; i++) { c.beginPath(); c.moveTo(x - r, y - r + r * 2 * lid * i / 4); c.lineTo(x + r, y - r + r * 2 * lid * i / 4); c.stroke(); }
+    c.restore();
+  }
+  c.strokeStyle = P.brassDk; c.lineWidth = 1; c.beginPath(); c.arc(x, y, r, 0, 6.2832); c.stroke();
+}
+
+function isMasonry(L, x, y) { var k = tileAt(L, x, y); return !k || k.k === 'wall' || k.k === 'marble'; }
+function drawWall(c, L, x, y, px, py, S, lift, marble, sv) {
+  var t = hash2(x * 5 + 1, y * 3 + 2), top = marble ? P.marble : mix(P.wallTop, P.wallTopHi, t * 0.6), g, i, gn;
+  if (!isMasonry(L, x, y + 1) || y === L.h - 1) {
+    g = c.createLinearGradient(0, py + S - lift, 0, py + S); g.addColorStop(0, marble ? P.marbleFace : P.wallFace); g.addColorStop(1, marble ? '#A2937F' : P.wallFaceDark);
+    c.fillStyle = g; c.fillRect(px, py + S - lift, S, lift);
+  }
+  c.fillStyle = top; c.fillRect(px, py - lift, S, S);
+  c.fillStyle = 'rgba(255,240,215,0.16)'; c.fillRect(px + S * 0.1, py - lift + S * (0.1 + t * 0.3), S * 0.8, S * 0.22);
+  c.strokeStyle = marble ? 'rgba(150,135,115,0.5)' : 'rgba(130,60,45,0.35)'; c.lineWidth = 1;
+  if (!isMasonry(L, x - 1, y)) { c.beginPath(); c.moveTo(px + 0.5, py - lift); c.lineTo(px + 0.5, py - lift + S); c.stroke(); }
+  if (!isMasonry(L, x + 1, y)) { c.beginPath(); c.moveTo(px + S - 0.5, py - lift); c.lineTo(px + S - 0.5, py - lift + S); c.stroke(); }
+  if (!isMasonry(L, x, y - 1)) { c.strokeStyle = 'rgba(255,236,210,0.8)'; c.beginPath(); c.moveTo(px, py - lift + 0.5); c.lineTo(px + S, py - lift + 0.5); c.stroke(); }
+  if (marble) {         // a fragment of an old scale, cut in the marble
+    c.strokeStyle = rgba(P.brassDk, 0.55); c.beginPath(); c.arc(px + S * 0.5, py - lift + S * 1.1, S * 0.8, 3.75, 5.67); c.stroke();
+    for (i = 0; i < 7; i++) { var a = 3.8 + i * 0.3; c.beginPath(); c.moveTo(px + S * 0.5 + Math.cos(a) * S * 0.8, py - lift + S * 1.1 + Math.sin(a) * S * 0.8); c.lineTo(px + S * 0.5 + Math.cos(a) * S * 0.68, py - lift + S * 1.1 + Math.sin(a) * S * 0.68); c.stroke(); }
+  }
+  // the kerb is the court's rule: letters along the north, numbers down the west
+  if (S >= 20 && (y === 0 || x === 0) && !(x === 0 && y === 0)) {
+    c.fillStyle = 'rgba(110,45,32,0.62)'; c.font = fnt(S * 0.36, 'italic'); c.textAlign = 'center'; c.textBaseline = 'middle';
+    c.fillText(y === 0 ? 'ABCDEFGHIJKLMN'.charAt(x) : String(y + 1), px + S / 2, py - lift + S / 2);
+  }
+  // a tall gnomon's shadow climbs the parapet too
+  for (i = 0; i < L.gnomons.length; i++) {
+    gn = L.gnomons[i];
+    if (Math.abs(gn.x - x) < 6 && y >= gn.y && y - gn.y < 4) {
+      c.save(); c.beginPath(); c.rect(px, py - lift, S, S); c.clip(); c.fillStyle = rgba(P.shadow, 0.4);
+      shadowBox(c, G.bx + gn.x * S, G.by + gn.y * S - lift, G.bx + gn.x * S + S, G.by + gn.y * S + S - lift, sv[0] * GNOMON_H * S, sv[1] * GNOMON_H * S); c.restore();
+    }
+  }
+}
+function drawGnomon(c, px, py, S, now) {
+  var inn = S * 0.13, w = S - inn * 2, bot = py + S - inn * 0.5, H = S * 1.5, top = bot - H, d = w * 0.5, g, i;
+  g = c.createLinearGradient(0, top, 0, bot); g.addColorStop(0, P.wallFace); g.addColorStop(1, P.wallFaceDark);
+  c.fillStyle = g; c.fillRect(px + inn, top, w, H);
+  c.strokeStyle = 'rgba(255,225,190,0.28)'; c.lineWidth = 1;
+  for (i = 1; i < 10; i++) { c.beginPath(); c.moveTo(px + inn + w * 0.12, top + H * i / 10); c.lineTo(px + inn + w * (i % 5 === 0 ? 0.6 : 0.36), top + H * i / 10); c.stroke(); }
+  c.fillStyle = P.wallFaceDark; c.fillRect(px + inn - S * 0.04, top - S * 0.02, w + S * 0.08, S * 0.09);
+  c.fillStyle = P.marble; c.fillRect(px + inn - S * 0.04, top - d, w + S * 0.08, d);
+  c.fillStyle = P.ochre; c.fillRect(px + inn + w * 0.18, top - d * 0.82, w * 0.64, d * 0.64);
+  c.fillStyle = P.marble; c.fillRect(px + inn + w * 0.28, top - d * 0.68, w * 0.44, d * 0.36);
+  // brass ball and a pennant in what wind there is
+  var bxp = px + S / 2, byp = top - d * 0.5;
+  c.strokeStyle = P.brassDk; c.lineWidth = Math.max(1, S * 0.03); c.beginPath(); c.moveTo(bxp, byp); c.lineTo(bxp, byp - S * 0.5); c.stroke();
+  c.fillStyle = P.inlay[0]; c.beginPath(); c.moveTo(bxp, byp - S * 0.5);
+  for (i = 1; i <= 6; i++) c.lineTo(bxp + S * 0.07 * i, byp - S * 0.5 + S * 0.022 * i + Math.sin(now / 260 + i * 0.9) * S * 0.02 * i / 3);
+  for (i = 6; i >= 1; i--) c.lineTo(bxp + S * 0.07 * i, byp - S * 0.36 - S * 0.012 * i + Math.sin(now / 260 + i * 0.9) * S * 0.02 * i / 3);
+  c.lineTo(bxp, byp - S * 0.34); c.closePath(); c.fill();
+  c.fillStyle = P.brassHi; c.beginPath(); c.arc(bxp, byp - S * 0.53, S * 0.055, 0, 6.2832); c.fill();
+}
+function drawGate(c, L, x, y, px, py, S, col, openAmt) {
+  var ns = isMasonry(L, x - 1, y) && isMasonry(L, x + 1, y), up = 1 - openAmt, H = S * 0.74 * up + S * 0.05, i, rx, ry, w = Math.max(2, S * 0.07);
+  for (i = 0; i < 4; i++) {
+    rx = px + S * (0.2 + i * 0.2); ry = py + S * (ns ? 0.6 : 0.52 + (i % 2) * 0.12);
+    c.fillStyle = 'rgba(40,25,30,0.55)'; c.beginPath(); c.ellipse(rx, ry, w * 0.9, w * 0.45, 0, 0, 6.2832); c.fill();
+    c.fillStyle = P.brassDk; c.fillRect(rx - w / 2, ry - H, w, H);
+    c.fillStyle = P.brassHi; c.fillRect(rx - w / 2, ry - H, w * 0.4, H);
+    c.fillStyle = up > 0.5 ? P.inlay[col] : P.brass; c.beginPath(); c.arc(rx, ry - H, w * 0.8, 0, 6.2832); c.fill();
+  }
+  if (up > 0.5) { c.fillStyle = P.brassDk; c.fillRect(px + S * 0.16, py + S * 0.6 - H * 0.55, S * 0.68, w * 0.7); c.fillRect(px + S * 0.16, py + S * 0.6 - H * 0.9, S * 0.68, w * 0.7); }
+}
+function drawSeated(c, x, y, S, sv, k, now) {
+  c.strokeStyle = rgba(P.shadow, 0.6); c.lineWidth = Math.max(2, S * 0.06); c.beginPath(); c.moveTo(x, y); c.lineTo(x + sv[0] * S * 0.5, y + sv[1] * S * 0.5); c.stroke();
+  c.fillStyle = P.brass; c.beginPath(); c.moveTo(x - S * 0.16, y + S * 0.04); c.lineTo(x + S * 0.16, y + S * 0.04); c.lineTo(x + S * 0.16, y - S * 0.62); c.closePath(); c.fill();
+  c.strokeStyle = P.brassHi; c.lineWidth = Math.max(1, S * 0.04); c.beginPath(); c.moveTo(x - S * 0.16, y + S * 0.04); c.lineTo(x + S * 0.16, y - S * 0.62); c.stroke();
+}
+function poseOf(po, v, now, S) {
+  return { u: S, face: po.w.face, walking: po.moving, walk: v.p, bob: po.moving ? -Math.abs(Math.sin(v.p * 3.1416)) * S * 0.05 : Math.sin(now / 620 + po.i * 1.7) * S * 0.012, carry: po.w.carry, lean: (v.p < 1 && (po.w.did === 'P' || po.w.did === 'B')) ? 0.05 : 0, hers: !po.body && po.i < game.L.given.length };
+}
+function drawWalker(c, po, v, now, S, alpha, corona) {
+  var x = G.bx + (po.x + 0.5 + po.off) * S, y = G.by + (po.y + FOOT) * S, pose = poseOf(po, v, now, S), shapes = figureShapes(pose, PAL_BODY), hers = pose.hers, i;
+  if (alpha <= 0.01) return;
+  c.save(); c.translate(x, y);
+  if (po.body) { c.globalAlpha = alpha; paintShapes(c, shapes); }
+  else {
+    // a shade: the same figure, filled in one piece, with nothing under it
+    var waver = Math.sin(now / 380 + po.i * 2.1) * S * 0.006;
+    c.globalAlpha = alpha * (corona ? 1 : hers ? 0.6 : 0.8);
+    c.fillStyle = corona ? '#120B10' : P.shade; c.translate(waver, 0); tracePath(c, shapes, true); c.fill();
+    if (corona) { c.strokeStyle = P.corona; c.lineWidth = 1.5; c.stroke(); }
+    else if (hers) { c.strokeStyle = rgba(P.shade, 0.9); c.lineWidth = 1; c.setLineDash([S * 0.06, S * 0.05]); c.stroke(); c.setLineDash([]); }
+    c.globalAlpha = alpha;
+    if (pose.carry) for (i = 0; i < shapes.length; i++) if (shapes[i].hi) paintShapes(c, [shapes[i]]);
+    c.fillStyle = rgba(P.shade, 0.5); c.beginPath(); c.ellipse(0, 0, S * 0.2, S * 0.06, 0, 0, 6.2832); c.fill();
+    // its number, chalked at its feet
+    var tag = po.stacked ? '' : shadeTag(game.L, po.i), ty0 = -S * 0.6; c.globalAlpha = alpha;
+    if (tag === '*') { c.strokeStyle = P.marble; c.lineWidth = Math.max(1.2, S * 0.035); for (i = 0; i < 3; i++) { var a = i * 1.0472; c.beginPath(); c.moveTo(S * 0.32 + Math.cos(a) * S * 0.09, ty0 + Math.sin(a) * S * 0.09); c.lineTo(S * 0.32 - Math.cos(a) * S * 0.09, ty0 - Math.sin(a) * S * 0.09); c.stroke(); } }
+    else if (tag && S >= 18) { c.font = fnt(S * 0.3, 'bold'); c.textAlign = 'center'; c.textBaseline = 'middle'; c.lineWidth = Math.max(2, S * 0.07); c.strokeStyle = rgba(P.shade, 0.85); c.strokeText(tag, S * 0.32, ty0); c.fillStyle = P.marble; c.fillText(tag, S * 0.32, ty0); }
+  }
+  c.restore();
+}
+
+// ---- the hour scale: a marble rule under the court -------------------------
+function drawScale(now, tf) {
+  var c = cx, s = G.scale, S = G.S, L = game.L, St = game.S, i, m, x, y;
+  var gut = S * 0.95, cw = (s.w - gut - S * 0.2) / HOUR, x0 = s.x + gut, h0 = S * 0.5, rh = (s.h - h0 - S * 0.12) / 5;
+  c.fillStyle = 'rgba(74,47,63,0.2)'; c.fillRect(s.x + 4, s.y + 5, s.w, s.h);
+  c.fillStyle = P.marble; c.fillRect(s.x, s.y, s.w, s.h);
+  c.fillStyle = P.marbleShade; c.fillRect(s.x, s.y + s.h - 3, s.w, 3);
+  c.strokeStyle = 'rgba(180,165,140,0.5)'; c.lineWidth = 1;
+  c.strokeStyle = 'rgba(180,165,140,0.28)';
+  for (i = 0; i < 5; i++) { var vx = s.x + hash2(i, 31) * s.w * 0.9; c.beginPath(); c.moveTo(vx, s.y); c.quadraticCurveTo(vx + s.h * (0.6 + hash2(i, 32)), s.y + s.h * 0.45, vx + s.h * (0.3 + hash2(i, 33) * 1.4), s.y + s.h); c.stroke(); }
+  // graduations
+  c.textAlign = 'center'; c.textBaseline = 'middle';
+  for (m = 0; m <= HOUR; m++) {
+    x = x0 + m * cw; c.strokeStyle = rgba(P.brassDk, m % 5 === 0 ? 0.9 : 0.5); c.lineWidth = 1;
+    c.beginPath(); c.moveTo(Math.round(x) + 0.5, s.y + h0 * (m % 5 === 0 ? 0.42 : 0.62)); c.lineTo(Math.round(x) + 0.5, s.y + h0); c.stroke();
+    if (m % 5 === 0 && m > 0 && S >= 20) { c.fillStyle = rgba(P.ink, 0.75); c.font = fnt(S * 0.26, 'italic'); c.fillText(String(m), x - cw * 0.5, s.y + h0 * 0.26); }
+  }
+  // the almanac: marks at which a gnomon's shadow lies on a walled eye
+  for (i = 0; i < L.eyes.length; i++) for (m = 0; m < HOUR; m++) if (L.sunShade[i][m]) { c.fillStyle = P.inlay[L.eyes[i].c]; c.fillRect(x0 + m * cw, s.y + h0 * 0.72, cw + 0.5, h0 * 0.2); }
+  // rows: shades eldest first, then you
+  var rows = St.recs.length + 1, row, rec, live, col, hk = game.S.halt;
+  for (row = 0; row < 5; row++) {
+    y = s.y + h0 + row * rh;
+    c.strokeStyle = 'rgba(160,140,110,0.35)'; c.beginPath(); c.moveTo(x0, Math.round(y) + 0.5); c.lineTo(x0 + HOUR * cw, Math.round(y) + 0.5); c.stroke();
+    if (row >= rows) continue;
+    live = row === rows - 1; rec = live ? St.cur : St.recs[row]; col = live ? P.rubric : P.shade;
+    c.fillStyle = col; c.font = fnt(Math.min(rh * 0.9, S * 0.34), live ? 'italic' : 'bold');
+    if (live) { c.beginPath(); c.arc(s.x + gut * 0.5, y + rh / 2, rh * 0.26, 0, 6.2832); c.fill(); for (i = 0; i < 8; i++) { c.strokeStyle = col; c.lineWidth = 1; c.beginPath(); c.moveTo(s.x + gut * 0.5 + Math.cos(i * 0.785) * rh * 0.34, y + rh / 2 + Math.sin(i * 0.785) * rh * 0.34); c.lineTo(s.x + gut * 0.5 + Math.cos(i * 0.785) * rh * 0.46, y + rh / 2 + Math.sin(i * 0.785) * rh * 0.46); c.stroke(); } }
+    else if (shadeTag(L, row) === '*') { c.strokeStyle = col; c.lineWidth = 1.4; for (i = 0; i < 3; i++) { c.beginPath(); c.moveTo(s.x + gut * 0.5 + Math.cos(i * 1.047) * rh * 0.32, y + rh / 2 + Math.sin(i * 1.047) * rh * 0.32); c.lineTo(s.x + gut * 0.5 - Math.cos(i * 1.047) * rh * 0.32, y + rh / 2 - Math.sin(i * 1.047) * rh * 0.32); c.stroke(); } }
+    else c.fillText(shadeTag(L, row), s.x + gut * 0.5, y + rh / 2 + 1);
+    for (m = 0; m < rec.inputs.length; m++) chalkGlyph(c, rec.inputs[m], rec.outs[m], x0 + (m + 0.5) * cw, y + rh / 2, Math.min(cw, rh) * 0.82, live ? col : rgba(P.shade, m < tf ? 0.9 : 0.55));
+    if (hk && hk.shade === row && game.S.status === 'eclipse') { c.strokeStyle = P.rubric; c.lineWidth = 1.6; c.beginPath(); c.arc(x0 + (hk.mark + 0.5) * cw, y + rh / 2, Math.min(cw, rh) * 0.62, 0, 6.2832); c.stroke(); }
+  }
+  // the hour so far lies in shadow; its edge is the mark you are at
+  var ex = x0 + clamp(tf, 0, HOUR) * cw, sl = S * 0.22;
+  c.fillStyle = rgba(P.shadow, 0.16); c.beginPath(); c.moveTo(x0, s.y + h0); c.lineTo(ex + sl * 0.5, s.y + h0); c.lineTo(ex - sl * 0.5, s.y + s.h - 3); c.lineTo(x0, s.y + s.h - 3); c.closePath(); c.fill();
+  c.strokeStyle = rgba(P.shadow, 0.75); c.lineWidth = 1.5; c.beginPath(); c.moveTo(ex + sl * 0.5, s.y + h0); c.lineTo(ex - sl * 0.5, s.y + s.h - 3); c.stroke();
+  c.fillStyle = P.brass; c.beginPath(); c.moveTo(ex + sl * 0.5, s.y + h0); c.lineTo(ex + sl * 0.5 - S * 0.12, s.y + h0 * 0.55); c.lineTo(ex + sl * 0.5 + S * 0.12, s.y + h0 * 0.55); c.closePath(); c.fill();
+}
+
+// ---- the daybook page -------------------------------------------------------
+function drawPage(now, tf) {
+  var c = cx, p = G.page, L = game.L, St = game.S, i, y, txt;
+  var base = clamp(Math.min(p.w / 21, p.h / 26), 11.5, 17.5);
+  var pad = Math.max(12, p.w * 0.06), x = p.x + pad + Math.max(4, p.w * 0.02), w = p.w - pad * 2 - Math.max(4, p.w * 0.02);
+  paperSheet(c, p.x, p.y, p.w, p.h);
+  game.hits = [];
+  c.textBaseline = 'alphabetic'; c.textAlign = 'left';
+  // head
+  y = p.y + pad * 0.6 + base * 1.7;
+  c.fillStyle = P.rubric; c.font = fnt(base * 1.9); c.fillText(L.def.numeral + '.', x, y);
+  var nw = c.measureText(L.def.numeral + '. ').width;
+  c.fillStyle = P.ink; c.font = fnt(base * 1.28, 'italic'); c.fillText(L.def.name, x + nw, y);
+  y += base * 1.35;
+  c.fillStyle = P.inkSoft; c.font = fnt(base * 0.92, 'italic');
+  var mark = Math.min(HOUR, Math.round(tf) + (St.status === 'play' ? 1 : 0));
+  c.fillText(cap(ORD[St.casting - 1]) + ' casting, mark ' + Math.max(1, Math.min(HOUR, St.status === 'play' ? mark : St.t + (St.status === 'eclipse' ? 1 : 0))) + ' of ' + HOUR, x, y);
+  // four sockets: the shades the court is bearing
+  for (i = 0; i < MAX_SHADES; i++) {
+    var sxp = p.x + p.w - pad - (MAX_SHADES - i) * base * 1.05, syp = y - base * 0.3;
+    c.strokeStyle = P.brassDk; c.lineWidth = 1.2; c.beginPath(); c.arc(sxp, syp, base * 0.36, 0, 6.2832); c.stroke();
+    if (i < St.recs.length) { c.fillStyle = P.shade; c.beginPath(); c.arc(sxp, syp, base * 0.27, 0, 6.2832); c.fill(); }
+  }
+  y += base * 0.55; c.strokeStyle = rgba(P.ink, 0.25); c.lineWidth = 1; c.beginPath(); c.moveTo(x, y); c.lineTo(p.x + p.w - pad, y); c.stroke();
+  var topY = y + base * 0.5;
+  c.strokeStyle = 'rgba(120,90,60,0.09)'; for (i = 1; topY + i * base * 1.36 < p.y + p.h - pad * 0.5; i++) { c.beginPath(); c.moveTo(x, Math.round(topY + i * base * 1.36) + 0.5); c.lineTo(p.x + p.w - pad, Math.round(topY + i * base * 1.36) + 0.5); c.stroke(); }
+
+  // foot: plaques, then the note for the apprentice
+  var ph = clamp(base * 2.1, game.touch ? 34 : 26, 40), gap = Math.max(6, base * 0.4), halted = St.status === 'eclipse' || St.status === 'spent';
+  var live = St.status === 'play', said = game.log.length > 0, PQ = TEXT.plaque;
+  var armedS = now - game.armAt < 4000 && game.armId === 'strike', armedA = now - game.armAt < 4000 && game.armId === 'again';
+  var acts = [['stand', PQ.stand, live], ['take', PQ.take, live], ['sit', PQ.sit, live],
+              ['unsay', PQ.unsay, said], ['strike', armedS ? PQ.sure : PQ.strike, said], ['again', armedA ? PQ.sure : PQ.again, said],
+              ['shut', PQ.shut, true], ['bells', game.bells ? PQ.bellsOn : PQ.bellsOff, true]];
+  if (halted) acts = acts.slice(3, 7);       // nothing to step with while the sun is in: only the unsayings stay on the page
+  var footY = p.y + p.h - pad * 0.6, legendH = 0, lines, lf = base * 0.74, showPad = game.touch && !halted;
+  c.font = fnt(lf, 'italic'); txt = game.touch ? TEXT.legendTouch : TEXT.legend;
+  lines = wrapLines(c, txt, w); legendH = lines.length * lf * 1.32 + lf * 0.4;
+  var padSize = showPad ? clamp(ph * 1.3, 42, 56) : 0, padW, padH, tall = p.h >= 560, beside, colsN, rowsN, plaquesW, plaquesH, blockH, pass, room;
+  for (pass = 0; pass < 2; pass++) {
+    padW = padSize * 3 + gap * 2; padH = padSize * 2 + gap;
+    beside = showPad && !tall && w > 340;                           // the arrows sit beside the plaques on a wide, short page
+    colsN = tall ? 2 : beside ? 3 : 4; rowsN = Math.ceil(acts.length / colsN);
+    plaquesW = beside ? w - padW - gap * 2 : w; plaquesH = rowsN * ph + (rowsN - 1) * gap;
+    blockH = beside ? Math.max(plaquesH, padH) : plaquesH + (showPad ? padH + gap * 2 : 0);
+    room = footY - topY - base * 3;
+    if (blockH <= room) break;
+    legendH = 0; ph *= Math.max(0.62, room / blockH); padSize *= Math.max(0.62, room / blockH); gap = 4;      // a very small page: smaller brass
+  }
+  if (topY + blockH + legendH + base * 3 > footY) { legendH = 0; }       // no room: the brass speaks for itself
+  if (legendH) { c.fillStyle = P.inkSoft; c.font = fnt(lf, 'italic'); for (i = 0; i < lines.length; i++) c.fillText(lines[i], x, footY - legendH + lf * 1.1 + i * lf * 1.32); }
+  var by0 = footY - legendH - blockH, pw = (plaquesW - gap * (colsN - 1)) / colsN, hotId = (now - game.hotAt < 160) ? game.hot : null;
+  for (i = 0; i < acts.length; i++) game.hits.push(plaque(c, acts[i][0], acts[i][1], x + (i % colsN) * (pw + gap), by0 + Math.floor(i / colsN) * (ph + gap), pw, ph, acts[i][2], hotId === acts[i][0]));
+  if (showPad) {
+    var dx0 = beside ? x + w - padW : x + (w - padW) / 2, dy0 = beside ? by0 + (blockH - padH) / 2 : by0 + plaquesH + gap * 2;
+    game.hits.push(arrowPlaque(c, 'U', 'U', dx0 + padSize + gap, dy0, padSize, padSize, hotId === 'U'));
+    game.hits.push(arrowPlaque(c, 'L', 'L', dx0, dy0 + padSize + gap, padSize, padSize, hotId === 'L'));
+    game.hits.push(arrowPlaque(c, 'D', 'D', dx0 + padSize + gap, dy0 + padSize + gap, padSize, padSize, hotId === 'D'));
+    game.hits.push(arrowPlaque(c, 'R', 'R', dx0 + (padSize + gap) * 2, dy0 + padSize + gap, padSize, padSize, hotId === 'R'));
+  }
+  var botY = by0 - base * 0.7;
+
+  // body: either the rubric (eclipse, spent) or the running entries
+  c.save(); c.beginPath(); c.rect(p.x, topY, p.w, Math.max(0, botY - topY)); c.clip();
+  if (halted && now >= game.anim.haltAt && !game.anim.queue.length) {
+    var E = St.status === 'eclipse' ? eclipseEntry(L, St) : spentEntry(L, St), fs = base * 1.02, tries = 0, yy;
+    while (tries++ < 16) {     // shrink until the whole entry is on the page
+      yy = topY + fs * 2.1; c.font = fnt(fs * 0.98, 'italic'); yy += fs * 1.5;
+      c.font = fnt(fs); for (i = 0; i < E.lines.length; i++) yy = para(c, E.lines[i], x, yy, w, fs * 1.36, true) + fs * 0.25;
+      c.font = fnt(fs * 0.95, 'italic'); yy = para(c, E.close, x, yy + fs * 0.3, w, fs * 1.32, true); yy = para(c, game.touch ? E.choicesTouch : E.choices, x, yy + fs * 0.5, w, fs * 1.3, true);
+      if (yy <= botY || fs < 8.6) break; fs *= 0.95;
+    }
+    yy = topY + fs * 1.6; c.fillStyle = P.rubric; c.font = fnt(fs * 1.6, 'italic'); c.fillText(E.head, x, yy);
+    yy += fs * 1.45; c.fillStyle = P.ink; c.font = fnt(fs * 0.98, 'italic'); c.fillText(E.where, x, yy); yy += fs * 1.5;
+    c.font = fnt(fs); for (i = 0; i < E.lines.length; i++) { c.fillStyle = i === 0 ? P.ink : P.rubric; yy = para(c, E.lines[i], x, yy, w, fs * 1.36) + fs * 0.25; }
+    c.fillStyle = P.ink; c.font = fnt(fs * 0.95, 'italic'); yy = para(c, E.close, x, yy + fs * 0.3, w, fs * 1.32);
+    c.fillStyle = P.inkSoft; para(c, game.touch ? E.choicesTouch : E.choices, x, yy + fs * 0.5, w, fs * 1.3);
+  } else {
+    var ey = botY, n = 0, ent, hgt, lh = base * 1.36;
+    for (i = game.entries.length - 1; i >= 0 && ey > topY; i--, n++) {
+      ent = game.entries[i]; c.font = fnt(base, ent.kind === 'hint' ? 'italic' : '');
+      hgt = para(c, ent.text, x, 0, w, lh, true); if (n > 0 && ey - hgt < topY) break; ey -= hgt;      // no half-lines at the head of the page
+      c.fillStyle = n === 0 ? P.ink : rgba(P.ink, Math.max(0.22, 0.62 - n * 0.12));
+      para(c, ent.text, x, ey + base * 0.95, w, lh); ey -= base * 0.5;
+    }
+  }
+  c.restore();
+}
+
+// ---- sheets laid over the table --------------------------------------------
+function drawSheet(now, numeral, title, paras, foot, rubricFirst) {
+  var c = cx, w = Math.min(600, G.vw - 24), fs = clamp(Math.min(G.vw / 34, G.vh / 30), 12, 19), pad, h, y, i, x, tw, tries = 0;
+  while (tries++ < 14) {
+    pad = fs * 1.7; tw = w - pad * 2; c.font = fnt(fs);
+    h = pad + fs * 2.4 + fs * 0.6; for (i = 0; i < paras.length; i++) h = para(c, paras[i], 0, h, tw, fs * 1.44, true) + fs * 0.62;
+    h += fs * 1.6 + pad * 0.6;
+    if (h <= G.vh - 20 || fs < 9.5) break; fs *= 0.93;
+  }
+  var k = ease(clamp((now - game.modeAt) / 260, 0, 1)), sx = Math.round((G.vw - w) / 2), sy = Math.round((G.vh - h) / 2 + (1 - k) * 18);
+  c.fillStyle = rgba(P.shadow, 0.34 * k); c.fillRect(0, 0, G.vw, G.vh);
+  c.save(); c.globalAlpha = k; paperSheet(c, sx, sy, w, h);
+  x = sx + pad; y = sy + pad + fs * 1.5; c.textAlign = 'left'; c.textBaseline = 'alphabetic';
+  if (numeral) { c.fillStyle = P.rubric; c.font = fnt(fs * 1.9); c.fillText(numeral + '.', x, y); x += c.measureText(numeral + '. ').width; }
+  c.fillStyle = P.ink; c.font = fnt(fs * 1.38, 'italic'); c.fillText(title, x, y);
+  x = sx + pad; y += fs * 0.7; c.strokeStyle = rgba(P.ink, 0.25); c.beginPath(); c.moveTo(x, y); c.lineTo(sx + w - pad, y); c.stroke(); y += fs * 1.55;
+  c.font = fnt(fs);
+  for (i = 0; i < paras.length; i++) { c.fillStyle = (rubricFirst && i === 0) ? P.rubric : P.ink; y = para(c, paras[i], x, y, tw, fs * 1.44) + fs * 0.62; }
+  c.fillStyle = P.inkSoft; c.font = fnt(fs * 0.86, 'italic'); c.textAlign = 'right'; c.fillText(foot, sx + w - pad, sy + h - pad * 0.7);
+  c.restore();
+}
+
+function drawTitle(now) {
+  var c = cx, w = G.vw, h = G.vh, cyc = (now % 7000) / 7000, creep = cyc < 0.86 ? cyc / 0.86 : 0, i, y;
+  drawObservatory(c, w, h, now, 0, creep);
+  if (cyc >= 0.86 && cyc < 0.93) { c.fillStyle = 'rgba(255,246,214,' + (0.3 * (1 - (cyc - 0.86) / 0.07)).toFixed(3) + ')'; c.fillRect(0, 0, w, h); }
+  var k = Math.min(w, h * 1.25), ts = clamp(Math.min(w * 0.078, h * 0.115), 30, 92), x = Math.max(18, w * 0.06), ps = clamp(Math.min(w * 0.0225, h * 0.03), 12.5, 21);
+  var maxW = Math.max(200, Math.min(w - x * 2, w > h ? w * 0.5 - k * 0.2 - x + k * 0.1 : w - x * 2));
+  c.textAlign = 'left'; c.textBaseline = 'alphabetic';
+  c.font = fnt(ts, 'italic'); while (ts > 22 && c.measureText(TEXT.title).width > Math.min(w - x * 2, maxW * 1.25)) { ts -= 1; c.font = fnt(ts, 'italic'); }
+  y = Math.max(ts * 1.15, h * 0.17);
+  c.fillStyle = P.ink; c.fillText(TEXT.title, x, y);
+  c.fillStyle = P.rubric; c.fillRect(x, y + ts * 0.2, Math.min(c.measureText(TEXT.title).width, w - x * 2), Math.max(1.5, ts * 0.03));
+  y += ts * 0.2 + ps * 1.7; c.fillStyle = P.rubric; c.font = fnt(ps * 0.95, 'italic'); c.fillText(TEXT.titleUnder, x, y);
+  y += ps * 1.9; c.fillStyle = P.ink; c.font = fnt(ps, 'italic');
+  var appear = (now - game.modeAt) / 1000;
+  for (i = 0; i < TEXT.premise.length; i++) { c.globalAlpha = clamp(appear * 1.4 - i * 0.45, 0, 1); y = para(c, TEXT.premise[i], x, y, maxW, ps * 1.5); }
+  c.globalAlpha = 1;
+  // which courts the book will open at: under the premise, clear of the figures
+  var fs = clamp(ps * 0.95, 12, 18), to = resumeCourt();
+  game.hits = [];
+  if (game.reached > 0) {
+    var r = Math.max(fs * 1.05, 18), ry, rx = x;
+    y += ps * 0.5; c.font = fnt(fs * 0.9, 'italic'); c.fillStyle = rgba(P.ink, 0.8);
+    y = para(c, TEXT.resume + ROMAN[to] + '. ' + (game.touch ? TEXT.pickCourtTouch : TEXT.pickCourt), x, y, maxW, fs * 1.3);
+    ry = y + r * 0.5;
+    for (i = 0; i < COURTS.length; i++) {
+      var ok = i <= game.reached; c.globalAlpha = ok ? 1 : 0.3;
+      c.fillStyle = P.paper; c.beginPath(); c.arc(rx + r, ry, r, 0, 6.2832); c.fill(); c.strokeStyle = i === to ? P.rubric : P.brassDk; c.lineWidth = i === to ? 2 : 1.2; c.stroke();
+      c.fillStyle = P.rubric; c.textAlign = 'center'; c.font = fnt(fs * 0.9); c.fillText(ROMAN[i], rx + r, ry + fs * 0.32); c.textAlign = 'left';
+      if (ok) game.hits.push({ id: 'court' + i, x: rx - r * 0.25, y: ry - r * 1.25, w: r * 2.5, h: r * 2.5, on: true });
+      rx += r * 2.6;
+    }
+    c.globalAlpha = 1;
+  }
+  // foot: how to begin
+  var fy = h - Math.max(16, h * 0.04);
+  c.fillStyle = rgba(P.ink, 0.6 + 0.3 * Math.sin(now / 520)); c.font = fnt(fs, 'italic');
+  var msg = game.touch ? TEXT.beginTouch : TEXT.begin;
+  if (c.measureText(msg).width > w - x * 2) { fs *= (w - x * 2) / c.measureText(msg).width; c.font = fnt(fs, 'italic'); }
+  c.lineJoin = 'round'; c.strokeStyle = 'rgba(240,222,180,0.75)'; c.lineWidth = 5; c.strokeText(msg, x, fy); c.fillText(msg, x, fy);
+}
+// Where "any key" on the title page opens the book: the court you were in, or the next one if that is done.
+function resumeCourt() {
+  if (game.L) return game.S.status === 'won' ? Math.min(game.ci + 1, COURTS.length - 1) : game.ci;
+  return Math.min(game.reached, COURTS.length - 1);
+}
+
+function drawEnding(now) {
+  var c = cx, w = G.vw, h = G.vh, t = (now - game.modeAt) / 1000, ev = clamp(t / 30, 0, 1), i, y;
+  drawObservatory(c, w, h, now, Math.max(0.0001, ease(ev)), 0);
+  var x = Math.max(18, w * 0.06), ps = clamp(Math.min(w * 0.023, h * 0.031), 13, 21), k = Math.min(w, h * 1.25);
+  var maxW = Math.max(200, Math.min(w - x * 2, w > h ? w * 0.5 - k * 0.2 - x + k * 0.1 : w - x * 2));
+  var ink = ev < 0.55 ? P.ink : mix(P.ink, P.star, clamp((ev - 0.55) / 0.25, 0, 1));
+  c.textAlign = 'left'; c.textBaseline = 'alphabetic'; y = Math.max(ps * 3, h * 0.12);
+  c.fillStyle = ink; c.font = fnt(ps * 1.5, 'italic'); c.fillText(COURTS[COURTS.length - 1].numeral + '. ' + COURTS[COURTS.length - 1].name, x, y); y += ps * 2.2;
+  c.fillStyle = ink;
+  for (i = 0; i < TEXT.ending.length; i++) {
+    c.globalAlpha = clamp((t - 1.2 - i * 4.6) / 1.6, 0, 1); c.font = fnt(ps, i === 0 || i === 3 ? '' : 'italic');
+    y = para(c, TEXT.ending[i], x, y, maxW, ps * 1.48) + ps * 0.7;
+  }
+  c.globalAlpha = clamp((t - 1.2 - TEXT.ending.length * 4.6) / 1.6, 0, 1); c.font = fnt(ps * 0.9, 'italic');
+  y = para(c, TEXT.endingClose, x, y + ps * 0.4, maxW, ps * 1.4);
+  c.globalAlpha *= 0.6 + 0.3 * Math.sin(now / 520); para(c, game.touch ? TEXT.endingAgainTouch : TEXT.endingAgain, x, y + ps * 0.5, maxW, ps * 1.4);
+  c.globalAlpha = 1;
+}
+
+// ---------------------------------------------------------------------------
+// BELLS (WebAudio, nothing loaded), HANDS (keys, touch), PROOFS, and the loop.
+// ---------------------------------------------------------------------------
+var AC = null;
+function audio() {
+  if (!game.bells) return null;
+  if (!AC) { try { AC = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { AC = null; } }
+  if (AC && AC.state === 'suspended' && AC.resume) AC.resume();
+  return AC;
+}
+function ping(f, dur, type, vol, delay, f2) {
+  var t = AC.currentTime + (delay || 0), o = AC.createOscillator(), g = AC.createGain();
+  o.type = type; o.frequency.setValueAtTime(f, t); if (f2) o.frequency.exponentialRampToValueAtTime(f2, t + dur);
+  g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  o.connect(g); g.connect(AC.destination); o.start(t); o.stop(t + dur + 0.03);
+}
+function sfx(name) {
+  if (!audio()) return;
+  try {
+    if (name === 'step') ping(190, 0.06, 'triangle', 0.05, 0, 120);
+    else if (name === 'stand') ping(140, 0.04, 'sine', 0.025);
+    else if (name === 'bump') ping(96, 0.09, 'square', 0.035, 0, 70);
+    else if (name === 'globe') { ping(74, 0.22, 'sine', 0.12, 0, 52); ping(148, 0.12, 'triangle', 0.03, 0, 90); }
+    else if (name === 'take') { ping(1318, 0.5, 'sine', 0.05); ping(1976, 0.4, 'sine', 0.025, 0.03); }
+    else if (name === 'bars') { ping(660, 0.16, 'triangle', 0.04); ping(990, 0.2, 'triangle', 0.03, 0.07); }
+    else if (name === 'unsay') ping(300, 0.07, 'sine', 0.03, 0, 420);
+    else if (name === 'turn') { ping(392, 1.8, 'sine', 0.09); ping(588, 1.4, 'sine', 0.04, 0.01); ping(1176, 0.9, 'sine', 0.015, 0.02); }
+    else if (name === 'eclipse') { ping(58, 2.4, 'sawtooth', 0.07, 0, 41); ping(87, 2.2, 'sine', 0.09, 0.05, 61); ping(311, 1.6, 'sine', 0.02, 0.1, 293); }
+    else if (name === 'spent') { ping(196, 1.2, 'sine', 0.07); ping(185, 1.2, 'sine', 0.05, 0.2); }
+    else if (name === 'won') { ping(392, 1.6, 'sine', 0.08); ping(494, 1.5, 'sine', 0.06, 0.16); ping(588, 1.6, 'sine', 0.06, 0.32); ping(784, 2.0, 'sine', 0.05, 0.5); }
+  } catch (e) { /* a cracked bell is not worth stopping the hour for */ }
+}
+
+// ---- proofs: the hidden self-test (T on the title page, or #proofs) --------
+var LIES = [
+  { court: 0, say: 'you, in a shade’s way', log: '....RUUUE' + 'R....', shade: 0, mark: 4, expected: 'M', found: 'B', casting: 2 },
+  { court: 1, say: 'a globe rolled away early', log: '..........DRRRRE' + 'DRRRR.........', shade: 0, mark: 13, expected: 'P', found: 'M', casting: 2 },
+  { court: 2, say: 'you, on the way to the lane', log: '.LLLUUURRRRRRRXLE' + 'ULLLU', shade: 0, mark: 4, expected: 'M', found: 'B', casting: 2 },
+  { court: 3, say: 'her copper bars left standing', log: 'E', shade: 0, mark: 15, expected: 'M', found: 'B', casting: 1 },
+  { court: 3, say: 'the style taken before she comes', log: 'RRR.RRRDR..', shade: 0, mark: 10, expected: 'M+', found: 'M', casting: 1 },
+  { court: 3, say: 'the jade bars held where she was refused', log: 'RRR.RRRRRE' + '.RR.RRRRRDRRRE', shade: 0, mark: 21, expected: 'B', found: 'M', casting: 2 },
+  { court: 3, say: 'her globe wedged', log: 'RD.', shade: 0, mark: 2, expected: 'P', found: 'B', casting: 1 }
+];
+var CODEWORD = { M: 'a clear step', 'M+': 'a step onto the style', P: 'a globe to roll', B: 'a refusal' };
+function runProofs() {
+  var out = [], all = true;
+  function put(ok, text) { out.push({ ok: ok, text: text }); if (!ok) all = false; }
+  COURTS.forEach(function (def) {
+    var L = parseCourt(def), log = def.solution.join(''), S = simulate(L, log), keys = [], i, ok, back = true, early = false, entry;
+    put(S.status === 'won' && S.used === log.length, def.numeral + '. ' + def.name + ': seated in ' + def.solution.length + ' castings, ' + log.length + ' keys.');
+    for (i = 0; i <= log.length; i++) { keys.push(stateKey(simulate(L, log.slice(0, i)))); if (i < log.length && simulate(L, log.slice(0, i)).status !== 'play') early = true; }
+    for (i = log.length; i >= 0; i--) if (stateKey(simulate(L, log.slice(0, i))) !== keys[i]) back = false;      // unsay to the first mark
+    ok = back && !early && stateKey(simulate(L, log)) === keys[log.length];                                  // and say it all again
+    put(ok, def.numeral + '. Unsaid to the first mark and said again: the same court, key for key.');
+  });
+  LIES.forEach(function (t) {
+    var L = parseCourt(COURTS[t.court]), S = simulate(L, t.log), h = S.halt, e;
+    var ok = S.status === 'eclipse' && h && h.shade === t.shade && h.mark === t.mark && h.expected === t.expected && h.found.code === t.found && S.casting === t.casting;
+    if (ok) { e = eclipseEntry(L, S); ok = e.where.indexOf('mark ' + (t.mark + 1) + '.') >= 0 && e.where.toLowerCase().indexOf(ORD[t.casting - 1]) === 0 && e.lines.length === 3; }
+    ok = ok && simulate(L, t.log.slice(0, -1)).status === 'play';        // one mark unsaid, and the sun is out again
+    put(ok, COURTS[t.court].numeral + '. Eclipse for ' + t.say + ': ' + ORD[t.casting - 1] + ' casting, mark ' + (t.mark + 1) + '; expected ' + CODEWORD[t.expected] + ', found ' + CODEWORD[t.found] + '.');
+  });
+  (function () {
+    var L = parseCourt(COURTS[0]);
+    put(simulate(L, 'EEEE').status === 'play' && simulate(L, 'EEEEE').status === 'spent' && simulate(L, 'EEEEER').used === 5, 'I. Four shades borne; the fifth casting spends the hour and takes no more keys.');
+    put(simulate(L, 'RUUUE' + 'R').last.code === 'B' && simulate(L, 'RUUUE' + 'R').status === 'play', 'I. One flag wanted by two: the elder has it, the younger spends a mark.');
+  })();
+  return { all: all, items: out };
+}
+
+// ---- hands -----------------------------------------------------------------
+function toggleBells() { game.bells = !game.bells; saveStore(); if (game.mode === 'play') note(game.bells ? TEXT.belled : TEXT.unbelled, 'hint'); if (game.bells) sfx('take'); }
+function doAction(id) {
+  if (game.mode !== 'play') return;
+  game.hot = id; game.hotAt = game.now;
+  if (id !== game.armId) game.armAt = -1e9;
+  if (id === 'U' || id === 'D' || id === 'L' || id === 'R') press(id);
+  else if (id === 'stand') press('.');
+  else if (id === 'take') press('X');
+  else if (id === 'sit') press('E');
+  else if (id === 'unsay') unsay();
+  else if (id === 'strike') unsayCasting();
+  else if (id === 'again') beginAgain();
+  else if (id === 'shut') setMode('title');
+  else if (id === 'bells') toggleBells();
+}
+function advance(pick) {          // any key, on a page that only wants turning
+  var m = game.mode;
+  if (game.proofs) { game.proofs = null; return true; }
+  if (m === 'title') {
+    var to = typeof pick === 'number' ? pick : resumeCourt();
+    if (game.L && to === game.ci && game.log.length && game.S.status !== 'won') setMode('play');     // the book was only shut, not unsaid
+    else openCourt(to);
+    return true;
+  }
+  if (m === 'intro') { if (game.now - game.modeAt > 500) { game.keys = []; setMode('play'); } return true; }
+  if (m === 'wonCard') { if (game.now - game.modeAt > 700) openCourt(game.ci + 1); return true; }
+  if (m === 'ending') { if (game.now - game.modeAt > 2500) setMode('title'); return true; }
+  return false;
+}
+var KEYMAP = { ArrowUp: 'U', ArrowDown: 'D', ArrowLeft: 'L', ArrowRight: 'R', w: 'U', s: 'D', a: 'L', d: 'R', W: 'U', S: 'D', A: 'L', D: 'R', ' ': 'stand', Spacebar: 'stand', '.': 'stand', x: 'take', X: 'take', Enter: 'sit', z: 'unsay', Z: 'unsay', Backspace: 'unsay', u: 'unsay', U: 'unsay', b: 'strike', B: 'strike', r: 'again', R: 'again' };
+function onKey(e) {
+  if (e.metaKey || e.ctrlKey || e.altKey) return;
+  var k = e.key, a;
+  if (k === 'Shift' || k === 'Tab' || k === 'CapsLock') return;
+  if (k.indexOf('Arrow') === 0 || k === ' ' || k === 'Backspace' || k === 'Enter') e.preventDefault();
+  game.touch = false;                       // somebody has a keyboard: speak of keys
+  if (k === 'm' || k === 'M') { toggleBells(); return; }
+  if (game.proofs) { game.proofs = null; return; }
+  if (game.mode === 'title') {
+    if (k === 't' || k === 'T') { game.proofs = runProofs(); game.modeAt = game.now; return; }
+    if (k >= '1' && k <= '4') { if (+k - 1 <= game.reached) advance(+k - 1); return; }
+    if (k === ']') { game.reached = COURTS.length; return; }      // the gallery stair: every court open, for whoever is checking the work
+    if (k === 'Escape') return;
+    advance(); return;
+  }
+  if (k === 'Escape') { setMode('title'); return; }
+  if (game.mode !== 'play') { if (!e.repeat) advance(); return; }
+  a = KEYMAP[k]; if (!a) return;
+  if (e.repeat && (a === 'sit' || a === 'again' || a === 'strike' || a === 'take')) return;
+  if (game.keys.length < (e.repeat ? 2 : 32)) game.keys.push(a);      // a held key may not pile up; typed keys are never dropped
+}
+function hitAt(x, y) { for (var i = game.hits.length - 1; i >= 0; i--) { var h = game.hits[i]; if (x >= h.x && x <= h.x + h.w && y >= h.y && y <= h.y + h.h) return h; } return null; }
+function onDown(e) {
+  var r = cv.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top, h;
+  if (e.pointerType === 'touch') game.touch = true;
+  audio();
+  if (game.proofs) { game.proofs = null; return; }
+  if (game.mode === 'title') { h = hitAt(x, y); advance(h && h.id.indexOf('court') === 0 ? +h.id.slice(5) : undefined); return; }
+  if (game.mode !== 'play') { advance(); return; }
+  h = hitAt(x, y);
+  if (h) { if (h.on) doAction(h.id); return; }
+  if (x >= G.bx && x <= G.bx + 14 * G.S && y >= G.by - G.lift && y <= G.by + 12 * G.S) game.swipe = { x: x, y: y, id: e.pointerId };
+}
+function onUp(e) {
+  var sw = game.swipe, r, x, y, dx, dy, me, tx, ty;
+  if (!sw || sw.id !== e.pointerId) return;
+  game.swipe = null; if (game.mode !== 'play') return;
+  r = cv.getBoundingClientRect(); x = e.clientX - r.left; y = e.clientY - r.top; dx = x - sw.x; dy = y - sw.y;
+  if (Math.max(Math.abs(dx), Math.abs(dy)) > Math.max(14, G.S * 0.45)) { doAction(Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'R' : 'L') : (dy > 0 ? 'D' : 'U')); return; }
+  // a tap on a flag in line with you is a step toward it; a tap on yourself is a mark stood
+  me = game.S.W.walkers[game.S.W.walkers.length - 1]; tx = Math.floor((x - G.bx) / G.S); ty = Math.floor((y - G.by) / G.S);
+  if (tx === me.x && ty === me.y) doAction('stand');
+  else if (tx === me.x) doAction(ty < me.y ? 'U' : 'D');
+  else if (ty === me.y) doAction(tx < me.x ? 'L' : 'R');
+}
+
+// ---- the loop ----------------------------------------------------------------
+function animIdle(now) { var an = game.anim; return !an.queue.length && (an.dur <= 0 || now - an.t0 >= an.dur); }
+function frame(now) {
+  var c = cx, v, tf, T, S = game.S;
+  game.now = now;
+  c.setTransform(G.dpr, 0, 0, G.dpr, 0, 0);
+  if (game.mode === 'title') drawTitle(now);
+  else if (game.mode === 'ending') drawEnding(now);
+  else {
+    if (game.keys.length) {      // keys wait their turn, in order; a waiting key hurries the picture along
+      if (game.anim.queue.length > 1 || game.keys.length > 2) settle(); else if (game.anim.dur > 60) game.anim.dur = 60;
+      if (animIdle(now)) doAction(game.keys.shift());
+    }
+    S = game.S;
+    c.drawImage(bgCv, 0, 0, G.vw, G.vh);
+    v = view(now); tf = drawCourt(now, v); drawScale(now, tf); drawPage(now, tf);
+    T = TEXT.courts[game.L.def.id];
+    if (game.mode === 'intro') drawSheet(now, game.L.def.numeral, game.L.def.name, T.intro, game.touch ? TEXT.turnPageTouch : TEXT.turnPage);
+    else if (game.mode === 'wonCard') drawSheet(now, game.L.def.numeral, game.L.def.name, T.won.concat([wonEntry(game.L, S)]), game.touch ? TEXT.turnPageTouch : TEXT.turnPage);
+    else if (S.status === 'won' && animIdle(now) && now - game.anim.wonAt > 1700) { game.keys = []; setMode(game.ci < COURTS.length - 1 ? 'wonCard' : 'ending'); }
+  }
+  if (game.proofs) drawProofs(now);
+  window.requestAnimationFrame(frame);
+}
+function drawProofs(now) {
+  var pr = game.proofs, lines = pr.items.map(function (it) { return (it.ok ? 'Proved. ' : 'Not proved. ') + it.text; });
+  lines.unshift(pr.all ? 'Every proof holds: ' + pr.items.length + ' of ' + pr.items.length + '.' : 'A proof has failed. Read down.');
+  var keep = game.modeAt; drawSheetSmall(now, 'Proofs', lines, game.touch ? 'Touch the page to shut the proofs.' : 'Any key shuts the proofs.', !pr.all);
+  game.modeAt = keep;
+}
+function drawSheetSmall(now, title, paras, foot, bad) {
+  var c = cx, w = Math.min(640, G.vw - 20), fs = clamp(Math.min(G.vw / 40, G.vh / 38), 10.5, 15), pad, h, y, i, tw, tries = 0;
+  while (tries++ < 16) {
+    pad = fs * 1.5; tw = w - pad * 2; c.font = fnt(fs); h = pad + fs * 2.6;
+    for (i = 0; i < paras.length; i++) h = para(c, paras[i], 0, h, tw, fs * 1.34, true) + fs * 0.3;
+    h += fs * 1.4 + pad * 0.5; if (h <= G.vh - 16 || fs < 8.2) break; fs *= 0.93;
+  }
+  var sx = Math.round((G.vw - w) / 2), sy = Math.round((G.vh - h) / 2);
+  c.fillStyle = rgba(P.shadow, 0.4); c.fillRect(0, 0, G.vw, G.vh); paperSheet(c, sx, sy, w, h);
+  c.textAlign = 'left'; c.textBaseline = 'alphabetic'; y = sy + pad + fs * 1.3;
+  c.fillStyle = P.rubric; c.font = fnt(fs * 1.5, 'italic'); c.fillText(title, sx + pad, y); y += fs * 1.9; c.font = fnt(fs);
+  for (i = 0; i < paras.length; i++) { c.fillStyle = (i === 0 ? (bad ? P.rubric : P.ink) : paras[i].indexOf('Not proved') === 0 ? P.rubric : P.ink); y = para(c, paras[i], sx + pad, y, tw, fs * 1.34) + fs * 0.3; }
+  c.fillStyle = P.inkSoft; c.font = fnt(fs * 0.9, 'italic'); c.textAlign = 'right'; c.fillText(foot, sx + w - pad, sy + h - pad * 0.6);
+}
+
+function boot() {
+  cv = document.getElementById('court'); cx = cv.getContext('2d');
+  loadStore();
+  try { game.touch = !!(window.matchMedia && window.matchMedia('(pointer: coarse)').matches); } catch (e) { game.touch = false; }
+  layout();
+  window.addEventListener('resize', layout); window.addEventListener('orientationchange', layout);
+  window.addEventListener('keydown', onKey);
+  cv.addEventListener('pointerdown', onDown); window.addEventListener('pointerup', onUp);
+  window.addEventListener('pointercancel', function () { game.swipe = null; });
+  if (/proofs/.test(window.location.hash)) game.proofs = runProofs();
+  window.__untold = { game: game, simulate: simulate, parseCourt: parseCourt, COURTS: COURTS, runProofs: runProofs, press: press, openCourt: openCourt, setMode: setMode, stateKey: stateKey, eclipseEntry: eclipseEntry, layout: layout, G: G };
+  window.requestAnimationFrame(function (t) { game.now = t; game.modeAt = t; frame(t); });
+}
+boot();
+
+})();
+</script>
+</body>
+</html>

@@ -23,6 +23,7 @@ A collection of games, tools, and experiments built with AI — hosted on GitHub
 *AI-generated time-loop puzzles from multiple models*
 
 - **[Changeover](time-loop/fable5-ultra-time-loop-puzzle.html)** — The last stagehand of a closing theater runs a forty-count scene change beside the house's pale memories of every pass already made. Contradict history and the stage manager calls a hold. (*Fable 5 Ultra*)
+- **[The Untold Hour](time-loop/fable-5.2-high-time-loop-puzzle.html)** — A tremor has shaken the style out of every dial in a masonry observatory, and an hour no dial can tell does not pass. Each time it comes round, the shadow you last threw gets up and walks it again. Shade the sun-eyes, roll the stone globes, carry the style to its Seat. Contradict a shade and the sun goes in. (*Fable 5.2 High*)
 - **[The Organist's Ledger](time-loop/gemini-3.6-flash-high-time-loop-puzzle.html)** — Sustain cathedral air pressure across deterministic measures. Coordinate prior verses, manage pedal valves, and prevent dissonant ruptures. (*Gemini 3.6 Flash High*)
 - **[The Loom That Ate the Dawn](time-loop/gpt-5.6-sol-ultra-time-loop-puzzle.html)** — Finish a dead weaver's last dawn beside Woven Figures made from your prior footfalls. Hold treadles, seat boat-shuttles, and protect every older stitch from a Snarl. (*GPT-5.6 Sol Ultra*)
 - **[Paradox Vault](time-loop/paradox-vault.html)** — Rob a vault by cooperating with your past selves. Every loop, your old inputs replay beside you — move one box they depended on and history tears open. (*Opus 5 High*)
