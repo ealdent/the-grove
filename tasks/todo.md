@@ -1299,3 +1299,16 @@ UI proof: anonymous in-app Chromium at `http://127.0.0.1:8768/learn/us-datacente
 - [x] Rewrite the page: section diagram, six parts, yield and gap calculator, "Is it new?" lineage and open questions.
 
 Review: every number on the page is a ceiling from a heat balance plus Stefan diffusion (film 90 °C, cap 40 °C, 0.026 m² cone): 0.48 + 0.29 = 0.77 L/h at 300 W, 0.39 kWh/L against 0.63 for single effect. Nothing is measured. Novelty claim is deliberately hedged: each principle has a named ancestor, and a patent and literature search did not turn up this arrangement. The film was first shipped silent with captions; once Jason approved the spend, clips 02 to 09 were re-recorded (297 ElevenLabs credits) and mixed over the 60 s cut, and a local whisper pass matched the script word for word. Verified in the browser pane at desktop and 375 px: viewer, explode, part highlights, sliders, 13 caption cues, no overflow, no console errors.
+
+# Inside the blood — leukemia, MDS and AML — 2026-11-13
+
+Plan check-in: build a visual, plain-language learning page with original SVG anatomy and cell illustrations, selectable healthy/MDS/AML marrow, a branching MDS progression diagram, and treatment mechanism comparisons. Keep detailed explanations in expandable panels. Use public medical sources, no personal information or patient-specific predictions. Add the Learn catalog entry, prove desktop/mobile/keyboard interactions, then commit and push to origin main.
+
+- [x] Verify medical content and review terminology, progression and treatment limits.
+- [x] Build the explainer, illustrations and catalog links.
+- [x] Verify interactions, responsive layout, console/network and scoped changes.
+- [ ] Commit, push and verify the remote revision and published page.
+
+Review: Original SVG body, marrow cutaway and cell illustrations share a consistent atlas palette. Medical content was checked against NCI, ACS, ASH, CDC and Blood Cancer UK, with a second content pass correcting the distinction between developing marrow cells and blasts. Live Chrome at 1280×900 and 390×844 exercised all six interaction groups (23 selectable states), keyboard activation, disclosures, citations and checkboxes. The 320px layout had no horizontal overflow; reduced-motion and print media rendered correctly. No browser console warnings/errors or failed page asset requests were observed. Print styling was verified, not physical printer output. Safari and assistive-technology speech were not exercised. Publication verification follows the commit.
+
+---
