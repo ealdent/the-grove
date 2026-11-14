@@ -34,18 +34,13 @@ function showCondition(key){
 }
 select('[data-condition]','condition',showCondition);showCondition('healthy');
 
-const evolutionNotes=[
- ['MDS: development is disrupted','The marrow makes blood inefficiently. Blast numbers may be low or raised.'],
- ['A clone can expand','A clone is a group descended from one changed cell. Further changes may give immature cells a growth advantage.'],
- ['AML: immature cells dominate the problem','Abnormal blasts build up and impair healthy blood production. AML can also begin without a previous MDS diagnosis.']
-];
-function showEvolution(value){
- const index=Number(value), data=evolutionNotes[index];
- $('#evolution-view').innerHTML=Array.from({length:8},(_,i)=>cell(index===0?(i%3===0?'red':'irregular'):index===1?(i<4?'irregular':'blast'):(i===0?'red':'blast'),i*70+8,20+(i%2)*14,72)).join('');
- $('#evolution-view').setAttribute('aria-label',data[0]+'. '+data[1]);
- $('#evolution-note').innerHTML=`<h3>${data[0]}</h3><p>${data[1]}</p>`;
+let progressionPlayer;
+function showEvolution(key){
+ const scene=buildLeukemiaProgressionScene($('#evolution-view'),key);
+ if(progressionPlayer)progressionPlayer.setScene(scene);
+ else progressionPlayer=new AtlasMotion($('#progression-player'),$('#evolution-view'),'Progression',scene);
 }
-select('[data-evolution]','evolution',showEvolution);showEvolution(0);
+select('[data-evolution]','evolution',showEvolution);showEvolution('progresses');
 
 const types={
  aml:['ACUTE + MYELOID','AML','An acute cancer of the myeloid cell family. It usually needs prompt assessment and treatment. Genetics divide AML into subtypes with different treatments and outlooks.'],
