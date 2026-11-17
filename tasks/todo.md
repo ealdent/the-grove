@@ -1340,3 +1340,16 @@ Review: Replaced the static cell strip with two animated courses using the exist
 UI proof — URL: http://127.0.0.1:8765/learn/leukemia.html#progression. Environment/user: local static page, anonymous. Browser: existing Chrome profile; desktop and 390×844 viewport. Steps: play the full course, compare both paths, pause, scrub Home/End and select a stage, then repeat with reduced motion. Expected/actual: lineage expansion and reduced blood output visibly unfold; alternative retains MDS; pause freezes progress and SVG exactly; reduced motion starts at zero with Play. The phone layout has no horizontal overflow. Console warnings/errors: none. Failed page requests: none; new script returned 200. Recording: 159 captured frames, four reviewed samples in /tmp/mds-progression-proof/. Result: pass. Remaining limits: Safari, physical touch and screen-reader speech not exercised. A temporary DOM check also passed 101 states per path, fixed node counts, finite transforms, monotonic bounded output, continued final blood supply and identical backward seeking. Publication proof follows the prepared commit.
 
 Publication proof: animation commit `d0198036adb1da82e38f8fe22b1083facaeb8f8c` plus preserved AML-without-MDS context in `2e2d9f9edf83a392fc9030ef740b54da916ed64b`, both pushed to origin/main. Pages reported the latter built. At https://ealdent.github.io/the-grove/learn/leukemia.html#progression, Chrome observed natural playback from the initial clone to accumulated blasts and reduced working-cell output. The alternate path retained MDS, and the expandable explanation retained the AML-without-MDS distinction. All five page stylesheet/script assets returned 200; no failed requests or console warnings/errors. Screenshot: leukemia-progression.jpg in the local visualization artifacts. Browser viewport/media overrides were reset.
+
+## Hadal Post — standalone tower defense (2026-11-17)
+
+- [x] Set the story in a drowned harbor where the sorting bell still calls unaddressed mail. The recovery of the harbor's last address unfolds over 24 tides.
+- [x] Build the offline chart, five postal creatures with four upgrades apiece, and a playable campaign with intermissions.
+- [x] Add the GPT-6.2 Astra / Max gallery tile, then check a local-file launch, desktop and touch layouts, combat, progression, and gallery navigation.
+- [x] Verify the release diff for main.
+
+Review
+
+- Opened the standalone file offline in Chrome 157. A UI playthrough sorted all 24 tides with earned postage and recovered all 25 letters. Defeat, same-chart replay, and new-chart restart also passed.
+- Verified touch placement and upgrades, keyboard controls, reduced motion, and layouts from 320px through 1440px. The game made zero external requests and logged no browser errors.
+- Checked 384 route seeds and all 20 upgrades. A mixed crew won on all 12 campaign seeds tested. The gallery filter and tile launch passed.
