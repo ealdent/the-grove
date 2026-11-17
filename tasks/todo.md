@@ -1353,3 +1353,17 @@ Review
 - Opened the standalone file offline in Chrome 157. A UI playthrough sorted all 24 tides with earned postage and recovered all 25 letters. Defeat, same-chart replay, and new-chart restart also passed.
 - Verified touch placement and upgrades, keyboard controls, reduced motion, and layouts from 320px through 1440px. The game made zero external requests and logged no browser errors.
 - Checked 384 route seeds and all 20 upgrades. A mixed crew won on all 12 campaign seeds tested. The gallery filter and tile launch passed.
+
+## Undertow Bell — drowned-procession rail shooter
+
+A drowned town hires a masked bell courier to carry the last audible note across its salt cemetery. The dead follow sound. A toll fired forward turns mourners back into salt, but the grave bells are bolted to the seabed. Once the courier reaches the great octopus that swallowed the town's voices, its conducting arms and opening throat give away the rhythm of its attacks.
+
+- [x] Build a self-contained arcade cabinet with an animated woodcut sea, bell courier, procession enemies, three courses, a conducting octopus, and synthesized music.
+- [x] Integrate the arcade tile and verify the local file, controls, campaign, audio, and result flow.
+- [x] Check the scoped release for origin/main.
+
+Review
+
+- Chrome opened the standalone file locally and completed a full campaign through ordinary steering, toll, and peal inputs. The courier saw all three boss tells, released 83 mourners, and finished with three integrity and 39,005 points. A subsequent idle run ended in defeat, and reload preserved the score and mute preference.
+- Verified keyboard and pointer flight, pause, resume, restart, direct file launch, and gallery provider/model filtering. The game requested only its own HTML and produced no Chrome console errors. The final 240-frame sample at 1440 × 900 measured 16.7 ms median and 95th percentile. Visual checks included 390 × 844 and desktop. Browser coverage was Chrome on macOS.
+- Three deterministic route seeds each produced wins via two input strategies and a loss with idle controls. A targeted run on each seed hit the first anchored obstacle despite firing and using a peal. The procedural score and all 14 cues produced measurable Web Audio output, and mute reduced the measured output to zero.
