@@ -1367,3 +1367,17 @@ Review
 - Chrome opened the standalone file locally and completed a full campaign through ordinary steering, toll, and peal inputs. The courier saw all three boss tells, released 83 mourners, and finished with three integrity and 39,005 points. A subsequent idle run ended in defeat, and reload preserved the score and mute preference.
 - Verified keyboard and pointer flight, pause, resume, restart, direct file launch, and gallery provider/model filtering. The game requested only its own HTML and produced no Chrome console errors. The final 240-frame sample at 1440 × 900 measured 16.7 ms median and 95th percentile. Visual checks included 390 × 844 and desktop. Browser coverage was Chrome on macOS.
 - Three deterministic route seeds each produced wins via two input strategies and a loss with idle controls. A targeted run on each seed hit the first anchored obstacle despite firing and using a peal. The procedural score and all 14 cues produced measurable Web Audio output, and mute reduced the measured output to zero.
+
+## Longwave — SVG forest expedition
+
+A survey station on Orra sent a final radio message through an iron-spore storm. The spores carried the signal into the salt. Generations later, dishwoods catch its carrier, fork spires repeat its voice, and coil reeds hold the sign-off. A walker with a field receiver can piece the message back together.
+
+- [x] Build the illustrated salt basin, a first-person projection engine, and the three recoverable broadcasts in one offline HTML file.
+- [x] Verify walking, turning, mouse look, independent joysticks, responsive layouts, and bounded rendering in a real browser.
+- [x] Add the alphabetized gallery tile after finishing the game and verify the release paths for main.
+
+Review
+
+- Chrome 158 opened the standalone file offline. Walking recovered all three fragments, reloading preserved the journal, and the sound control started the synthesized carrier. Approaching a mature dishwood increased its projected width from 342 to 470 pixels. Reduced motion kept the horizon level.
+- Phone and tablet emulation exercised two concurrent touch contacts, independent release, pinch, edge swipes, and rotation. The 1,050 m traversal stabilized at 690 SVG elements. A four-second walk at 1440 × 900 produced 240 changing frames. The game made one document request and produced no browser errors.
+- The local gallery listed 45 alphabetized tiles. Filtering by OpenAI and GPT-6.2 Astra opened Longwave through its tile. A second walk in a visible Chrome window produced 54 captured frames and kept six compositor layers throughout.
