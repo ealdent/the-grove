@@ -1381,3 +1381,15 @@ Review
 - Chrome 158 opened the standalone file offline. Walking recovered all three fragments, reloading preserved the journal, and the sound control started the synthesized carrier. Approaching a mature dishwood increased its projected width from 342 to 470 pixels. Reduced motion kept the horizon level.
 - Phone and tablet emulation exercised two concurrent touch contacts, independent release, pinch, edge swipes, and rotation. The 1,050 m traversal stabilized at 690 SVG elements. A four-second walk at 1440 × 900 produced 240 changing frames. The game made one document request and produced no browser errors.
 - The local gallery listed 45 alphabetized tiles. Filtering by OpenAI and GPT-6.2 Astra opened Longwave through its tile. A second walk in a visible Chrome window produced 54 captured frames and kept six compositor layers throughout.
+
+## Afterweather tower defense
+
+- [x] Develop the story, weather instruments, and enemy roles before implementing the game.
+- [x] Build the offline game with a procedural drainage chart, 20 fronts, and four paid upgrades for each instrument.
+- [x] Add GPT-6.2 Sol Max to the gallery in model order.
+- [x] Verify balance, a full run, fresh routes, and the desktop and mobile browser flows.
+
+### Review
+
+- Chrome opened the standalone file offline. Desktop mouse and emulated phone touch checks covered fitting, tuning, pause, retry, and a fresh chart. The victory and breach reports also passed, with zero page errors or external requests.
+- A 512-seed survey produced 494 distinct routes. Two simulated opening strategies cleared all 20 fronts in 23 of 24 runs. The other run reached the final front. All five instruments passed their four paid upgrade steps.
