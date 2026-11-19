@@ -1,0 +1,3817 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>Aurelia Vitrea — The Singing Glasslands</title>
+  <style>
+    :root {
+      --bg-void: #0b0e20;
+      --ink-cream: #f8edd8;
+      --ink-muted: #d4c1a8;
+      --brass: #e4b56a;
+      --brass-bright: #ffe0a3;
+      --teal-glow: #6ef0dc;
+      --coral-glow: #e87a68;
+      --glass-panel: rgba(15, 16, 34, 0.74);
+      --glass-border: rgba(235, 194, 128, 0.34);
+      --glass-border-strong: rgba(255, 224, 163, 0.62);
+      --target-size: 36px;
+      --font-display: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+      --font-ui: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      --font-mono: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+    }
+
+    @media (pointer: coarse) {
+      :root {
+        --target-size: 44px;
+      }
+    }
+
+    *, *::before, *::after {
+      box-sizing: border-box;
+    }
+
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100vw;
+      height: 100vh;
+      width: 100dvw;
+      height: 100dvh;
+      position: fixed;
+      inset: 0;
+      overflow: hidden;
+      overscroll-behavior: none;
+      background: var(--bg-void);
+      color: var(--ink-cream);
+      font-family: var(--font-ui);
+      -webkit-tap-highlight-color: transparent;
+      -webkit-touch-callout: none;
+    }
+
+    /* Fullscreen Interactive SVG Stage */
+    #stage {
+      position: fixed;
+      inset: 0;
+      width: 100vw;
+      height: 100vh;
+      width: 100dvw;
+      height: 100dvh;
+      cursor: grab;
+      touch-action: none;
+      overscroll-behavior: none;
+      -webkit-user-select: none;
+      user-select: none;
+      outline: none;
+    }
+
+    #stage.dragging {
+      cursor: grabbing;
+    }
+
+    #world-svg {
+      display: block;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+    }
+
+    /* Screen-reader only live announcements */
+    .sr-only {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip-path: inset(50%);
+      white-space: nowrap;
+      border: 0;
+    }
+
+    [hidden] {
+      display: none !important;
+    }
+
+    /* Minimalist Top HUD */
+    .hud-header {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      z-index: 20;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+      align-items: start;
+      gap: 0.65rem;
+      padding-top: max(0.75rem, env(safe-area-inset-top, 0px));
+      padding-left: max(0.85rem, env(safe-area-inset-left, 0px));
+      padding-right: max(0.85rem, env(safe-area-inset-right, 0px));
+      pointer-events: none;
+    }
+
+    /* Left Brand & Region Whisper */
+    .region-badge {
+      justify-self: start;
+      pointer-events: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 0.12rem;
+      min-inline-size: 0;
+      max-inline-size: min(44vw, 270px);
+      padding: 0.45rem 0.75rem;
+      border-radius: 12px;
+      background: var(--glass-panel);
+      border: 1px solid var(--glass-border);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      box-shadow: 0 6px 24px rgba(5, 6, 16, 0.36);
+    }
+
+    .region-eyebrow {
+      font-family: var(--font-mono);
+      font-size: clamp(0.6rem, 0.54rem + 0.22vw, 0.72rem);
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--brass);
+      line-height: 1.2;
+    }
+
+    .region-name {
+      font-family: var(--font-display);
+      font-size: clamp(0.84rem, 0.76rem + 0.4vw, 1.06rem);
+      font-weight: 600;
+      letter-spacing: 0.03em;
+      color: var(--ink-cream);
+      line-height: 1.2;
+      text-wrap: balance;
+    }
+
+    .region-coords {
+      font-family: var(--font-mono);
+      font-size: clamp(0.62rem, 0.56rem + 0.2vw, 0.74rem);
+      color: var(--ink-muted);
+      letter-spacing: 0.04em;
+    }
+
+    /* Center Meridian Compass Ribbon */
+    .compass-shell {
+      justify-self: center;
+      width: min(32vw, 280px);
+      min-width: 176px;
+      pointer-events: none;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.28rem;
+    }
+
+    .compass-bar {
+      position: relative;
+      width: 100%;
+      height: 30px;
+      border-radius: 999px;
+      background: var(--glass-panel);
+      border: 1px solid var(--glass-border);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      overflow: hidden;
+      box-shadow: 0 6px 24px rgba(5, 6, 16, 0.36);
+    }
+
+    .compass-bar::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(90deg, rgba(11, 14, 32, 0.92) 0%, transparent 18%, transparent 82%, rgba(11, 14, 32, 0.92) 100%);
+      z-index: 3;
+      pointer-events: none;
+    }
+
+    .compass-needle {
+      position: absolute;
+      top: 0;
+      left: 50%;
+      width: 2px;
+      height: 9px;
+      background: var(--brass-bright);
+      transform: translateX(-50%);
+      z-index: 4;
+      border-radius: 0 0 2px 2px;
+      box-shadow: 0 0 8px var(--brass-bright);
+    }
+
+    .compass-svg {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+
+    .compass-beacon-hint {
+      padding: 0.14rem 0.58rem;
+      border-radius: 999px;
+      background: rgba(11, 14, 32, 0.68);
+      border: 1px solid rgba(110, 240, 220, 0.28);
+      font-family: var(--font-mono);
+      font-size: clamp(0.62rem, 0.56rem + 0.2vw, 0.72rem);
+      letter-spacing: 0.08em;
+      color: var(--teal-glow);
+      opacity: 0.95;
+      white-space: nowrap;
+    }
+
+    /* Right HUD Toolbar */
+    .hud-actions {
+      justify-self: end;
+      pointer-events: auto;
+      display: flex;
+      align-items: center;
+      gap: 0.38rem;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+
+    .hud-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.35rem;
+      min-inline-size: var(--target-size);
+      min-block-size: var(--target-size);
+      padding: 0 0.65rem;
+      border-radius: 10px;
+      background: var(--glass-panel);
+      border: 1px solid var(--glass-border);
+      color: var(--ink-cream);
+      font-family: var(--font-ui);
+      font-size: clamp(0.74rem, 0.68rem + 0.25vw, 0.84rem);
+      font-weight: 500;
+      cursor: pointer;
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      box-shadow: 0 4px 16px rgba(5, 6, 16, 0.32);
+      transition: border-color 0.2s ease, background-color 0.2s ease, color 0.2s ease;
+      -webkit-user-select: none;
+      user-select: none;
+    }
+
+    .hud-btn:hover,
+    .hud-btn:focus-visible {
+      border-color: var(--glass-border-strong);
+      background: rgba(31, 30, 62, 0.86);
+      outline: none;
+    }
+
+    .hud-btn:focus-visible {
+      box-shadow: 0 0 0 2px var(--brass-bright);
+    }
+
+    .hud-btn[aria-pressed="true"] {
+      border-color: rgba(110, 240, 220, 0.65);
+      color: var(--teal-glow);
+    }
+
+    .hud-btn svg {
+      width: 17px;
+      height: 17px;
+      flex-shrink: 0;
+    }
+
+    .hud-btn-label {
+      display: inline;
+    }
+
+    .cairn-counter-pill {
+      font-family: var(--font-mono);
+      font-size: 0.76rem;
+      color: var(--brass-bright);
+    }
+
+    /* Clean two-row flow on narrow screens so HUD controls & compass never collide */
+    @media (max-width: 820px) {
+      .hud-header {
+        grid-template-columns: minmax(0, 1fr) auto;
+        row-gap: 0.5rem;
+      }
+      .compass-shell {
+        grid-column: 1 / -1;
+        order: 3;
+        width: min(74vw, 260px);
+      }
+      .hud-btn-label {
+        display: none;
+      }
+      .hud-btn {
+        padding: 0 0.45rem;
+      }
+      .hud-actions {
+        gap: 0.28rem;
+        flex-wrap: nowrap;
+      }
+      .region-badge {
+        max-inline-size: 100%;
+        padding: 0.36rem 0.58rem;
+      }
+      .region-eyebrow {
+        display: none;
+      }
+    }
+
+    /* Lore Whisper Toast */
+    .lore-toast {
+      position: fixed;
+      left: 50%;
+      bottom: calc(max(1.25rem, env(safe-area-inset-bottom, 0px)) + 1.2rem);
+      transform: translate(-50%, 14px);
+      z-index: 22;
+      width: min(90vw, 520px);
+      padding: 0.9rem 1.15rem;
+      border-radius: 14px;
+      background: rgba(13, 14, 30, 0.86);
+      border: 1px solid rgba(110, 240, 220, 0.45);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      box-shadow: 0 12px 36px rgba(4, 6, 18, 0.55);
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.45s ease, transform 0.45s ease;
+    }
+
+    .lore-toast.visible {
+      opacity: 1;
+      transform: translate(-50%, 0);
+    }
+
+    .lore-toast-title {
+      font-family: var(--font-mono);
+      font-size: 0.7rem;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--teal-glow);
+      margin: 0 0 0.32rem;
+    }
+
+    .lore-toast-text {
+      font-family: var(--font-display);
+      font-size: clamp(0.9rem, 0.82rem + 0.35vw, 1.05rem);
+      font-style: italic;
+      line-height: 1.48;
+      color: var(--ink-cream);
+      margin: 0;
+      text-wrap: pretty;
+    }
+
+    /* Subtle Bottom Controls Hint (Desktop) */
+    .desktop-hint {
+      position: fixed;
+      left: 50%;
+      bottom: max(0.85rem, env(safe-area-inset-bottom, 0px));
+      transform: translateX(-50%);
+      z-index: 15;
+      padding: 0.35rem 0.85rem;
+      border-radius: 999px;
+      background: rgba(12, 13, 28, 0.58);
+      border: 1px solid rgba(228, 181, 106, 0.22);
+      font-family: var(--font-mono);
+      font-size: 0.72rem;
+      letter-spacing: 0.05em;
+      color: var(--ink-muted);
+      pointer-events: none;
+      white-space: nowrap;
+      transition: opacity 0.5s ease;
+    }
+
+    .desktop-hint kbd {
+      display: inline-block;
+      padding: 0.06rem 0.34rem;
+      margin: 0 0.08rem;
+      border-radius: 4px;
+      border: 1px solid rgba(255, 224, 163, 0.36);
+      background: rgba(255, 224, 163, 0.08);
+      color: var(--brass-bright);
+      font-family: var(--font-mono);
+      font-size: 0.68rem;
+    }
+
+    .desktop-hint.faded {
+      opacity: 0.32;
+    }
+
+    /* Mobile Dual Virtual Joysticks (HTML/CSS Overlay) */
+    .joystick-layer {
+      position: fixed;
+      inset: 0;
+      z-index: 25;
+      pointer-events: none;
+      display: none;
+      justify-content: space-between;
+      align-items: flex-end;
+      padding-bottom: max(1.15rem, env(safe-area-inset-bottom, 0px));
+      padding-left: max(1.1rem, env(safe-area-inset-left, 0px));
+      padding-right: max(1.1rem, env(safe-area-inset-right, 0px));
+    }
+
+    body.show-joysticks .joystick-layer {
+      display: flex;
+    }
+
+    body.show-joysticks .desktop-hint {
+      display: none;
+    }
+
+    body.show-joysticks .lore-toast {
+      bottom: calc(max(1.15rem, env(safe-area-inset-bottom, 0px)) + 8.6rem);
+    }
+
+    @media (pointer: coarse), (hover: none), (max-width: 900px) {
+      .joystick-layer {
+        display: flex;
+      }
+      .desktop-hint {
+        display: none;
+      }
+      .lore-toast {
+        bottom: calc(max(1.15rem, env(safe-area-inset-bottom, 0px)) + 8.6rem);
+      }
+      body.hide-joysticks .joystick-layer {
+        display: none;
+      }
+      body.hide-joysticks .lore-toast {
+        bottom: calc(max(1.25rem, env(safe-area-inset-bottom, 0px)) + 1.2rem);
+      }
+    }
+
+    .joystick-wrap {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.35rem;
+      pointer-events: none;
+    }
+
+    .joystick-label {
+      font-family: var(--font-mono);
+      font-size: 0.64rem;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      color: rgba(248, 237, 216, 0.74);
+      text-shadow: 0 1px 6px rgba(6, 7, 18, 0.9);
+      -webkit-user-select: none;
+      user-select: none;
+    }
+
+    .joystick-pad {
+      position: relative;
+      width: clamp(112px, 28vw, 134px);
+      height: clamp(112px, 28vw, 134px);
+      border-radius: 50%;
+      background: radial-gradient(circle at 50% 45%, rgba(28, 30, 58, 0.42), rgba(11, 13, 29, 0.68));
+      border: 1.5px solid rgba(235, 194, 128, 0.42);
+      box-shadow:
+        inset 0 0 22px rgba(235, 194, 128, 0.12),
+        0 8px 26px rgba(5, 6, 18, 0.48);
+      backdrop-filter: blur(6px);
+      -webkit-backdrop-filter: blur(6px);
+      pointer-events: auto;
+      touch-action: none;
+      -webkit-user-select: none;
+      user-select: none;
+      transition: border-color 0.16s ease, box-shadow 0.16s ease;
+    }
+
+    .joystick-pad.active {
+      border-color: var(--teal-glow);
+      box-shadow:
+        inset 0 0 24px rgba(110, 240, 220, 0.2),
+        0 0 20px rgba(110, 240, 220, 0.24);
+    }
+
+    .joystick-ring-inner {
+      position: absolute;
+      inset: 22%;
+      border-radius: 50%;
+      border: 1px dashed rgba(235, 194, 128, 0.25);
+      pointer-events: none;
+    }
+
+    .joystick-axis-hint {
+      position: absolute;
+      font-size: 0.65rem;
+      color: rgba(255, 224, 163, 0.56);
+      pointer-events: none;
+      line-height: 1;
+    }
+
+    .joystick-axis-hint.up { top: 8px; left: 50%; transform: translateX(-50%); }
+    .joystick-axis-hint.down { bottom: 8px; left: 50%; transform: translateX(-50%); }
+    .joystick-axis-hint.left { left: 9px; top: 50%; transform: translateY(-50%); }
+    .joystick-axis-hint.right { right: 9px; top: 50%; transform: translateY(-50%); }
+
+    .joystick-knob {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: 46px;
+      height: 46px;
+      margin-left: -23px;
+      margin-top: -23px;
+      border-radius: 50%;
+      background: radial-gradient(circle at 35% 32%, #ffe9ba, #d89b52 62%, #7d4e2a 100%);
+      border: 1.5px solid rgba(255, 243, 214, 0.85);
+      box-shadow: 0 4px 14px rgba(4, 5, 16, 0.65), inset 0 1px 4px rgba(255, 255, 255, 0.5);
+      pointer-events: none;
+      will-change: transform;
+      transform: translate3d(0, 0, 0);
+    }
+
+    .joystick-pad.active .joystick-knob {
+      background: radial-gradient(circle at 35% 32%, #d8fff7, #5adcc7 62%, #1d6d68 100%);
+      border-color: #e9fffa;
+    }
+
+    /* Arrival Title Overlay */
+    .intro-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 40;
+      display: grid;
+      place-items: center;
+      padding: 1.5rem;
+      background: radial-gradient(circle at 50% 44%, rgba(20, 17, 42, 0.52), rgba(8, 9, 22, 0.82));
+      backdrop-filter: blur(5px);
+      -webkit-backdrop-filter: blur(5px);
+      transition: opacity 0.6s ease, visibility 0.6s ease;
+    }
+
+    .intro-overlay.dismissed {
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+    }
+
+    .intro-card {
+      width: min(92vw, 560px);
+      padding: clamp(1.35rem, 1rem + 1.8vw, 2.25rem);
+      border-radius: 20px;
+      background: linear-gradient(165deg, rgba(22, 22, 48, 0.9), rgba(11, 12, 27, 0.94));
+      border: 1px solid rgba(235, 194, 128, 0.45);
+      box-shadow: 0 24px 64px rgba(3, 4, 14, 0.72), inset 0 1px 0 rgba(255, 232, 186, 0.2);
+      text-align: center;
+    }
+
+    .intro-crest {
+      width: 62px;
+      height: 62px;
+      margin: 0 auto 0.75rem;
+      display: block;
+    }
+
+    .intro-subtitle {
+      font-family: var(--font-mono);
+      font-size: clamp(0.68rem, 0.62rem + 0.25vw, 0.78rem);
+      letter-spacing: 0.22em;
+      text-transform: uppercase;
+      color: var(--brass);
+      margin: 0 0 0.4rem;
+    }
+
+    .intro-card h1 {
+      font-family: var(--font-display);
+      font-size: clamp(1.75rem, 1.3rem + 1.9vw, 2.85rem);
+      font-weight: 500;
+      letter-spacing: 0.06em;
+      margin: 0 0 0.75rem;
+      color: var(--ink-cream);
+      text-wrap: balance;
+    }
+
+    .intro-lore {
+      font-family: var(--font-display);
+      font-size: clamp(0.94rem, 0.86rem + 0.35vw, 1.08rem);
+      line-height: 1.6;
+      color: var(--ink-muted);
+      margin: 0 auto 1.25rem;
+      max-width: 46ch;
+      text-wrap: pretty;
+    }
+
+    .intro-controls {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+      gap: 0.6rem;
+      margin-bottom: 1.4rem;
+      text-align: left;
+    }
+
+    .intro-control-box {
+      padding: 0.6rem 0.75rem;
+      border-radius: 10px;
+      background: rgba(255, 232, 186, 0.05);
+      border: 1px solid rgba(235, 194, 128, 0.22);
+      font-size: 0.78rem;
+      line-height: 1.45;
+      color: var(--ink-muted);
+    }
+
+    .intro-control-box strong {
+      display: block;
+      font-family: var(--font-mono);
+      font-size: 0.68rem;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--brass-bright);
+      margin-bottom: 0.18rem;
+    }
+
+    .btn-primary {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+      min-block-size: 46px;
+      padding: 0.7rem 1.75rem;
+      border-radius: 999px;
+      border: 1px solid var(--brass-bright);
+      background: linear-gradient(135deg, #e7b160, #c8794c);
+      color: #130f1e;
+      font-family: var(--font-ui);
+      font-size: 0.95rem;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      cursor: pointer;
+      box-shadow: 0 8px 26px rgba(231, 177, 96, 0.32);
+      transition: transform 0.18s ease, box-shadow 0.18s ease;
+    }
+
+    .btn-primary:hover,
+    .btn-primary:focus-visible {
+      transform: translateY(-1px);
+      box-shadow: 0 10px 30px rgba(255, 224, 163, 0.45);
+      outline: none;
+    }
+
+    .btn-primary:focus-visible {
+      box-shadow: 0 0 0 3px var(--teal-glow);
+    }
+
+    /* Native Modal Field Journal Dialog */
+    dialog.journal-dialog {
+      width: min(92vw, 600px);
+      max-height: min(84dvh, 720px);
+      padding: 0;
+      border-radius: 18px;
+      border: 1px solid rgba(235, 194, 128, 0.48);
+      background: linear-gradient(170deg, rgba(20, 20, 44, 0.97), rgba(10, 11, 25, 0.98));
+      color: var(--ink-cream);
+      box-shadow: 0 28px 72px rgba(3, 4, 14, 0.82);
+      overflow: hidden;
+    }
+
+    dialog.journal-dialog::backdrop {
+      background: rgba(6, 7, 18, 0.72);
+      backdrop-filter: blur(6px);
+      -webkit-backdrop-filter: blur(6px);
+    }
+
+    .journal-inner {
+      display: flex;
+      flex-direction: column;
+      max-height: min(84dvh, 720px);
+    }
+
+    .journal-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+      padding: 1rem 1.25rem;
+      border-bottom: 1px solid rgba(235, 194, 128, 0.22);
+    }
+
+    .journal-header h2 {
+      font-family: var(--font-display);
+      font-size: clamp(1.15rem, 1rem + 0.7vw, 1.45rem);
+      font-weight: 500;
+      margin: 0;
+      color: var(--brass-bright);
+      text-wrap: balance;
+    }
+
+    .journal-close-btn {
+      min-inline-size: var(--target-size);
+      min-block-size: var(--target-size);
+      padding: 0 0.75rem;
+      border-radius: 9px;
+      border: 1px solid var(--glass-border);
+      background: rgba(255, 255, 255, 0.05);
+      color: var(--ink-cream);
+      font-family: var(--font-ui);
+      font-size: 0.85rem;
+      cursor: pointer;
+    }
+
+    .journal-close-btn:hover,
+    .journal-close-btn:focus-visible {
+      border-color: var(--brass-bright);
+      background: rgba(255, 224, 163, 0.14);
+      outline: none;
+    }
+
+    .journal-body {
+      padding: 1.1rem 1.25rem 1.35rem;
+      overflow-y: auto;
+      overscroll-behavior: contain;
+      -webkit-overflow-scrolling: touch;
+      touch-action: pan-y;
+      -webkit-user-select: text;
+      user-select: text;
+    }
+
+    .journal-backstory {
+      font-family: var(--font-display);
+      font-size: 0.96rem;
+      line-height: 1.62;
+      color: var(--ink-muted);
+      margin: 0 0 1.1rem;
+      text-wrap: pretty;
+    }
+
+    .journal-section-title {
+      font-family: var(--font-mono);
+      font-size: 0.72rem;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      color: var(--teal-glow);
+      margin: 1.15rem 0 0.65rem;
+    }
+
+    .fragment-list {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      display: grid;
+      gap: 0.65rem;
+    }
+
+    .fragment-item {
+      padding: 0.75rem 0.9rem;
+      border-radius: 12px;
+      border: 1px solid rgba(235, 194, 128, 0.22);
+      background: rgba(255, 238, 206, 0.04);
+    }
+
+    .fragment-item.locked {
+      opacity: 0.48;
+      border-style: dashed;
+    }
+
+    .fragment-title {
+      font-family: var(--font-mono);
+      font-size: 0.72rem;
+      letter-spacing: 0.1em;
+      color: var(--brass);
+      margin: 0 0 0.25rem;
+    }
+
+    .fragment-copy {
+      font-family: var(--font-display);
+      font-size: 0.92rem;
+      font-style: italic;
+      line-height: 1.5;
+      margin: 0;
+      color: var(--ink-cream);
+      text-wrap: pretty;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .lore-toast,
+      .intro-overlay,
+      .hud-btn,
+      .btn-primary {
+        transition-duration: 0.08s;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main id="stage" tabindex="0" aria-label="Aurelia Vitrea first-person glasslands exploration viewport">
+    <svg id="world-svg" viewBox="0 0 1600 900" preserveAspectRatio="none" aria-hidden="true" focusable="false">
+      <defs>
+        <!-- Sky Twilight Palette (Eternal Vespers) -->
+        <linearGradient id="sky-grad" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#090d22"/>
+          <stop offset="22%" stop-color="#171b3f"/>
+          <stop offset="46%" stop-color="#3a2554"/>
+          <stop offset="68%" stop-color="#8b4260"/>
+          <stop offset="84%" stop-color="#d7755e"/>
+          <stop offset="94%" stop-color="#f2aa6b"/>
+          <stop offset="100%" stop-color="#fce3a9"/>
+        </linearGradient>
+
+        <!-- Atmospheric Horizon Mist Band -->
+        <linearGradient id="horizon-mist" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#f7c894" stop-opacity="0"/>
+          <stop offset="46%" stop-color="#f6c18c" stop-opacity="0.34"/>
+          <stop offset="56%" stop-color="#e39d83" stop-opacity="0.44"/>
+          <stop offset="100%" stop-color="#603d61" stop-opacity="0"/>
+        </linearGradient>
+
+        <!-- Directional Vespers Sun Bloom (Cubic Ease-Out to Prevent Mach Banding) -->
+        <radialGradient id="sun-halo-outer" cx="50%" cy="50%" r="50%">
+          <stop offset="0%" stop-color="#fff4d1" stop-opacity="0.92"/>
+          <stop offset="18%" stop-color="#ffc378" stop-opacity="0.52"/>
+          <stop offset="42%" stop-color="#e06f64" stop-opacity="0.2"/>
+          <stop offset="68%" stop-color="#c95b68" stop-opacity="0.06"/>
+          <stop offset="86%" stop-color="#9e4562" stop-opacity="0.012"/>
+          <stop offset="100%" stop-color="#8b4260" stop-opacity="0"/>
+        </radialGradient>
+
+        <radialGradient id="sun-disc-grad" cx="50%" cy="45%" r="50%">
+          <stop offset="0%" stop-color="#fffdf4"/>
+          <stop offset="68%" stop-color="#ffe7a8"/>
+          <stop offset="100%" stop-color="#f7b26b"/>
+        </radialGradient>
+
+        <!-- Twin Moons -->
+        <radialGradient id="moon-opaline-halo" cx="50%" cy="50%" r="50%">
+          <stop offset="0%" stop-color="#e6dcff" stop-opacity="0.42"/>
+          <stop offset="55%" stop-color="#a297df" stop-opacity="0.12"/>
+          <stop offset="100%" stop-color="#5d5a9e" stop-opacity="0"/>
+        </radialGradient>
+
+        <linearGradient id="moon-opaline-body" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stop-color="#fdf9f0"/>
+          <stop offset="62%" stop-color="#dcd4eb"/>
+          <stop offset="100%" stop-color="#8b82ad"/>
+        </linearGradient>
+
+        <radialGradient id="moon-cinder-body" cx="35%" cy="35%" r="65%">
+          <stop offset="0%" stop-color="#f5c098"/>
+          <stop offset="60%" stop-color="#be6959"/>
+          <stop offset="100%" stop-color="#4e2638"/>
+        </radialGradient>
+
+        <!-- Shattered Meridian Brass Arc Gradient -->
+        <linearGradient id="meridian-brass" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stop-color="#ffe8b3" stop-opacity="0.72"/>
+          <stop offset="50%" stop-color="#d59a58" stop-opacity="0.5"/>
+          <stop offset="100%" stop-color="#7f576c" stop-opacity="0.22"/>
+        </linearGradient>
+
+        <!-- Stylized Cloud Gradients -->
+        <linearGradient id="cloud-ribbon-grad" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#563664" stop-opacity="0.72"/>
+          <stop offset="65%" stop-color="#b95c68" stop-opacity="0.78"/>
+          <stop offset="100%" stop-color="#f7be85" stop-opacity="0.9"/>
+        </linearGradient>
+
+        <!-- Distant Crystalline Mesa Layers -->
+        <linearGradient id="mesa-far-grad" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#8e5874"/>
+          <stop offset="100%" stop-color="#c3847f"/>
+        </linearGradient>
+
+        <linearGradient id="mesa-mid-grad" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#4c3156"/>
+          <stop offset="100%" stop-color="#7b4b6a"/>
+        </linearGradient>
+
+        <linearGradient id="mesa-near-grad" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#221e3c"/>
+          <stop offset="65%" stop-color="#36284c"/>
+          <stop offset="100%" stop-color="#503556"/>
+        </linearGradient>
+
+        <!-- Ground Plane (Vitrified Obsidian & Porcelain Salt Flats) -->
+        <linearGradient id="ground-grad" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#cf8d7b"/>
+          <stop offset="7%" stop-color="#7e4f68"/>
+          <stop offset="22%" stop-color="#3c2b4e"/>
+          <stop offset="52%" stop-color="#1d1b35"/>
+          <stop offset="100%" stop-color="#0b0c1a"/>
+        </linearGradient>
+
+        <!-- Ground Specular Sun Reflection (Soft Feathered Glow) -->
+        <clipPath id="ground-clip">
+          <rect x="-400" y="0" width="3800" height="1400"/>
+        </clipPath>
+        <radialGradient id="ground-sun-refl" cx="50%" cy="6%" r="54%" fx="50%" fy="2%">
+          <stop offset="0%" stop-color="#fff0be" stop-opacity="0.58"/>
+          <stop offset="22%" stop-color="#f7b174" stop-opacity="0.3"/>
+          <stop offset="56%" stop-color="#c46672" stop-opacity="0.09"/>
+          <stop offset="82%" stop-color="#6b3e5d" stop-opacity="0.02"/>
+          <stop offset="100%" stop-color="#3a2748" stop-opacity="0"/>
+        </radialGradient>
+
+        <radialGradient id="sun-shimmer-bar" cx="50%" cy="50%" r="50%">
+          <stop offset="0%" stop-color="#ffefc4" stop-opacity="0.62"/>
+          <stop offset="55%" stop-color="#f5ae72" stop-opacity="0.22"/>
+          <stop offset="100%" stop-color="#f5ae72" stop-opacity="0"/>
+        </radialGradient>
+
+        <!-- Ground Grid Fade Gradient -->
+        <linearGradient id="grid-stroke-grad" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#f7c894" stop-opacity="0.03"/>
+          <stop offset="18%" stop-color="#d79b7f" stop-opacity="0.26"/>
+          <stop offset="65%" stop-color="#73a6b8" stop-opacity="0.22"/>
+          <stop offset="100%" stop-color="#9be7de" stop-opacity="0.34"/>
+        </linearGradient>
+
+        <!-- Brine Mirror Pool Fill -->
+        <linearGradient id="brine-pool-grad" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#f4c79a" stop-opacity="0.56"/>
+          <stop offset="48%" stop-color="#9e6d88" stop-opacity="0.46"/>
+          <stop offset="100%" stop-color="#38687a" stop-opacity="0.52"/>
+        </linearGradient>
+
+        <!-- Shared Prop Shadow -->
+        <radialGradient id="prop-shadow" cx="50%" cy="50%" r="50%">
+          <stop offset="0%" stop-color="#070714" stop-opacity="0.62"/>
+          <stop offset="65%" stop-color="#0d0d22" stop-opacity="0.26"/>
+          <stop offset="100%" stop-color="#0d0d22" stop-opacity="0"/>
+        </radialGradient>
+
+        <!-- Prop Material Gradients -->
+        <linearGradient id="glass-teal" x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0%" stop-color="#142338"/>
+          <stop offset="32%" stop-color="#224a5e"/>
+          <stop offset="64%" stop-color="#488794"/>
+          <stop offset="86%" stop-color="#b4e2db"/>
+          <stop offset="100%" stop-color="#f7c78f"/>
+        </linearGradient>
+
+        <linearGradient id="glass-teal-dark" x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0%" stop-color="#0e1629"/>
+          <stop offset="48%" stop-color="#1c354c"/>
+          <stop offset="85%" stop-color="#3b6c7a"/>
+          <stop offset="100%" stop-color="#d49f7d"/>
+        </linearGradient>
+
+        <linearGradient id="kiln-amber-core" x1="0" y1="1" x2="0" y2="0">
+          <stop offset="0%" stop-color="#ffefc1"/>
+          <stop offset="38%" stop-color="#f29b52"/>
+          <stop offset="78%" stop-color="#b84a50"/>
+          <stop offset="100%" stop-color="#4d2444" stop-opacity="0.35"/>
+        </linearGradient>
+
+        <linearGradient id="brass-band" x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0%" stop-color="#6b4428"/>
+          <stop offset="38%" stop-color="#cf9650"/>
+          <stop offset="74%" stop-color="#ffe4a4"/>
+          <stop offset="100%" stop-color="#9e6738"/>
+        </linearGradient>
+
+        <linearGradient id="obsidian-stone" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stop-color="#393356"/>
+          <stop offset="48%" stop-color="#1b1830"/>
+          <stop offset="100%" stop-color="#0d0c1b"/>
+        </linearGradient>
+
+        <linearGradient id="willow-trunk" x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0%" stop-color="#151829"/>
+          <stop offset="52%" stop-color="#2a434d"/>
+          <stop offset="86%" stop-color="#5c7e7a"/>
+          <stop offset="100%" stop-color="#df9e6e"/>
+        </linearGradient>
+
+        <linearGradient id="petal-rose" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#ffdcb0" stop-opacity="0.92"/>
+          <stop offset="48%" stop-color="#e37c7c" stop-opacity="0.86"/>
+          <stop offset="100%" stop-color="#7c3e6b" stop-opacity="0.8"/>
+        </linearGradient>
+
+        <linearGradient id="petal-aqua" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#e8fff7" stop-opacity="0.92"/>
+          <stop offset="50%" stop-color="#64c8bd" stop-opacity="0.84"/>
+          <stop offset="100%" stop-color="#285c74" stop-opacity="0.8"/>
+        </linearGradient>
+
+        <linearGradient id="agave-crystal" x1="0" y1="1" x2="0" y2="0">
+          <stop offset="0%" stop-color="#231c3d"/>
+          <stop offset="44%" stop-color="#693b69"/>
+          <stop offset="78%" stop-color="#d47683"/>
+          <stop offset="100%" stop-color="#ffe1b0"/>
+        </linearGradient>
+
+        <linearGradient id="agave-teal" x1="0" y1="1" x2="0" y2="0">
+          <stop offset="0%" stop-color="#132238"/>
+          <stop offset="46%" stop-color="#296678"/>
+          <stop offset="82%" stop-color="#73d4c8"/>
+          <stop offset="100%" stop-color="#effff7"/>
+        </linearGradient>
+
+        <radialGradient id="cairn-orb-dormant" cx="38%" cy="34%" r="62%">
+          <stop offset="0%" stop-color="#fff8dc"/>
+          <stop offset="45%" stop-color="#f2a85a"/>
+          <stop offset="82%" stop-color="#a64b42"/>
+          <stop offset="100%" stop-color="#4e1e36"/>
+        </radialGradient>
+
+        <radialGradient id="cairn-orb-attuned" cx="38%" cy="34%" r="62%">
+          <stop offset="0%" stop-color="#ffffff"/>
+          <stop offset="42%" stop-color="#8affea"/>
+          <stop offset="78%" stop-color="#28b8b0"/>
+          <stop offset="100%" stop-color="#1a4e6d"/>
+        </radialGradient>
+
+        <radialGradient id="cairn-glow-dormant" cx="50%" cy="50%" r="50%">
+          <stop offset="0%" stop-color="#ffcf80" stop-opacity="0.65"/>
+          <stop offset="55%" stop-color="#e07452" stop-opacity="0.22"/>
+          <stop offset="100%" stop-color="#e07452" stop-opacity="0"/>
+        </radialGradient>
+
+        <radialGradient id="cairn-glow-attuned" cx="50%" cy="50%" r="50%">
+          <stop offset="0%" stop-color="#b5fff3" stop-opacity="0.88"/>
+          <stop offset="45%" stop-color="#4be0cc" stop-opacity="0.34"/>
+          <stop offset="100%" stop-color="#4be0cc" stop-opacity="0"/>
+        </radialGradient>
+
+        <linearGradient id="cairn-beam" x1="0" y1="1" x2="0" y2="0">
+          <stop offset="0%" stop-color="#9effef" stop-opacity="0.72"/>
+          <stop offset="40%" stop-color="#62e6d4" stop-opacity="0.28"/>
+          <stop offset="100%" stop-color="#ffe7ad" stop-opacity="0"/>
+        </linearGradient>
+
+        <linearGradient id="moth-wing-grad" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stop-color="#fff4c4" stop-opacity="0.92"/>
+          <stop offset="36%" stop-color="#75f0df" stop-opacity="0.86"/>
+          <stop offset="72%" stop-color="#df6d9b" stop-opacity="0.82"/>
+          <stop offset="100%" stop-color="#4c2c6b" stop-opacity="0.72"/>
+        </linearGradient>
+
+        <linearGradient id="vapour-grad" x1="0" y1="1" x2="0" y2="0">
+          <stop offset="0%" stop-color="#ffcf96" stop-opacity="0.5"/>
+          <stop offset="55%" stop-color="#f2a27d" stop-opacity="0.2"/>
+          <stop offset="100%" stop-color="#f2a27d" stop-opacity="0"/>
+        </linearGradient>
+
+        <!-- ==========================================================
+             PROP 1A: KILN-SPIRE ORGAN (Cathedral Cluster, 0 to -100)
+             ========================================================== -->
+        <g id="prop-spire-a">
+          <ellipse cx="0" cy="0" rx="22" ry="5.5" fill="url(#prop-shadow)"/>
+          <!-- Obsidian stepped plinth -->
+          <polygon points="-16,1 16,1 13,-5 -13,-5" fill="url(#obsidian-stone)" stroke="#68506e" stroke-width="0.5"/>
+          <polygon points="-12,-5 12,-5 10,-10 -10,-10" fill="url(#obsidian-stone)" stroke="#b5835c" stroke-width="0.5"/>
+          <!-- Outer left & right organ pipes -->
+          <path d="M-11,-9 L-10,-52 L-7,-57 L-5,-52 L-5,-9 Z" fill="url(#glass-teal-dark)" stroke="#101829" stroke-width="0.6"/>
+          <path d="M5,-9 L5,-58 L7.5,-63 L10,-58 L11,-9 Z" fill="url(#glass-teal-dark)" stroke="#101829" stroke-width="0.6"/>
+          <!-- Inner flanking pipes -->
+          <path d="M-7,-9 L-6.2,-74 L-3.6,-80 L-1.4,-74 L-1.6,-9 Z" fill="url(#glass-teal)" stroke="#101829" stroke-width="0.6"/>
+          <path d="M1.6,-9 L1.4,-70 L3.8,-76 L6.2,-70 L7,-9 Z" fill="url(#glass-teal)" stroke="#101829" stroke-width="0.6"/>
+          <!-- Central Nave Kiln-Spire -->
+          <path d="M-4.6,-9 L-3.6,-91 L0,-100 L3.6,-91 L4.6,-9 Z" fill="url(#glass-teal)" stroke="#0f1526" stroke-width="0.7"/>
+          <!-- Glowing molten-amber furnace flue core -->
+          <path d="M-1.8,-12 L-1.4,-82 L0,-88 L1.4,-82 L1.8,-12 Z" fill="url(#kiln-amber-core)" opacity="0.88"/>
+          <path d="M-4.5,-14 L-4.1,-65 L-3,-68 L-2.6,-14 Z" fill="url(#kiln-amber-core)" opacity="0.55"/>
+          <path d="M2.8,-14 L3.4,-62 L4.4,-65 L4.6,-14 Z" fill="url(#kiln-amber-core)" opacity="0.55"/>
+          <!-- Specular sunlight rim line -->
+          <line x1="2.8" y1="-11" x2="2.3" y2="-91" stroke="#fff0c8" stroke-width="0.7" opacity="0.78"/>
+          <line x1="8.8" y1="-11" x2="8.4" y2="-58" stroke="#f7cf9c" stroke-width="0.55" opacity="0.65"/>
+          <!-- Hammered brass collar bands & filigree arches -->
+          <rect x="-11.4" y="-26" width="22.8" height="2.4" rx="1" fill="url(#brass-band)" stroke="#3e2618" stroke-width="0.4"/>
+          <rect x="-7.6" y="-48" width="15.2" height="2.2" rx="1" fill="url(#brass-band)" stroke="#3e2618" stroke-width="0.4"/>
+          <rect x="-5.4" y="-71" width="10.8" height="2" rx="0.9" fill="url(#brass-band)" stroke="#3e2618" stroke-width="0.4"/>
+          <!-- Gothic buttress struts -->
+          <path d="M-14,-5 Q-12,-22 -8,-30 M14,-5 Q12,-22 8,-30" fill="none" stroke="url(#brass-band)" stroke-width="1.1"/>
+          <!-- Crown Finial Ring -->
+          <circle cx="0" cy="-96" r="4.6" fill="none" stroke="url(#brass-band)" stroke-width="1"/>
+          <line x1="0" y1="-100" x2="0" y2="-106" stroke="#ffe4a4" stroke-width="0.85"/>
+          <circle cx="0" cy="-106" r="1.3" fill="#fff0c8"/>
+        </g>
+
+        <g id="fog-spire-a">
+          <path d="M-16,1 L-13,-5 L-11,-9 L-10,-52 L-7,-57 L-6.2,-74 L-3.6,-80 L-3.6,-91 L0,-106 L3.6,-91 L3.8,-76 L6.2,-70 L7.5,-63 L10,-58 L11,-9 L13,-5 L16,1 Z" fill="#c78384"/>
+        </g>
+
+        <!-- ==========================================================
+             PROP 1B: KILN-SPIRE TUNING FORK (Twin Curved Flues, 0 to -100)
+             ========================================================== -->
+        <g id="prop-spire-b">
+          <ellipse cx="0" cy="0" rx="20" ry="5" fill="url(#prop-shadow)"/>
+          <polygon points="-14,1 14,1 11,-6 -11,-6" fill="url(#obsidian-stone)" stroke="#b5835c" stroke-width="0.5"/>
+          <!-- Sweeping twin tuning-fork horns -->
+          <path d="M-9,-6 Q-12,-42 -6,-95 L-3.2,-100 Q-2,-46 -2,-6 Z" fill="url(#glass-teal)" stroke="#0f1526" stroke-width="0.65"/>
+          <path d="M9,-6 Q12,-42 6,-95 L3.2,-100 Q2,-46 2,-6 Z" fill="url(#glass-teal)" stroke="#0f1526" stroke-width="0.65"/>
+          <!-- Inner glowing furnace ribs -->
+          <path d="M-6.4,-10 Q-8,-45 -4.4,-88 L-3.4,-88 Q-4.6,-45 -3.6,-10 Z" fill="url(#kiln-amber-core)" opacity="0.82"/>
+          <path d="M6.4,-10 Q8,-45 4.4,-88 L3.4,-88 Q4.6,-45 3.6,-10 Z" fill="url(#kiln-amber-core)" opacity="0.82"/>
+          <!-- Brass bracing rings -->
+          <path d="M-10,-28 Q0,-24 10,-28" fill="none" stroke="url(#brass-band)" stroke-width="2"/>
+          <path d="M-9.5,-56 Q0,-50 9.5,-56" fill="none" stroke="url(#brass-band)" stroke-width="1.8"/>
+          <!-- Suspended blown-glass amber tear between forks -->
+          <line x1="-6" y1="-74" x2="6" y2="-74" stroke="url(#brass-band)" stroke-width="0.9"/>
+          <circle cx="0" cy="-74" r="6.8" fill="url(#cairn-glow-dormant)"/>
+          <path d="M0,-82 Q3.6,-75 2.8,-70 Q0,-66 -2.8,-70 Q-3.6,-75 0,-82 Z" fill="url(#kiln-amber-core)" stroke="#ffe8b3" stroke-width="0.65"/>
+          <!-- Specular highlights -->
+          <path d="M8,-10 Q10.4,-45 5.4,-94" fill="none" stroke="#fff0c8" stroke-width="0.7" opacity="0.75"/>
+        </g>
+
+        <g id="fog-spire-b">
+          <path d="M-14,1 L-11,-6 Q-12,-42 -6,-95 L-3.2,-100 Q-2,-46 -2,-6 L2,-6 Q2,-46 3.2,-100 L6,-95 Q12,-42 11,-6 L14,1 Z" fill="#c78384"/>
+        </g>
+
+        <!-- ==========================================================
+             PROP 2A: PRISM-WILLOW (Salix vitrea — Tiered Weeping Glass Boughs)
+             ========================================================== -->
+        <g id="prop-willow-a-trunk">
+          <ellipse cx="0" cy="0" rx="26" ry="6" fill="url(#prop-shadow)"/>
+          <!-- Twisted verdigris-copper trunk & flared glass roots -->
+          <path d="M-12,1 Q-5,-8 -4,-26 Q-3,-46 -6,-62 L-1,-66 Q2,-48 3,-26 Q5,-8 13,1 Q5,-1 0,-3 Q-5,-1 -12,1 Z" fill="url(#willow-trunk)" stroke="#0f1526" stroke-width="0.75"/>
+          <!-- Glowing amber sap vein -->
+          <path d="M-1.5,-4 Q-0.6,-26 -1.8,-58" fill="none" stroke="#f5b36d" stroke-width="0.95" opacity="0.78"/>
+          <!-- Arching Art-Nouveau boughs -->
+          <path d="M-3,-54 Q-19,-72 -33,-52 M-2,-60 Q-12,-82 -22,-76 M0,-64 Q14,-84 30,-56 M1,-58 Q21,-68 35,-44" fill="none" stroke="url(#willow-trunk)" stroke-width="2.2" stroke-linecap="round"/>
+        </g>
+
+        <g id="prop-willow-a-canopy">
+          <!-- Fine brass hanging filaments -->
+          <g stroke="#ffe0a3" stroke-width="0.42" opacity="0.52">
+            <line x1="-30" y1="-54" x2="-31" y2="-16"/>
+            <line x1="-18" y1="-72" x2="-19" y2="-20"/>
+            <line x1="-7" y1="-76" x2="-8" y2="-24"/>
+            <line x1="7" y1="-76" x2="8" y2="-22"/>
+            <line x1="20" y1="-70" x2="22" y2="-18"/>
+            <line x1="32" y1="-48" x2="33" y2="-14"/>
+          </g>
+          <!-- Back weeping stained-glass lancet cascades -->
+          <g opacity="0.88">
+            <path d="M-31,-56 Q-36,-38 -31,-16 Q-26,-38 -31,-56 Z" fill="url(#petal-aqua)" stroke="#1b3c4d" stroke-width="0.45"/>
+            <path d="M-21,-70 Q-26,-44 -20,-20 Q-15,-44 -21,-70 Z" fill="url(#petal-rose)" stroke="#4c2345" stroke-width="0.45"/>
+            <path d="M22,-68 Q28,-42 22,-18 Q16,-42 22,-68 Z" fill="url(#petal-aqua)" stroke="#1b3c4d" stroke-width="0.45"/>
+            <path d="M32,-50 Q37,-32 33,-14 Q27,-32 32,-50 Z" fill="url(#petal-rose)" stroke="#4c2345" stroke-width="0.45"/>
+          </g>
+          <!-- Multi-tiered scalloped botanical glass crown (feathered willow arches, not a solid dome!) -->
+          <path d="M-36,-50 Q-26,-78 -10,-74 Q-20,-62 -28,-46 Z" fill="url(#petal-aqua)" stroke="#17384a" stroke-width="0.6"/>
+          <path d="M37,-46 Q27,-76 11,-72 Q21,-60 29,-42 Z" fill="url(#petal-aqua)" stroke="#17384a" stroke-width="0.6"/>
+          <path d="M-26,-66 Q-14,-94 0,-88 Q14,-94 27,-64 Q14,-74 0,-70 Q-14,-74 -26,-66 Z" fill="url(#petal-rose)" stroke="#3e1e42" stroke-width="0.65"/>
+          <path d="M-16,-78 Q-6,-99 0,-96 Q7,-99 17,-76 Q7,-84 0,-80 Q-7,-84 -16,-78 Z" fill="url(#petal-aqua)" stroke="#d9fff6" stroke-width="0.5" opacity="0.86"/>
+          <!-- Front luminous weeping silica leaves & prism drops -->
+          <path d="M-13,-66 Q-17,-44 -12,-24 Q-8,-44 -13,-66 Z" fill="url(#petal-rose)" stroke="#ffdfb3" stroke-width="0.48"/>
+          <path d="M-3,-72 Q-7,-48 -2,-28 Q3,-48 -3,-72 Z" fill="url(#petal-aqua)" stroke="#e4fff8" stroke-width="0.48"/>
+          <path d="M9,-68 Q14,-44 10,-22 Q5,-44 9,-68 Z" fill="url(#petal-rose)" stroke="#ffdfb3" stroke-width="0.48"/>
+          <path d="M18,-60 Q22,-42 18,-26 Q14,-42 18,-60 Z" fill="url(#petal-aqua)" stroke="#e4fff8" stroke-width="0.45"/>
+          <!-- Sunlit crystal dew beads -->
+          <circle cx="-31" cy="-16" r="1.4" fill="#ffeec7"/>
+          <circle cx="-20" cy="-20" r="1.5" fill="#a2fff0"/>
+          <circle cx="-12" cy="-24" r="1.6" fill="#ffeec7"/>
+          <circle cx="-2" cy="-28" r="1.7" fill="#a2fff0"/>
+          <circle cx="10" cy="-22" r="1.6" fill="#ffeec7"/>
+          <circle cx="22" cy="-18" r="1.5" fill="#a2fff0"/>
+          <circle cx="33" cy="-14" r="1.4" fill="#ffeec7"/>
+        </g>
+
+        <g id="fog-willow-a">
+          <path d="M-12,1 L-4,-26 L-31,-16 L-36,-50 Q-24,-78 -14,-88 Q0,-98 14,-88 Q26,-78 37,-46 L33,-14 L10,-22 L3,-26 L13,1 Z" fill="#c78384"/>
+        </g>
+
+        <!-- ==========================================================
+             PROP 2B: PRISM-WILLOW (Wind-Swept Feathered Plume Form)
+             ========================================================== -->
+        <g id="prop-willow-b-trunk">
+          <ellipse cx="2" cy="0" rx="22" ry="5.5" fill="url(#prop-shadow)"/>
+          <path d="M-12,1 Q-5,-12 -2,-34 Q2,-54 11,-70 L16,-67 Q7,-50 4,-30 Q3,-10 9,1 Z" fill="url(#willow-trunk)" stroke="#0f1526" stroke-width="0.75"/>
+          <path d="M-3,-10 Q1,-34 12,-66" fill="none" stroke="#f5b36d" stroke-width="0.85" opacity="0.74"/>
+          <path d="M6,-56 Q-14,-76 -30,-62 M11,-66 Q25,-80 36,-54" fill="none" stroke="url(#willow-trunk)" stroke-width="2.1" stroke-linecap="round"/>
+        </g>
+
+        <g id="prop-willow-b-canopy">
+          <g stroke="#ffe0a3" stroke-width="0.4" opacity="0.5">
+            <line x1="-24" y1="-64" x2="-22" y2="-22"/>
+            <line x1="-8" y1="-72" x2="-6" y2="-20"/>
+            <line x1="12" y1="-72" x2="15" y2="-18"/>
+            <line x1="28" y1="-60" x2="32" y2="-16"/>
+          </g>
+          <!-- Swept multi-tiered crescent boughs -->
+          <path d="M-34,-58 Q-18,-84 -2,-76 Q-14,-66 -26,-54 Z" fill="url(#petal-rose)" stroke="#3e1e42" stroke-width="0.6"/>
+          <path d="M-22,-72 Q-4,-98 18,-88 Q32,-80 38,-50 Q24,-62 12,-68 Q-6,-72 -22,-72 Z" fill="url(#petal-aqua)" stroke="#17384a" stroke-width="0.65"/>
+          <path d="M-8,-78 Q8,-96 26,-82 Q16,-74 4,-74 Z" fill="url(#petal-rose)" stroke="#ffdfb3" stroke-width="0.5" opacity="0.86"/>
+          <!-- Trailing wind-blown weeping crystal ribbons -->
+          <path d="M-25,-62 Q-28,-42 -21,-22 Q-17,-42 -25,-62 Z" fill="url(#petal-rose)" stroke="#ffdfb3" stroke-width="0.45"/>
+          <path d="M-10,-68 Q-13,-42 -6,-20 Q-1,-42 -10,-68 Z" fill="url(#petal-aqua)" stroke="#e4fff8" stroke-width="0.45"/>
+          <path d="M4,-68 Q7,-44 9,-24 Q12,-44 4,-68 Z" fill="url(#petal-rose)" stroke="#ffdfb3" stroke-width="0.45"/>
+          <path d="M16,-64 Q21,-40 22,-20 Q23,-42 16,-64 Z" fill="url(#petal-aqua)" stroke="#e4fff8" stroke-width="0.45"/>
+          <path d="M29,-56 Q34,-36 35,-16 Q28,-36 29,-56 Z" fill="url(#petal-rose)" stroke="#ffdfb3" stroke-width="0.45"/>
+          <circle cx="-21" cy="-22" r="1.5" fill="#ffeec7"/>
+          <circle cx="-6" cy="-20" r="1.6" fill="#a2fff0"/>
+          <circle cx="9" cy="-24" r="1.5" fill="#ffeec7"/>
+          <circle cx="22" cy="-20" r="1.6" fill="#a2fff0"/>
+          <circle cx="35" cy="-16" r="1.4" fill="#ffeec7"/>
+        </g>
+
+        <g id="fog-willow-b">
+          <path d="M-12,1 L-2,-34 L-21,-22 L-34,-58 Q-12,-96 18,-88 Q32,-80 38,-50 L35,-16 L4,-30 L9,1 Z" fill="#c78384"/>
+        </g>
+
+        <!-- ==========================================================
+             PROP 3: ASTROLABE RELIQUARY CAIRN (Base Plinth, 0 to -100)
+             (Dynamic rotating rings & orb are instantiated per Cairn!)
+             ========================================================== -->
+        <g id="prop-cairn-base">
+          <ellipse cx="0" cy="0" rx="22" ry="5.5" fill="url(#prop-shadow)"/>
+          <!-- Stepped obsidian altar plinth -->
+          <polygon points="-18,1 18,1 14,-6 -14,-6" fill="url(#obsidian-stone)" stroke="#9e7454" stroke-width="0.6"/>
+          <polygon points="-13,-6 13,-6 10,-14 -10,-14" fill="url(#obsidian-stone)" stroke="#d9a362" stroke-width="0.6"/>
+          <polygon points="-9,-14 9,-14 6.5,-44 -6.5,-44" fill="url(#obsidian-stone)" stroke="#1b1830" stroke-width="0.7"/>
+          <!-- Inlaid brass meridian glyphs on plinth -->
+          <line x1="0" y1="-16" x2="0" y2="-42" stroke="url(#brass-band)" stroke-width="1.2"/>
+          <polygon points="0,-36 3.5,-30 0,-24 -3.5,-30" fill="none" stroke="#ffe4a4" stroke-width="0.8"/>
+          <circle cx="0" cy="-30" r="1.2" fill="#ffe4a4"/>
+          <!-- Cradle arms for astrolabe gimbal -->
+          <path d="M-7,-44 Q-19,-52 -19,-72 Q-19,-82 -12,-88" fill="none" stroke="url(#brass-band)" stroke-width="2.1" stroke-linecap="round"/>
+          <path d="M7,-44 Q19,-52 19,-72 Q19,-82 12,-88" fill="none" stroke="url(#brass-band)" stroke-width="2.1" stroke-linecap="round"/>
+          <circle cx="-12" cy="-88" r="1.8" fill="#ffe4a4"/>
+          <circle cx="12" cy="-88" r="1.8" fill="#ffe4a4"/>
+        </g>
+
+        <g id="fog-cairn">
+          <path d="M-18,1 L-14,-6 L-9,-14 L-6.5,-44 Q-19,-52 -19,-72 Q-19,-92 0,-94 Q19,-92 19,-72 Q19,-52 6.5,-44 L9,-14 L14,-6 L18,1 Z" fill="#c78384"/>
+        </g>
+
+        <!-- ==========================================================
+             PROP 4A & 4B: SILICA AGAVE / CRYSTAL ROSETTES (0 to -100)
+             ========================================================== -->
+        <g id="prop-agave-a">
+          <ellipse cx="0" cy="1" rx="34" ry="8" fill="url(#prop-shadow)"/>
+          <!-- Back amethyst-rose glass blades -->
+          <path d="M-8,-4 Q-28,-38 -42,-58 Q-18,-42 -2,-10 Z" fill="url(#agave-crystal)" stroke="#1a122e" stroke-width="0.7"/>
+          <path d="M8,-4 Q28,-40 44,-60 Q18,-44 2,-10 Z" fill="url(#agave-crystal)" stroke="#1a122e" stroke-width="0.7"/>
+          <path d="M-6,-6 Q-18,-56 -22,-88 Q-6,-58 0,-10 Z" fill="url(#agave-crystal)" stroke="#1a122e" stroke-width="0.7"/>
+          <path d="M6,-6 Q18,-56 24,-86 Q6,-58 0,-10 Z" fill="url(#agave-crystal)" stroke="#1a122e" stroke-width="0.7"/>
+          <!-- Central crown spire blade -->
+          <path d="M-6,-4 Q-4,-58 0,-100 Q5,-58 6,-4 Z" fill="url(#agave-crystal)" stroke="#ffe0b0" stroke-width="0.65"/>
+          <!-- Foreground low curling glass leaves -->
+          <path d="M-10,-2 Q-26,-16 -36,-24 Q-18,-18 -4,-4 Z" fill="url(#agave-teal)" stroke="#0f1526" stroke-width="0.6"/>
+          <path d="M10,-2 Q26,-16 38,-22 Q18,-18 4,-4 Z" fill="url(#agave-teal)" stroke="#0f1526" stroke-width="0.6"/>
+          <circle cx="0" cy="-100" r="2.2" fill="#fff0c8"/>
+          <circle cx="-22" cy="-88" r="1.8" fill="#ffd8a8"/>
+          <circle cx="24" cy="-86" r="1.8" fill="#ffd8a8"/>
+        </g>
+
+        <g id="fog-agave-a">
+          <path d="M-36,-24 L-42,-58 L-22,-88 L0,-100 L24,-86 L44,-60 L38,-22 L12,0 L-12,0 Z" fill="#c78384"/>
+        </g>
+
+        <g id="prop-agave-b">
+          <ellipse cx="0" cy="1" rx="30" ry="7" fill="url(#prop-shadow)"/>
+          <polygon points="-22,0 -34,-54 -14,-12" fill="url(#agave-teal)" stroke="#111d30" stroke-width="0.7"/>
+          <polygon points="22,0 36,-50 12,-12" fill="url(#agave-teal)" stroke="#111d30" stroke-width="0.7"/>
+          <polygon points="-14,-2 -18,-84 -2,-10" fill="url(#agave-teal)" stroke="#111d30" stroke-width="0.7"/>
+          <polygon points="14,-2 19,-78 2,-10" fill="url(#agave-crystal)" stroke="#1a122e" stroke-width="0.7"/>
+          <polygon points="-8,0 0,-100 8,0" fill="url(#agave-teal)" stroke="#d9fff6" stroke-width="0.65"/>
+          <line x1="0" y1="-98" x2="2" y2="-4" stroke="#e9fff9" stroke-width="0.7" opacity="0.6"/>
+          <circle cx="0" cy="-100" r="2" fill="#b4fff2"/>
+        </g>
+
+        <g id="fog-agave-b">
+          <polygon points="-22,0 -34,-54 -18,-84 0,-100 19,-78 36,-50 22,0" fill="#c78384"/>
+        </g>
+
+        <!-- ==========================================================
+             PROP 5: GILDER KILN-ARCH (Hollow Cathedral Portal, 0 to -100)
+             ========================================================== -->
+        <g id="prop-arch-a">
+          <ellipse cx="-26" cy="0" rx="14" ry="4" fill="url(#prop-shadow)"/>
+          <ellipse cx="26" cy="0" rx="14" ry="4" fill="url(#prop-shadow)"/>
+          <!-- Outer arch frame with hollow center (evenodd cutout!) -->
+          <path fill-rule="evenodd" d="
+            M -34,1 L -31,-56 Q -28,-88 0,-100 Q 28,-88 31,-56 L 34,1 L 20,1 L 19,-52 Q 17,-76 0,-86 Q -17,-76 -19,-52 L -20,1 Z
+          " fill="url(#glass-teal-dark)" stroke="#0e1424" stroke-width="0.8"/>
+          <!-- Inner sunlit glass bevel -->
+          <path d="M -21,0 L -20,-52 Q -18,-78 0,-88 Q 18,-78 20,-52 L 21,0" fill="none" stroke="url(#brass-band)" stroke-width="1.6"/>
+          <!-- Outer brass trim & shoulder finials -->
+          <path d="M -32,-56 Q -29,-89 0,-101 Q 29,-89 32,-56" fill="none" stroke="#f7cf9c" stroke-width="0.95" opacity="0.85"/>
+          <path d="M -31,-56 L -34,-76 L -28,-64 M 31,-56 L 34,-76 L 28,-64" fill="url(#glass-teal)" stroke="#ffe0a3" stroke-width="0.6"/>
+          <!-- Keystone solar filigree at apex -->
+          <circle cx="0" cy="-93" r="4.8" fill="none" stroke="url(#brass-band)" stroke-width="1.1"/>
+          <circle cx="0" cy="-93" r="1.9" fill="url(#kiln-amber-core)"/>
+          <line x1="0" y1="-100" x2="0" y2="-107" stroke="#ffe4a4" stroke-width="0.95"/>
+          <!-- Pillar brass collars & amber slits -->
+          <rect x="-32.5" y="-22" width="13.5" height="2.4" fill="url(#brass-band)"/>
+          <rect x="19" y="-22" width="13.5" height="2.4" fill="url(#brass-band)"/>
+          <rect x="-31.5" y="-48" width="13" height="2.2" fill="url(#brass-band)"/>
+          <rect x="18.5" y="-48" width="13" height="2.2" fill="url(#brass-band)"/>
+          <line x1="-26" y1="-26" x2="-25.5" y2="-45" stroke="url(#kiln-amber-core)" stroke-width="2" stroke-linecap="round"/>
+          <line x1="26" y1="-26" x2="25.5" y2="-45" stroke="url(#kiln-amber-core)" stroke-width="2" stroke-linecap="round"/>
+        </g>
+
+        <g id="fog-arch-a">
+          <path fill-rule="evenodd" d="
+            M -34,1 L -31,-56 Q -28,-88 0,-100 Q 28,-88 31,-56 L 34,1 L 20,1 L 19,-52 Q 17,-76 0,-86 Q -17,-76 -19,-52 L -20,1 Z
+          " fill="#c78384"/>
+        </g>
+
+        <!-- ==========================================================
+             PROP 6: VESPER MOTH WINGS (Stained-Glass Creature)
+             ========================================================== -->
+        <g id="moth-wing-right">
+          <path d="M0,-4 Q18,-36 46,-28 Q56,-14 38,0 Q18,4 0,0 Z" fill="url(#moth-wing-grad)" stroke="#ffe7b5" stroke-width="1.2"/>
+          <path d="M0,2 Q24,4 32,20 Q22,34 8,24 Q2,14 0,6 Z" fill="url(#moth-wing-grad)" stroke="#ffe7b5" stroke-width="1" opacity="0.9"/>
+          <!-- Cathedral rose-window veins -->
+          <circle cx="24" cy="-14" r="6" fill="none" stroke="#fff4d1" stroke-width="0.9" opacity="0.85"/>
+          <circle cx="24" cy="-14" r="2.4" fill="#fff7da"/>
+          <path d="M4,-2 L39,-20 M5,0 L30,-4 M4,5 L24,20" fill="none" stroke="#ffe7b5" stroke-width="0.7" opacity="0.75"/>
+        </g>
+
+        <g id="moth-wing-left">
+          <use href="#moth-wing-right" transform="scale(-1, 1)"/>
+        </g>
+      </defs>
+
+      <!-- 1. SKY & CELESTIAL DOME LAYER -->
+      <g id="sky-group">
+        <rect id="sky-bg" x="-200" y="-420" width="2400" height="900" fill="url(#sky-grad)"/>
+        <!-- Stars & Constellation Threads -->
+        <g id="star-layer"></g>
+        <!-- Shattered Meridian Astrolabe in the Sky -->
+        <g id="astrolabe-sky-layer"></g>
+        <!-- Twin Moons (Opaline & Cinder) -->
+        <g id="moons-layer">
+          <g id="moon-opaline">
+            <circle cx="0" cy="0" r="96" fill="url(#moon-opaline-halo)"/>
+            <circle cx="0" cy="0" r="34" fill="url(#moon-opaline-body)"/>
+            <!-- Shadow crescent bite & delicate craters -->
+            <path d="M-8,-33 A34,34 0 1,0 -8,33 A27,31 0 1,1 -8,-33 Z" fill="#1b1c40" opacity="0.62"/>
+            <circle cx="11" cy="-9" r="5" fill="#c7bddc" opacity="0.34"/>
+            <circle cx="16" cy="10" r="3.4" fill="#c7bddc" opacity="0.3"/>
+            <circle cx="4" cy="16" r="6.5" fill="#c7bddc" opacity="0.24"/>
+          </g>
+          <g id="moon-cinder">
+            <ellipse cx="0" cy="0" rx="28" ry="6.5" transform="rotate(-18)" fill="none" stroke="#f0b688" stroke-width="1.3" opacity="0.58"/>
+            <circle cx="0" cy="0" r="14" fill="url(#moon-cinder-body)" stroke="#ffd6b0" stroke-width="0.5"/>
+            <path d="M-26,8 A28,6.5 -18 0,0 26,-8" fill="none" stroke="#ffd9ae" stroke-width="1.5" opacity="0.8"/>
+          </g>
+        </g>
+        <!-- Setting Vespers Sun -->
+        <g id="sun-layer">
+          <circle cx="0" cy="0" r="245" fill="url(#sun-halo-outer)"/>
+          <ellipse cx="0" cy="8" rx="310" ry="38" fill="url(#sun-halo-outer)" opacity="0.52"/>
+          <circle cx="0" cy="0" r="52" fill="url(#sun-disc-grad)"/>
+        </g>
+        <!-- Drifting Art-Nouveau Cloud Ribbons -->
+        <g id="clouds-layer"></g>
+        <!-- 3-Layer Seamless Panoramic Crystalline Mesas -->
+        <g id="mesa-far-layer"></g>
+        <g id="mesa-mid-layer"></g>
+        <g id="mesa-near-layer"></g>
+      </g>
+
+      <!-- 2. TRUE 3D PERSPECTIVE GROUND LAYER -->
+      <g id="ground-group" clip-path="url(#ground-clip)">
+        <rect id="ground-bg" x="-200" y="0" width="2400" height="1050" fill="url(#ground-grad)"/>
+        <!-- Dynamic Sunset Specular Reflection Path (Feathered Liquid Gold) -->
+        <g id="ground-sun-path">
+          <ellipse id="sun-refl-glow" cx="0" cy="180" rx="340" ry="380" fill="url(#ground-sun-refl)"/>
+          <ellipse cx="0" cy="48" rx="170" ry="96" fill="url(#ground-sun-refl)" opacity="0.72"/>
+          <g id="sun-shimmer-lines" opacity="0.75"></g>
+        </g>
+        <!-- 3D Projected Salt-Flat Survey Grid & Brine Mirror Pools -->
+        <g id="ground-pools-layer"></g>
+        <path id="ground-grid-path" fill="none" stroke="url(#grid-stroke-grad)" stroke-width="1.35"/>
+        <g id="ground-ripples-layer"></g>
+      </g>
+
+      <!-- Horizon Atmospheric Veil -->
+      <rect id="horizon-veil" x="-200" y="0" width="2400" height="160" fill="url(#horizon-mist)" pointer-events="none"/>
+
+      <!-- 3. DEPTH-SORTED 3D WORLD PROPS & CREATURES -->
+      <g id="world-layer"></g>
+
+      <!-- 4. FOREGROUND 3D SILICA DUST MOTES & SUN GLARE -->
+      <g id="motes-layer"></g>
+      <rect id="sun-glare-veil" x="-200" y="-200" width="2400" height="1400" fill="url(#sun-halo-outer)" opacity="0" pointer-events="none"/>
+    </svg>
+  </main>
+
+  <!-- Live Screen-Reader Region -->
+  <div id="sr-announcer" class="sr-only" aria-live="polite" aria-atomic="true"></div>
+
+  <!-- Minimalist Top HUD -->
+  <header class="hud-header">
+    <div class="region-badge" aria-label="Current Glasslands sector">
+      <span class="region-eyebrow">Aurelia Vitrea</span>
+      <span id="region-name" class="region-name">The Kiln Colonnade</span>
+      <span id="region-coords" class="region-coords">000° N · 0m, 0m</span>
+    </div>
+
+    <!-- Center Meridian Compass (in-flow grid cell so it never overlaps on any viewport) -->
+    <div class="compass-shell" aria-hidden="true">
+      <div class="compass-bar">
+        <div class="compass-needle"></div>
+        <svg id="compass-svg" class="compass-svg" viewBox="0 0 280 30">
+          <g id="compass-tape"></g>
+        </svg>
+      </div>
+      <div id="compass-beacon-hint" class="compass-beacon-hint">◇ Resonant Cairn nearby</div>
+    </div>
+
+    <div class="hud-actions" role="toolbar" aria-label="Explorer tools">
+      <button type="button" id="btn-journal" class="hud-btn" aria-label="Open Field Journal">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/>
+          <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
+          <path d="M9 7h7M9 11h5"/>
+        </svg>
+        <span class="hud-btn-label">Journal</span>
+        <span id="cairn-count" class="cairn-counter-pill">0/12</span>
+      </button>
+
+      <button type="button" id="btn-sound" class="hud-btn" aria-label="Toggle ambient soundscape" aria-pressed="false">
+        <svg id="icon-sound-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
+          <line x1="23" y1="9" x2="17" y2="15"/>
+          <line x1="17" y1="9" x2="23" y2="15"/>
+        </svg>
+        <svg id="icon-sound-on" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" hidden>
+          <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
+          <path d="M15.5 8.5a5 5 0 0 1 0 7"/>
+          <path d="M19 5a10 10 0 0 1 0 14"/>
+        </svg>
+        <span class="hud-btn-label">Sound</span>
+      </button>
+
+      <button type="button" id="btn-motion" class="hud-btn" aria-label="Toggle head-bob motion" aria-pressed="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M2 12c2.5-4 5-4 7.5 0s5 4 7.5 0 4.5-4 5-1"/>
+        </svg>
+        <span class="hud-btn-label">Bob</span>
+      </button>
+
+      <button type="button" id="btn-sticks" class="hud-btn" aria-label="Toggle virtual joysticks" aria-pressed="false">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="8" cy="14" r="5"/>
+          <circle cx="8" cy="14" r="1.8" fill="currentColor"/>
+          <circle cx="17" cy="14" r="4"/>
+          <circle cx="17" cy="14" r="1.4" fill="currentColor"/>
+        </svg>
+        <span class="hud-btn-label">Sticks</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- Lore Discovery Whisper -->
+  <aside id="lore-toast" class="lore-toast" aria-hidden="true">
+    <p id="lore-toast-title" class="lore-toast-title"></p>
+    <p id="lore-toast-text" class="lore-toast-text"></p>
+  </aside>
+
+  <!-- Desktop Keybinding Hint -->
+  <div id="desktop-hint" class="desktop-hint" aria-hidden="true">
+    <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> or <kbd>↑</kbd><kbd>↓</kbd><kbd>←</kbd><kbd>→</kbd> Walk &amp; Turn · Drag sky to look · <kbd>Shift</kbd> Stride
+  </div>
+
+  <!-- Mobile Multitouch Virtual Joysticks -->
+  <div id="joystick-layer" class="joystick-layer" aria-label="Virtual touch joysticks">
+    <div class="joystick-wrap">
+      <span class="joystick-label">Move</span>
+      <div id="joy-left" class="joystick-pad" role="slider" aria-label="Forward and backward movement joystick" aria-valuemin="-100" aria-valuemax="100" aria-valuenow="0">
+        <div class="joystick-ring-inner"></div>
+        <span class="joystick-axis-hint up" aria-hidden="true">▲</span>
+        <span class="joystick-axis-hint down" aria-hidden="true">▼</span>
+        <div id="joy-left-knob" class="joystick-knob"></div>
+      </div>
+    </div>
+
+    <div class="joystick-wrap">
+      <span class="joystick-label">Turn</span>
+      <div id="joy-right" class="joystick-pad" role="slider" aria-label="Left and right turning joystick" aria-valuemin="-100" aria-valuemax="100" aria-valuenow="0">
+        <div class="joystick-ring-inner"></div>
+        <span class="joystick-axis-hint left" aria-hidden="true">◀</span>
+        <span class="joystick-axis-hint right" aria-hidden="true">▶</span>
+        <div id="joy-right-knob" class="joystick-knob"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Poetic Arrival Overlay -->
+  <section id="intro-overlay" class="intro-overlay" aria-labelledby="intro-title">
+    <div class="intro-card">
+      <svg class="intro-crest" viewBox="0 0 64 64" fill="none" aria-hidden="true">
+        <circle cx="32" cy="32" r="24" stroke="#e4b56a" stroke-width="1.4" stroke-dasharray="10 4 28 5"/>
+        <ellipse cx="32" cy="32" rx="28" ry="11" transform="rotate(-24 32 32)" stroke="#6ef0dc" stroke-width="1.2" opacity="0.85"/>
+        <circle cx="32" cy="32" r="7" fill="url(#cairn-orb-attuned)"/>
+        <line x1="32" y1="2" x2="32" y2="14" stroke="#ffe0a3" stroke-width="1.3"/>
+        <line x1="32" y1="50" x2="32" y2="62" stroke="#ffe0a3" stroke-width="1.3"/>
+      </svg>
+      <p class="intro-subtitle">Cartography of the Blown-Glass Sea</p>
+      <h1 id="intro-title">Aurelia Vitrea</h1>
+      <p class="intro-lore">
+        Centuries ago, the Gilders of the Ninth Kiln blew cathedral spires directly from molten silica flats, tuning them to the katabatic wind. When the Great Astrolabe slipped a single tooth, the winds died and dusk froze into eternal Vespers. Wander the endless mirrored steppe, approach dormant Astrolabe Cairns, and wake their resonance.
+      </p>
+      <div class="intro-controls">
+        <div class="intro-control-box">
+          <strong>Desktop</strong>
+          WASD / Arrows to walk &amp; turn · Click &amp; drag to look around · Shift for brisk stride
+        </div>
+        <div class="intro-control-box">
+          <strong>Touch &amp; Mobile</strong>
+          Left stick walks forward/back · Right stick turns left/right simultaneously
+        </div>
+      </div>
+      <button type="button" id="btn-begin" class="btn-primary">Begin Expedition</button>
+    </div>
+  </section>
+
+  <!-- Native Modal Field Journal & Lore Codex -->
+  <dialog id="journal-dialog" class="journal-dialog" closedby="any" aria-labelledby="journal-heading">
+    <div class="journal-inner">
+      <div class="journal-header">
+        <h2 id="journal-heading">Tuner’s Field Journal</h2>
+        <form method="dialog">
+          <button type="submit" class="journal-close-btn">Close</button>
+        </form>
+      </div>
+      <div class="journal-body">
+        <p class="journal-backstory">
+          Before the Stillness, the Ninth Kiln drew glass organ-spires, prism-willows, and surveying arches out of an inland silica sea. Follow the luminous turquoise diamond on your Meridian Compass to locate dormant Astrolabe Cairns across the infinite glasslands—step close to awaken their gimbals and record their tuning fragments.
+        </p>
+        <p class="journal-section-title" id="journal-progress-label">Attuned Resonance Fragments (0 / 12)</p>
+        <ol id="fragment-list" class="fragment-list"></ol>
+      </div>
+    </div>
+  </dialog>
+
+  <script>
+    (() => {
+      'use strict';
+
+      const SVG_NS = 'http://www.w3.org/2000/svg';
+
+      // =========================================================================
+      // 1. LORE & WORLD CONSTANTS
+      // =========================================================================
+      const LORE_FRAGMENTS = [
+        {
+          title: 'I · The Ninth Kiln',
+          text: 'We did not quarry Aurelia. When the brine-tide withdrew at dusk, the bellows drew hollow glass straight from the floor, cooling each spire to the interval of a fifth.'
+        },
+        {
+          title: 'II · Eternal Vespers',
+          text: 'The sun has neither risen nor fallen since the Meridian jammed. Only the ten-minute seam between coral and sapphire endures, reflected forever in the annealed salt.'
+        },
+        {
+          title: 'III · On Salix vitrea',
+          text: 'Even after the Gilders departed, the kiln-spores took root in the slag. Their weeping petals are spun quartz—brittle to iron, yet supple to warm thermal air.'
+        },
+        {
+          title: 'IV · The Slipped Tooth',
+          text: 'Archive Plate IV: On the forty-first equinox, the outer brass ring of the zenith astrolabe sheared by three arc-minutes. Within an hour, the great wind fell utterly mute.'
+        },
+        {
+          title: 'V · Twin Moons, Opaline & Cinder',
+          text: 'Opaline governs the glass-tides; Cinder holds the furnace ember. Look upward along the broken arc—their shadow still measures the hour we left behind.'
+        },
+        {
+          title: 'VI · Vesper Moths',
+          text: 'At first we mistook the Lanternae for stray kiln-sparks. In truth they are living lenses—wings of blown silica feeding on the violet glare of the horizon.'
+        },
+        {
+          title: 'VII · The Causeway of Ears',
+          text: 'Every Cairn stands within earshot of another. Strike one bronze gimbal at dusk and the flats answer in concentric rings across forty leagues of mirror.'
+        },
+        {
+          title: 'VIII · Why No Rubble Remains',
+          text: 'Stone crumbles into dust; blown glass remembers its tension. When an arch fails here, it sings one high, clear note and dissolves into iridescent sand.'
+        },
+        {
+          title: 'IX · The Salt-Brine Pools',
+          text: 'Do not mistake the pools for water. They are uncooled vitrium—half mirror, half memory—preserving the exact color of the last sky that moved.'
+        },
+        {
+          title: 'X · The Gilders’ Departure',
+          text: 'They packed no chests and broke no kilns. Carrying only copper tuning forks, they walked due west into the apricot haze, listening for where the wind had gone.'
+        },
+        {
+          title: 'XI · Harmonic Drift',
+          text: 'Walk far enough beyond the Colonnade and the pitch shifts downward a semitone. The flats are wider than any chart of the Ninth Kiln ever dared measure.'
+        },
+        {
+          title: 'XII · The Tuner’s Promise',
+          text: 'Twelve rings now answer one another across the glass sea. Listen closely—far beyond the shattered Meridian, a faint thermal breeze has begun to stir again.'
+        }
+      ];
+
+      const BIOMES = [
+        { name: 'The Kiln Colonnade', key: 'colonnade' },
+        { name: 'Whispering Salix Grove', key: 'grove' },
+        { name: 'The Meridian Causeway', key: 'causeway' },
+        { name: 'The Open Mirror Flats', key: 'flats' }
+      ];
+
+      const WORLD = {
+        CHUNK_SIZE: 28,
+        RENDER_CHUNKS: 3, // 7x7 chunk grid (~98m radius)
+        EYE_HEIGHT: 1.78,
+        NEAR_Z: 0.68,
+        FAR_Z: 96,
+        GRID_STEP: 8,
+        MAX_VISIBLE_PROPS: 78,
+        WALK_SPEED: 7.4,
+        SPRINT_MULT: 1.62,
+        TURN_SPEED: 1.85,
+        ATTUNE_DIST: 8.6,
+        SUN_AZ: 0.14,
+        SUN_EL: 0.056,
+        ASTRO_AZ: -0.18
+      };
+
+      // =========================================================================
+      // 2. DOM REFERENCES & VIEWPORT METRICS
+      // =========================================================================
+      const stage = document.getElementById('stage');
+      const worldSvg = document.getElementById('world-svg');
+      const skyGroup = document.getElementById('sky-group');
+      const skyBg = document.getElementById('sky-bg');
+      const starLayer = document.getElementById('star-layer');
+      const astrolabeSkyLayer = document.getElementById('astrolabe-sky-layer');
+      const moonOpalineEl = document.getElementById('moon-opaline');
+      const moonCinderEl = document.getElementById('moon-cinder');
+      const sunLayer = document.getElementById('sun-layer');
+      const cloudsLayer = document.getElementById('clouds-layer');
+      const mesaFarLayer = document.getElementById('mesa-far-layer');
+      const mesaMidLayer = document.getElementById('mesa-mid-layer');
+      const mesaNearLayer = document.getElementById('mesa-near-layer');
+
+      const groundGroup = document.getElementById('ground-group');
+      const groundBg = document.getElementById('ground-bg');
+      const groundSunPath = document.getElementById('ground-sun-path');
+      const sunShimmerLines = document.getElementById('sun-shimmer-lines');
+      const groundPoolsLayer = document.getElementById('ground-pools-layer');
+      const groundGridPath = document.getElementById('ground-grid-path');
+      const groundRipplesLayer = document.getElementById('ground-ripples-layer');
+      const horizonVeil = document.getElementById('horizon-veil');
+      const worldLayer = document.getElementById('world-layer');
+      const motesLayer = document.getElementById('motes-layer');
+      const sunGlareVeil = document.getElementById('sun-glare-veil');
+
+      const regionNameEl = document.getElementById('region-name');
+      const regionCoordsEl = document.getElementById('region-coords');
+      const compassTape = document.getElementById('compass-tape');
+      const compassBeaconHint = document.getElementById('compass-beacon-hint');
+      const cairnCountEl = document.getElementById('cairn-count');
+      const loreToastEl = document.getElementById('lore-toast');
+      const loreToastTitle = document.getElementById('lore-toast-title');
+      const loreToastText = document.getElementById('lore-toast-text');
+      const desktopHintEl = document.getElementById('desktop-hint');
+      const srAnnouncer = document.getElementById('sr-announcer');
+
+      const introOverlay = document.getElementById('intro-overlay');
+      const btnBegin = document.getElementById('btn-begin');
+      const btnJournal = document.getElementById('btn-journal');
+      const btnSound = document.getElementById('btn-sound');
+      const iconSoundOff = document.getElementById('icon-sound-off');
+      const iconSoundOn = document.getElementById('icon-sound-on');
+      const btnMotion = document.getElementById('btn-motion');
+      const btnSticks = document.getElementById('btn-sticks');
+      const journalDialog = document.getElementById('journal-dialog');
+      const journalProgressLabel = document.getElementById('journal-progress-label');
+      const fragmentListEl = document.getElementById('fragment-list');
+
+      const joyLeftPad = document.getElementById('joy-left');
+      const joyLeftKnob = document.getElementById('joy-left-knob');
+      const joyRightPad = document.getElementById('joy-right');
+      const joyRightKnob = document.getElementById('joy-right-knob');
+
+      const view = {
+        W: 1600,
+        H: 900,
+        CX: 800,
+        CY: 450,
+        FOCAL: 648,
+        CIRC: Math.round(648 * Math.PI * 2)
+      };
+
+      function svgEl(tag, attrs) {
+        const el = document.createElementNS(SVG_NS, tag);
+        if (attrs) {
+          for (const k in attrs) {
+            el.setAttribute(k, attrs[k]);
+          }
+        }
+        return el;
+      }
+
+      // =========================================================================
+      // 3. MATH & DETERMINISTIC PROCEDURAL HASHING
+      // =========================================================================
+      function clamp(v, lo, hi) {
+        return v < lo ? lo : v > hi ? hi : v;
+      }
+
+      function lerp(a, b, t) {
+        return a + (b - a) * t;
+      }
+
+      function smoothstep(edge0, edge1, x) {
+        const t = clamp((x - edge0) / (edge1 - edge0), 0, 1);
+        return t * t * (3 - 2 * t);
+      }
+
+      function wrapAngle(a) {
+        a = (a + Math.PI) % (Math.PI * 2);
+        return a < 0 ? a + Math.PI * 2 - Math.PI : a - Math.PI;
+      }
+
+      function hash2i(ix, iz, salt = 0) {
+        let h = (ix * 374761393) ^ (iz * 668265263) ^ (salt * 1442695041);
+        h = Math.imul(h ^ (h >>> 13), 1274126177);
+        return (h ^ (h >>> 16)) >>> 0;
+      }
+
+      function mulberry32(seed) {
+        let a = seed >>> 0;
+        return function () {
+          a |= 0;
+          a = (a + 0x6d2b79f5) | 0;
+          let t = Math.imul(a ^ (a >>> 15), 1 | a);
+          t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+          return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+        };
+      }
+
+      function valueNoise2D(x, z) {
+        const xi = Math.floor(x);
+        const zi = Math.floor(z);
+        const xf = x - xi;
+        const zf = z - zi;
+        const u = xf * xf * (3 - 2 * xf);
+        const v = zf * zf * (3 - 2 * zf);
+        const n00 = hash2i(xi, zi, 17) / 4294967296;
+        const n10 = hash2i(xi + 1, zi, 17) / 4294967296;
+        const n01 = hash2i(xi, zi + 1, 17) / 4294967296;
+        const n11 = hash2i(xi + 1, zi + 1, 17) / 4294967296;
+        return lerp(lerp(n00, n10, u), lerp(n01, n11, u), v);
+      }
+
+      function getBiomeAt(wx, wz) {
+        const n1 = valueNoise2D(wx * 0.0085 + 11.3, wz * 0.0085 - 5.7);
+        const n2 = valueNoise2D(wx * 0.006 - 23.1, wz * 0.006 + 19.4);
+        if (n1 < 0.44 && n2 < 0.54) return BIOMES[0]; // Kiln Colonnade
+        if (n1 >= 0.44 && n2 < 0.5) return BIOMES[1]; // Whispering Salix Grove
+        if (n1 < 0.54 && n2 >= 0.5) return BIOMES[2]; // Meridian Causeway
+        return BIOMES[3]; // Open Mirror Flats
+      }
+
+      // =========================================================================
+      // 4. OPTIONAL PROCEDURAL WEB AUDIO SOUNDSCAPE (ZERO EXTERNAL ASSETS)
+      // =========================================================================
+      class SoundEngine {
+        constructor() {
+          this.ctx = null;
+          this.enabled = false;
+          this.masterGain = null;
+          this.droneFilter = null;
+          this.droneOscA = null;
+          this.droneOscB = null;
+          this.stepPitchIdx = 0;
+        }
+
+        init() {
+          if (this.ctx) return true;
+          const AudioCtx = window.AudioContext || window.webkitAudioContext;
+          if (!AudioCtx) return false;
+          this.ctx = new AudioCtx();
+          this.masterGain = this.ctx.createGain();
+          this.masterGain.gain.value = 0.0001;
+          this.masterGain.connect(this.ctx.destination);
+
+          // Warm harmonic wind-glass drone (D2 + A2 fifth)
+          this.droneFilter = this.ctx.createBiquadFilter();
+          this.droneFilter.type = 'lowpass';
+          this.droneFilter.frequency.value = 260;
+          this.droneFilter.Q.value = 2.4;
+
+          const droneGain = this.ctx.createGain();
+          droneGain.gain.value = 0.14;
+          this.droneFilter.connect(droneGain);
+          droneGain.connect(this.masterGain);
+
+          this.droneOscA = this.ctx.createOscillator();
+          this.droneOscA.type = 'sine';
+          this.droneOscA.frequency.value = 73.42; // D2
+          this.droneOscA.connect(this.droneFilter);
+          this.droneOscA.start();
+
+          this.droneOscB = this.ctx.createOscillator();
+          this.droneOscB.type = 'triangle';
+          this.droneOscB.frequency.value = 110.0; // A2
+          const bGain = this.ctx.createGain();
+          bGain.gain.value = 0.35;
+          this.droneOscB.connect(bGain);
+          bGain.connect(this.droneFilter);
+          this.droneOscB.start();
+          return true;
+        }
+
+        setEnabled(flag) {
+          if (flag && !this.init()) return false;
+          this.enabled = flag;
+          if (this.ctx.state === 'suspended' && flag) {
+            this.ctx.resume().catch(() => {});
+          }
+          const now = this.ctx.currentTime;
+          this.masterGain.gain.cancelScheduledValues(now);
+          this.masterGain.gain.setTargetAtTime(flag ? 0.42 : 0.0001, now, 0.25);
+          return this.enabled;
+        }
+
+        updateAmbience(sunFacing, speedRatio) {
+          if (!this.enabled || !this.ctx || this.ctx.state !== 'running') return;
+          const now = this.ctx.currentTime;
+          const targetFreq = 210 + Math.max(0, sunFacing) * 145 + speedRatio * 90;
+          this.droneFilter.frequency.setTargetAtTime(targetFreq, now, 0.25);
+        }
+
+        playFootstep(onBrine) {
+          if (!this.enabled || !this.ctx || this.ctx.state !== 'running') return;
+          const now = this.ctx.currentTime;
+          const notes = [293.66, 329.63, 440.0, 369.99, 329.63];
+          const base = notes[this.stepPitchIdx++ % notes.length];
+
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(onBrine ? base * 1.5 : base * 0.72, now);
+          osc.frequency.exponentialRampToValueAtTime(onBrine ? base * 1.12 : base * 0.48, now + 0.09);
+
+          gain.gain.setValueAtTime(0.0001, now);
+          gain.gain.linearRampToValueAtTime(onBrine ? 0.048 : 0.032, now + 0.008);
+          gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.13);
+
+          osc.connect(gain);
+          gain.connect(this.masterGain);
+          osc.start(now);
+          osc.stop(now + 0.15);
+        }
+
+        playCairnAttune() {
+          if (!this.enabled || !this.ctx || this.ctx.state !== 'running') return;
+          const now = this.ctx.currentTime;
+          // Shimmering D-major-9 glass-organ arpeggio
+          const chord = [293.66, 440.0, 554.37, 659.25, 880.0];
+          chord.forEach((freq, i) => {
+            const t = now + i * 0.085;
+            const osc = this.ctx.createOscillator();
+            const gain = this.ctx.createGain();
+            osc.type = i % 2 === 0 ? 'sine' : 'triangle';
+            osc.frequency.setValueAtTime(freq, t);
+            gain.gain.setValueAtTime(0.0001, t);
+            gain.gain.linearRampToValueAtTime(0.085 / (1 + i * 0.15), t + 0.035);
+            gain.gain.exponentialRampToValueAtTime(0.0001, t + 2.4);
+            osc.connect(gain);
+            gain.connect(this.masterGain);
+            osc.start(t);
+            osc.stop(t + 2.5);
+          });
+        }
+      }
+
+      const sound = new SoundEngine();
+
+      // =========================================================================
+      // 5. STATIC PANORAMIC SKY & COMPASS CONSTRUCTION
+      // =========================================================================
+      const starsData = [];
+      const cloudsData = [];
+      let constellationPathEl = null;
+
+      function buildPanoramicSky() {
+        starLayer.innerHTML = '';
+        starsData.length = 0;
+        const rng = mulberry32(9021042);
+
+        // Constellation gilded line layer
+        constellationPathEl = svgEl('path', {
+          fill: 'none',
+          stroke: '#f4d9a6',
+          'stroke-width': '0.75',
+          opacity: '0.26'
+        });
+        starLayer.appendChild(constellationPathEl);
+
+        // 68 crisp sky stars across 360°
+        for (let i = 0; i < 68; i++) {
+          const az = (rng() * 2 - 1) * Math.PI;
+          const el = 0.15 + Math.pow(rng(), 0.72) * 0.56;
+          const r = 0.8 + rng() * 1.9;
+          const phase = rng() * Math.PI * 2;
+          const speed = 0.7 + rng() * 1.9;
+          const warm = rng() > 0.45;
+          const elNode = svgEl('circle', {
+            cx: 0,
+            cy: 0,
+            r: r.toFixed(2),
+            fill: warm ? '#fff2d0' : '#d5f3ff',
+            opacity: '0.8'
+          });
+          starLayer.appendChild(elNode);
+          starsData.push({ az, el, r, phase, speed, el: elNode, elev: el });
+        }
+
+        // Shattered Meridian Astrolabe (Sweeping broken celestial rings)
+        astrolabeSkyLayer.innerHTML = '';
+        const astroMain = svgEl('g', { opacity: '0.84' });
+        // Primary broken grand ellipse tilted across Vespers sky
+        astroMain.appendChild(svgEl('path', {
+          d: 'M -520,25 A 540,305 -12 0,1 265,-238',
+          fill: 'none',
+          stroke: 'url(#meridian-brass)',
+          'stroke-width': '3.4'
+        }));
+        astroMain.appendChild(svgEl('path', {
+          d: 'M 332,-206 A 540,305 -12 0,1 515,48',
+          fill: 'none',
+          stroke: 'url(#meridian-brass)',
+          'stroke-width': '2.6',
+          'stroke-dasharray': '14 8'
+        }));
+        // Secondary inner harmonic arc
+        astroMain.appendChild(svgEl('path', {
+          d: 'M -420,40 A 430,238 -12 0,1 395,-118',
+          fill: 'none',
+          stroke: '#f5cb86',
+          'stroke-width': '1.25',
+          opacity: '0.46'
+        }));
+        // Graduated astronomical degree ticks along upper arc
+        let tickD = '';
+        for (let i = -8; i <= 7; i++) {
+          if (i === 3 || i === 4) continue; // Fractured gap!
+          const t = (i / 11) * Math.PI * 0.55 - Math.PI * 0.5;
+          const x0 = Math.cos(t) * 535;
+          const y0 = Math.sin(t) * 300 + 28;
+          const len = i % 2 === 0 ? 15 : 8;
+          const x1 = Math.cos(t) * (535 - len);
+          const y1 = Math.sin(t) * (300 - len * 0.65) + 28;
+          tickD += `M${x0.toFixed(1)},${y0.toFixed(1)} L${x1.toFixed(1)},${y1.toFixed(1)} `;
+        }
+        astroMain.appendChild(svgEl('path', {
+          d: tickD,
+          stroke: '#ffe3a8',
+          'stroke-width': '1.2',
+          opacity: '0.52'
+        }));
+        // Floating fractured glass-brass shards drifting at the slipped tooth gap
+        const shards = [
+          'M278,-228 L296,-234 L291,-220 Z',
+          'M305,-216 L321,-223 L315,-209 Z',
+          'M293,-206 L303,-209 L300,-198 Z'
+        ];
+        shards.forEach((d) => {
+          astroMain.appendChild(svgEl('path', {
+            d,
+            fill: '#ffe6ae',
+            opacity: '0.72'
+          }));
+        });
+        astrolabeSkyLayer.appendChild(astroMain);
+
+        // Art-Nouveau Cirrus Cloud Ribbons
+        cloudsLayer.innerHTML = '';
+        cloudsData.length = 0;
+        for (let i = 0; i < 14; i++) {
+          const az = ((i / 14) * 2 - 1) * Math.PI + (rng() - 0.5) * 0.25;
+          const el = 0.08 + rng() * 0.28;
+          const w = 130 + rng() * 190;
+          const h = 14 + rng() * 18;
+          const drift = (0.002 + rng() * 0.004) * (rng() > 0.5 ? 1 : -0.6);
+          const g = svgEl('g', { opacity: (0.48 + rng() * 0.34).toFixed(2) });
+          g.appendChild(svgEl('path', {
+            d: `M${-w * 0.55},0 Q${-w * 0.22},${-h * 1.15} ${w * 0.05},${-h * 0.45} Q${w * 0.32},${-h * 0.95} ${w * 0.55},0 Q${w * 0.22},${h * 0.38} ${-w * 0.12},${h * 0.22} Q${-w * 0.38},${h * 0.4} ${-w * 0.55},0 Z`,
+            fill: 'url(#cloud-ribbon-grad)'
+          }));
+          cloudsLayer.appendChild(g);
+          cloudsData.push({ az, el, drift, node: g });
+        }
+
+        // Specular Sun Shimmer Bars on Ground (Feathered Radial Glints)
+        sunShimmerLines.innerHTML = '';
+        for (let i = 0; i < 14; i++) {
+          const t = i / 13;
+          const y = 7 + Math.pow(t, 1.85) * 430;
+          const rx = 54 + t * 235;
+          const ry = 2.0 + t * 7.5;
+          const cxOff = Math.sin(i * 2.1) * (6 + t * 22);
+          sunShimmerLines.appendChild(svgEl('ellipse', {
+            cx: cxOff.toFixed(1),
+            cy: y.toFixed(1),
+            rx: rx.toFixed(1),
+            ry: ry.toFixed(1),
+            fill: 'url(#sun-shimmer-bar)',
+            opacity: (0.85 - t * 0.56).toFixed(2)
+          }));
+        }
+      }
+
+      // Build seamless 360-degree periodic crystalline mesa ranges
+      function buildMesaLayers() {
+        const circ = view.CIRC;
+        const specs = [
+          {
+            container: mesaFarLayer,
+            fill: 'url(#mesa-far-grad)',
+            stroke: '#f4c29a',
+            strokeOp: '0.3',
+            baseH: 76,
+            seed: 11,
+            steps: 72
+          },
+          {
+            container: mesaMidLayer,
+            fill: 'url(#mesa-mid-grad)',
+            stroke: '#d88c82',
+            strokeOp: '0.26',
+            baseH: 48,
+            seed: 29,
+            steps: 80
+          },
+          {
+            container: mesaNearLayer,
+            fill: 'url(#mesa-near-grad)',
+            stroke: '#8a5975',
+            strokeOp: '0.32',
+            baseH: 26,
+            seed: 53,
+            steps: 96
+          }
+        ];
+
+        specs.forEach((spec) => {
+          spec.container.innerHTML = '';
+          const pts = [];
+          for (let i = 0; i <= spec.steps; i++) {
+            const theta = (i / spec.steps) * Math.PI * 2;
+            const x = (i / spec.steps) * circ;
+            // Periodic faceted mountain profile (matches exactly at 0 and 2pi)
+            const h1 = Math.sin(theta * 3 + spec.seed) * 0.42;
+            const h2 = Math.cos(theta * 7 - spec.seed * 1.4) * 0.28;
+            const h3 = Math.sin(theta * 13 + spec.seed * 0.7) * 0.18;
+            const spire = Math.pow(Math.max(0, Math.sin(theta * 5 + spec.seed * 2.1)), 5) * 0.78;
+            const mesa = Math.max(0.08, 0.45 + h1 * 0.4 + h2 * 0.35 + h3 * 0.25 + spire);
+            // Slight flat-top plateau quantization for geological character
+            const quant = mesa > 0.78 ? 0.78 + (mesa - 0.78) * 0.45 : mesa;
+            const y = -(quant * spec.baseH);
+            pts.push(`${x.toFixed(1)},${y.toFixed(1)}`);
+          }
+          const d = `M0,12 L${pts.join(' L')} L${circ.toFixed(1)},12 Z`;
+          const p1 = svgEl('path', {
+            d,
+            fill: spec.fill,
+            stroke: spec.stroke,
+            'stroke-width': '1',
+            'stroke-opacity': spec.strokeOp
+          });
+          const p2 = svgEl('path', {
+            d,
+            fill: spec.fill,
+            stroke: spec.stroke,
+            'stroke-width': '1',
+            'stroke-opacity': spec.strokeOp,
+            transform: `translate(${circ}, 0)`
+          });
+          spec.container.appendChild(p1);
+          spec.container.appendChild(p2);
+        });
+      }
+
+      // Build Meridian Compass SVG ribbon elements
+      const compassMarks = [];
+      let compassCairnDiamond = null;
+      let compassSunDot = null;
+
+      function buildCompass() {
+        compassTape.innerHTML = '';
+        compassMarks.length = 0;
+        const labels = [
+          { deg: 0, text: 'N', major: true },
+          { deg: 45, text: 'NE', major: false },
+          { deg: 90, text: 'E', major: true },
+          { deg: 135, text: 'SE', major: false },
+          { deg: 180, text: 'S', major: true },
+          { deg: 225, text: 'SW', major: false },
+          { deg: 270, text: 'W', major: true },
+          { deg: 315, text: 'NW', major: false }
+        ];
+        // Add degree tick every 15 deg
+        for (let deg = 0; deg < 360; deg += 15) {
+          const rad = (deg * Math.PI) / 180;
+          const lbl = labels.find((l) => l.deg === deg);
+          const g = svgEl('g');
+          g.appendChild(svgEl('line', {
+            x1: '0',
+            y1: lbl ? '22' : '24',
+            x2: '0',
+            y2: '29',
+            stroke: lbl && lbl.major ? '#ffe0a3' : '#a8927c',
+            'stroke-width': lbl && lbl.major ? '1.4' : '1'
+          }));
+          if (lbl) {
+            const t = svgEl('text', {
+              x: '0',
+              y: '18',
+              'text-anchor': 'middle',
+              'font-family': 'ui-monospace, Menlo, monospace',
+              'font-size': lbl.major ? '10.5' : '8.5',
+              'font-weight': lbl.major ? '700' : '500',
+              fill: lbl.major ? '#f8edd8' : '#bba794'
+            });
+            t.textContent = lbl.text;
+            g.appendChild(t);
+          }
+          compassTape.appendChild(g);
+          compassMarks.push({ rad, node: g });
+        }
+
+        compassSunDot = svgEl('circle', {
+          cx: '140',
+          cy: '7',
+          r: '3.2',
+          fill: '#ffca78'
+        });
+        compassTape.appendChild(compassSunDot);
+
+        compassCairnDiamond = svgEl('polygon', {
+          points: '0,-4.5 4.2,0 0,4.5 -4.2,0',
+          fill: '#6ef0dc',
+          stroke: '#0d1428',
+          'stroke-width': '0.9'
+        });
+        compassTape.appendChild(compassCairnDiamond);
+      }
+
+      // =========================================================================
+      // 6. INFINITE DETERMINISTIC CHUNKED WORLD GENERATOR
+      // =========================================================================
+      const activeChunks = new Map();
+      const attunedCairns = new Set();
+      const activeRipples = [];
+
+      function chunkKey(cx, cz) {
+        return `${cx},${cz}`;
+      }
+
+      function generateChunk(cx, cz) {
+        const key = chunkKey(cx, cz);
+        if (activeChunks.has(key)) return activeChunks.get(key);
+
+        const rng = mulberry32(hash2i(cx, cz, 8821));
+        const originX = cx * WORLD.CHUNK_SIZE;
+        const originZ = cz * WORLD.CHUNK_SIZE;
+        const entities = [];
+        const pools = [];
+        const biome = getBiomeAt(originX + WORLD.CHUNK_SIZE * 0.5, originZ + WORLD.CHUNK_SIZE * 0.5);
+
+        // Sculpted arrival vista at chunk (0, 0) & (0, 1) so first frame is extraordinary!
+        if (cx === 0 && cz === 0) {
+          entities.push(
+            {
+              id: 'hero-cairn',
+              type: 'cairn',
+              x: -5.2,
+              y: 0,
+              z: 18.5,
+              h: 4.5,
+              colR: 1.35,
+              phase: 0.4,
+              attuned: attunedCairns.has('hero-cairn')
+            },
+            {
+              id: 'hero-arch',
+              type: 'arch',
+              variant: 'a',
+              x: 0.8,
+              y: 0,
+              z: 24.0,
+              h: 10.6,
+              colR: 0,
+              archHalfSpan: 2.9,
+              phase: 0
+            },
+            {
+              id: 'hero-spire-r',
+              type: 'spire',
+              variant: 'a',
+              x: 11.2,
+              y: 0,
+              z: 21.5,
+              h: 14.2,
+              colR: 1.75,
+              phase: 1.2
+            },
+            {
+              id: 'hero-willow-l',
+              type: 'willow',
+              variant: 'a',
+              x: -10.4,
+              y: 0,
+              z: 13.8,
+              h: 6.8,
+              colR: 1.05,
+              phase: 0.8
+            },
+            {
+              id: 'hero-willow-r',
+              type: 'willow',
+              variant: 'b',
+              x: 8.8,
+              y: 0,
+              z: 12.2,
+              h: 5.9,
+              colR: 0.95,
+              phase: 2.3
+            },
+            {
+              id: 'hero-agave-1',
+              type: 'agave',
+              variant: 'a',
+              x: -4.4,
+              y: 0,
+              z: 9.2,
+              h: 1.75,
+              colR: 0.65,
+              phase: 0
+            },
+            {
+              id: 'hero-agave-2',
+              type: 'agave',
+              variant: 'b',
+              x: 5.1,
+              y: 0,
+              z: 8.5,
+              h: 1.55,
+              colR: 0.6,
+              phase: 0
+            },
+            {
+              id: 'hero-moth-1',
+              type: 'moth',
+              x: 1.6,
+              y: 3.1,
+              z: 14.5,
+              baseX: 1.6,
+              baseY: 3.1,
+              baseZ: 14.5,
+              orbitR: 3.4,
+              orbitSpeed: 0.55,
+              h: 1.5,
+              colR: 0,
+              phase: 0.3
+            },
+            {
+              id: 'hero-moth-2',
+              type: 'moth',
+              x: -3.2,
+              y: 4.0,
+              z: 20.0,
+              baseX: -3.2,
+              baseY: 4.0,
+              baseZ: 20.0,
+              orbitR: 4.2,
+              orbitSpeed: -0.44,
+              h: 1.35,
+              colR: 0,
+              phase: 2.7
+            }
+          );
+
+          pools.push(createPoolData('hero-pool', -0.4, 14.2, 4.8, 3.2, 0.35));
+
+          const chunk = { key, cx, cz, biome, entities, pools };
+          activeChunks.set(key, chunk);
+          return chunk;
+        }
+
+        // Determine prop counts by biome character
+        let count = 7;
+        if (biome.key === 'colonnade') count = 8;
+        else if (biome.key === 'grove') count = 9;
+        else if (biome.key === 'causeway') count = 7;
+        else count = 5; // Open Mirror Flats
+
+        // Guarantee a well-spaced Astrolabe Cairn roughly every 4th chunk (never clustered)
+        const hasCairn = ((cx * 73856093) ^ (cz * 19349663)) % 5 === 0 && !(cx === 0 && cz === 0);
+        if (hasCairn) {
+          const id = `cairn-${cx}-${cz}`;
+          entities.push({
+            id,
+            type: 'cairn',
+            x: originX + 8 + rng() * (WORLD.CHUNK_SIZE - 16),
+            y: 0,
+            z: originZ + 8 + rng() * (WORLD.CHUNK_SIZE - 16),
+            h: 4.3 + rng() * 0.55,
+            colR: 1.35,
+            phase: rng() * Math.PI * 2,
+            attuned: attunedCairns.has(id)
+          });
+        }
+
+        // Occasional monumental Gilder Kiln-Arch
+        if (rng() < (biome.key === 'causeway' ? 0.58 : 0.24)) {
+          entities.push({
+            id: `arch-${cx}-${cz}`,
+            type: 'arch',
+            variant: 'a',
+            x: originX + 7 + rng() * (WORLD.CHUNK_SIZE - 14),
+            y: 0,
+            z: originZ + 7 + rng() * (WORLD.CHUNK_SIZE - 14),
+            h: 9.2 + rng() * 2.8,
+            colR: 0,
+            archHalfSpan: 2.8,
+            phase: rng() * Math.PI * 2
+          });
+        }
+
+        // Populate stylized props with minimum spacing check
+        for (let i = 0; i < count; i++) {
+          const px = originX + 2.5 + rng() * (WORLD.CHUNK_SIZE - 5);
+          const pz = originZ + 2.5 + rng() * (WORLD.CHUNK_SIZE - 5);
+
+          // Avoid overlapping existing landmarks in chunk
+          let crowded = false;
+          for (let j = 0; j < entities.length; j++) {
+            const dx = px - entities[j].x;
+            const dz = pz - entities[j].z;
+            if (dx * dx + dz * dz < 14) {
+              crowded = true;
+              break;
+            }
+          }
+          if (crowded) continue;
+
+          // Keep immediate spawn clearing open
+          if (px * px + pz * pz < 46) continue;
+
+          const roll = rng();
+          let type = 'spire';
+          if (biome.key === 'colonnade') {
+            type = roll < 0.48 ? 'spire' : roll < 0.7 ? 'willow' : 'agave';
+          } else if (biome.key === 'grove') {
+            type = roll < 0.52 ? 'willow' : roll < 0.74 ? 'agave' : 'spire';
+          } else if (biome.key === 'causeway') {
+            type = roll < 0.36 ? 'spire' : roll < 0.68 ? 'agave' : 'willow';
+          } else {
+            type = roll < 0.32 ? 'spire' : roll < 0.58 ? 'willow' : 'agave';
+          }
+
+          const variant = rng() < 0.52 ? 'a' : 'b';
+          let h = 11;
+          let colR = 1.4;
+          if (type === 'spire') {
+            h = 10.5 + rng() * 6.2;
+            colR = 1.65;
+          } else if (type === 'willow') {
+            h = 5.0 + rng() * 3.1;
+            colR = 1.0;
+          } else {
+            h = 1.3 + rng() * 1.15;
+            colR = 0.62;
+          }
+
+          entities.push({
+            id: `${type}-${cx}-${cz}-${i}`,
+            type,
+            variant,
+            x: px,
+            y: 0,
+            z: pz,
+            h,
+            colR,
+            phase: rng() * Math.PI * 2
+          });
+        }
+
+        // Animated Vesper Moth creature (1-2 per chunk)
+        const mothCount = rng() < 0.72 ? 1 : 2;
+        for (let m = 0; m < mothCount; m++) {
+          const mx = originX + 5 + rng() * (WORLD.CHUNK_SIZE - 10);
+          const mz = originZ + 5 + rng() * (WORLD.CHUNK_SIZE - 10);
+          const my = 2.4 + rng() * 3.6;
+          entities.push({
+            id: `moth-${cx}-${cz}-${m}`,
+            type: 'moth',
+            x: mx,
+            y: my,
+            z: mz,
+            baseX: mx,
+            baseY: my,
+            baseZ: mz,
+            orbitR: 2.6 + rng() * 3.4,
+            orbitSpeed: (0.38 + rng() * 0.36) * (rng() > 0.5 ? 1 : -1),
+            h: 1.2 + rng() * 0.55,
+            colR: 0,
+            phase: rng() * Math.PI * 2
+          });
+        }
+
+        // Iridescent Brine Mirror Pools (1-2 per chunk, more in Mirror Flats & Salix Grove)
+        const poolProb = biome.key === 'flats' ? 0.92 : biome.key === 'grove' ? 0.78 : 0.52;
+        if (rng() < poolProb) {
+          pools.push(createPoolData(
+            `pool-${cx}-${cz}`,
+            originX + 6 + rng() * (WORLD.CHUNK_SIZE - 12),
+            originZ + 6 + rng() * (WORLD.CHUNK_SIZE - 12),
+            3.4 + rng() * 4.4,
+            2.4 + rng() * 3.2,
+            rng() * Math.PI
+          ));
+        }
+
+        const chunk = { key, cx, cz, biome, entities, pools };
+        activeChunks.set(key, chunk);
+        return chunk;
+      }
+
+      function createPoolData(id, cx, cz, rx, rz, rot) {
+        const verts = [];
+        const segs = 10;
+        const cosR = Math.cos(rot);
+        const sinR = Math.sin(rot);
+        for (let i = 0; i < segs; i++) {
+          const a = (i / segs) * Math.PI * 2;
+          const wobble = 1 + 0.14 * Math.sin(a * 3 + rot) + 0.08 * Math.cos(a * 2);
+          const lx = Math.cos(a) * rx * wobble;
+          const lz = Math.sin(a) * rz * wobble;
+          verts.push({
+            x: cx + lx * cosR - lz * sinR,
+            z: cz + lx * sinR + lz * cosR
+          });
+        }
+        return { id, cx, cz, rx, rz, verts };
+      }
+
+      function syncChunks(px, pz) {
+        const pcx = Math.floor(px / WORLD.CHUNK_SIZE);
+        const pcz = Math.floor(pz / WORLD.CHUNK_SIZE);
+        const needed = new Set();
+
+        for (let dx = -WORLD.RENDER_CHUNKS; dx <= WORLD.RENDER_CHUNKS; dx++) {
+          for (let dz = -WORLD.RENDER_CHUNKS; dz <= WORLD.RENDER_CHUNKS; dz++) {
+            const k = chunkKey(pcx + dx, pcz + dz);
+            needed.add(k);
+            if (!activeChunks.has(k)) {
+              generateChunk(pcx + dx, pcz + dz);
+            }
+          }
+        }
+
+        // Evict out-of-range chunks and immediately clean up any DOM nodes belonging to them
+        for (const [k, chunk] of activeChunks) {
+          if (!needed.has(k)) {
+            for (let i = 0; i < chunk.entities.length; i++) {
+              releasePropNode(chunk.entities[i].id);
+            }
+            activeChunks.delete(k);
+          }
+        }
+      }
+
+      // =========================================================================
+      // 7. EFFICIENT SVG ENTITY LIFECYCLE (CREATE, UPDATE & CLEANUP)
+      // =========================================================================
+      const activePropNodes = new Map();
+
+      function createPropNode(ent) {
+        const g = svgEl('g');
+        const refs = { root: g, fog: null };
+
+        if (ent.type === 'spire') {
+          const useArt = svgEl('use', { href: `#prop-spire-${ent.variant}` });
+          const vapour = svgEl('path', {
+            d: 'M-2,-98 Q-5,-112 1,-124 Q5,-112 2,-98 Z',
+            fill: 'url(#vapour-grad)',
+            opacity: '0.65'
+          });
+          const vane = svgEl('line', {
+            x1: '-5',
+            y1: '-106',
+            x2: '5',
+            y2: '-106',
+            stroke: '#ffe8b3',
+            'stroke-width': '1'
+          });
+          const fog = svgEl('use', { href: `#fog-spire-${ent.variant}`, opacity: '0' });
+          g.appendChild(vapour);
+          g.appendChild(useArt);
+          if (ent.variant === 'a') g.appendChild(vane);
+          g.appendChild(fog);
+          refs.vapour = vapour;
+          refs.vane = ent.variant === 'a' ? vane : null;
+          refs.fog = fog;
+        } else if (ent.type === 'willow') {
+          const trunk = svgEl('use', { href: `#prop-willow-${ent.variant}-trunk` });
+          const canopyWrap = svgEl('g');
+          canopyWrap.appendChild(svgEl('use', { href: `#prop-willow-${ent.variant}-canopy` }));
+          const fog = svgEl('use', { href: `#fog-willow-${ent.variant}`, opacity: '0' });
+          g.appendChild(trunk);
+          g.appendChild(canopyWrap);
+          g.appendChild(fog);
+          refs.canopy = canopyWrap;
+          refs.fog = fog;
+        } else if (ent.type === 'cairn') {
+          // Optional skyward resonance light pillar when attuned
+          const beam = svgEl('polygon', {
+            points: '-5,-74 5,-74 1.5,-420 -1.5,-420',
+            fill: 'url(#cairn-beam)',
+            opacity: ent.attuned ? '0.88' : '0'
+          });
+          const base = svgEl('use', { href: '#prop-cairn-base' });
+          const glow = svgEl('circle', {
+            cx: '0',
+            cy: '-72',
+            r: '22',
+            fill: ent.attuned ? 'url(#cairn-glow-attuned)' : 'url(#cairn-glow-dormant)'
+          });
+          const outerRing = svgEl('ellipse', {
+            cx: '0',
+            cy: '-72',
+            rx: '14.5',
+            ry: '14.5',
+            fill: 'none',
+            stroke: 'url(#brass-band)',
+            'stroke-width': '1.8',
+            'stroke-dasharray': '12 3 5 3'
+          });
+          const innerRing = svgEl('ellipse', {
+            cx: '0',
+            cy: '-72',
+            rx: '10.2',
+            ry: '10.2',
+            fill: 'none',
+            stroke: ent.attuned ? '#8effef' : '#ffe2a6',
+            'stroke-width': '1.3'
+          });
+          const orb = svgEl('circle', {
+            cx: '0',
+            cy: '-72',
+            r: '5.5',
+            fill: ent.attuned ? 'url(#cairn-orb-attuned)' : 'url(#cairn-orb-dormant)',
+            stroke: '#fff7e0',
+            'stroke-width': '0.7'
+          });
+          const fog = svgEl('use', { href: '#fog-cairn', opacity: '0' });
+
+          g.appendChild(beam);
+          g.appendChild(base);
+          g.appendChild(glow);
+          g.appendChild(outerRing);
+          g.appendChild(innerRing);
+          g.appendChild(orb);
+          g.appendChild(fog);
+          refs.beam = beam;
+          refs.glow = glow;
+          refs.outerRing = outerRing;
+          refs.innerRing = innerRing;
+          refs.orb = orb;
+          refs.fog = fog;
+          refs.lastAttuned = ent.attuned;
+        } else if (ent.type === 'agave') {
+          g.appendChild(svgEl('use', { href: `#prop-agave-${ent.variant}` }));
+          const fog = svgEl('use', { href: `#fog-agave-${ent.variant}`, opacity: '0' });
+          g.appendChild(fog);
+          refs.fog = fog;
+        } else if (ent.type === 'arch') {
+          g.appendChild(svgEl('use', { href: '#prop-arch-a' }));
+          const fog = svgEl('use', { href: '#fog-arch-a', opacity: '0' });
+          g.appendChild(fog);
+          refs.fog = fog;
+        } else if (ent.type === 'moth') {
+          const halo = svgEl('circle', {
+            cx: '0',
+            cy: '-50',
+            r: '42',
+            fill: 'url(#cairn-glow-attuned)',
+            opacity: '0.45'
+          });
+          const mothBody = svgEl('g', { transform: 'translate(0, -50)' });
+          const leftWing = svgEl('g');
+          leftWing.appendChild(svgEl('use', { href: '#moth-wing-left' }));
+          const rightWing = svgEl('g');
+          rightWing.appendChild(svgEl('use', { href: '#moth-wing-right' }));
+          const thorax = svgEl('ellipse', {
+            cx: '0',
+            cy: '1',
+            rx: '2.8',
+            ry: '12',
+            fill: '#ffe4a4',
+            stroke: '#3c2544',
+            'stroke-width': '0.9'
+          });
+          const antennae = svgEl('path', {
+            d: 'M-1.2,-10 Q-7,-20 -11,-18 M1.2,-10 Q7,-20 11,-18',
+            fill: 'none',
+            stroke: '#ffe4a4',
+            'stroke-width': '1'
+          });
+          mothBody.appendChild(leftWing);
+          mothBody.appendChild(rightWing);
+          mothBody.appendChild(thorax);
+          mothBody.appendChild(antennae);
+          g.appendChild(halo);
+          g.appendChild(mothBody);
+          refs.leftWing = leftWing;
+          refs.rightWing = rightWing;
+          refs.mothBody = mothBody;
+        }
+
+        activePropNodes.set(ent.id, refs);
+        return refs;
+      }
+
+      function releasePropNode(id) {
+        const refs = activePropNodes.get(id);
+        if (refs) {
+          if (refs.root.parentNode) {
+            refs.root.parentNode.removeChild(refs.root);
+          }
+          activePropNodes.delete(id);
+        }
+      }
+
+      // Reusable Pool for Brine Mirror Pools (Flat 3D Ground Polygons)
+      const MAX_POOLS = 14;
+      const poolSvgEls = [];
+      for (let i = 0; i < MAX_POOLS; i++) {
+        const poly = svgEl('polygon', {
+          fill: 'url(#brine-pool-grad)',
+          stroke: 'rgba(255, 232, 198, 0.34)',
+          'stroke-width': '1.2',
+          display: 'none'
+        });
+        groundPoolsLayer.appendChild(poly);
+        poolSvgEls.push(poly);
+      }
+
+      // Reusable Pool for 3D Foreground Floating Silica Motes
+      const MOTE_COUNT = 22;
+      const motes = [];
+      for (let i = 0; i < MOTE_COUNT; i++) {
+        const rRng = mulberry32(4100 + i * 79);
+        const node = svgEl('circle', {
+          cx: 0,
+          cy: 0,
+          r: (1.2 + rRng() * 2.1).toFixed(2),
+          fill: i % 3 === 0 ? '#9effef' : '#ffe8b8',
+          opacity: '0'
+        });
+        motesLayer.appendChild(node);
+        motes.push({
+          x: (rRng() - 0.5) * 32,
+          y: 0.5 + rRng() * 5.2,
+          z: (rRng() - 0.5) * 32,
+          vx: (rRng() - 0.5) * 0.4,
+          vy: 0.14 + rRng() * 0.25,
+          vz: (rRng() - 0.5) * 0.4,
+          phase: rRng() * Math.PI * 2,
+          node
+        });
+      }
+
+      // =========================================================================
+      // 8. PLAYER STATE, CONTROLS & TRUE MULTITOUCH JOYSTICKS
+      // =========================================================================
+      const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+
+      const player = {
+        x: 0,
+        z: 0,
+        yaw: 0,
+        pitch: 0.03,
+        vx: 0,
+        vz: 0,
+        yawVel: 0,
+        bobPhase: 0,
+        bobAmp: 0,
+        prevBobSin: 0,
+        speed: 0,
+        headBobEnabled: !prefersReducedMotion.matches,
+        currentBiome: BIOMES[0].name
+      };
+
+      const keys = Object.create(null);
+
+      // Independent multitouch joystick states
+      const joysticks = {
+        left: { pointerId: null, x: 0, y: 0, active: false },
+        right: { pointerId: null, x: 0, y: 0, active: false }
+      };
+
+      // Stage click-and-drag look state
+      const dragLook = {
+        pointerId: null,
+        lastX: 0,
+        lastY: 0,
+        active: false
+      };
+
+      let introDismissed = false;
+      let hasMovedOnce = false;
+
+      function dismissIntro() {
+        if (introDismissed) return;
+        introDismissed = true;
+        introOverlay.classList.add('dismissed');
+        stage.focus({ preventScroll: true });
+      }
+
+      btnBegin.addEventListener('click', () => {
+        dismissIntro();
+        if (sound.setEnabled(true)) {
+          updateSoundBtnUI();
+        }
+      });
+
+      function updateSoundBtnUI() {
+        btnSound.setAttribute('aria-pressed', String(sound.enabled));
+        iconSoundOff.toggleAttribute('hidden', sound.enabled);
+        iconSoundOn.toggleAttribute('hidden', !sound.enabled);
+      }
+
+      btnSound.addEventListener('click', () => {
+        sound.setEnabled(!sound.enabled);
+        updateSoundBtnUI();
+      });
+
+      function updateMotionBtnUI() {
+        btnMotion.setAttribute('aria-pressed', String(player.headBobEnabled));
+      }
+      updateMotionBtnUI();
+
+      btnMotion.addEventListener('click', () => {
+        player.headBobEnabled = !player.headBobEnabled;
+        updateMotionBtnUI();
+      });
+
+      // Manual Virtual Joystick Toggle (auto-shown on coarse/mobile; toggleable everywhere)
+      let sticksManualMode = null; // null = auto, true = force show, false = force hide
+      function isSticksVisible() {
+        if (sticksManualMode !== null) return sticksManualMode;
+        return window.matchMedia('(pointer: coarse), (hover: none), (max-width: 900px)').matches;
+      }
+
+      function syncSticksUI() {
+        const vis = isSticksVisible();
+        document.body.classList.toggle('show-joysticks', sticksManualMode === true);
+        document.body.classList.toggle('hide-joysticks', sticksManualMode === false);
+        btnSticks.setAttribute('aria-pressed', String(vis));
+      }
+      syncSticksUI();
+
+      btnSticks.addEventListener('click', () => {
+        sticksManualMode = !isSticksVisible();
+        syncSticksUI();
+      });
+
+      // Journal Dialog Rendering
+      function renderJournal() {
+        const unlockedCount = Math.min(LORE_FRAGMENTS.length, attunedCairns.size);
+        cairnCountEl.textContent = `${unlockedCount}/${LORE_FRAGMENTS.length}`;
+        journalProgressLabel.textContent = `Attuned Resonance Fragments (${unlockedCount} / ${LORE_FRAGMENTS.length})` +
+          (attunedCairns.size > LORE_FRAGMENTS.length ? ` · +${attunedCairns.size - LORE_FRAGMENTS.length} Deep Steppe Harmonics` : '');
+        fragmentListEl.innerHTML = '';
+
+        LORE_FRAGMENTS.forEach((frag, idx) => {
+          const unlocked = idx < attunedCairns.size;
+          const li = document.createElement('li');
+          li.className = unlocked ? 'fragment-item' : 'fragment-item locked';
+          const t = document.createElement('p');
+          t.className = 'fragment-title';
+          t.textContent = unlocked ? frag.title : `Fragment ${idx + 1} · Dormant`;
+          const p = document.createElement('p');
+          p.className = 'fragment-copy';
+          p.textContent = unlocked ? `“${frag.text}”` : 'Approach an unattuned Astrolabe Cairn along your compass to wake this harmonic record.';
+          li.appendChild(t);
+          li.appendChild(p);
+          fragmentListEl.appendChild(li);
+        });
+      }
+      renderJournal();
+
+      btnJournal.addEventListener('click', () => {
+        renderJournal();
+        if (typeof journalDialog.showModal === 'function') {
+          journalDialog.showModal();
+        } else {
+          journalDialog.setAttribute('open', '');
+        }
+      });
+
+      // Toast Notification Helper
+      let toastTimer = null;
+      function showLoreToast(title, text) {
+        loreToastTitle.textContent = title;
+        loreToastText.textContent = text;
+        loreToastEl.classList.add('visible');
+        srAnnouncer.textContent = `${title}. ${text}`;
+        if (toastTimer) clearTimeout(toastTimer);
+        toastTimer = setTimeout(() => {
+          loreToastEl.classList.remove('visible');
+        }, 7200);
+      }
+
+      // Keyboard Controls
+      window.addEventListener('keydown', (e) => {
+        if (journalDialog.open) return;
+        const code = e.code;
+        if (
+          code === 'KeyW' || code === 'KeyA' || code === 'KeyS' || code === 'KeyD' ||
+          code === 'KeyQ' || code === 'KeyE' ||
+          code === 'ArrowUp' || code === 'ArrowDown' || code === 'ArrowLeft' || code === 'ArrowRight' ||
+          code === 'ShiftLeft' || code === 'ShiftRight'
+        ) {
+          keys[code] = true;
+          if (code.startsWith('Arrow')) e.preventDefault();
+          dismissIntro();
+        }
+      });
+
+      window.addEventListener('keyup', (e) => {
+        keys[e.code] = false;
+      });
+
+      window.addEventListener('blur', () => {
+        for (const k in keys) keys[k] = false;
+      });
+
+      // Click-and-Drag to Look Around (Pointer Capture)
+      stage.addEventListener('pointerdown', (e) => {
+        if (journalDialog.open) return;
+        // Mouse uses primary button only; touch on open sky also allows look-panning without interfering with joysticks
+        if (e.pointerType === 'mouse' && e.button !== 0) return;
+        if (dragLook.pointerId !== null) return;
+
+        dismissIntro();
+        dragLook.pointerId = e.pointerId;
+        dragLook.lastX = e.clientX;
+        dragLook.lastY = e.clientY;
+        dragLook.active = true;
+        stage.classList.add('dragging');
+        try {
+          stage.setPointerCapture(e.pointerId);
+        } catch (_) {}
+      });
+
+      stage.addEventListener('pointermove', (e) => {
+        if (!dragLook.active || e.pointerId !== dragLook.pointerId) return;
+        const dx = e.clientX - dragLook.lastX;
+        const dy = e.clientY - dragLook.lastY;
+        dragLook.lastX = e.clientX;
+        dragLook.lastY = e.clientY;
+
+        // Direct manipulation: grabbing the sky and pulling left turns right
+        const sensX = 0.0044;
+        const sensY = 0.0026;
+        player.yaw = wrapAngle(player.yaw - dx * sensX);
+        player.pitch = clamp(player.pitch + dy * sensY, -0.22, 0.24);
+        markMoved();
+      });
+
+      function endDragLook(e) {
+        if (!dragLook.active || e.pointerId !== dragLook.pointerId) return;
+        dragLook.active = false;
+        dragLook.pointerId = null;
+        stage.classList.remove('dragging');
+      }
+
+      stage.addEventListener('pointerup', endDragLook);
+      stage.addEventListener('pointercancel', endDragLook);
+      stage.addEventListener('lostpointercapture', endDragLook);
+
+      // True Multitouch Virtual Joysticks (Independent pointerId + setPointerCapture)
+      function bindJoystick(padEl, knobEl, stateObj, axisMode) {
+        let maxRadius = 38;
+
+        function updateFromPointer(clientX, clientY) {
+          const rect = padEl.getBoundingClientRect();
+          const cx = rect.left + rect.width * 0.5;
+          const cy = rect.top + rect.height * 0.5;
+          maxRadius = Math.max(26, rect.width * 0.34);
+
+          let dx = clientX - cx;
+          let dy = clientY - cy;
+          const dist = Math.hypot(dx, dy);
+          if (dist > maxRadius) {
+            dx = (dx / dist) * maxRadius;
+            dy = (dy / dist) * maxRadius;
+          }
+
+          // Constrain visual travel slightly along primary axis for tactile clarity while allowing diagonal comfort
+          const visX = axisMode === 'move' ? dx * 0.38 : dx;
+          const visY = axisMode === 'turn' ? dy * 0.42 : dy;
+          knobEl.style.transform = `translate3d(${visX.toFixed(1)}px, ${visY.toFixed(1)}px, 0)`;
+
+          const normX = dx / maxRadius;
+          const normY = dy / maxRadius;
+          // Small deadzone for rock-steady neutrality
+          stateObj.x = Math.abs(normX) < 0.08 ? 0 : normX;
+          stateObj.y = Math.abs(normY) < 0.08 ? 0 : normY;
+
+          const ariaVal = axisMode === 'move'
+            ? Math.round(-stateObj.y * 100)
+            : Math.round(stateObj.x * 100);
+          padEl.setAttribute('aria-valuenow', String(ariaVal));
+        }
+
+        function resetStick() {
+          stateObj.pointerId = null;
+          stateObj.x = 0;
+          stateObj.y = 0;
+          stateObj.active = false;
+          padEl.classList.remove('active');
+          padEl.setAttribute('aria-valuenow', '0');
+          knobEl.style.transform = 'translate3d(0, 0, 0)';
+        }
+
+        padEl.addEventListener('pointerdown', (e) => {
+          if (e.pointerType === 'mouse' && e.button !== 0) return;
+          if (stateObj.pointerId !== null) return;
+          e.preventDefault();
+          e.stopPropagation();
+
+          dismissIntro();
+          if (e.pointerType === 'touch' && sticksManualMode === null) {
+            document.body.classList.add('show-joysticks');
+          }
+
+          stateObj.pointerId = e.pointerId;
+          stateObj.active = true;
+          padEl.classList.add('active');
+          try {
+            padEl.setPointerCapture(e.pointerId);
+          } catch (_) {}
+          updateFromPointer(e.clientX, e.clientY);
+          markMoved();
+        });
+
+        padEl.addEventListener('pointermove', (e) => {
+          if (stateObj.pointerId !== e.pointerId) return;
+          e.preventDefault();
+          e.stopPropagation();
+          updateFromPointer(e.clientX, e.clientY);
+        });
+
+        function onRelease(e) {
+          if (stateObj.pointerId !== e.pointerId) return;
+          e.stopPropagation();
+          resetStick();
+        }
+
+        padEl.addEventListener('pointerup', onRelease);
+        padEl.addEventListener('pointercancel', onRelease);
+        padEl.addEventListener('lostpointercapture', onRelease);
+      }
+
+      bindJoystick(joyLeftPad, joyLeftKnob, joysticks.left, 'move');
+      bindJoystick(joyRightPad, joyRightKnob, joysticks.right, 'turn');
+
+      // Mobile Browser Default Behavior Prevention (pull-to-refresh, pinch-to-zoom, swipe-nav, callout)
+      document.addEventListener('touchmove', (e) => {
+        if (!e.target.closest('.journal-body')) {
+          e.preventDefault();
+        }
+      }, { passive: false });
+
+      ['gesturestart', 'gesturechange', 'gestureend'].forEach((evt) => {
+        document.addEventListener(evt, (e) => {
+          e.preventDefault();
+        }, { passive: false });
+      });
+
+      stage.addEventListener('contextmenu', (e) => e.preventDefault());
+      joyLeftPad.addEventListener('contextmenu', (e) => e.preventDefault());
+      joyRightPad.addEventListener('contextmenu', (e) => e.preventDefault());
+
+      // Prevent double-tap zoom on rapid stage taps
+      let lastTapTime = 0;
+      stage.addEventListener('touchend', (e) => {
+        const now = performance.now();
+        if (now - lastTapTime < 300) {
+          e.preventDefault();
+        }
+        lastTapTime = now;
+      }, { passive: false });
+
+      function markMoved() {
+        if (!hasMovedOnce) {
+          hasMovedOnce = true;
+          desktopHintEl.classList.add('faded');
+        }
+      }
+
+      // =========================================================================
+      // 9. RESPONSIVE VIEWPORT SIZING (UNDISTORTED 3D PERSPECTIVE)
+      // =========================================================================
+      function handleResize() {
+        const vw = Math.max(1, window.innerWidth);
+        const vh = Math.max(1, window.innerHeight);
+        const aspect = clamp(vw / vh, 0.42, 2.65);
+
+        view.H = 900;
+        view.W = Math.round(view.H * aspect);
+        view.CX = view.W * 0.5;
+        view.CY = view.H * 0.5;
+        view.FOCAL = view.H * 0.72;
+        view.CIRC = Math.round(view.FOCAL * Math.PI * 2);
+
+        worldSvg.setAttribute('viewBox', `0 0 ${view.W} ${view.H}`);
+
+        const padW = view.W + 400;
+        skyBg.setAttribute('x', '-200');
+        skyBg.setAttribute('y', '-480');
+        skyBg.setAttribute('width', String(padW));
+        skyBg.setAttribute('height', '486');
+
+        groundBg.setAttribute('x', '-200');
+        groundBg.setAttribute('y', '0');
+        groundBg.setAttribute('width', String(padW));
+        groundBg.setAttribute('height', '1100');
+
+        horizonVeil.setAttribute('x', '-200');
+        horizonVeil.setAttribute('width', String(padW));
+
+        sunGlareVeil.setAttribute('x', '-200');
+        sunGlareVeil.setAttribute('width', String(padW));
+
+        buildMesaLayers();
+        syncSticksUI();
+      }
+
+      window.addEventListener('resize', handleResize);
+      if (window.visualViewport) {
+        window.visualViewport.addEventListener('resize', handleResize);
+      }
+
+      // =========================================================================
+      // 10. 3D PERSPECTIVE CLIPPING & GROUND GEOMETRY
+      // =========================================================================
+      function clipSegmentNear(x1, z1, x2, z2, nearZ) {
+        if (z1 < nearZ && z2 < nearZ) return null;
+        if (z1 < nearZ) {
+          const t = (nearZ - z1) / (z2 - z1);
+          x1 = x1 + (x2 - x1) * t;
+          z1 = nearZ;
+        } else if (z2 < nearZ) {
+          const t = (nearZ - z2) / (z1 - z2);
+          x2 = x2 + (x1 - x2) * t;
+          z2 = nearZ;
+        }
+        return [x1, z1, x2, z2];
+      }
+
+      function clipPolygonNear(pts, nearZ) {
+        const out = [];
+        const len = pts.length;
+        for (let i = 0; i < len; i++) {
+          const a = pts[i];
+          const b = pts[(i + 1) % len];
+          const aIn = a.z >= nearZ;
+          const bIn = b.z >= nearZ;
+          if (aIn && bIn) {
+            out.push(b);
+          } else if (aIn && !bIn) {
+            const t = (nearZ - a.z) / (b.z - a.z);
+            out.push({ x: a.x + (b.x - a.x) * t, z: nearZ });
+          } else if (!aIn && bIn) {
+            const t = (nearZ - a.z) / (b.z - a.z);
+            out.push({ x: a.x + (b.x - a.x) * t, z: nearZ });
+            out.push(b);
+          }
+        }
+        return out;
+      }
+
+      // =========================================================================
+      // 11. SIMULATION UPDATE & CAIRN DISCOVERY
+      // =========================================================================
+      let lastHudUpdate = 0;
+      let nearestUnattunedInfo = null;
+      let isStandingOnBrine = false;
+
+      function updateSimulation(dt, time) {
+        // Gather movement & turning input
+        let moveInput = 0;
+        let strafeInput = 0;
+        let turnInput = 0;
+
+        if (keys.KeyW || keys.ArrowUp) moveInput += 1;
+        if (keys.KeyS || keys.ArrowDown) moveInput -= 1;
+        if (keys.KeyA || keys.ArrowLeft) turnInput -= 1;
+        if (keys.KeyD || keys.ArrowRight) turnInput += 1;
+        if (keys.KeyQ) strafeInput -= 1;
+        if (keys.KeyE) strafeInput += 1;
+
+        // Combine with multitouch virtual joysticks (simultaneous walk + turn!)
+        if (joysticks.left.active) {
+          moveInput += -joysticks.left.y;
+        }
+        if (joysticks.right.active) {
+          turnInput += joysticks.right.x;
+          // Gentle subtle pitch tilt from right stick vertical axis
+          if (Math.abs(joysticks.right.y) > 0.22) {
+            player.pitch = clamp(player.pitch - joysticks.right.y * 0.38 * dt, -0.22, 0.24);
+          }
+        }
+
+        moveInput = clamp(moveInput, -1, 1);
+        strafeInput = clamp(strafeInput, -1, 1);
+        turnInput = clamp(turnInput, -1, 1);
+
+        if (Math.abs(moveInput) > 0.01 || Math.abs(turnInput) > 0.01 || Math.abs(strafeInput) > 0.01) {
+          markMoved();
+        }
+
+        // Smooth angular damping
+        const targetYawVel = turnInput * WORLD.TURN_SPEED;
+        player.yawVel += (targetYawVel - player.yawVel) * Math.min(1, dt * 11);
+        player.yaw = wrapAngle(player.yaw + player.yawVel * dt);
+
+        // Smooth planar velocity
+        const sprint = (keys.ShiftLeft || keys.ShiftRight) ? WORLD.SPRINT_MULT : 1;
+        const speedMax = WORLD.WALK_SPEED * sprint;
+        const sinY = Math.sin(player.yaw);
+        const cosY = Math.cos(player.yaw);
+
+        const targetVx = (sinY * moveInput + cosY * strafeInput) * speedMax;
+        const targetVz = (cosY * moveInput - sinY * strafeInput) * speedMax;
+
+        const accel = Math.min(1, dt * 8.5);
+        player.vx += (targetVx - player.vx) * accel;
+        player.vz += (targetVz - player.vz) * accel;
+
+        player.x += player.vx * dt;
+        player.z += player.vz * dt;
+
+        // Soft collision push-out against solid trunks/plinths & arch side pillars
+        isStandingOnBrine = false;
+        let bestCairnDistSq = Infinity;
+        let bestCairn = null;
+
+        for (const chunk of activeChunks.values()) {
+          // Check brine pools under feet
+          for (let p = 0; p < chunk.pools.length; p++) {
+            const pool = chunk.pools[p];
+            const dx = player.x - pool.cx;
+            const dz = player.z - pool.cz;
+            if (dx * dx + dz * dz < pool.rx * pool.rz) {
+              isStandingOnBrine = true;
+            }
+          }
+
+          for (let i = 0; i < chunk.entities.length; i++) {
+            const ent = chunk.entities[i];
+
+            // Animate Vesper Moths in 3D orbits with delicate shyness
+            if (ent.type === 'moth') {
+              const a = time * ent.orbitSpeed + ent.phase;
+              let tx = ent.baseX + Math.cos(a) * ent.orbitR;
+              let tz = ent.baseZ + Math.sin(a * 1.35) * ent.orbitR * 0.78;
+              let ty = ent.baseY + Math.sin(a * 2.1) * 0.65;
+              const pdx = tx - player.x;
+              const pdz = tz - player.z;
+              const pDist = Math.hypot(pdx, pdz);
+              if (pDist < 4.5 && pDist > 0.01) {
+                const lift = (4.5 - pDist) * 0.42;
+                tx += (pdx / pDist) * lift;
+                tz += (pdz / pDist) * lift;
+                ty += lift * 0.65;
+              }
+              ent.x += (tx - ent.x) * Math.min(1, dt * 4.5);
+              ent.y += (ty - ent.y) * Math.min(1, dt * 4.5);
+              ent.z += (tz - ent.z) * Math.min(1, dt * 4.5);
+              continue;
+            }
+
+            // Soft cylindrical collision
+            if (ent.colR > 0) {
+              const dx = player.x - ent.x;
+              const dz = player.z - ent.z;
+              const distSq = dx * dx + dz * dz;
+              const minR = ent.colR + 0.55;
+              if (distSq < minR * minR && distSq > 0.0001) {
+                const dist = Math.sqrt(distSq);
+                const push = minR - dist;
+                player.x += (dx / dist) * push;
+                player.z += (dz / dist) * push;
+              }
+            } else if (ent.type === 'arch') {
+              // Two open-doorway pillar colliders so player can walk RIGHT THROUGH the arch!
+              const half = ent.archHalfSpan || 2.8;
+              const pillars = [ent.x - half, ent.x + half];
+              for (let s = 0; s < 2; s++) {
+                const dx = player.x - pillars[s];
+                const dz = player.z - ent.z;
+                const dSq = dx * dx + dz * dz;
+                const minR = 1.05;
+                if (dSq < minR * minR && dSq > 0.0001) {
+                  const dist = Math.sqrt(dSq);
+                  const push = minR - dist;
+                  player.x += (dx / dist) * push;
+                  player.z += (dz / dist) * push;
+                }
+              }
+            }
+
+            // Astrolabe Cairn Proximity Attunement & Compass Tracking
+            if (ent.type === 'cairn') {
+              const dx = ent.x - player.x;
+              const dz = ent.z - player.z;
+              const dSq = dx * dx + dz * dz;
+              if (!ent.attuned) {
+                if (dSq < WORLD.ATTUNE_DIST * WORLD.ATTUNE_DIST) {
+                  attuneCairn(ent);
+                } else if (dSq < bestCairnDistSq) {
+                  bestCairnDistSq = dSq;
+                  bestCairn = ent;
+                }
+              }
+            }
+          }
+        }
+
+        nearestUnattunedInfo = bestCairn
+          ? {
+              x: bestCairn.x,
+              z: bestCairn.z,
+              dist: Math.sqrt(bestCairnDistSq),
+              az: Math.atan2(bestCairn.x - player.x, bestCairn.z - player.z)
+            }
+          : null;
+
+        // Subtle sinusoidal head-bob tied to walking speed
+        player.speed = Math.hypot(player.vx, player.vz);
+        const speedRatio = clamp(player.speed / WORLD.WALK_SPEED, 0, 1.4);
+        const targetBobAmp = player.headBobEnabled ? Math.min(1, speedRatio) : 0;
+        player.bobAmp += (targetBobAmp - player.bobAmp) * Math.min(1, dt * 8);
+
+        if (player.speed > 0.25) {
+          player.bobPhase += dt * (6.8 + speedRatio * 2.5);
+          const s = Math.sin(player.bobPhase);
+          // Footstep chime right at the stride trough
+          if (player.prevBobSin > -0.82 && s <= -0.82) {
+            sound.playFootstep(isStandingOnBrine);
+          }
+          player.prevBobSin = s;
+        }
+
+        // Update expanding ground resonance ripples
+        for (let i = activeRipples.length - 1; i >= 0; i--) {
+          const rip = activeRipples[i];
+          rip.age += dt;
+          if (rip.age >= rip.duration) {
+            if (rip.node.parentNode) rip.node.parentNode.removeChild(rip.node);
+            activeRipples.splice(i, 1);
+          }
+        }
+
+        // Sync infinite chunks around player
+        syncChunks(player.x, player.z);
+
+        // Modulate ambient soundscape
+        const sunFacing = Math.cos(wrapAngle(WORLD.SUN_AZ - player.yaw));
+        sound.updateAmbience(sunFacing, speedRatio);
+
+        // Throttled HUD text updates (biome, heading, coords)
+        if (time - lastHudUpdate > 0.14) {
+          lastHudUpdate = time;
+          const biome = getBiomeAt(player.x, player.z);
+          if (biome.name !== player.currentBiome) {
+            player.currentBiome = biome.name;
+            regionNameEl.textContent = biome.name;
+            srAnnouncer.textContent = `Entered ${biome.name}`;
+          }
+          const deg = ((Math.round((player.yaw * 180) / Math.PI) % 360) + 360) % 360;
+          const cardinals = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
+          const card = cardinals[Math.round(deg / 45) % 8];
+          regionCoordsEl.textContent = `${String(deg).padStart(3, '0')}° ${card} · ${Math.round(player.x)}m, ${Math.round(player.z)}m`;
+
+          if (nearestUnattunedInfo) {
+            compassBeaconHint.textContent = `◇ Cairn ${Math.round(nearestUnattunedInfo.dist)}m`;
+            compassBeaconHint.style.opacity = '0.95';
+          } else {
+            compassBeaconHint.textContent = '◇ Wander onward for distant rings';
+            compassBeaconHint.style.opacity = '0.62';
+          }
+        }
+      }
+
+      function attuneCairn(ent) {
+        ent.attuned = true;
+        attunedCairns.add(ent.id);
+        sound.playCairnAttune();
+
+        // Spawn expanding 3D ground resonance ripple
+        const ripNode = svgEl('polygon', {
+          fill: 'none',
+          stroke: '#8effef',
+          'stroke-width': '2.4'
+        });
+        groundRipplesLayer.appendChild(ripNode);
+        activeRipples.push({
+          x: ent.x,
+          z: ent.z,
+          age: 0,
+          duration: 2.8,
+          maxR: 16,
+          node: ripNode
+        });
+
+        const count = attunedCairns.size;
+        cairnCountEl.textContent = `${Math.min(LORE_FRAGMENTS.length, count)}/${LORE_FRAGMENTS.length}`;
+
+        if (count <= LORE_FRAGMENTS.length) {
+          const frag = LORE_FRAGMENTS[count - 1];
+          showLoreToast(`Cairn Attuned — ${frag.title}`, `“${frag.text}”`);
+        } else {
+          const pitchHz = (220 + ((count * 37) % 190)).toFixed(0);
+          showLoreToast(
+            `Harmonic Relay #${count} Attuned`,
+            `Another outlying gimbal awakens at ${pitchHz} Hz, answering the distant Meridian across the glass sea.`
+          );
+        }
+      }
+
+      // =========================================================================
+      // 12. PURE-SVG 3D RENDERING FRAME
+      // =========================================================================
+      const visibleList = [];
+      let fpsSmooth = 60;
+
+      function renderFrame(time) {
+        const bobYWorld = Math.sin(player.bobPhase) * 0.068 * player.bobAmp;
+        const bobSwayX = Math.cos(player.bobPhase * 0.5) * 0.036 * player.bobAmp;
+        const bobPitchPx = Math.sin(player.bobPhase) * 3.8 * player.bobAmp;
+
+        const camY = WORLD.EYE_HEIGHT + bobYWorld;
+        const horizonY = view.CY + Math.tan(player.pitch) * view.FOCAL + bobPitchPx;
+        const sinY = Math.sin(player.yaw);
+        const cosY = Math.cos(player.yaw);
+
+        // --- A. SKY & CELESTIAL DOME ---
+        skyGroup.setAttribute('transform', `translate(0, ${horizonY.toFixed(1)})`);
+        groundGroup.setAttribute('transform', `translate(0, ${horizonY.toFixed(1)})`);
+        horizonVeil.setAttribute('y', (horizonY - 78).toFixed(1));
+
+        // 1. Stars & Gilded Constellation Threads
+        let constD = '';
+        let prevConstX = null;
+        let prevConstY = null;
+        const halfLimit = view.W * 0.56;
+
+        for (let i = 0; i < starsData.length; i++) {
+          const s = starsData[i];
+          const dAz = wrapAngle(s.az - player.yaw);
+          const sx = view.CX + dAz * view.FOCAL;
+          if (sx < -40 || sx > view.W + 40) {
+            s.el.setAttribute('display', 'none');
+            prevConstX = null;
+            continue;
+          }
+          const sy = -s.elev * view.FOCAL;
+          const tw = 0.45 + 0.55 * (0.5 + 0.5 * Math.sin(time * s.speed + s.phase));
+          s.el.removeAttribute('display');
+          s.el.setAttribute('cx', sx.toFixed(1));
+          s.el.setAttribute('cy', sy.toFixed(1));
+          s.el.setAttribute('opacity', tw.toFixed(2));
+
+          // Connect every 9th small cluster into subtle star-chart geometry
+          if (i % 9 < 3 && Math.abs(sx - view.CX) < halfLimit) {
+            if (prevConstX !== null && Math.hypot(sx - prevConstX, sy - prevConstY) < 190) {
+              constD += `M${prevConstX.toFixed(1)},${prevConstY.toFixed(1)} L${sx.toFixed(1)},${sy.toFixed(1)} `;
+            }
+            prevConstX = sx;
+            prevConstY = sy;
+          } else {
+            prevConstX = null;
+          }
+        }
+        constellationPathEl.setAttribute('d', constD);
+
+        // 2. Shattered Meridian Astrolabe in Sky
+        const astroAz = wrapAngle(WORLD.ASTRO_AZ - player.yaw);
+        const astroX = view.CX + astroAz * view.FOCAL;
+        const astroVisible = Math.abs(astroX - view.CX) < view.W * 0.85 + 560;
+        if (astroVisible) {
+          astrolabeSkyLayer.removeAttribute('display');
+          const driftRot = Math.sin(time * 0.08) * 1.1;
+          astrolabeSkyLayer.setAttribute('transform', `translate(${astroX.toFixed(1)}, ${(-view.FOCAL * 0.25).toFixed(1)}) rotate(${driftRot.toFixed(2)})`);
+        } else {
+          astrolabeSkyLayer.setAttribute('display', 'none');
+        }
+
+        // 3. Twin Moons (Opaline & Cinder)
+        const opAz = wrapAngle(-0.74 - player.yaw);
+        const opX = view.CX + opAz * view.FOCAL;
+        if (Math.abs(opX - view.CX) < view.W * 0.65 + 120) {
+          moonOpalineEl.removeAttribute('display');
+          moonOpalineEl.setAttribute('transform', `translate(${opX.toFixed(1)}, ${(-view.FOCAL * 0.44).toFixed(1)})`);
+        } else {
+          moonOpalineEl.setAttribute('display', 'none');
+        }
+
+        const cinAz = wrapAngle(-0.34 - player.yaw);
+        const cinX = view.CX + cinAz * view.FOCAL;
+        if (Math.abs(cinX - view.CX) < view.W * 0.65 + 60) {
+          moonCinderEl.removeAttribute('display');
+          moonCinderEl.setAttribute('transform', `translate(${cinX.toFixed(1)}, ${(-view.FOCAL * 0.34).toFixed(1)})`);
+        } else {
+          moonCinderEl.setAttribute('display', 'none');
+        }
+
+        // 4. Setting Vespers Sun & Specular Ground Path
+        const sunAz = wrapAngle(WORLD.SUN_AZ - player.yaw);
+        const sunX = view.CX + sunAz * view.FOCAL;
+        const sunFacing = Math.cos(sunAz);
+        if (Math.abs(sunX - view.CX) < view.W * 0.65 + 320) {
+          sunLayer.removeAttribute('display');
+          sunLayer.setAttribute('transform', `translate(${sunX.toFixed(1)}, ${(-WORLD.SUN_EL * view.FOCAL).toFixed(1)})`);
+          groundSunPath.removeAttribute('display');
+          groundSunPath.setAttribute('transform', `translate(${sunX.toFixed(1)}, 0)`);
+          sunShimmerLines.setAttribute('transform', `translate(${(Math.sin(time * 1.4) * 5).toFixed(1)}, 0)`);
+        } else {
+          sunLayer.setAttribute('display', 'none');
+          groundSunPath.setAttribute('display', 'none');
+        }
+
+        const glareOp = sunFacing > 0.45 ? (sunFacing - 0.45) * 0.22 : 0;
+        sunGlareVeil.setAttribute('opacity', glareOp.toFixed(3));
+
+        // 5. Drifting Cloud Ribbons
+        for (let i = 0; i < cloudsData.length; i++) {
+          const c = cloudsData[i];
+          const az = wrapAngle(c.az + time * c.drift - player.yaw);
+          const cx = view.CX + az * view.FOCAL;
+          if (Math.abs(cx - view.CX) > view.W * 0.65 + 220) {
+            c.node.setAttribute('display', 'none');
+          } else {
+            c.node.removeAttribute('display');
+            c.node.setAttribute('transform', `translate(${cx.toFixed(1)}, ${(-c.el * view.FOCAL).toFixed(1)})`);
+          }
+        }
+
+        // 6. Seamless 3-Layer Crystalline Mesas
+        const normYaw = ((player.yaw % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
+        const baseShift = (normYaw / (Math.PI * 2)) * view.CIRC;
+        const wrapShift = (offset) => {
+          let s = (view.CX - ((baseShift + offset) % view.CIRC));
+          while (s > 0) s -= view.CIRC;
+          while (s < -view.CIRC) s += view.CIRC;
+          return s;
+        };
+        const walkParallax = (player.x * cosY - player.z * sinY) * 0.45;
+        mesaFarLayer.setAttribute('transform', `translate(${wrapShift(0).toFixed(1)}, 2)`);
+        mesaMidLayer.setAttribute('transform', `translate(${wrapShift(walkParallax * 0.25).toFixed(1)}, 3)`);
+        mesaNearLayer.setAttribute('transform', `translate(${wrapShift(walkParallax * 0.65).toFixed(1)}, 4)`);
+
+        // --- B. TRUE 3D PERSPECTIVE GROUND GRID & BRINE POOLS ---
+        const step = WORLD.GRID_STEP;
+        const span = 80;
+        const baseGX = Math.floor(player.x / step) * step;
+        const baseGZ = Math.floor(player.z / step) * step;
+        let gridD = '';
+
+        // Lines parallel to Z axis
+        for (let wx = baseGX - span; wx <= baseGX + span; wx += step) {
+          const dx1 = wx - player.x;
+          const dz1 = (baseGZ - span) - player.z;
+          const dz2 = (baseGZ + span) - player.z;
+          const rx1 = dx1 * cosY - dz1 * sinY - bobSwayX;
+          const rz1 = dx1 * sinY + dz1 * cosY;
+          const rx2 = dx1 * cosY - dz2 * sinY - bobSwayX;
+          const rz2 = dx1 * sinY + dz2 * cosY;
+          const clipped = clipSegmentNear(rx1, rz1, rx2, rz2, 0.55);
+          if (!clipped) continue;
+          const [cx1, cz1, cx2, cz2] = clipped;
+          const s1 = view.FOCAL / cz1;
+          const s2 = view.FOCAL / cz2;
+          const sx1 = view.CX + cx1 * s1;
+          const sy1 = camY * s1;
+          const sx2 = view.CX + cx2 * s2;
+          const sy2 = camY * s2;
+          gridD += `M${sx1.toFixed(1)},${sy1.toFixed(1)} L${sx2.toFixed(1)},${sy2.toFixed(1)} `;
+        }
+
+        // Lines parallel to X axis
+        for (let wz = baseGZ - span; wz <= baseGZ + span; wz += step) {
+          const dz1 = wz - player.z;
+          const dx1 = (baseGX - span) - player.x;
+          const dx2 = (baseGX + span) - player.x;
+          const rx1 = dx1 * cosY - dz1 * sinY - bobSwayX;
+          const rz1 = dx1 * sinY + dz1 * cosY;
+          const rx2 = dx2 * cosY - dz1 * sinY - bobSwayX;
+          const rz2 = dx2 * sinY + dz1 * cosY;
+          const clipped = clipSegmentNear(rx1, rz1, rx2, rz2, 0.55);
+          if (!clipped) continue;
+          const [cx1, cz1, cx2, cz2] = clipped;
+          const s1 = view.FOCAL / cz1;
+          const s2 = view.FOCAL / cz2;
+          const sx1 = view.CX + cx1 * s1;
+          const sy1 = camY * s1;
+          const sx2 = view.CX + cx2 * s2;
+          const sy2 = camY * s2;
+          gridD += `M${sx1.toFixed(1)},${sy1.toFixed(1)} L${sx2.toFixed(1)},${sy2.toFixed(1)} `;
+        }
+        groundGridPath.setAttribute('d', gridD);
+
+        // Project visible Brine Mirror Pools onto 3D ground plane
+        let poolIdx = 0;
+        for (const chunk of activeChunks.values()) {
+          for (let i = 0; i < chunk.pools.length && poolIdx < MAX_POOLS; i++) {
+            const pool = chunk.pools[i];
+            const dcx = pool.cx - player.x;
+            const dcz = pool.cz - player.z;
+            const cz = dcx * sinY + dcz * cosY;
+            if (cz < -8 || cz > WORLD.FAR_Z * 0.85) continue;
+            const cx = dcx * cosY - dcz * sinY;
+            if (cz > 1 && Math.abs(cx) > cz * (view.W / view.FOCAL) + 12) continue;
+
+            const camPts = [];
+            for (let v = 0; v < pool.verts.length; v++) {
+              const vx = pool.verts[v].x - player.x;
+              const vz = pool.verts[v].z - player.z;
+              camPts.push({
+                x: vx * cosY - vz * sinY - bobSwayX,
+                z: vx * sinY + vz * cosY
+              });
+            }
+            const clipped = clipPolygonNear(camPts, 0.55);
+            if (clipped.length < 3) continue;
+
+            let pStr = '';
+            for (let v = 0; v < clipped.length; v++) {
+              const sc = view.FOCAL / clipped[v].z;
+              const sx = view.CX + clipped[v].x * sc;
+              const sy = camY * sc;
+              pStr += `${sx.toFixed(1)},${sy.toFixed(1)} `;
+            }
+            const el = poolSvgEls[poolIdx++];
+            const fade = smoothstep(WORLD.FAR_Z * 0.85, WORLD.FAR_Z * 0.45, Math.max(1, cz));
+            el.setAttribute('points', pStr);
+            el.setAttribute('opacity', (0.76 * fade).toFixed(2));
+            el.removeAttribute('display');
+          }
+        }
+        for (let i = poolIdx; i < MAX_POOLS; i++) {
+          poolSvgEls[i].setAttribute('display', 'none');
+        }
+
+        // Project Expanding Ground Resonance Ripples
+        for (let i = 0; i < activeRipples.length; i++) {
+          const rip = activeRipples[i];
+          const t = rip.age / rip.duration;
+          const r = 1.4 + t * rip.maxR;
+          const camPts = [];
+          const segs = 24;
+          for (let s = 0; s < segs; s++) {
+            const a = (s / segs) * Math.PI * 2;
+            const wx = rip.x + Math.cos(a) * r - player.x;
+            const wz = rip.z + Math.sin(a) * r - player.z;
+            camPts.push({
+              x: wx * cosY - wz * sinY - bobSwayX,
+              z: wx * sinY + wz * cosY
+            });
+          }
+          const clipped = clipPolygonNear(camPts, 0.55);
+          if (clipped.length >= 3) {
+            let pStr = '';
+            for (let v = 0; v < clipped.length; v++) {
+              const sc = view.FOCAL / clipped[v].z;
+              pStr += `${(view.CX + clipped[v].x * sc).toFixed(1)},${(camY * sc).toFixed(1)} `;
+            }
+            rip.node.setAttribute('points', pStr);
+            rip.node.setAttribute('opacity', ((1 - t) * (1 - t) * 0.92).toFixed(2));
+            rip.node.removeAttribute('display');
+          } else {
+            rip.node.setAttribute('display', 'none');
+          }
+        }
+
+        // --- C. FRUSTUM CULL, PROJECT & DEPTH-SORT 3D PROPS ---
+        visibleList.length = 0;
+        const cullMarginX = view.W * 0.5 + 220;
+
+        for (const chunk of activeChunks.values()) {
+          for (let i = 0; i < chunk.entities.length; i++) {
+            const ent = chunk.entities[i];
+            const dx = ent.x - player.x;
+            const dz = ent.z - player.z;
+            const relZ = dx * sinY + dz * cosY;
+            if (relZ < WORLD.NEAR_Z || relZ > WORLD.FAR_Z) continue;
+
+            const relX = dx * cosY - dz * sinY - bobSwayX;
+            const scale = view.FOCAL / relZ;
+            const sx = view.CX + relX * scale;
+            const spriteHalfW = ent.h * scale * 0.52;
+            if (Math.abs(sx - view.CX) > cullMarginX + spriteHalfW) continue;
+
+            const sy = horizonY + (camY - ent.y) * scale;
+            const svgScale = (ent.h * scale) / 100;
+
+            visibleList.push({ ent, relZ, sx, sy, svgScale });
+          }
+        }
+
+        // Prioritize closest props if dense, then sort strictly back-to-front (Painter's Algorithm)
+        if (visibleList.length > WORLD.MAX_VISIBLE_PROPS) {
+          visibleList.sort((a, b) => a.relZ - b.relZ);
+          visibleList.length = WORLD.MAX_VISIBLE_PROPS;
+        }
+        visibleList.sort((a, b) => b.relZ - a.relZ);
+
+        // Track visible IDs so culled elements are cleanly removed from DOM
+        const visibleIds = new Set();
+        for (let i = 0; i < visibleList.length; i++) {
+          visibleIds.add(visibleList[i].ent.id);
+        }
+        for (const id of activePropNodes.keys()) {
+          if (!visibleIds.has(id)) {
+            releasePropNode(id);
+          }
+        }
+
+        // Update transforms, atmospheric fog haze, LOD micro-animations & minimal-thrash z-ordering
+        let cursor = worldLayer.firstChild;
+        for (let i = 0; i < visibleList.length; i++) {
+          const item = visibleList[i];
+          const ent = item.ent;
+          let refs = activePropNodes.get(ent.id);
+          if (!refs) {
+            refs = createPropNode(ent);
+          }
+
+          // Smooth distance fade at horizon & smooth near-plane dissolve
+          const farFade = smoothstep(WORLD.FAR_Z, WORLD.FAR_Z * 0.72, item.relZ);
+          const nearFade = smoothstep(WORLD.NEAR_Z, WORLD.NEAR_Z + 0.95, item.relZ);
+          const totalOpacity = farFade * nearFade;
+
+          refs.root.setAttribute(
+            'transform',
+            `translate(${item.sx.toFixed(1)}, ${item.sy.toFixed(1)}) scale(${item.svgScale.toFixed(3)})`
+          );
+          refs.root.setAttribute('opacity', totalOpacity.toFixed(3));
+
+          // Atmospheric aerial perspective haze overlay (zero SVG filter cost!)
+          if (refs.fog) {
+            const fogOp = smoothstep(14, WORLD.FAR_Z * 0.9, item.relZ) * 0.78;
+            refs.fog.setAttribute('opacity', fogOp.toFixed(2));
+          }
+
+          // LOD living animations for closer props (< 52m)
+          if (item.relZ < 52) {
+            if (ent.type === 'spire') {
+              const drift = Math.sin(time * 1.4 + ent.phase) * 2.2;
+              refs.vapour.setAttribute('transform', `translate(${drift.toFixed(1)}, 0) scale(1, ${(0.9 + 0.16 * Math.sin(time * 1.9 + ent.phase)).toFixed(2)})`);
+              if (refs.vane) {
+                const vx = Math.cos(time * 1.2 + ent.phase) * 5.2;
+                refs.vane.setAttribute('x1', (-vx).toFixed(1));
+                refs.vane.setAttribute('x2', vx.toFixed(1));
+              }
+            } else if (ent.type === 'willow') {
+              const sway = Math.sin(time * 1.15 + ent.phase) * 2.1;
+              refs.canopy.setAttribute('transform', `rotate(${sway.toFixed(2)}, 0, -64)`);
+            } else if (ent.type === 'cairn') {
+              if (refs.lastAttuned !== ent.attuned) {
+                refs.lastAttuned = ent.attuned;
+                refs.glow.setAttribute('fill', ent.attuned ? 'url(#cairn-glow-attuned)' : 'url(#cairn-glow-dormant)');
+                refs.orb.setAttribute('fill', ent.attuned ? 'url(#cairn-orb-attuned)' : 'url(#cairn-orb-dormant)');
+                refs.innerRing.setAttribute('stroke', ent.attuned ? '#8effef' : '#ffe2a6');
+                refs.beam.setAttribute('opacity', ent.attuned ? '0.88' : '0');
+              }
+              const spinSpeed = ent.attuned ? 1.8 : 0.65;
+              const rx1 = Math.max(2.6, Math.abs(Math.cos(time * spinSpeed + ent.phase)) * 14.5);
+              const ry2 = Math.max(2.2, Math.abs(Math.sin(time * spinSpeed * 1.35 + ent.phase)) * 10.2);
+              const tilt = ((time * (ent.attuned ? 42 : 16) + ent.phase * 40) % 360);
+              refs.outerRing.setAttribute('rx', rx1.toFixed(1));
+              refs.outerRing.setAttribute('transform', `rotate(${tilt.toFixed(1)}, 0, -72)`);
+              refs.innerRing.setAttribute('ry', ry2.toFixed(1));
+              refs.innerRing.setAttribute('transform', `rotate(${(-tilt * 1.3).toFixed(1)}, 0, -72)`);
+              const pulse = 1 + Math.sin(time * 3.1 + ent.phase) * 0.08;
+              refs.orb.setAttribute('r', (5.5 * pulse).toFixed(2));
+            } else if (ent.type === 'moth') {
+              const flap = 0.28 + 0.72 * Math.abs(Math.cos(time * 7.8 + ent.phase));
+              const bank = Math.sin(time * 2.1 + ent.phase) * 11;
+              refs.leftWing.setAttribute('transform', `scale(${flap.toFixed(2)}, 1)`);
+              refs.rightWing.setAttribute('transform', `scale(${flap.toFixed(2)}, 1)`);
+              refs.mothBody.setAttribute('transform', `translate(0, -50) rotate(${bank.toFixed(1)})`);
+            }
+          }
+
+          // Reorder in DOM ONLY when necessary
+          if (refs.root !== cursor) {
+            worldLayer.insertBefore(refs.root, cursor);
+          } else {
+            cursor = cursor.nextSibling;
+          }
+        }
+
+        // --- D. 3D FOREGROUND SILICA DUST MOTES ---
+        const box = 28;
+        const halfBox = box * 0.5;
+        for (let i = 0; i < motes.length; i++) {
+          const m = motes[i];
+          // Wrap mote seamlessly around player's 3D neighborhood
+          let wx = (((m.x + time * m.vx - player.x + halfBox) % box) + box) % box - halfBox;
+          let wz = (((m.z + time * m.vz - player.z + halfBox) % box) + box) % box - halfBox;
+          const wy = ((m.y + time * m.vy) % 5.6) + 0.35;
+
+          const relZ = wx * sinY + wz * cosY;
+          if (relZ < 1.1 || relZ > 15) {
+            m.node.setAttribute('opacity', '0');
+            continue;
+          }
+          const relX = wx * cosY - wz * sinY - bobSwayX;
+          const sc = view.FOCAL / relZ;
+          const sx = view.CX + relX * sc;
+          const sy = horizonY + (camY - wy) * sc;
+          if (sx < -20 || sx > view.W + 20 || sy < -20 || sy > view.H + 20) {
+            m.node.setAttribute('opacity', '0');
+            continue;
+          }
+          const op = smoothstep(1.1, 2.8, relZ) * smoothstep(15, 9, relZ) * (0.45 + 0.4 * Math.sin(time * 2.4 + m.phase));
+          m.node.setAttribute('cx', sx.toFixed(1));
+          m.node.setAttribute('cy', sy.toFixed(1));
+          m.node.setAttribute('opacity', op.toFixed(2));
+        }
+
+        // --- E. MERIDIAN COMPASS RIBBON ---
+        const compassPxPerRad = 128;
+        for (let i = 0; i < compassMarks.length; i++) {
+          const cm = compassMarks[i];
+          const dAz = wrapAngle(cm.rad - player.yaw);
+          const x = 140 + dAz * compassPxPerRad;
+          if (x < -16 || x > 296) {
+            cm.node.setAttribute('display', 'none');
+          } else {
+            cm.node.removeAttribute('display');
+            cm.node.setAttribute('transform', `translate(${x.toFixed(1)}, 0)`);
+          }
+        }
+        const sunCompX = 140 + wrapAngle(WORLD.SUN_AZ - player.yaw) * compassPxPerRad;
+        if (sunCompX >= -6 && sunCompX <= 286) {
+          compassSunDot.removeAttribute('display');
+          compassSunDot.setAttribute('cx', sunCompX.toFixed(1));
+        } else {
+          compassSunDot.setAttribute('display', 'none');
+        }
+
+        if (nearestUnattunedInfo) {
+          const dAz = wrapAngle(nearestUnattunedInfo.az - player.yaw);
+          const cx = clamp(140 + dAz * compassPxPerRad, 14, 266);
+          compassCairnDiamond.removeAttribute('display');
+          compassCairnDiamond.setAttribute('transform', `translate(${cx.toFixed(1)}, 10)`);
+        } else {
+          compassCairnDiamond.setAttribute('display', 'none');
+        }
+      }
+
+      // =========================================================================
+      // 13. MAIN ANIMATION LOOP & DIAGNOSTIC TELEMETRY
+      // =========================================================================
+      buildPanoramicSky();
+      buildCompass();
+      handleResize();
+      syncChunks(0, 0);
+
+      let prevTime = performance.now();
+      function loop(now) {
+        const rawDt = (now - prevTime) * 0.001;
+        prevTime = now;
+        const dt = Math.min(0.05, Math.max(0.001, rawDt));
+        if (rawDt > 0.001) {
+          fpsSmooth += ((1 / rawDt) - fpsSmooth) * 0.08;
+        }
+
+        const timeSec = now * 0.001;
+        updateSimulation(dt, timeSec);
+        renderFrame(timeSec);
+        requestAnimationFrame(loop);
+      }
+
+      // Read-only telemetry for debugging / automated verification
+      window.__AURELIA__ = {
+        getState() {
+          return {
+            x: Number(player.x.toFixed(2)),
+            z: Number(player.z.toFixed(2)),
+            yaw: Number(player.yaw.toFixed(3)),
+            pitch: Number(player.pitch.toFixed(3)),
+            speed: Number(player.speed.toFixed(2)),
+            bobAmp: Number(player.bobAmp.toFixed(3)),
+            biome: player.currentBiome,
+            activeChunks: activeChunks.size,
+            liveWorldNodes: worldLayer.childElementCount,
+            trackedProps: activePropNodes.size,
+            attunedCount: attunedCairns.size,
+            nearestCairnDist: nearestUnattunedInfo ? Number(nearestUnattunedInfo.dist.toFixed(1)) : null,
+            leftStick: { x: joysticks.left.x, y: joysticks.left.y, active: joysticks.left.active },
+            rightStick: { x: joysticks.right.x, y: joysticks.right.y, active: joysticks.right.active },
+            fps: Math.round(fpsSmooth),
+            viewBox: worldSvg.getAttribute('viewBox')
+          };
+        }
+      };
+
+      requestAnimationFrame(loop);
+    })();
+  </script>
+</body>
+</html>
