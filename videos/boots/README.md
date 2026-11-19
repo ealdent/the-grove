@@ -45,10 +45,23 @@ timeline (kept with the media as `research/timeline.md`), and the two present-da
 outlets on 19 Nov 2026: Anthropic's IPO (priced at $83 on 18 Nov, about $1.5 trillion, Nasdaq "ANT", first trade
 19 Nov) and Jensen Huang's resignation as Nvidia's CEO.
 
-Wording chosen where sources disagree:
+Every card was then re-checked by two independent passes (2017-2024 and 2025-2026) on 19 Nov 2026. Neither found a
+flat error; they found one ordering slip (xAI, 12 Jul 2023, belongs before Llama 2, 18 Jul) and a handful of captions
+that claimed slightly more than the record supports, all fixed.
 
-- ChatGPT's "100 million users in two months" is an analyst estimate, not an OpenAI figure.
-- Altman's return was agreed late on 21 Nov 2023 (US time); he was formally back on 29 Nov.
-- Nvidia's $1T, $4T and $5T dates are the intraday crossings.
+Wording chosen where sources disagree or the easy phrasing overstates:
+
+- ChatGPT's "100 million users in two months" is an analyst estimate (UBS), not an OpenAI figure.
+- The pause letter is stamped 22 Mar 2023 but was published on the 28th, so the card says "MAR 2023". Its 30,000+
+  signatures are the eventual total.
+- Hinton told Google in April 2023; 1 May is when he went public.
+- Nvidia touched $1 trillion only intraday on 30 May 2023 ("briefly"); $2T is the first close (1 Mar 2024); $4T and
+  $5T are the days it first crossed.
+- On Tue 21 Nov 2023 (Pacific) OpenAI announced a deal for Altman's return; he was formally back on 29 Nov.
+- The Times suit widened a copyright fight that authors had started months earlier.
+- "Washington bans Claude" describes the 27 Feb 2026 order ending federal use. Courts later split on it.
+- "AGI era" was Greg Brockman's hedged remark at the GPT-6 launch, not a company declaration.
+- The 5 Nov 2026 sell-off is given as "$3 trillion" (the S&P 500's one-day loss; reports range from $2.9T to $3.2T).
+- Anthropic's $1.5 trillion is the fully diluted value at the $83 IPO price.
 - The Huang card says only that he resigned and that Nvidia fell below $4 trillion; it gives no reason.
-- "$3.2 trillion in one session" and the SpaceX/xAI "$1.25 trillion" figure rest on fewer sources than the rest.
+- The SpaceX/xAI "$1.25 trillion" figure is Bloomberg's reporting, not a company number.

@@ -5,7 +5,7 @@
 //   S(t, id, opts)               a plain cut
 //   B(t0, t1, ids, opts)         a burst: ids spread evenly over t0..t1
 // opts: d (year fraction for the timeline) + date (its label), both carried forward; ink w|r|k; move punch|push|pull|pan|still;
-//       count {from,to,pre,post}; tile n; sub [ids] (extra image cuts squeezed in before the next hit); colour; x (struck out)
+//       count {from,to,pre,post}; tile n; sub [ids] (extra image cuts squeezed in before the next hit); colour
 (() => {
 const T0 = 33.0, NOW = 2026.88, END_SRC = 189.4;
 const SHOTS = [];
@@ -42,17 +42,17 @@ H(53.80, '#w', 'CHATGPT', 'A FREE RESEARCH PREVIEW', { ink: 'k', boom: 1 });
 H(55.03, 'subway_phones', null, 'USERS IN FIVE DAYS', { count: { from: 0, to: 1e6, span: 0.7 }, d: 2022.93, date: 'DEC 2022' });
 H(56.01, '#r', 'CODE RED', 'GOOGLE DECLARES AN INTERNAL EMERGENCY · DEC 2022', { ink: 'k' });
 H(56.88, 'classroom', null, 'USERS IN TWO MONTHS, BY ANALYST ESTIMATES · A RECORD AT THE TIME', { count: { from: 1e6, to: 1e8, span: 0.7 }, d: 2023.08, date: 'JAN 2023' });
-H(57.71, 'glass_tower', '$10,000,000,000', 'MICROSOFT’S REPORTED NEW STAKE IN OPENAI · JAN 2023', { neg: 1 });
+H(57.71, 'glass_tower', '$10,000,000,000', 'MICROSOFT’S REPORTED NEW BET ON OPENAI · JAN 2023', { neg: 1 });
 B(58.59, 60.32, ['newsroom', 'kitchen_laptop', 'lecture_hall', 'trading_floor'], i => ({ big: ['ESSAYS', 'EMAILS', 'CODE', 'EVERYTHING'][i], hit: 0.5 }));
 H(60.32, 'hotel_laptop', '“SYDNEY”', 'BING CHAT GOES OFF SCRIPT · FEB 2023', { d: 2023.12, date: 'FEB 2023' });
 H(61.09, 'stage_screen', 'GPT-4', 'OPENAI · 14 MAR 2023', { d: 2023.2, date: 'MAR 2023' });
 H(62.08, 'reading_room', 'CLAUDE', 'ANTHROPIC · 14 MAR 2023');
 H(62.85, 'search_campus', 'BARD', 'GOOGLE · 21 MAR 2023');
 B(63.41, 64.39, ['press_scrum', 'tv_wall', 'crowd_phones']);
-H(64.39, '#w', 'PAUSE', 'OPEN LETTER: STOP TRAINING GIANT MODELS FOR SIX MONTHS · 22 MAR 2023', { ink: 'k' });
+H(64.39, '#w', 'PAUSE', 'OPEN LETTER: STOP TRAINING GIANT MODELS FOR SIX MONTHS · MAR 2023', { ink: 'k' });
 H(65.33, 'signatures', '30,000+\nSIGNATURES', null);
 H(66.25, 'server_aisle', 'NOBODY\nPAUSES', null, { tint: 'r' });
-H(67.27, 'old_professor_back', 'HINTON\nQUITS GOOGLE', '“THE GODFATHER OF AI” LEAVES TO WARN FREELY · 1 MAY 2023', { d: 2023.33, date: 'MAY 2023' });
+H(67.27, 'old_professor_back', 'HINTON\nQUITS GOOGLE', '“THE GODFATHER OF AI” GOES PUBLIC TO WARN · 1 MAY 2023', { d: 2023.33, date: 'MAY 2023' });
 S(68.20, 'c:rack_dolly', { hit: 0.6 });
 S(68.92, 'c:rack_dolly', { from: 1.8, hit: 0.8, flash: 'w' });
 S(69.33, 'c:rack_dolly', { from: 3.2, hit: 0.6 });
@@ -62,14 +62,14 @@ H(70.90, '#k', 'RISK OF\n^EXTINCTION', null);
 H(71.99, 'senate_room', 'RISK OF\n^EXTINCTION', 'ONE-SENTENCE STATEMENT SIGNED BY THE HEADS OF OPENAI, DEEPMIND AND ANTHROPIC · 30 MAY 2023', { d: 2023.41, date: '30 MAY 2023', smallSize: 32, boom: 1 });
 
 // ============ STANZA 3 · 2023 · the year everyone looked ============
-H(73.12, 'chip_macro', 'NVIDIA\n$1 TRILLION', 'THE SAME DAY · 30 MAY 2023');
-H(74.06, 'open_gate', 'LLAMA 2', 'META OPENS THE WEIGHTS · JUL 2023', { d: 2023.54, date: 'JUL 2023' });
-H(75.00, 'launch_pad', 'xAI', 'MUSK STARTS HIS OWN LAB · JUL 2023');
+H(73.12, 'chip_macro', 'NVIDIA\n$1 TRILLION', 'BRIEFLY, THE SAME DAY · 30 MAY 2023');
+H(74.06, 'launch_pad', 'xAI', 'MUSK ANNOUNCES HIS OWN LAB · 12 JUL 2023', { d: 2023.53, date: 'JUL 2023' });
+H(75.00, 'open_gate', 'LLAMA 2', 'META OPENS THE WEIGHTS · 18 JUL 2023', { d: 2023.55 });
 H(75.92, 'white_house_fence', 'EXECUTIVE\nORDER 14110', 'BIDEN · 30 OCT 2023', { d: 2023.83, date: 'OCT 2023' });
 H(76.78, 'manor_house', 'BLETCHLEY\nPARK', '28 NATIONS SIGN THE FIRST AI SAFETY DECLARATION · 1 NOV 2023', { d: 2023.84, date: 'NOV 2023', smallSize: 34 });
 S(77.53, 'flags_row', { hit: 0.6 });
-H(78.28, 'keynote_crowd', '100,000,000', 'PEOPLE USE CHATGPT EVERY WEEK · 6 NOV 2023');
-H(79.23, 'skyline_dusk', '$86 BILLION', 'OPENAI’S PRICE TAG IN A PLANNED SHARE SALE');
+H(78.28, 'skyline_dusk', '$86 BILLION', 'OPENAI’S PRICE TAG IN A PLANNED SHARE SALE');
+H(79.23, 'keynote_crowd', '100,000,000', 'PEOPLE USE CHATGPT EVERY WEEK · 6 NOV 2023');
 H(80.12, '#k', 'ELEVEN\nDAYS LATER', null, { ink: 'r' });
 H(81.06, 'boardroom_empty', 'FRIDAY', '17 NOV 2023');
 B(81.92, 83.50, ['phone_buzz', 'boardroom_empty', 'phone_buzz', 'hallway_run'], i => ({ hit: 0.7, neg: i % 2 }));
@@ -77,10 +77,10 @@ H(83.50, '#r', 'FIRED', 'FRI · OPENAI’S BOARD REMOVES SAM ALTMAN', { ink: 'k'
 H(84.39, 'lobby_night', 'SAT', 'INVESTORS PUSH TO REVERSE IT');
 H(85.26, 'empty_chair', 'SUN', 'A NEW INTERIM CEO · ALTMAN HEADS FOR MICROSOFT');
 H(86.15, 'office_crowd', 'MON', '700+ OF 770 EMPLOYEES THREATEN TO QUIT');
-H(86.98, '#w', 'BACK', 'TUE 21 NOV · ALTMAN RETURNS AS CEO', { ink: 'k' });
+H(86.98, '#w', 'BACK', 'TUE 21 NOV · A DEAL TO BRING ALTMAN BACK AS CEO', { ink: 'k' });
 B(87.25 + 0.48, 88.86, ['tv_wall', 'crowd_phones', 'eye_screen'], { hit: 0.6 });
 H(88.86, 'twin_stars', 'GEMINI', 'GOOGLE DEEPMIND · 6 DEC 2023', { d: 2023.93, date: 'DEC 2023' });
-H(89.61, 'newsprint_press', 'THE TIMES\nSUES OPENAI', 'THE COPYRIGHT WAR BEGINS · 27 DEC 2023', { d: 2023.99 });
+H(89.61, 'newsprint_press', 'THE TIMES\nSUES OPENAI', 'THE COPYRIGHT WAR WIDENS · 27 DEC 2023', { d: 2023.99 });
 H(90.54, '#k', '2024', null, { ink: 'r', d: 2024.0, date: '2024', boom: 1 });
 
 // ============ STANZA 4 · 2024 · count the chips ============
@@ -107,13 +107,13 @@ S(105.50, 'c:robot_walk', { hit: 0.6 });
 S(106.03, 'c:robot_walk', { from: 1.6, hit: 0.8, flash: 'w' });
 S(106.50, 'c:robot_walk', { from: 3.0, hit: 0.6 });
 H(107.42, 'puzzle_grid', 'o3', '87.5% ON ARC-AGI · DEC 2024', { d: 2024.97, date: 'DEC 2024' });
-H(108.31, '#k', 'THE YEAR OF\n^AGENTS', null);
+H(108.31, '#k', 'NEXT:\n^AGENTS', null);
 H(109.36, '#r', '2025', null, { ink: 'k', d: 2025.0, date: '2025', boom: 1 });
 
 // ============ STANZAS 5-6 · 2025 -> today (facts from the fact-checked timeline; see README) ============
 // ---- stanza 5 · 2025 · power, chips, money ----
 H(110.53, 'stargate_site', 'STARGATE', '$500 BILLION PLEDGED FOR AI DATA CENTRES · 21 JAN 2025', { d: 2025.06, date: 'JAN 2025' });
-H(111.42, 'lit_floor', 'DEEPSEEK', 'A CHINESE LAB REACHES THE FRONTIER AT A FRACTION OF THE COST', { smallSize: 34 });
+H(111.42, 'lit_floor', 'DEEPSEEK', 'A CHINESE LAB NEARS THE FRONTIER AT A FRACTION OF THE COST', { smallSize: 34 });
 H(112.33, '#r', '−$590 BILLION', 'NVIDIA, IN ONE DAY · 27 JAN 2025 · A RECORD', { ink: 'k' });
 H(113.11, 'terminal_night', 'CLAUDE CODE', 'THE AGENT MOVES INTO THE TERMINAL · FEB 2025', { d: 2025.15, date: 'FEB 2025' });
 B(113.97, 115.51, ['power_lines', 'wafer', 'money_press'], i => ({ big: ['POWER', 'CHIPS', 'MONEY'][i], hit: 0.7 }));
@@ -136,19 +136,19 @@ H(127.89, '#k', '2026', null, { ink: 'r', d: 2026.0, date: '2026', boom: 1 });
 
 // ---- stanza 6 · 2026 -> this week ----
 H(129.00, 'rocket_hangar', 'SPACEX\nBUYS xAI', 'A $1.25 TRILLION COMBINATION · FEB 2026', { d: 2026.09, date: 'FEB 2026', sub: ['launch_pad'] });
-H(129.88, 'pentagon_aerial', 'WASHINGTON\nBANS CLAUDE', 'ANTHROPIC REFUSES A PENTAGON ULTIMATUM · 27 FEB 2026', { d: 2026.16, sub: ['senate_room'] });
+H(129.88, 'pentagon_aerial', 'WASHINGTON\nBANS CLAUDE', 'FEDERAL USE ENDED AFTER ANTHROPIC REFUSES A PENTAGON ULTIMATUM · 27 FEB 2026', { smallSize: 34, d: 2026.16, sub: ['senate_room'] });
 H(130.66, 'vault_door', 'MYTHOS', 'ANTHROPIC’S MOST CAPABLE MODEL · APR 2026', { neg: 1, d: 2026.27, date: 'APR 2026' });
 H(131.44, '#r', 'TOO\nDANGEROUS\nTO RELEASE', 'AGAIN · HELD BACK OVER CYBER RISK · 7 APR 2026', { ink: 'k' });
 H(132.25, 'skyline_dusk', '$965 BILLION', 'ANTHROPIC PASSES OPENAI IN VALUE · MAY 2026', { d: 2026.4, date: 'MAY 2026' });
 B(132.85, 133.77, ['glass_tower', 'trading_floor'], { hit: 0.6 });
 H(133.77, 'server_breach', 'ESCAPED', 'OPENAI: TEST MODELS BROKE OUT OF A SANDBOX AND HACKED HUGGING FACE · JUL 2026', { d: 2026.55, date: 'JUL 2026', smallSize: 32, sub: ['cable_floor'] });
 H(134.59, 'signatures', '1,100+', 'LAB EMPLOYEES ASK FOR THE POWER TO SLOW DOWN · 28 JUL 2026', { neg: 1, sub: ['office_crowd'] });
-H(135.34, 'keynote_crowd', 'GPT-6', 'OPENAI CLAIMS THE “AGI ERA” HAS BEGUN · SEP 2026', { d: 2026.68, date: 'SEP 2026', sub: ['press_scrum'] });
+H(135.34, 'keynote_crowd', 'GPT-6', 'OPENAI’S PRESIDENT HAILS AN “AGI ERA” · SEP 2026', { d: 2026.68, date: 'SEP 2026', sub: ['press_scrum'] });
 H(136.25, 'ballot_box', 'THE BACKLASH', 'DATA CENTRES ON THE BALLOT. THE MIDTERMS TURN · 3 NOV 2026', { d: 2026.84, date: 'NOV 2026', smallSize: 34, sub: ['power_lines'] });
-S(137.07, 'trading_floor', { tile: 1, big: '−$3.2 TRILLION', small: 'ONE TRADING SESSION', hit: 0.7 });
-S(137.44, 'trading_floor', { tile: 2, big: '−$3.2 TRILLION', hit: 0.7 });
-S(137.80, 'trading_floor', { tile: 4, big: '−$3.2 TRILLION', hit: 0.7 });
-S(138.22, 'trading_floor', { tile: 8, big: '−$3.2 TRILLION', hit: 0.7, neg: 1 });
+S(137.07, 'trading_floor', { tile: 1, big: '−$3 TRILLION', small: 'WIPED OFF U.S. STOCKS IN ONE SESSION · 5 NOV 2026', hit: 0.7 });
+S(137.44, 'trading_floor', { tile: 2, big: '−$3 TRILLION', hit: 0.7 });
+S(137.80, 'trading_floor', { tile: 4, big: '−$3 TRILLION', hit: 0.7 });
+S(138.22, 'trading_floor', { tile: 8, big: '−$3 TRILLION', hit: 0.7, neg: 1 });
 H(138.62, '#k', 'FABLE 5.2\nGPT-6\nGEMINI 4', 'THE FRONTIER THIS MONTH', { d: 2026.86 });
 H(139.47, 'keynote_jacket', 'JENSEN\nHUANG', '33 YEARS AT THE HEAD OF NVIDIA', { sub: ['gpu_hand'] });
 H(140.35, 'empty_stage', 'RESIGNS', 'NOV 2026 · NVIDIA SLIPS BELOW $4 TRILLION', { d: 2026.865, sub: ['chip_macro'] });
@@ -168,15 +168,14 @@ H(147.55, 'fog_road', '2027', null, { d: 2027.0, neg: 1 });
 H(148.56, 'fog_road', '2028', null, { d: 2027.2 });
 H(149.44, 'fog_road', '2030', null, { d: 2027.4, neg: 1 });
 H(150.39, '#k', '20??', null, { ink: 'r', d: 2027.6 });
-B(151.00, 151.74, ['film_robot', 'film_robot'], i => ({ neg: i, hit: 0.5 }));
-H(151.74, 'film_robot', 'THE DANGER', null);
-H(152.50, 'film_robot', 'THE DANGER\nIS ^NOT', null, { neg: 1 });
-H(153.35, 'robot_army', 'THE MOVIE', null, { x: 1 });
-H(154.20, 'ruined_city', 'THE MOVIE', null, { x: 1 });
-H(154.95, 'film_robot', 'THE MOVIE', null, { x: 1 });
-S(155.33, 'robot_army', { x: 1, neg: 1, hit: 0.7 });
-S(155.59, 'ruined_city', { x: 1, neg: 1, hit: 0.7 });
-S(155.94, '#k', { hit: 0.4 });
+B(151.00, 151.74, ['eye_screen', 'server_breach'], { hit: 0.5 });
+H(151.74, 'server_breach', 'THE DANGER', null, { neg: 1 });
+H(152.50, 'eye_screen', 'THE DANGER\nIS ^REAL', null);
+H(153.35, 'film_robot', 'THIS IS', null);
+H(154.20, 'film_robot', 'THIS IS ^NOT', null, { neg: 1 });
+H(154.95, 'robot_army', 'THIS IS ^NOT\nA SCI-FI', null);
+H(155.33, 'ruined_city', 'THIS IS ^NOT\nA SCI-FI\nMOVIE', null);
+S(155.94, '#r', { big: 'THIS IS NOT\nA SCI-FI\nMOVIE', ink: 'k', hit: 0.6 });
 H(156.53, 'bullet_train', 'SPEED', 'CAPABILITY OUTRUNNING UNDERSTANDING', { sub: ['clock_blur'] });
 H(157.40, 'single_hand_globe', 'POWER', 'GATHERING IN VERY FEW HANDS', { sub: ['tower_shadow'] });
 H(158.28, 'biolab', 'MISUSE', 'BIOLOGY · CYBER · PERSUASION', { sub: ['keyboard_dark'] });

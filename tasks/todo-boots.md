@@ -31,5 +31,9 @@ Source in `videos/boots/` (README there). Media and renders in gitignored `tmp/b
 v1 (2026-11-19): `tmp/boots-march/out/boots.mp4`, 1920x1080 at 30 fps, 2:36, 240 cuts, -14 LUFS.
 - `verify.py`: all 239 planned cuts found in the file; the recitation sits 0.0 ms from where the cut list expects it.
 - Whisper still transcribes stanzas 1-7 of the finished mix correctly; the shouted last "boots" line is the weak spot.
-- Also made: `boots-x-full.mp4` (8 Mbps) and `boots-x-140s.mp4` (1.125x, under X's 2:20 cap).
+- Also made: `boots-x-full.mp4` (8 Mbps). Jason has X Premium, so no shortened cut is needed.
 - Not done: nobody has watched it at speed yet; the judgement so far is from contact sheets and measurements.
+
+v2 (2026-11-19, Jason's notes): the danger section now reads "THE DANGER IS REAL" then "THIS IS NOT A SCI-FI MOVIE",
+with no red X. Every card was re-checked by two independent passes; one ordering slip (xAI before Llama 2) and about
+a dozen over-precise captions were corrected (list in `videos/boots/README.md`). 238 of 238 planned cuts verified.

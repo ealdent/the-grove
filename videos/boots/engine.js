@@ -181,12 +181,6 @@ async function drawFrame(f) {
     ctx.fillStyle = '#1c1b19'; ctx.fillRect(-60, -60, W + 120, H + 120);
     ctx.fillStyle = '#5a564d'; ctx.font = `700 34px ${MONO}`; ctx.textAlign = 'left'; ctx.textBaseline = 'top'; ctx.fillText('[' + s.id + ']', 60, 50);
   }
-  if (s.x) {                                // struck out
-    ctx.strokeStyle = INK.r; ctx.lineWidth = 46; ctx.lineCap = 'butt';
-    const k = ease(u / 0.1);
-    ctx.beginPath(); ctx.moveTo(W * 0.18, H * 0.1); ctx.lineTo(W * 0.18 + W * 0.64 * k, H * 0.1 + H * 0.8 * k);
-    ctx.moveTo(W * 0.82, H * 0.1); ctx.lineTo(W * 0.82 - W * 0.64 * k, H * 0.1 + H * 0.8 * k); ctx.stroke();
-  }
   const bottom = drawBig(s, u, !!img);
   drawSmall(s, bottom);
   ctx.restore();
