@@ -29,6 +29,7 @@ python3 prep.py MEDIA                    # raw/ -> img/*.jpg, clip/*/NNNN.jpg, c
 node export_shots.mjs                    # edit.js -> MEDIA/shots.json
 $PY mix.py MEDIA SOURCE.wav MEDIA/audio/score.mp3      # -> MEDIA/audio/mix.wav
 node render.mjs                          # -> MEDIA/out/boots.mp4   (--sheet 20 for contact sheets, --stills t,t)
+python3 captions.py                      # -> boots.srt, the recitation line by line (upload as captions)
 ```
 
 Chrome, the Higgsfield CLI and mlx-whisper all need the command sandbox off.
