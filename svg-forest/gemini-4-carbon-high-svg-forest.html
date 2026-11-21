@@ -1,0 +1,2729 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>WINTERCOMB — The Hived Sun</title>
+<meta name="description" content="A first-person pure-SVG exploration through the Winter Apiary, where giant bees hived the dying autumn sun into monumental combs of glowing wax.">
+<meta name="theme-color" content="#090611">
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #090611;
+    --ink: #f6ead4;
+    --ink-soft: rgba(246, 234, 212, 0.78);
+    --ink-faint: rgba(246, 234, 212, 0.52);
+    --honey: #ffbe42;
+    --honey-bright: #ffe699;
+    --amber: #d96e24;
+    --plum-panel: rgba(16, 10, 24, 0.86);
+    --line: rgba(255, 198, 102, 0.24);
+    --serif: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Palatino, Georgia, serif;
+    --mono: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  }
+
+  * {
+    box-sizing: border-box;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  html, body {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100%;
+    position: fixed;
+    inset: 0;
+    overflow: hidden;
+    overscroll-behavior: none;
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
+    background-color: var(--bg);
+    font-family: var(--serif);
+    color: var(--ink);
+  }
+
+  #stage {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background-color: var(--bg);
+    cursor: grab;
+  }
+
+  #stage.is-dragging {
+    cursor: grabbing;
+  }
+
+  #scene {
+    display: block;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    touch-action: none;
+  }
+
+  /* Subtle HUD chrome — no backdrop-filter to preserve crisp 60fps SVG compositing */
+  .hud-top {
+    position: fixed;
+    top: max(14px, env(safe-area-inset-top));
+    left: max(16px, env(safe-area-inset-left));
+    right: max(16px, env(safe-area-inset-right));
+    z-index: 12;
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    pointer-events: none;
+  }
+
+  .hud-cluster {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    pointer-events: auto;
+  }
+
+  .hud-pill, .hud-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 12px;
+    border-radius: 999px;
+    border: 1px solid var(--line);
+    background: var(--plum-panel);
+    color: var(--ink-soft);
+    font-family: var(--mono);
+    font-size: 0.69rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    text-decoration: none;
+    line-height: 1.2;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.55);
+  }
+
+  .hud-btn {
+    cursor: pointer;
+    transition: border-color 0.2s ease, color 0.2s ease;
+  }
+
+  .hud-btn:hover, .hud-btn:focus-visible, a.hud-pill:hover, a.hud-pill:focus-visible {
+    color: var(--honey-bright);
+    border-color: rgba(255, 190, 66, 0.62);
+    outline: none;
+  }
+
+  .hud-btn[aria-pressed="true"] {
+    color: var(--honey-bright);
+    border-color: rgba(255, 190, 66, 0.65);
+  }
+
+  .hud-readout {
+    pointer-events: none;
+    text-align: right;
+    padding: 7px 13px;
+    border-radius: 12px;
+    border: 1px solid rgba(255, 198, 102, 0.18);
+    background: var(--plum-panel);
+    font-family: var(--mono);
+    font-size: 0.68rem;
+    letter-spacing: 0.14em;
+    line-height: 1.65;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    font-variant-numeric: tabular-nums;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.55);
+  }
+
+  .hud-readout b {
+    color: var(--honey-bright);
+    font-weight: 600;
+  }
+
+  /* Whispered "Telling the Bees" verse banner */
+  #verseBanner {
+    position: fixed;
+    top: max(76px, calc(env(safe-area-inset-top) + 64px));
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 11;
+    width: min(620px, calc(100vw - 32px));
+    padding: 13px 20px;
+    border-radius: 14px;
+    border: 1px solid rgba(255, 196, 86, 0.38);
+    background: rgba(15, 9, 22, 0.9);
+    box-shadow: 0 18px 42px rgba(0, 0, 0, 0.72), inset 0 1px 0 rgba(255, 224, 150, 0.14);
+    text-align: center;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.65s ease;
+  }
+
+  #verseBanner.is-visible {
+    opacity: 1;
+  }
+
+  .verse-kicker {
+    display: block;
+    margin-bottom: 4px;
+    font-family: var(--mono);
+    font-size: 0.62rem;
+    letter-spacing: 0.24em;
+    text-transform: uppercase;
+    color: var(--honey);
+  }
+
+  .verse-text {
+    margin: 0;
+    font-style: italic;
+    font-size: clamp(0.96rem, 2.2vw, 1.12rem);
+    line-height: 1.45;
+    color: var(--ink);
+  }
+
+  /* Intro & Lore Veil */
+  #loreModal {
+    position: fixed;
+    inset: 0;
+    z-index: 30;
+    display: grid;
+    place-items: center;
+    padding: 20px;
+    background: radial-gradient(ellipse 75% 65% at 50% 48%, rgba(12, 8, 19, 0.78), rgba(7, 5, 13, 0.9) 100%);
+    transition: opacity 0.45s ease;
+  }
+
+  #loreModal.is-hidden {
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  .lore-card {
+    max-width: 560px;
+    width: 100%;
+    padding: clamp(22px, 4vw, 34px);
+    border-radius: 18px;
+    border: 1px solid rgba(255, 194, 84, 0.34);
+    background: linear-gradient(175deg, rgba(24, 14, 34, 0.96), rgba(11, 7, 18, 0.98));
+    box-shadow: 0 28px 70px rgba(0, 0, 0, 0.85), inset 0 1px 0 rgba(255, 225, 160, 0.14);
+    text-align: center;
+  }
+
+  .lore-emblem {
+    width: 54px;
+    height: 54px;
+    margin: 0 auto 10px;
+    display: block;
+  }
+
+  .lore-kicker {
+    margin: 0;
+    font-family: var(--mono);
+    font-size: 0.66rem;
+    letter-spacing: 0.28em;
+    text-transform: uppercase;
+    color: var(--honey);
+  }
+
+  .lore-title {
+    margin: 8px 0 4px;
+    font-size: clamp(1.9rem, 5vw, 2.75rem);
+    font-weight: 600;
+    letter-spacing: 0.16em;
+    color: #fff3dc;
+    text-shadow: 0 0 28px rgba(255, 182, 56, 0.35);
+  }
+
+  .lore-sub {
+    margin: 0 0 16px;
+    font-style: italic;
+    font-size: 1.08rem;
+    color: var(--honey-bright);
+  }
+
+  .lore-body {
+    margin: 0 0 14px;
+    font-size: clamp(0.95rem, 2.1vw, 1.04rem);
+    line-height: 1.58;
+    color: var(--ink-soft);
+    text-align: left;
+  }
+
+  .lore-controls {
+    margin: 16px 0 20px;
+    padding: 10px 12px;
+    border-radius: 10px;
+    border: 1px solid rgba(255, 198, 102, 0.15);
+    background: rgba(8, 5, 14, 0.65);
+    font-family: var(--mono);
+    font-size: 0.66rem;
+    letter-spacing: 0.12em;
+    line-height: 1.7;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+  }
+
+  .enter-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    padding: 12px 26px;
+    border-radius: 999px;
+    border: 1px solid rgba(255, 204, 102, 0.7);
+    background: linear-gradient(180deg, rgba(217, 110, 36, 0.38), rgba(128, 54, 22, 0.52));
+    color: #fff5df;
+    font-family: var(--mono);
+    font-size: 0.76rem;
+    font-weight: 600;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    cursor: pointer;
+    box-shadow: 0 10px 28px rgba(217, 110, 36, 0.28);
+  }
+
+  .enter-btn:hover, .enter-btn:focus-visible {
+    border-color: #ffe699;
+    background: linear-gradient(180deg, rgba(235, 132, 42, 0.52), rgba(152, 66, 24, 0.66));
+    outline: none;
+  }
+
+  /* Pause indicator when window loses focus */
+  #pauseNotice {
+    position: fixed;
+    bottom: max(20px, env(safe-area-inset-bottom));
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 20;
+    padding: 7px 15px;
+    border-radius: 999px;
+    border: 1px solid rgba(255, 198, 102, 0.32);
+    background: rgba(12, 8, 20, 0.9);
+    font-family: var(--mono);
+    font-size: 0.66rem;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--ink-soft);
+    pointer-events: none;
+    display: none;
+  }
+
+  body.is-paused #pauseNotice {
+    display: block;
+  }
+
+  /* Desktop hint footer */
+  .desktop-hint {
+    position: fixed;
+    bottom: max(16px, env(safe-area-inset-bottom));
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 10;
+    padding: 6px 14px;
+    border-radius: 999px;
+    border: 1px solid rgba(255, 198, 102, 0.14);
+    background: rgba(12, 8, 20, 0.72);
+    font-family: var(--mono);
+    font-size: 0.64rem;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    white-space: nowrap;
+    pointer-events: none;
+    transition: opacity 0.6s ease;
+  }
+
+  /* Virtual Multitouch Joysticks (Bottom Corners) */
+  .joysticks {
+    position: fixed;
+    inset: 0;
+    z-index: 15;
+    pointer-events: none;
+    display: none;
+  }
+
+  @media (pointer: coarse), (hover: none), (max-width: 920px) {
+    .joysticks {
+      display: block;
+    }
+    .desktop-hint {
+      display: none;
+    }
+  }
+
+  body.touch-enabled .joysticks {
+    display: block;
+  }
+
+  body.touch-enabled .desktop-hint {
+    display: none;
+  }
+
+  .joy-zone {
+    position: absolute;
+    bottom: max(20px, calc(env(safe-area-inset-bottom) + 12px));
+    width: 132px;
+    height: 132px;
+    border-radius: 50%;
+    border: 1.5px solid rgba(255, 198, 102, 0.34);
+    background: radial-gradient(circle at 50% 50%, rgba(36, 20, 44, 0.56), rgba(11, 7, 18, 0.82));
+    box-shadow: 0 10px 28px rgba(0, 0, 0, 0.6), inset 0 0 18px rgba(255, 186, 66, 0.08);
+    pointer-events: auto;
+    touch-action: none;
+  }
+
+  #joyLeft {
+    left: max(18px, calc(env(safe-area-inset-left) + 12px));
+  }
+
+  #joyRight {
+    right: max(18px, calc(env(safe-area-inset-right) + 12px));
+  }
+
+  .joy-zone.is-active {
+    border-color: rgba(255, 206, 98, 0.78);
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.68), 0 0 22px rgba(255, 186, 66, 0.22);
+  }
+
+  .joy-axis-hint {
+    position: absolute;
+    inset: 10px;
+    border-radius: 50%;
+    border: 1px dashed rgba(255, 198, 102, 0.16);
+    pointer-events: none;
+  }
+
+  .joy-glyph {
+    position: absolute;
+    font-family: var(--mono);
+    font-size: 0.62rem;
+    color: rgba(255, 214, 138, 0.48);
+    pointer-events: none;
+    line-height: 1;
+  }
+
+  #joyLeft .joy-glyph.g-a { top: 10px; left: 50%; transform: translateX(-50%); }
+  #joyLeft .joy-glyph.g-b { bottom: 10px; left: 50%; transform: translateX(-50%); }
+  #joyRight .joy-glyph.g-a { left: 10px; top: 50%; transform: translateY(-50%); }
+  #joyRight .joy-glyph.g-b { right: 10px; top: 50%; transform: translateY(-50%); }
+
+  .joy-label {
+    position: absolute;
+    top: -22px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-family: var(--mono);
+    font-size: 0.58rem;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    white-space: nowrap;
+    pointer-events: none;
+  }
+
+  .joy-knob {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 52px;
+    height: 52px;
+    margin-left: -26px;
+    margin-top: -26px;
+    border-radius: 50%;
+    border: 1.5px solid rgba(255, 224, 150, 0.78);
+    background: radial-gradient(circle at 35% 30%, #ffe69e, #d97c24 68%, #6e3118 100%);
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.65), 0 0 16px rgba(255, 186, 66, 0.35);
+    pointer-events: none;
+    will-change: transform;
+  }
+
+  @media (max-width: 560px) {
+    .hud-readout {
+      font-size: 0.6rem;
+      padding: 6px 10px;
+      letter-spacing: 0.1em;
+    }
+    .hud-pill, .hud-btn {
+      padding: 6px 10px;
+      font-size: 0.62rem;
+    }
+    .joy-zone {
+      width: 118px;
+      height: 118px;
+    }
+    .joy-knob {
+      width: 46px;
+      height: 46px;
+      margin-left: -23px;
+      margin-top: -23px;
+    }
+  }
+</style>
+</head>
+<body>
+
+<div id="stage">
+  <svg id="scene" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg" aria-label="Wintercomb first-person pure-SVG world">
+    <defs>
+      <clipPath id="vpClip">
+        <rect id="vpClipRect" x="0" y="0" width="1600" height="900"/>
+      </clipPath>
+
+      <!-- Sky Twilight Gradient: buckwheat night zenith -> smoked damson -> beeswax horizon -->
+      <linearGradient id="skyGrad" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#07050f"/>
+        <stop offset="32%" stop-color="#150d22"/>
+        <stop offset="64%" stop-color="#351729"/>
+        <stop offset="86%" stop-color="#753429"/>
+        <stop offset="100%" stop-color="#c9722c"/>
+      </linearGradient>
+
+      <!-- Ground Frost-Heather Gradient -->
+      <linearGradient id="groundGrad" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#4e2431"/>
+        <stop offset="14%" stop-color="#2d1627"/>
+        <stop offset="44%" stop-color="#191021"/>
+        <stop offset="100%" stop-color="#0a0712"/>
+      </linearGradient>
+
+      <!-- Horizon Mist Band -->
+      <linearGradient id="horizonMistGrad" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#e38d39" stop-opacity="0"/>
+        <stop offset="52%" stop-color="#d47832" stop-opacity="0.34"/>
+        <stop offset="100%" stop-color="#4e2431" stop-opacity="0"/>
+      </linearGradient>
+
+      <!-- Pollen Aurora Ribbon Gradient -->
+      <linearGradient id="auroraGrad" x1="0" y1="0" x2="1" y2="0">
+        <stop offset="0%" stop-color="#ffbe42" stop-opacity="0"/>
+        <stop offset="28%" stop-color="#ffbe42" stop-opacity="0.16"/>
+        <stop offset="55%" stop-color="#e38cff" stop-opacity="0.12"/>
+        <stop offset="80%" stop-color="#ffcf6e" stop-opacity="0.17"/>
+        <stop offset="100%" stop-color="#ffbe42" stop-opacity="0"/>
+      </linearGradient>
+
+      <!-- Hollow Corona Radial Glow -->
+      <radialGradient id="coronaGlow" cx="50%" cy="50%" r="50%">
+        <stop offset="0%" stop-color="#120b1d" stop-opacity="0.92"/>
+        <stop offset="28%" stop-color="#ffcf6b" stop-opacity="0.52"/>
+        <stop offset="54%" stop-color="#e07a28" stop-opacity="0.22"/>
+        <stop offset="100%" stop-color="#e07a28" stop-opacity="0"/>
+      </radialGradient>
+
+      <!-- Reusable Soft Honey Glow Radial -->
+      <radialGradient id="honeyHalo" cx="50%" cy="50%" r="50%">
+        <stop offset="0%" stop-color="#ffe799" stop-opacity="0.58"/>
+        <stop offset="42%" stop-color="#ffab2e" stop-opacity="0.24"/>
+        <stop offset="100%" stop-color="#ff881a" stop-opacity="0"/>
+      </radialGradient>
+
+      <!-- Censer Ember & Smoke Radial -->
+      <radialGradient id="emberHalo" cx="50%" cy="50%" r="50%">
+        <stop offset="0%" stop-color="#ff9e54" stop-opacity="0.52"/>
+        <stop offset="50%" stop-color="#d94e1f" stop-opacity="0.18"/>
+        <stop offset="100%" stop-color="#d94e1f" stop-opacity="0"/>
+      </radialGradient>
+
+      <!-- Apiarist Veil Edge Vignette -->
+      <radialGradient id="veilVignette" cx="50%" cy="50%" r="65%">
+        <stop offset="62%" stop-color="#06040c" stop-opacity="0"/>
+        <stop offset="100%" stop-color="#06040c" stop-opacity="0.56"/>
+      </radialGradient>
+    </defs>
+
+    <g id="viewportRoot" clip-path="url(#vpClip)">
+      <!-- Sky Layer -->
+      <rect id="skyRect" x="0" y="0" width="1600" height="460" fill="url(#skyGrad)"/>
+      <g id="auroraLayer"></g>
+      <g id="starLayer"></g>
+      <g id="coronaLayer"></g>
+
+      <!-- 360-Wrapping Horizon Ridges -->
+      <path id="farRidge" fill="#291426" d=""/>
+      <path id="nearRidge" fill="#1b0e1e" d=""/>
+
+      <!-- Ground Plane & Horizon Glow -->
+      <rect id="groundRect" x="0" y="458" width="1600" height="450" fill="url(#groundGrad)"/>
+      <rect id="horizonMist" x="0" y="390" width="1600" height="136" fill="url(#horizonMistGrad)"/>
+
+      <!-- 3D Projected Ground Hex-Plates & Spilled-Honey Pools -->
+      <g id="groundPlates"></g>
+
+      <!-- Depth-Sorted 3D SVG Props -->
+      <g id="worldProps"></g>
+
+      <!-- 3D World-Space Drifting Pollen & Frost Motes -->
+      <g id="motesLayer"></g>
+
+      <!-- Subtle Keeper's Veil Vignette -->
+      <rect id="vignetteRect" x="0" y="0" width="1600" height="900" fill="url(#veilVignette)" pointer-events="none"/>
+    </g>
+  </svg>
+</div>
+
+<!-- Top HUD -->
+<header class="hud-top">
+  <div class="hud-cluster">
+    <a class="hud-pill" href="index.html">&larr; SVG Forest</a>
+    <button class="hud-btn" id="loreBtn" type="button" title="Read the Apiary Lore">Lore</button>
+    <button class="hud-btn" id="soundBtn" type="button" aria-pressed="false" title="Toggle Winter Hive Hum">Hum: Off</button>
+  </div>
+  <div class="hud-readout" aria-live="off">
+    Bearing <b id="hudBearing">000&deg;</b> &middot; Walked <b id="hudDist">0 m</b><br>
+    Skeps Told <b id="hudSkeps">0</b>
+  </div>
+</header>
+
+<!-- Whispered Verse Toast -->
+<aside id="verseBanner" aria-live="polite">
+  <span class="verse-kicker" id="verseKicker">Telling the Bees</span>
+  <p class="verse-text" id="verseText"></p>
+</aside>
+
+<!-- Desktop Controls Hint -->
+<div class="desktop-hint" id="desktopHint">WASD / Arrows to Walk &amp; Turn &middot; Drag to Look &middot; Approach Straw Skeps to Tell the Bees</div>
+
+<!-- Focus-Loss Pause Pill -->
+<div id="pauseNotice">Paused &mdash; Click or Press Any Key to Return</div>
+
+<!-- Mobile Multitouch Virtual Joysticks -->
+<div class="joysticks" id="joysticks" aria-hidden="true">
+  <div class="joy-zone" id="joyLeft">
+    <span class="joy-label">Walk</span>
+    <div class="joy-axis-hint"></div>
+    <span class="joy-glyph g-a">&#9650;</span>
+    <span class="joy-glyph g-b">&#9660;</span>
+    <div class="joy-knob" id="knobLeft"></div>
+  </div>
+  <div class="joy-zone" id="joyRight">
+    <span class="joy-label">Turn</span>
+    <div class="joy-axis-hint"></div>
+    <span class="joy-glyph g-a">&#9664;</span>
+    <span class="joy-glyph g-b">&#9654;</span>
+    <div class="joy-knob" id="knobRight"></div>
+  </div>
+</div>
+
+<!-- Backstory / Intro Modal -->
+<div id="loreModal" role="dialog" aria-modal="true" aria-labelledby="loreHeading">
+  <div class="lore-card">
+    <svg class="lore-emblem" viewBox="0 0 64 64" fill="none" aria-hidden="true">
+      <polygon points="32,6 52,18 52,42 32,54 12,42 12,18" stroke="#ffcf6e" stroke-width="2" fill="rgba(255,180,50,0.1)"/>
+      <polygon points="32,14 45,22 45,38 32,46 19,38 19,22" stroke="#d97828" stroke-width="1.3" stroke-dasharray="4 3"/>
+      <path d="M22 48 C22 33, 42 33, 42 48 Z" fill="#c9934b" stroke="#ffe59e" stroke-width="1.5"/>
+      <circle cx="32" cy="25" r="5" fill="#ffe28a"/>
+    </svg>
+    <p class="lore-kicker">The Seventh Autumn</p>
+    <h1 class="lore-title" id="loreHeading">WINTERCOMB</h1>
+    <p class="lore-sub">The Hived Sun</p>
+    <p class="lore-body">
+      When the early Frost cracked the sky&rsquo;s ecliptic, the Keepers opened every skep in the valley. For forty days the Great Swarm climbed the cold air and drank the failing October sun drop by drop&mdash;carrying afternoon down into monumental combs of beeswax.
+    </p>
+    <p class="lore-body">
+      Now the world endures a hundred-year dusk, warmed only by stored noon. As the Night Apiarist, wander the frost-heather meadows among Propolis Lantern-Oaks, brass Smoker-Censers, and slow glass-winged Sun-Bees&mdash;and keep the old custom of <em>Telling the Bees</em> at each sleeping straw skep so the swarm remembers morning.
+    </p>
+    <div class="lore-controls">
+      Desktop: WASD or Arrow Keys to Walk &middot; Drag Sky/Ground to Look<br>
+      Mobile: Left Stick Walks Forward/Back &middot; Right Stick Turns (Multitouch)
+    </div>
+    <button class="enter-btn" id="enterBtn" type="button">Step into the Frost &rarr;</button>
+  </div>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  const SVG_NS = 'http://www.w3.org/2000/svg';
+  const TAU = Math.PI * 2;
+  const params = new URLSearchParams(window.location.search);
+  const alwaysOn = params.get('alwayson') === '1';
+  const skipIntro = params.get('nointro') === '1';
+  const forceTouch = params.get('joysticks') === '1';
+  const reducedMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  if (forceTouch) document.body.classList.add('touch-enabled');
+
+  /* =========================================================================
+     WHISPERED VERSES ("Telling the Bees" Folk Tradition)
+     ========================================================================= */
+  const VERSES = [
+    'I. Tell the bees the river locked at sundown; they turn once in their sleep and keep the comb warm.',
+    'II. Forty days they climbed the fractured sky, carrying October down one drop at a time.',
+    'III. The Hollow Corona still hangs in the north—an empty cup licked clean of afternoon.',
+    'IV. Drape dark wool across the straw, tap thrice upon the board, and name what the frost took.',
+    'V. Uncapped cells burn brightest; that is late August, hived from the hill orchards before snow.',
+    'VI. Breathe blue lavender from the brass censer; an anxious swarm will spend summer too soon.',
+    'VII. Beneath the Propolis Oaks, spilled honey keeps the heather green a pace around each root.',
+    'VIII. The old Keepers left their veils on the posts, trusting the wax to remember morning.',
+    'IX. Listen at the skep-arch: ten thousand wings beating the exact measure of a July noon.',
+    'X. Do not harvest the crown-comb; that gold belongs to the sky of the first thaw.',
+    'XI. Even the great Sun-Bees drift slowly now, heavy as blown-glass lamps between the boughs.',
+    'XII. Tell the bees a stranger still walks the frost-path; they hum low, and the dusk grows kinder.'
+  ];
+
+  /* =========================================================================
+     DETERMINISTIC HASHING & TERRAIN FIELD
+     ========================================================================= */
+  function hashCoords(ix, iz, salt) {
+    let h = (ix * 374761393 + iz * 668265263 + (salt || 0) * 1442695041) | 0;
+    h = Math.imul(h ^ (h >>> 13), 1274126177);
+    return (h ^ (h >>> 16)) >>> 0;
+  }
+
+  function mulberry32(seed) {
+    let a = seed >>> 0;
+    return function () {
+      a = (a + 0x6D2B79F5) | 0;
+      let t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  function clamp(v, lo, hi) {
+    return v < lo ? lo : v > hi ? hi : v;
+  }
+
+  function wrapAngle(a) {
+    a = (a + Math.PI) % TAU;
+    if (a < 0) a += TAU;
+    return a - Math.PI;
+  }
+
+  // Rolling frost-heather meadow heightfield in meters
+  function groundY(x, z) {
+    return (
+      0.58 * Math.sin(x * 0.052 + 0.4) * Math.cos(z * 0.047 - 0.2) +
+      0.28 * Math.sin(x * 0.13 - z * 0.11 + 1.1) +
+      0.14 * Math.cos(x * 0.24 + z * 0.21)
+    );
+  }
+
+  // Fast RGB fog mixer (avoids group opacity & ghost overlap; produces solid atmospheric depth)
+  const FOG_RGB = [76, 36, 49];
+  function mixFog(rgb, t) {
+    if (t <= 0.005) return 'rgb(' + rgb[0] + ',' + rgb[1] + ',' + rgb[2] + ')';
+    if (t >= 0.995) return 'rgb(' + FOG_RGB[0] + ',' + FOG_RGB[1] + ',' + FOG_RGB[2] + ')';
+    const r = (rgb[0] + (FOG_RGB[0] - rgb[0]) * t) | 0;
+    const g = (rgb[1] + (FOG_RGB[1] - rgb[1]) * t) | 0;
+    const b = (rgb[2] + (FOG_RGB[2] - rgb[2]) * t) | 0;
+    return 'rgb(' + r + ',' + g + ',' + b + ')';
+  }
+
+  function el(tag, attrs, parent) {
+    const node = document.createElementNS(SVG_NS, tag);
+    if (attrs) {
+      for (const k in attrs) {
+        node.setAttribute(k, String(attrs[k]));
+      }
+    }
+    if (parent) parent.appendChild(node);
+    return node;
+  }
+
+  /* =========================================================================
+     DOM REFERENCES & VIEWPORT SIZING
+     ========================================================================= */
+  const stage = document.getElementById('stage');
+  const sceneSvg = document.getElementById('scene');
+  const vpClipRect = document.getElementById('vpClipRect');
+  const skyRect = document.getElementById('skyRect');
+  const auroraLayer = document.getElementById('auroraLayer');
+  const starLayer = document.getElementById('starLayer');
+  const coronaLayer = document.getElementById('coronaLayer');
+  const farRidge = document.getElementById('farRidge');
+  const nearRidge = document.getElementById('nearRidge');
+  const groundRect = document.getElementById('groundRect');
+  const horizonMist = document.getElementById('horizonMist');
+  const groundPlatesGroup = document.getElementById('groundPlates');
+  const worldPropsGroup = document.getElementById('worldProps');
+  const motesLayer = document.getElementById('motesLayer');
+  const vignetteRect = document.getElementById('vignetteRect');
+
+  const hudBearing = document.getElementById('hudBearing');
+  const hudDist = document.getElementById('hudDist');
+  const hudSkeps = document.getElementById('hudSkeps');
+  const verseBanner = document.getElementById('verseBanner');
+  const verseKicker = document.getElementById('verseKicker');
+  const verseText = document.getElementById('verseText');
+  const loreModal = document.getElementById('loreModal');
+  const enterBtn = document.getElementById('enterBtn');
+  const loreBtn = document.getElementById('loreBtn');
+  const soundBtn = document.getElementById('soundBtn');
+  const desktopHint = document.getElementById('desktopHint');
+
+  let vw = 1600;
+  let vh = 900;
+  let focal = 920;
+
+  function updateViewport() {
+    const w = Math.max(320, window.innerWidth || 1280);
+    const h = Math.max(320, window.innerHeight || 720);
+    const aspect = w / h;
+    vh = 900;
+    vw = clamp(Math.round(vh * aspect), 500, 2560);
+    // Keep horizontal & vertical FOV natural across ultrawide desktop and narrow portrait phones
+    focal = aspect >= 1 ? Math.round(vw * 0.58) : Math.round(vw * 0.78);
+    sceneSvg.setAttribute('viewBox', '0 0 ' + vw + ' ' + vh);
+    vpClipRect.setAttribute('width', String(vw));
+    vpClipRect.setAttribute('height', String(vh));
+    skyRect.setAttribute('width', String(vw));
+    groundRect.setAttribute('width', String(vw));
+    horizonMist.setAttribute('width', String(vw));
+    vignetteRect.setAttribute('width', String(vw));
+    vignetteRect.setAttribute('height', String(vh));
+  }
+
+  /* =========================================================================
+     STATIC SKY ART: STARS, AURORA RIBBONS, HOLLOW CORONA, & 360 RIDGES
+     ========================================================================= */
+  const stars = [];
+  (function initSky() {
+    const rng = mulberry32(0x57494E54);
+    for (let i = 0; i < 88; i++) {
+      const az = (rng() * 2 - 1) * Math.PI;
+      const elev = 0.05 + Math.pow(rng(), 1.35) * 0.68;
+      const r = 1.0 + rng() * 2.1;
+      const warm = rng() > 0.45;
+      const node = el('circle', {
+        cx: '0',
+        cy: '0',
+        r: r.toFixed(2),
+        fill: warm ? '#ffe8b3' : '#d8e3ff'
+      }, starLayer);
+      stars.push({
+        az,
+        elev,
+        baseR: r,
+        phase: rng() * TAU,
+        speed: 0.7 + rng() * 1.9,
+        node
+      });
+    }
+
+    // Two pollen-aurora ribbons
+    el('path', { id: 'auroraA', fill: 'url(#auroraGrad)', d: '' }, auroraLayer);
+    el('path', { id: 'auroraB', fill: 'url(#auroraGrad)', d: '' }, auroraLayer);
+
+    // The Hollow Corona (where the October sun was hived by the Great Swarm)
+    const cg = el('g', { id: 'coronaGroup' }, coronaLayer);
+    // Wide ecliptic arc passing through the Hollow Corona
+    el('path', {
+      d: 'M -620 85 Q 0 -38 620 85',
+      fill: 'none',
+      stroke: '#ffcf70',
+      'stroke-width': '1.2',
+      'stroke-dasharray': '10 7',
+      'stroke-opacity': '0.32'
+    }, cg);
+    // Left and right hexagonal parhelia (sundogs)
+    el('polygon', {
+      points: '-230,26 -218,14 -206,26 -206,40 -218,52 -230,40',
+      fill: '#ffcf6b',
+      'fill-opacity': '0.24',
+      stroke: '#ffe8a3',
+      'stroke-width': '1',
+      'stroke-opacity': '0.45'
+    }, cg);
+    el('polygon', {
+      points: '206,26 218,14 230,26 230,40 218,52 206,40',
+      fill: '#ffcf6b',
+      'fill-opacity': '0.24',
+      stroke: '#ffe8a3',
+      'stroke-width': '1',
+      'stroke-opacity': '0.45'
+    }, cg);
+    // Outer corona glow
+    el('circle', { cx: '0', cy: '0', r: '128', fill: 'url(#coronaGlow)' }, cg);
+    // Outer frosted astronomical hex-ring
+    el('polygon', {
+      points: '0,-74 64,-37 64,37 0,74 -64,37 -64,-37',
+      fill: 'none',
+      stroke: '#ffd67d',
+      'stroke-width': '1.8',
+      'stroke-opacity': '0.58'
+    }, cg);
+    // Inner rotated comb-ring
+    el('polygon', {
+      points: '52,-30 52,30 0,60 -52,30 -52,-30 0,-60',
+      fill: '#110a1c',
+      'fill-opacity': '0.88',
+      stroke: '#ffeab5',
+      'stroke-width': '2.4'
+    }, cg);
+    // Delicate drained-honeycomb lattice inside the dark sun-socket
+    el('path', {
+      d: 'M -26 -15 L 0 -30 L 26 -15 L 26 15 L 0 30 L -26 15 Z M 0 -30 L 0 -60 M 26 -15 L 52 -30 M 26 15 L 52 30 M 0 30 L 0 60 M -26 15 L -52 30 M -26 -15 L -52 -30',
+      fill: 'none',
+      stroke: '#ffb838',
+      'stroke-width': '1.1',
+      'stroke-opacity': '0.46'
+    }, cg);
+    // Last drop of unharvested solar gold clinging to bottom rim
+    el('circle', { id: 'coronaDrop', cx: '0', cy: '59', r: '4.5', fill: '#fff1b8' }, cg);
+  })();
+
+  const auroraA = document.getElementById('auroraA');
+  const auroraB = document.getElementById('auroraB');
+  const coronaGroup = document.getElementById('coronaGroup');
+  const coronaDrop = document.getElementById('coronaDrop');
+
+  // Precompute 360-degree periodic ridge profiles so horizon wraps seamlessly forever
+  const RIDGE_STEPS = 96;
+  const farRidgeProfile = [];
+  const nearRidgeProfile = [];
+  (function initRidges() {
+    for (let i = 0; i <= RIDGE_STEPS; i++) {
+      const th = (i / RIDGE_STEPS) * TAU;
+      // Stepped hexagonal mesa silhouettes + gentle hills (strictly periodic in th)
+      const f =
+        34 +
+        18 * Math.sin(th * 3 + 0.5) +
+        11 * Math.cos(th * 7 - 1.1) +
+        7 * Math.round(Math.sin(th * 13 + 0.3) * 2) / 2;
+      const n =
+        18 +
+        11 * Math.sin(th * 4 - 0.8) +
+        7 * Math.cos(th * 9 + 1.7) +
+        4 * Math.sin(th * 16);
+      farRidgeProfile.push(Math.max(8, f));
+      nearRidgeProfile.push(Math.max(4, n));
+    }
+  })();
+
+  function buildRidgePath(profile, horizonY, yaw) {
+    // Render angular span covering full screen width [yaw - 1.65, yaw + 1.65]
+    const span = 1.65;
+    const samples = 44;
+    let d = 'M -40 ' + (horizonY + 6).toFixed(1);
+    for (let i = 0; i <= samples; i++) {
+      const rel = -span + (2 * span * i) / samples;
+      let worldAz = (yaw + rel) % TAU;
+      if (worldAz < 0) worldAz += TAU;
+      const idx = (worldAz / TAU) * RIDGE_STEPS;
+      const i0 = Math.floor(idx) % RIDGE_STEPS;
+      const i1 = (i0 + 1) % RIDGE_STEPS;
+      const frac = idx - Math.floor(idx);
+      const h = profile[i0] + (profile[i1] - profile[i0]) * frac;
+      const sx = vw * 0.5 + rel * focal;
+      const sy = horizonY - h * (focal / 920);
+      d += ' L ' + sx.toFixed(1) + ' ' + sy.toFixed(1);
+    }
+    d += ' L ' + (vw + 40) + ' ' + (horizonY + 6).toFixed(1) + ' Z';
+    return d;
+  }
+
+  /* =========================================================================
+     OPTIONAL PROCEDURAL WEB AUDIO ("Winter Hive Hum & Glass Celesta")
+     ========================================================================= */
+  const sound = (function () {
+    let ctx = null;
+    let master = null;
+    let enabled = false;
+    let started = false;
+
+    function ensureCtx() {
+      if (ctx) return true;
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return false;
+      ctx = new AC();
+      master = ctx.createGain();
+      master.gain.value = 0.0001;
+      master.connect(ctx.destination);
+
+      // Gentle low-passed cello/bee-comb warm drone (D2 + A2 + F#3)
+      const filter = ctx.createBiquadFilter();
+      filter.type = 'lowpass';
+      filter.frequency.value = 340;
+      filter.Q.value = 0.8;
+      filter.connect(master);
+
+      const freqs = [73.42, 110.0, 185.0];
+      const gains = [0.16, 0.11, 0.045];
+      freqs.forEach((f, idx) => {
+        const osc = ctx.createOscillator();
+        const g = ctx.createGain();
+        osc.type = idx === 2 ? 'sine' : 'triangle';
+        osc.frequency.value = f;
+        g.gain.value = gains[idx];
+        osc.connect(g);
+        g.connect(filter);
+        osc.start();
+      });
+
+      // Slow breathing LFO on filter cutoff so the comb feels alive
+      const lfo = ctx.createOscillator();
+      const lfoGain = ctx.createGain();
+      lfo.type = 'sine';
+      lfo.frequency.value = 0.14;
+      lfoGain.gain.value = 85;
+      lfo.connect(lfoGain);
+      lfoGain.connect(filter.frequency);
+      lfo.start();
+
+      started = true;
+      return true;
+    }
+
+    function setEnabled(on) {
+      enabled = !!on;
+      soundBtn.setAttribute('aria-pressed', String(enabled));
+      soundBtn.textContent = enabled ? 'Hum: On' : 'Hum: Off';
+      if (enabled) {
+        if (!ensureCtx()) return;
+        if (ctx.state === 'suspended') ctx.resume();
+        const now = ctx.currentTime;
+        master.gain.cancelScheduledValues(now);
+        master.gain.setTargetAtTime(0.24, now, 0.45);
+      } else if (ctx && started) {
+        const now = ctx.currentTime;
+        master.gain.cancelScheduledValues(now);
+        master.gain.setTargetAtTime(0.0001, now, 0.2);
+      }
+    }
+
+    function suspendForBlur() {
+      if (ctx && ctx.state === 'running') {
+        ctx.suspend().catch(() => {});
+      }
+    }
+
+    function resumeFromFocus() {
+      if (enabled && ctx && ctx.state === 'suspended') {
+        ctx.resume().catch(() => {});
+      }
+    }
+
+    // Warm glass-bell arpeggio when "Telling the Bees" at a Shrine Skep
+    function playSkepChime(index) {
+      if (!enabled || !ctx || ctx.state !== 'running') return;
+      const notes = [293.66, 369.99, 440.0, 554.37, 587.33, 739.99];
+      const baseNow = ctx.currentTime;
+      for (let i = 0; i < 4; i++) {
+        const osc = ctx.createOscillator();
+        const g = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.value = notes[(index + i) % notes.length];
+        const t0 = baseNow + i * 0.14;
+        g.gain.setValueAtTime(0.0001, t0);
+        g.gain.linearRampToValueAtTime(0.14, t0 + 0.03);
+        g.gain.exponentialRampToValueAtTime(0.0001, t0 + 1.65);
+        osc.connect(g);
+        g.connect(master);
+        osc.start(t0);
+        osc.stop(t0 + 1.7);
+      }
+    }
+
+    // Subtle frost crunch on footfall
+    function playStep() {
+      if (!enabled || !ctx || ctx.state !== 'running') return;
+      const t0 = ctx.currentTime;
+      const osc = ctx.createOscillator();
+      const g = ctx.createGain();
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(118 + Math.random() * 26, t0);
+      osc.frequency.exponentialRampToValueAtTime(52, t0 + 0.065);
+      g.gain.setValueAtTime(0.035, t0);
+      g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.07);
+      osc.connect(g);
+      g.connect(master);
+      osc.start(t0);
+      osc.stop(t0 + 0.075);
+    }
+
+    return {
+      toggle() { setEnabled(!enabled); },
+      isEnabled: () => enabled,
+      suspendForBlur,
+      resumeFromFocus,
+      playSkepChime,
+      playStep
+    };
+  })();
+
+  soundBtn.addEventListener('click', () => sound.toggle());
+
+  /* =========================================================================
+     PURE-SVG PROP TEMPLATES & OBJECT POOLS (Zero InnerHTML / Zero CSS Anim)
+     100 local units = 1.0 meter in world space; y = 0 is ground contact.
+     ========================================================================= */
+  const pools = {
+    comb0: [],
+    comb1: [],
+    comb2: [],
+    tree0: [],
+    tree1: [],
+    skep: [],
+    censer: [],
+    bee: [],
+    tuft: []
+  };
+  let totalCreatedPropNodes = 0;
+
+  function createPropElement(poolKey) {
+    totalCreatedPropNodes++;
+    const g = el('g', { 'stroke-linejoin': 'round', 'stroke-linecap': 'round' });
+    let refs = {};
+
+    if (poolKey === 'comb0' || poolKey === 'comb1' || poolKey === 'comb2') {
+      // Three distinct architectural variants of Colossal Hexagonal Comb-Spires
+      const halo = el('circle', { cx: '0', cy: '-390', r: '245', fill: 'url(#honeyHalo)' }, g);
+      let colL, colM, colR, sideA, sideB, capped, uncapped, core, drip;
+
+      if (poolKey === 'comb0') {
+        // Variant 0: Royal Stepped Spire Cluster
+        colL = el('polygon', { points: '-68,0 -68,-625 -14,-668 -14,0' }, g);
+        colM = el('polygon', { points: '-14,0 -14,-668 44,-644 44,0' }, g);
+        colR = el('polygon', { points: '44,0 44,-644 78,-596 78,0' }, g);
+        sideA = el('polygon', { points: '-124,0 -124,-375 -68,-412 -68,0' }, g);
+        sideB = el('polygon', { points: '74,0 74,-438 128,-396 128,0' }, g);
+        capped = el('path', {
+          d: 'M -54 -535 l 18 -10 l 18 10 l 0 20 l -18 10 l -18 -10 Z ' +
+             'M -12 -578 l 18 -10 l 18 10 l 0 20 l -18 10 l -18 -10 Z ' +
+             'M 28 -500 l 16 -9 l 16 9 l 0 18 l -16 9 l -16 -9 Z ' +
+             'M -108 -305 l 15 -8 l 15 8 l 0 16 l -15 8 l -15 -8 Z'
+        }, g);
+        uncapped = el('path', {
+          d: 'M -34 -482 l 20 -12 l 20 12 l 0 22 l -20 12 l -20 -12 Z ' +
+             'M 10 -446 l 19 -11 l 19 11 l 0 21 l -19 11 l -19 -11 Z ' +
+             'M -54 -425 l 18 -10 l 18 10 l 0 20 l -18 10 l -18 -10 Z ' +
+             'M -14 -385 l 20 -12 l 20 12 l 0 22 l -20 12 l -20 -12 Z ' +
+             'M 84 -332 l 16 -9 l 16 9 l 0 18 l -16 9 l -16 -9 Z'
+        }, g);
+        core = el('path', {
+          d: 'M -24 -475 l 10 -6 l 10 6 l 0 10 l -10 6 l -10 -6 Z ' +
+             'M 20 -439 l 9 -5 l 9 5 l 0 9 l -9 5 l -9 -5 Z ' +
+             'M -4 -378 l 10 -6 l 10 6 l 0 10 l -10 6 l -10 -6 Z'
+        }, g);
+      } else if (poolKey === 'comb1') {
+        // Variant 1: Twin-Pillar Honey-Bridge Gate
+        colL = el('polygon', { points: '-128,0 -116,-590 -72,-620 -62,0' }, g);
+        colM = el('polygon', { points: '-72,-430 -72,-575 72,-575 72,-415 32,-385 -32,-385' }, g);
+        colR = el('polygon', { points: '62,0 72,-605 118,-575 128,0' }, g);
+        sideA = el('polygon', { points: '-162,0 -154,-310 -118,-335 -118,0' }, g);
+        sideB = el('polygon', { points: '118,0 118,-345 156,-315 164,0' }, g);
+        capped = el('path', {
+          d: 'M -104 -495 l 16 -9 l 16 9 l 0 18 l -16 9 l -16 -9 Z ' +
+             'M 78 -480 l 16 -9 l 16 9 l 0 18 l -16 9 l -16 -9 Z ' +
+             'M -48 -535 l 18 -10 l 18 10 l 0 20 l -18 10 l -18 -10 Z'
+        }, g);
+        uncapped = el('path', {
+          d: 'M -18 -520 l 20 -12 l 20 12 l 0 22 l -20 12 l -20 -12 Z ' +
+             'M 22 -488 l 18 -10 l 18 10 l 0 20 l -18 10 l -18 -10 Z ' +
+             'M -38 -462 l 19 -11 l 19 11 l 0 21 l -19 11 l -19 -11 Z ' +
+             'M 2 -435 l 19 -11 l 19 11 l 0 21 l -19 11 l -19 -11 Z'
+        }, g);
+        core = el('path', {
+          d: 'M -8 -513 l 10 -6 l 10 6 l 0 10 l -10 6 l -10 -6 Z ' +
+             'M -28 -455 l 9 -5 l 9 5 l 0 9 l -9 5 l -9 -5 Z ' +
+             'M 12 -428 l 9 -5 l 9 5 l 0 9 l -9 5 l -9 -5 Z'
+        }, g);
+      } else {
+        // Variant 2: Canted Cracked Ecliptic Prism
+        colL = el('polygon', { points: '-84,0 -42,-685 8,-715 -24,0' }, g);
+        colM = el('polygon', { points: '-24,0 8,-715 62,-678 34,0' }, g);
+        colR = el('polygon', { points: '34,0 62,-678 96,-620 74,0' }, g);
+        sideA = el('polygon', { points: '-136,0 -114,-410 -68,-435 -78,0' }, g);
+        sideB = el('polygon', { points: '68,0 88,-365 134,-330 118,0' }, g);
+        capped = el('path', {
+          d: 'M -16 -595 l 18 -10 l 18 10 l 0 20 l -18 10 l -18 -10 Z ' +
+             'M 22 -545 l 17 -9 l 17 9 l 0 18 l -17 9 l -17 -9 Z ' +
+             'M -112 -330 l 15 -8 l 15 8 l 0 16 l -15 8 l -15 -8 Z'
+        }, g);
+        uncapped = el('path', {
+          d: 'M -8 -515 l 21 -12 l 21 12 l 0 23 l -21 12 l -21 -12 Z ' +
+             'M -28 -458 l 19 -11 l 19 11 l 0 21 l -19 11 l -19 -11 Z ' +
+             'M 14 -432 l 18 -10 l 18 10 l 0 20 l -18 10 l -18 -10 Z ' +
+             'M -14 -392 l 20 -12 l 20 12 l 0 22 l -20 12 l -20 -12 Z'
+        }, g);
+        core = el('path', {
+          d: 'M 3 -507 l 10 -6 l 10 6 l 0 10 l -10 6 l -10 -6 Z ' +
+             'M -18 -451 l 9 -5 l 9 5 l 0 9 l -9 5 l -9 -5 Z ' +
+             'M -4 -385 l 10 -6 l 10 6 l 0 10 l -10 6 l -10 -6 Z'
+        }, g);
+      }
+      drip = el('path', { d: 'M -4 -340 C -11 -322, -10 -310, 0 -308 C 10 -310, 11 -322, 4 -340 Z' }, g);
+      refs = { halo, colL, colM, colR, sideA, sideB, capped, uncapped, core, drip };
+    } else if (poolKey === 'tree0' || poolKey === 'tree1') {
+      // Propolis Lantern-Trees: gnarled orchard boughs, silver-frosted crown rim, resin beads, & swaying wax brood-lanterns
+      const halo = el('circle', { cx: '0', cy: '-305', r: '220', fill: 'url(#honeyHalo)' }, g);
+      const wide = poolKey === 'tree0';
+      const canopyBack = el('path', {
+        d: wide
+          ? 'M -242 -355 L -268 -408 L -222 -472 L -148 -518 L -68 -512 L -18 -584 L 78 -588 L 146 -514 L 228 -496 L 266 -422 L 224 -348 L 128 -324 L -132 -324 Z'
+          : 'M -165 -380 L -190 -448 L -138 -535 L -62 -612 L 8 -652 L 78 -604 L 144 -522 L 182 -435 L 148 -368 L -98 -362 Z'
+      }, g);
+      const trunk = el('path', {
+        d: wide
+          ? 'M -54 0 C -34 -62, -26 -152, -28 -256 C -72 -312, -142 -344, -194 -360 L -184 -376 C -126 -360, -60 -332, -22 -286 C -14 -362, 8 -434, 40 -494 L 56 -486 C 28 -426, 8 -360, 8 -292 C 54 -336, 122 -356, 182 -366 L 188 -350 C 126 -336, 58 -308, 14 -254 C 18 -154, 26 -64, 50 0 Z'
+          : 'M -42 0 C -26 -78, -20 -180, -22 -295 C -58 -348, -108 -378, -148 -394 L -140 -408 C -98 -394, -50 -368, -18 -326 C -12 -412, 4 -492, 24 -566 L 38 -560 C 20 -488, 6 -412, 6 -334 C 42 -372, 92 -396, 138 -406 L 144 -392 C 96 -378, 46 -352, 12 -302 C 14 -182, 20 -78, 38 0 Z'
+      }, g);
+      const barkRim = el('path', {
+        d: wide
+          ? 'M -24 -28 C -14 -112, -14 -196, -18 -268 M 6 -265 C 44 -310, 98 -334, 154 -346 M -6 -160 L -4 -142 M 8 -205 L 10 -188'
+          : 'M -18 -32 C -10 -132, -10 -224, -14 -304 M 4 -305 C 36 -346, 78 -372, 122 -384',
+        fill: 'none',
+        'stroke-width': '4.2'
+      }, g);
+      const canopyFront = el('path', {
+        d: wide
+          ? 'M -204 -388 L -222 -442 L -158 -496 L -62 -484 L -4 -552 L 94 -546 L 158 -476 L 222 -454 L 214 -386 L 138 -360 L -116 -362 Z'
+          : 'M -138 -412 L -154 -478 L -94 -548 L -6 -598 L 76 -552 L 138 -476 L 134 -406 L 68 -384 L -74 -386 Z'
+      }, g);
+      // Frosted silver-gold crown rim catching light from the Hollow Corona
+      const frostRim = el('path', {
+        d: wide
+          ? 'M -222 -442 L -158 -496 L -62 -484 L -4 -552 L 94 -546 L 158 -476 L 222 -454'
+          : 'M -154 -478 L -94 -548 L -6 -598 L 76 -552 L 138 -476',
+        fill: 'none',
+        'stroke-width': '3.2'
+      }, g);
+      const cords = el('path', { d: '', fill: 'none', 'stroke-width': '2.2' }, g);
+      const lanterns = el('path', { d: '' }, g);
+      const lanternCores = el('path', { d: '' }, g);
+      refs = { halo, canopyBack, trunk, barkRim, canopyFront, frostRim, cords, lanterns, lanternCores, wide };
+    } else if (poolKey === 'skep') {
+      // Telling-Shrine Skep: oak hive table, coiled straw dome, flared winter straw hackle, Telling-cloth, golden arch & rune beacon
+      const halo = el('circle', { cx: '0', cy: '-165', r: '190', fill: 'url(#honeyHalo)' }, g);
+      const stand = el('path', {
+        d: 'M -76 0 L -66 -78 L -48 -78 L -58 0 Z ' +
+           'M 58 0 L 48 -78 L 66 -78 L 76 0 Z ' +
+           'M -42 0 L -38 -74 L -26 -74 L -30 0 Z ' +
+           'M 30 0 L 26 -74 L 38 -74 L 42 0 Z ' +
+           'M -62 -36 L 62 -36 L 62 -45 L -62 -45 Z ' +
+           'M -96 -76 L 96 -76 L 84 -92 L -84 -92 Z'
+      }, g);
+      const dome = el('path', {
+        d: 'M -74 -88 C -78 -168, -48 -238, 0 -258 C 48 -238, 78 -168, 74 -88 Z'
+      }, g);
+      // Conical winter straw rain-cloak ("hackle") bound onto crown
+      const hackle = el('path', {
+        d: 'M 0 -286 L 56 -212 Q 0 -224 -56 -212 Z'
+      }, g);
+      const coils = el('path', {
+        d: 'M -71 -114 Q 0 -126 71 -114 M -66 -144 Q 0 -156 66 -144 M -56 -175 Q 0 -187 56 -175 M -42 -206 Q 0 -216 42 -206 M -14 -284 C -14 -302, 14 -302, 14 -284',
+        fill: 'none',
+        'stroke-width': '4.5'
+      }, g);
+      // Dark velvet "Telling Cloth" draped across the skep with notched pennant tails
+      const cloth = el('path', {
+        d: 'M -58 -182 Q 0 -162 58 -182 L 66 -146 L 44 -136 L 34 -150 Q 0 -138 -34 -150 L -44 -136 L -66 -146 Z'
+      }, g);
+      // Arched bee-entrance + spilled honey threshold on alighting-board
+      const arch = el('path', {
+        d: 'M -21 -88 C -21 -118, 21 -118, 21 -88 Z M -32 -84 L 32 -84 L 24 -78 L -24 -78 Z'
+      }, g);
+      const crownRing = el('polygon', {
+        points: '0,-338 15,-329 15,-311 0,-302 -15,-311 -15,-329',
+        fill: 'none',
+        'stroke-width': '2.4'
+      }, g);
+      const scouts = el('path', { d: '' }, g);
+      refs = { halo, stand, dome, hackle, coils, cloth, arch, crownRing, scouts };
+    } else if (poolKey === 'censer') {
+      // Keeper's Brass Smoker-Censer
+      const halo = el('circle', { cx: '0', cy: '-175', r: '95', fill: 'url(#emberHalo)' }, g);
+      const tripod = el('path', {
+        d: 'M -42 0 L -8 -142 L -2 -142 L -32 0 Z ' +
+           'M 42 0 L 8 -142 L 2 -142 L 32 0 Z ' +
+           'M -3 0 L -3 -142 L 3 -142 L 3 0 Z ' +
+           'M -24 -72 L 24 -72 L 24 -78 L -24 -78 Z'
+      }, g);
+      const body = el('path', {
+        d: 'M -24 -140 L 24 -140 L 30 -178 L 14 -216 L -10 -216 L -28 -178 Z ' +
+           'M 14 -216 L 36 -234 L 8 -240 L -10 -216 Z ' +
+           'M -28 -178 L -40 -198 L -28 -204 L -16 -188 Z'
+      }, g);
+      const embers = el('path', {
+        d: 'M -16 -166 L -6 -166 L -6 -154 L -16 -154 Z M 0 -170 L 10 -170 L 10 -154 L 0 -154 Z M 15 -165 L 22 -165 L 22 -154 L 15 -154 Z'
+      }, g);
+      const smokeA = el('path', { d: '', fill: 'none', 'stroke-width': '9' }, g);
+      const smokeB = el('path', { d: '', fill: 'none', 'stroke-width': '5' }, g);
+      refs = { halo, tripod, body, embers, smokeA, smokeB };
+    } else if (poolKey === 'bee') {
+      // Cathedral Sun-Bee: stained-glass wings, russet ruff, banded lantern abdomen
+      const halo = el('circle', { cx: '0', cy: '4', r: '90', fill: 'url(#honeyHalo)' }, g);
+      const wingsBack = el('path', { d: '', 'stroke-width': '1.6' }, g);
+      const wingsFront = el('path', { d: '', 'stroke-width': '2' }, g);
+      const abdomen = el('ellipse', { cx: '0', cy: '16', rx: '23', ry: '32' }, g);
+      const abdomenCore = el('ellipse', { cx: '0', cy: '18', rx: '14', ry: '20' }, g);
+      const thorax = el('path', {
+        d: 'M -19 -10 C -19 -29, 19 -29, 19 -10 C 19 4, -19 4, -19 -10 Z ' +
+           'M -21 6 Q 0 12 21 6 M -22 18 Q 0 24 22 18 M -18 30 Q 0 35 18 30 ' +
+           'M -9 -24 C -16 -38, -26 -42, -33 -38 M 9 -24 C 16 -38, 26 -42, 33 -38',
+        'stroke-width': '3.4'
+      }, g);
+      refs = { halo, wingsBack, wingsFront, abdomen, abdomenCore, thorax };
+    } else {
+      // Frost-Heather & Nodding Wax-Bell Tuft
+      const stems = el('path', {
+        d: 'M 0 0 Q -14 -42 -30 -76 M 0 0 Q -2 -52 6 -88 M 0 0 Q 16 -40 34 -70 M -8 0 Q -26 -28 -44 -48 M 8 0 Q 26 -26 44 -46',
+        fill: 'none',
+        'stroke-width': '3.2'
+      }, g);
+      const bells = el('path', {
+        d: 'M -30 -76 m -7 0 a 7 7 0 1 0 14 0 a 7 7 0 1 0 -14 0 ' +
+           'M 6 -88 m -8 0 a 8 8 0 1 0 16 0 a 8 8 0 1 0 -16 0 ' +
+           'M 34 -70 m -7 0 a 7 7 0 1 0 14 0 a 7 7 0 1 0 -14 0 ' +
+           'M -44 -48 m -5 0 a 5 5 0 1 0 10 0 a 5 5 0 1 0 -10 0 ' +
+           'M 44 -46 m -5 0 a 5 5 0 1 0 10 0 a 5 5 0 1 0 -10 0'
+      }, g);
+      refs = { stems, bells };
+    }
+
+    return { poolKey, g, refs };
+  }
+
+  function acquirePropNode(poolKey) {
+    const bucket = pools[poolKey];
+    return bucket.length > 0 ? bucket.pop() : createPropElement(poolKey);
+  }
+
+  function releasePropNode(entry) {
+    if (!entry) return;
+    if (entry.g.parentNode) entry.g.parentNode.removeChild(entry.g);
+    pools[entry.poolKey].push(entry);
+  }
+
+  // Pool for 3D ground polygons (hex frost-plates & honey pools)
+  const groundPolyPool = [];
+  const activeGroundPolys = [];
+  function ensureGroundPoly(idx) {
+    while (activeGroundPolys.length <= idx) {
+      const poly = groundPolyPool.length > 0
+        ? groundPolyPool.pop()
+        : el('polygon', { 'stroke-width': '1.4', 'stroke-linejoin': 'round' });
+      groundPlatesGroup.appendChild(poly);
+      activeGroundPolys.push(poly);
+    }
+    return activeGroundPolys[idx];
+  }
+  function trimGroundPolys(usedCount) {
+    while (activeGroundPolys.length > usedCount) {
+      const poly = activeGroundPolys.pop();
+      if (poly.parentNode) poly.parentNode.removeChild(poly);
+      groundPolyPool.push(poly);
+    }
+  }
+
+  /* =========================================================================
+     ENDLESS CHUNK STREAMING & WORLD GENERATION
+     ========================================================================= */
+  const CHUNK_SIZE = 22;
+  const CHUNK_RADIUS = 4; // 9x9 = 81 active chunks around player (±99 m)
+  const chunks = new Map();
+  const toldSkeps = new Set();
+
+  function makeHexVertices(cx, cz, radius, rot, jitterRng) {
+    const pts = [];
+    for (let i = 0; i < 6; i++) {
+      const a = rot + (i * Math.PI) / 3;
+      const r = radius * (0.86 + jitterRng() * 0.26);
+      const vx = cx + Math.cos(a) * r;
+      const vz = cz + Math.sin(a) * r;
+      pts.push([vx, groundY(vx, vz) + 0.02, vz]);
+    }
+    return pts;
+  }
+
+  function generateChunk(cx, cz) {
+    const key = cx + ',' + cz;
+    const rng = mulberry32(hashCoords(cx, cz, 0xA91A));
+    const props = [];
+    const plates = [];
+    const x0 = cx * CHUNK_SIZE;
+    const z0 = cz * CHUNK_SIZE;
+
+    // Curated opening sanctuary at chunk (0, 0) so the very first view is iconic & unobstructed
+    if (cx === 0 && cz === 0) {
+      // Clear frost-stone path under player at (0, 0), flanked by welcoming props ahead (+Z)
+      const skepX = -2.6, skepZ = 14.5;
+      props.push({
+        id: 'skep:0,0:0',
+        kind: 'skep',
+        poolKey: 'skep',
+        x: skepX,
+        z: skepZ,
+        y: groundY(skepX, skepZ),
+        s: 1.05,
+        flip: 1,
+        phase: 0.4,
+        collider: 1.35,
+        nodeEntry: null
+      });
+      plates.push({
+        honey: true,
+        cx: skepX,
+        cz: skepZ,
+        pts: makeHexVertices(skepX, skepZ, 3.1, 0.2, rng)
+      });
+
+      const combX = 6.2, combZ = 20.0;
+      props.push({
+        id: 'comb:0,0:1',
+        kind: 'comb',
+        poolKey: 'comb1',
+        x: combX,
+        z: combZ,
+        y: groundY(combX, combZ),
+        s: 1.18,
+        flip: 1,
+        phase: 1.7,
+        collider: 1.65,
+        nodeEntry: null
+      });
+      plates.push({
+        honey: true,
+        cx: combX,
+        cz: combZ,
+        pts: makeHexVertices(combX, combZ, 4.0, 0.7, rng)
+      });
+
+      const treeX = -7.8, treeZ = 18.5;
+      props.push({
+        id: 'tree:0,0:2',
+        kind: 'tree',
+        poolKey: 'tree0',
+        x: treeX,
+        z: treeZ,
+        y: groundY(treeX, treeZ),
+        s: 1.12,
+        flip: 1,
+        phase: 2.3,
+        collider: 0.95,
+        nodeEntry: null
+      });
+
+      const cenX = 3.2, cenZ = 10.2;
+      props.push({
+        id: 'censer:0,0:3',
+        kind: 'censer',
+        poolKey: 'censer',
+        x: cenX,
+        z: cenZ,
+        y: groundY(cenX, cenZ),
+        s: 1.0,
+        flip: 1,
+        phase: 0.9,
+        collider: 0.55,
+        nodeEntry: null
+      });
+
+      props.push({
+        id: 'bee:0,0:4',
+        kind: 'bee',
+        poolKey: 'bee',
+        homeX: 1.4,
+        homeZ: 12.8,
+        x: 1.4,
+        z: 12.8,
+        y: groundY(1.4, 12.8) + 2.55,
+        orbitR: 2.4,
+        orbitSpd: 0.42,
+        s: 0.95,
+        flip: 1,
+        phase: 1.1,
+        collider: 0,
+        nodeEntry: null
+      });
+
+      for (let t = 0; t < 6; t++) {
+        const tx = (rng() - 0.5) * 18;
+        const tz = 4.2 + rng() * 16;
+        if (tx * tx + tz * tz < 11) continue;
+        props.push({
+          id: 'tuft:0,0:' + t,
+          kind: 'tuft',
+          poolKey: 'tuft',
+          x: tx,
+          z: tz,
+          y: groundY(tx, tz),
+          s: 0.72 + rng() * 0.45,
+          flip: rng() > 0.5 ? 1 : -1,
+          phase: rng() * TAU,
+          collider: 0,
+          nodeEntry: null
+        });
+      }
+
+      plates.push({
+        honey: false,
+        cx: 0.4,
+        cz: 6.2,
+        pts: makeHexVertices(0.4, 6.2, 2.3, 0.0, rng)
+      });
+      plates.push({
+        honey: false,
+        cx: -1.8,
+        cz: 10.2,
+        pts: makeHexVertices(-1.8, 10.2, 1.9, 0.5, rng)
+      });
+
+      const chunkObj = { cx, cz, key, props, plates };
+      chunks.set(key, chunkObj);
+      return chunkObj;
+    }
+
+    // Procedural chunks everywhere else on the infinite plane
+    // 1. Optional Shrine Skep (~34% of chunks -> steady rhythm of discovery in any direction)
+    if (rng() < 0.34) {
+      const sx = x0 + 4 + rng() * (CHUNK_SIZE - 8);
+      const sz = z0 + 4 + rng() * (CHUNK_SIZE - 8);
+      if (sx * sx + sz * sz > 36) {
+        props.push({
+          id: 'skep:' + key,
+          kind: 'skep',
+          poolKey: 'skep',
+          x: sx,
+          z: sz,
+          y: groundY(sx, sz),
+          s: 0.94 + rng() * 0.22,
+          flip: rng() > 0.5 ? 1 : -1,
+          phase: rng() * TAU,
+          collider: 1.35,
+          nodeEntry: null
+        });
+        plates.push({
+          honey: true,
+          cx: sx,
+          cz: sz,
+          pts: makeHexVertices(sx, sz, 2.8 + rng() * 0.9, rng() * Math.PI, rng)
+        });
+      }
+    }
+
+    // 2. Major landmarks (Comb-Spires, Propolis Lantern-Trees, Smoker-Censers)
+    const majorCount = 2 + Math.floor(rng() * 3); // 2 to 4 major structures per 22x22m chunk
+    for (let i = 0; i < majorCount; i++) {
+      const px = x0 + 2.2 + rng() * (CHUNK_SIZE - 4.4);
+      const pz = z0 + 2.2 + rng() * (CHUNK_SIZE - 4.4);
+      if (px * px + pz * pz < 30) continue;
+      let tooClose = false;
+      for (let j = 0; j < props.length; j++) {
+        const dx = props[j].x - px;
+        const dz = props[j].z - pz;
+        if (dx * dx + dz * dz < 18) { tooClose = true; break; }
+      }
+      if (tooClose) continue;
+
+      const roll = rng();
+      let kind = 'tree';
+      let poolKey = 'tree0';
+      let s = 0.88 + rng() * 0.42;
+      let collider = 0.95;
+      if (roll < 0.36) {
+        kind = 'comb';
+        const v = Math.floor(rng() * 3);
+        poolKey = 'comb' + v;
+        s = 0.85 + rng() * 0.52;
+        collider = 1.55 * s;
+        plates.push({
+          honey: true,
+          cx: px,
+          cz: pz,
+          pts: makeHexVertices(px, pz, 3.0 + rng() * 1.4, rng() * Math.PI, rng)
+        });
+      } else if (roll < 0.78) {
+        kind = 'tree';
+        poolKey = rng() < 0.58 ? 'tree0' : 'tree1';
+        if (rng() < 0.45) {
+          plates.push({
+            honey: true,
+            cx: px,
+            cz: pz,
+            pts: makeHexVertices(px, pz, 2.5 + rng() * 0.8, rng() * Math.PI, rng)
+          });
+        }
+      } else {
+        kind = 'censer';
+        poolKey = 'censer';
+        s = 0.9 + rng() * 0.25;
+        collider = 0.55;
+      }
+
+      props.push({
+        id: kind + ':' + key + ':' + i,
+        kind,
+        poolKey,
+        x: px,
+        z: pz,
+        y: groundY(px, pz),
+        s,
+        flip: rng() > 0.5 ? 1 : -1,
+        phase: rng() * TAU,
+        collider,
+        nodeEntry: null
+      });
+    }
+
+    // 3. Patrolling Cathedral Sun-Bee (~54% of chunks)
+    if (rng() < 0.54) {
+      const bx = x0 + 4 + rng() * (CHUNK_SIZE - 8);
+      const bz = z0 + 4 + rng() * (CHUNK_SIZE - 8);
+      props.push({
+        id: 'bee:' + key,
+        kind: 'bee',
+        poolKey: 'bee',
+        homeX: bx,
+        homeZ: bz,
+        x: bx,
+        z: bz,
+        y: groundY(bx, bz) + 2.3 + rng() * 1.8,
+        orbitR: 2.0 + rng() * 2.8,
+        orbitSpd: (0.28 + rng() * 0.28) * (rng() > 0.5 ? 1 : -1),
+        s: 0.78 + rng() * 0.34,
+        flip: 1,
+        phase: rng() * TAU,
+        collider: 0,
+        nodeEntry: null
+      });
+    }
+
+    // 4. Frost-Heather & Wax-Bell Understory Tufts
+    const tuftCount = 3 + Math.floor(rng() * 4);
+    for (let t = 0; t < tuftCount; t++) {
+      const tx = x0 + 1 + rng() * (CHUNK_SIZE - 2);
+      const tz = z0 + 1 + rng() * (CHUNK_SIZE - 2);
+      if (tx * tx + tz * tz < 14) continue;
+      props.push({
+        id: 'tuft:' + key + ':' + t,
+        kind: 'tuft',
+        poolKey: 'tuft',
+        x: tx,
+        z: tz,
+        y: groundY(tx, tz),
+        s: 0.65 + rng() * 0.5,
+        flip: rng() > 0.5 ? 1 : -1,
+        phase: rng() * TAU,
+        collider: 0,
+        nodeEntry: null
+      });
+    }
+
+    // 5. Frost-Comb Meadow Ground Plates (give crisp 3D ground optical flow everywhere)
+    const frostPlates = 3 + Math.floor(rng() * 2);
+    for (let p = 0; p < frostPlates; p++) {
+      const fx = x0 + 2.2 + rng() * (CHUNK_SIZE - 4.4);
+      const fz = z0 + 2.2 + rng() * (CHUNK_SIZE - 4.4);
+      plates.push({
+        honey: false,
+        cx: fx,
+        cz: fz,
+        pts: makeHexVertices(fx, fz, 1.7 + rng() * 1.7, rng() * Math.PI, rng)
+      });
+    }
+
+    const chunkObj = { cx, cz, key, props, plates };
+    chunks.set(key, chunkObj);
+    return chunkObj;
+  }
+
+  function releaseChunk(chunk) {
+    for (let i = 0; i < chunk.props.length; i++) {
+      const p = chunk.props[i];
+      if (p.nodeEntry) {
+        releasePropNode(p.nodeEntry);
+        p.nodeEntry = null;
+      }
+    }
+  }
+
+  let lastChunkX = null;
+  let lastChunkZ = null;
+  function syncChunks(px, pz) {
+    const pcx = Math.floor(px / CHUNK_SIZE);
+    const pcz = Math.floor(pz / CHUNK_SIZE);
+    if (pcx === lastChunkX && pcz === lastChunkZ) return;
+    lastChunkX = pcx;
+    lastChunkZ = pcz;
+
+    // Evict distant chunks and recycle their SVG elements immediately
+    for (const [k, ch] of chunks.entries()) {
+      if (Math.abs(ch.cx - pcx) > CHUNK_RADIUS + 1 || Math.abs(ch.cz - pcz) > CHUNK_RADIUS + 1) {
+        releaseChunk(ch);
+        chunks.delete(k);
+      }
+    }
+
+    // Stream in nearby chunks
+    for (let dz = -CHUNK_RADIUS; dz <= CHUNK_RADIUS; dz++) {
+      for (let dx = -CHUNK_RADIUS; dx <= CHUNK_RADIUS; dx++) {
+        const cx = pcx + dx;
+        const cz = pcz + dz;
+        const k = cx + ',' + cz;
+        if (!chunks.has(k)) generateChunk(cx, cz);
+      }
+    }
+  }
+
+  /* =========================================================================
+     3D WORLD-SPACE POLLEN & FROST MOTES (42 Pooled Circles)
+     ========================================================================= */
+  const MOTE_BOX = 34; // Wraps seamlessly around player within ±17m
+  const motes = [];
+  (function initMotes() {
+    const rng = mulberry32(0xBEE52026);
+    for (let i = 0; i < 42; i++) {
+      const golden = rng() > 0.34;
+      const node = el('circle', {
+        cx: '0',
+        cy: '0',
+        r: '2',
+        fill: golden ? '#ffd875' : '#cddbf7',
+        display: 'none'
+      }, motesLayer);
+      motes.push({
+        ox: (rng() - 0.5) * MOTE_BOX,
+        oz: (rng() - 0.5) * MOTE_BOX,
+        baseY: 0.45 + rng() * 3.8,
+        size: golden ? 0.022 + rng() * 0.022 : 0.015 + rng() * 0.016,
+        phase: rng() * TAU,
+        spd: 0.4 + rng() * 0.7,
+        golden,
+        node
+      });
+    }
+  })();
+
+  /* =========================================================================
+     PLAYER STATE, CONTROLS, & MULTITOUCH VIRTUAL JOYSTICKS
+     ========================================================================= */
+  const EYE_HEIGHT = 1.7;
+  const MOVE_SPEED = 4.6;
+  const TURN_SPEED = 1.65;
+  const NEAR_CLIP = 0.55;
+  const FAR_CLIP = 88.0;
+
+  const player = {
+    x: 0,
+    z: 0,
+    y: groundY(0, 0) + EYE_HEIGHT,
+    yaw: 0.05,
+    pitch: 0.02,
+    velFwd: 0,
+    velTurn: 0,
+    walked: 0,
+    stridePhase: 0,
+    bobAmp: 0,
+    lastStepHalf: 0
+  };
+
+  const keys = Object.create(null);
+  const joyState = {
+    move: 0, // [-1, +1] from left joystick
+    turn: 0  // [-1, +1] from right joystick
+  };
+
+  let introOpen = !skipIntro;
+  if (skipIntro) loreModal.classList.add('is-hidden');
+
+  function dismissIntro() {
+    if (!introOpen) return;
+    introOpen = false;
+    loreModal.classList.add('is-hidden');
+  }
+
+  enterBtn.addEventListener('click', () => {
+    dismissIntro();
+    wakeLoop();
+  });
+
+  loreBtn.addEventListener('click', () => {
+    introOpen = !introOpen;
+    loreModal.classList.toggle('is-hidden', !introOpen);
+  });
+
+  // Keyboard: WASD + Arrow keys
+  window.addEventListener('keydown', (e) => {
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    if (e.key === 'Escape' && introOpen) {
+      dismissIntro();
+      return;
+    }
+    const code = e.code;
+    if (
+      code === 'KeyW' || code === 'KeyS' || code === 'KeyA' || code === 'KeyD' ||
+      code === 'ArrowUp' || code === 'ArrowDown' || code === 'ArrowLeft' || code === 'ArrowRight' ||
+      code === 'ShiftLeft' || code === 'ShiftRight'
+    ) {
+      e.preventDefault();
+      keys[code] = true;
+      if (introOpen) dismissIntro();
+      desktopHint.style.opacity = '0.35';
+      wakeLoop();
+    }
+  });
+
+  window.addEventListener('keyup', (e) => {
+    keys[e.code] = false;
+  });
+
+  function clearAllInputs() {
+    for (const k in keys) keys[k] = false;
+    joyState.move = 0;
+    joyState.turn = 0;
+    resetJoyUI(leftStick);
+    resetJoyUI(rightStick);
+    dragLook = null;
+    stage.classList.remove('is-dragging');
+  }
+
+  // Desktop Mouse Click-and-Drag to Look Around
+  let dragLook = null;
+  stage.addEventListener('pointerdown', (e) => {
+    if (e.pointerType === 'touch') return; // Touch handled via multitouch system
+    if (e.button !== 0) return;
+    if (introOpen) dismissIntro();
+    dragLook = { id: e.pointerId, x: e.clientX, y: e.clientY };
+    if (stage.setPointerCapture) {
+      try { stage.setPointerCapture(e.pointerId); } catch (_) {}
+    }
+    stage.classList.add('is-dragging');
+    wakeLoop();
+  });
+
+  stage.addEventListener('pointermove', (e) => {
+    if (!dragLook || e.pointerId !== dragLook.id) return;
+    const dx = e.clientX - dragLook.x;
+    const dy = e.clientY - dragLook.y;
+    dragLook.x = e.clientX;
+    dragLook.y = e.clientY;
+    player.yaw = wrapAngle(player.yaw + dx * 0.0036);
+    player.pitch = clamp(player.pitch - dy * 0.0028, -0.30, 0.36);
+    wakeLoop();
+  });
+
+  function endMouseDrag(e) {
+    if (dragLook && e.pointerId === dragLook.id) {
+      dragLook = null;
+      stage.classList.remove('is-dragging');
+    }
+  }
+  stage.addEventListener('pointerup', endMouseDrag);
+  stage.addEventListener('pointercancel', endMouseDrag);
+  stage.addEventListener('lostpointercapture', endMouseDrag);
+
+  // Dual Multitouch Virtual Joysticks + Open-Stage Touch Look
+  const joyLeftEl = document.getElementById('joyLeft');
+  const joyRightEl = document.getElementById('joyRight');
+  const knobLeftEl = document.getElementById('knobLeft');
+  const knobRightEl = document.getElementById('knobRight');
+
+  const leftStick = { el: joyLeftEl, knob: knobLeftEl, touchId: null, cx: 0, cy: 0, maxR: 42 };
+  const rightStick = { el: joyRightEl, knob: knobRightEl, touchId: null, cx: 0, cy: 0, maxR: 42 };
+  let lookTouch = null;
+
+  function resetJoyUI(stick) {
+    stick.touchId = null;
+    stick.el.classList.remove('is-active');
+    stick.knob.style.transform = 'translate3d(0px, 0px, 0)';
+  }
+
+  function applyDeadzone(v) {
+    const dz = 0.08;
+    const av = Math.abs(v);
+    if (av <= dz) return 0;
+    return Math.sign(v) * Math.min(1, (av - dz) / (1 - dz));
+  }
+
+  function updateStickFromPoint(stick, clientX, clientY, isLeft) {
+    let dx = clientX - stick.cx;
+    let dy = clientY - stick.cy;
+    const dist = Math.hypot(dx, dy);
+    if (dist > stick.maxR) {
+      const k = stick.maxR / dist;
+      dx *= k;
+      dy *= k;
+    }
+    const visX = isLeft ? dx * 0.28 : dx;
+    const visY = isLeft ? dy : dy * 0.28;
+    stick.knob.style.transform = 'translate3d(' + visX.toFixed(1) + 'px,' + visY.toFixed(1) + 'px,0)';
+    if (isLeft) {
+      joyState.move = applyDeadzone(-dy / stick.maxR);
+    } else {
+      joyState.turn = applyDeadzone(dx / stick.maxR);
+    }
+  }
+
+  function beginStickTouch(stick, touch, isLeft) {
+    const rect = stick.el.getBoundingClientRect();
+    stick.touchId = touch.identifier;
+    stick.cx = rect.left + rect.width * 0.5;
+    stick.cy = rect.top + rect.height * 0.5;
+    stick.maxR = Math.max(32, rect.width * 0.34);
+    stick.el.classList.add('is-active');
+    updateStickFromPoint(stick, touch.clientX, touch.clientY, isLeft);
+    if (introOpen) dismissIntro();
+    wakeLoop();
+  }
+
+  // True Multitouch Handlers (tracks independent touch.identifier per corner stick + optional sky look!)
+  joyLeftEl.addEventListener('touchstart', (e) => {
+    document.body.classList.add('touch-enabled');
+    e.preventDefault();
+    e.stopPropagation();
+    for (let i = 0; i < e.changedTouches.length; i++) {
+      if (leftStick.touchId === null) {
+        beginStickTouch(leftStick, e.changedTouches[i], true);
+        break;
+      }
+    }
+  }, { passive: false });
+
+  joyRightEl.addEventListener('touchstart', (e) => {
+    document.body.classList.add('touch-enabled');
+    e.preventDefault();
+    e.stopPropagation();
+    for (let i = 0; i < e.changedTouches.length; i++) {
+      if (rightStick.touchId === null) {
+        beginStickTouch(rightStick, e.changedTouches[i], false);
+        break;
+      }
+    }
+  }, { passive: false });
+
+  window.addEventListener('touchstart', (e) => {
+    document.body.classList.add('touch-enabled');
+    if (e.target.closest('button, a, #loreModal')) return;
+    if (e.touches.length > 1) e.preventDefault();
+    for (let i = 0; i < e.changedTouches.length; i++) {
+      const t = e.changedTouches[i];
+      if (t.identifier !== leftStick.touchId && t.identifier !== rightStick.touchId && !lookTouch) {
+        if (introOpen) dismissIntro();
+        lookTouch = { id: t.identifier, x: t.clientX, y: t.clientY };
+        wakeLoop();
+        break;
+      }
+    }
+  }, { passive: false });
+
+  window.addEventListener('touchmove', (e) => {
+    if (!e.target.closest('#loreModal')) {
+      e.preventDefault(); // Prevent pull-to-refresh, rubber-band scroll, & swipe navigation
+    }
+    for (let i = 0; i < e.changedTouches.length; i++) {
+      const t = e.changedTouches[i];
+      if (t.identifier === leftStick.touchId) {
+        updateStickFromPoint(leftStick, t.clientX, t.clientY, true);
+      } else if (t.identifier === rightStick.touchId) {
+        updateStickFromPoint(rightStick, t.clientX, t.clientY, false);
+      } else if (lookTouch && t.identifier === lookTouch.id) {
+        const dx = t.clientX - lookTouch.x;
+        const dy = t.clientY - lookTouch.y;
+        lookTouch.x = t.clientX;
+        lookTouch.y = t.clientY;
+        player.yaw = wrapAngle(player.yaw + dx * 0.0042);
+        player.pitch = clamp(player.pitch - dy * 0.003, -0.30, 0.36);
+      }
+    }
+  }, { passive: false });
+
+  function handleTouchEnd(e) {
+    for (let i = 0; i < e.changedTouches.length; i++) {
+      const t = e.changedTouches[i];
+      if (t.identifier === leftStick.touchId) {
+        joyState.move = 0;
+        resetJoyUI(leftStick);
+      } else if (t.identifier === rightStick.touchId) {
+        joyState.turn = 0;
+        resetJoyUI(rightStick);
+      } else if (lookTouch && t.identifier === lookTouch.id) {
+        lookTouch = null;
+      }
+    }
+  }
+  window.addEventListener('touchend', handleTouchEnd, { passive: false });
+  window.addEventListener('touchcancel', handleTouchEnd, { passive: false });
+
+  // Prevent iOS Safari gesture pinch-zoom
+  ['gesturestart', 'gesturechange', 'gestureend'].forEach((evt) => {
+    window.addEventListener(evt, (e) => e.preventDefault(), { passive: false });
+  });
+
+  // Also allow mouse drag directly on virtual joysticks for hybrid/desktop inspection
+  let mouseStick = null;
+  [leftStick, rightStick].forEach((stick, idx) => {
+    const isLeft = idx === 0;
+    stick.el.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const rect = stick.el.getBoundingClientRect();
+      stick.cx = rect.left + rect.width * 0.5;
+      stick.cy = rect.top + rect.height * 0.5;
+      stick.maxR = Math.max(32, rect.width * 0.34);
+      stick.el.classList.add('is-active');
+      mouseStick = { stick, isLeft };
+      updateStickFromPoint(stick, e.clientX, e.clientY, isLeft);
+      if (introOpen) dismissIntro();
+      wakeLoop();
+    });
+  });
+  window.addEventListener('mousemove', (e) => {
+    if (!mouseStick) return;
+    updateStickFromPoint(mouseStick.stick, e.clientX, e.clientY, mouseStick.isLeft);
+  });
+  window.addEventListener('mouseup', () => {
+    if (!mouseStick) return;
+    if (mouseStick.isLeft) joyState.move = 0;
+    else joyState.turn = 0;
+    resetJoyUI(mouseStick.stick);
+    mouseStick = null;
+  });
+
+  /* =========================================================================
+     VERSE BANNER ("Telling the Bees" Trigger)
+     ========================================================================= */
+  let verseHideAt = 0;
+  function showVerse(skepNumber) {
+    const line = VERSES[(skepNumber - 1) % VERSES.length];
+    verseKicker.textContent = 'Skep Told \u00B7 ' + skepNumber;
+    verseText.textContent = line;
+    verseBanner.classList.add('is-visible');
+    verseHideAt = performance.now() + 6800;
+  }
+
+  /* =========================================================================
+     SIMULATION UPDATE
+     ========================================================================= */
+  let simTime = 12.0;
+
+  function updateSimulation(dt) {
+    if (dt <= 0) {
+      syncChunks(player.x, player.z);
+      return;
+    }
+
+    simTime += dt;
+
+    // Combine keyboard + multitouch virtual joysticks cleanly
+    const keyFwd = (keys.KeyW || keys.ArrowUp ? 1 : 0) - (keys.KeyS || keys.ArrowDown ? 1 : 0);
+    const keyTurn = (keys.KeyD || keys.ArrowRight ? 1 : 0) - (keys.KeyA || keys.ArrowLeft ? 1 : 0);
+    const sprint = keys.ShiftLeft || keys.ShiftRight ? 1.35 : 1.0;
+
+    const rawFwd = clamp(keyFwd + joyState.move, -1, 1);
+    const rawTurn = clamp(keyTurn + joyState.turn, -1, 1);
+
+    const smooth = 1 - Math.exp(-dt * 9.5);
+    player.velFwd += (rawFwd * MOVE_SPEED * sprint - player.velFwd) * smooth;
+    player.velTurn += (rawTurn * TURN_SPEED - player.velTurn) * smooth;
+
+    if (Math.abs(player.velTurn) > 1e-4) {
+      player.yaw = wrapAngle(player.yaw + player.velTurn * dt);
+    }
+
+    let nextX = player.x + Math.sin(player.yaw) * player.velFwd * dt;
+    let nextZ = player.z + Math.cos(player.yaw) * player.velFwd * dt;
+
+    syncChunks(nextX, nextZ);
+
+    // Gentle cylindrical slide collision against solid monoliths, tree trunks, & skep stands
+    const pcx = Math.floor(nextX / CHUNK_SIZE);
+    const pcz = Math.floor(nextZ / CHUNK_SIZE);
+    for (let dz = -1; dz <= 1; dz++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        const ch = chunks.get((pcx + dx) + ',' + (pcz + dz));
+        if (!ch) continue;
+        for (let i = 0; i < ch.props.length; i++) {
+          const p = ch.props[i];
+          if (p.collider > 0) {
+            const ox = nextX - p.x;
+            const oz = nextZ - p.z;
+            const minD = p.collider + 0.45;
+            const d2 = ox * ox + oz * oz;
+            if (d2 < minD * minD && d2 > 1e-6) {
+              const d = Math.sqrt(d2);
+              const push = (minD - d) / d;
+              nextX += ox * push;
+              nextZ += oz * push;
+            }
+          }
+
+          // Check "Telling the Bees" proximity on dormant Shrine Skeps (6.8 m)
+          if (p.kind === 'skep' && !toldSkeps.has(p.id)) {
+            const sx = nextX - p.x;
+            const sz = nextZ - p.z;
+            if (sx * sx + sz * sz < 46.24) {
+              toldSkeps.add(p.id);
+              const count = toldSkeps.size;
+              hudSkeps.textContent = String(count);
+              showVerse(count);
+              sound.playSkepChime(count);
+            }
+          }
+        }
+      }
+    }
+
+    const moved = Math.hypot(nextX - player.x, nextZ - player.z);
+    player.x = nextX;
+    player.z = nextZ;
+    player.walked += moved;
+
+    // First-person head-bob & gentle lateral stride sway
+    const groundSpeed = moved / Math.max(dt, 1e-4);
+    const targetBob = reducedMotion ? 0 : clamp(groundSpeed / MOVE_SPEED, 0, 1.25);
+    player.bobAmp += (targetBob - player.bobAmp) * (1 - Math.exp(-dt * 7.0));
+    player.stridePhase += moved * 2.15;
+
+    const halfSteps = Math.floor(player.stridePhase / Math.PI);
+    if (halfSteps !== player.lastStepHalf) {
+      player.lastStepHalf = halfSteps;
+      if (player.bobAmp > 0.25) sound.playStep();
+    }
+
+    const baseGround = groundY(player.x, player.z);
+    const bobOffsetY = Math.sin(player.stridePhase * 2) * 0.068 * player.bobAmp;
+    player.y = baseGround + EYE_HEIGHT + bobOffsetY;
+
+    // Animate world-space patrolling Cathedral Sun-Bees in active chunks
+    for (const ch of chunks.values()) {
+      for (let i = 0; i < ch.props.length; i++) {
+        const p = ch.props[i];
+        if (p.kind === 'bee') {
+          const ang = simTime * p.orbitSpd + p.phase;
+          const prevX = p.x;
+          p.x = p.homeX + Math.cos(ang) * p.orbitR;
+          p.z = p.homeZ + Math.sin(ang * 2) * (p.orbitR * 0.55);
+          p.y = groundY(p.x, p.z) + 2.35 + 0.38 * Math.sin(simTime * 1.5 + p.phase);
+          p.flip = p.x >= prevX ? 1 : -1;
+        }
+      }
+    }
+
+    if (verseHideAt > 0 && performance.now() > verseHideAt) {
+      verseHideAt = 0;
+      verseBanner.classList.remove('is-visible');
+    }
+  }
+
+  /* =========================================================================
+     PURE-SVG 3D PROJECTION & SCENE RENDERER
+     ========================================================================= */
+  // Near-plane polygon clip (Sutherland-Hodgman against rz >= ZN) for ground hex-plates
+  function clipAndProjectGroundPoly(pts3, eyeX, eyeY, eyeZ, cosY, sinY, halfW, horizonY) {
+    const ZN = 0.45;
+    const camPts = [];
+    let anyCloseEnough = false;
+    for (let i = 0; i < pts3.length; i++) {
+      const dx = pts3[i][0] - eyeX;
+      const dy = pts3[i][1] - eyeY;
+      const dz = pts3[i][2] - eyeZ;
+      const rx = dx * cosY - dz * sinY;
+      const rz = dx * sinY + dz * cosY;
+      if (rz < 66 && rz > 0) anyCloseEnough = true;
+      camPts.push([rx, dy, rz]);
+    }
+    if (!anyCloseEnough) return null;
+
+    const clipped = [];
+    const n = camPts.length;
+    for (let i = 0; i < n; i++) {
+      const a = camPts[i];
+      const b = camPts[(i + 1) % n];
+      const aIn = a[2] >= ZN;
+      const bIn = b[2] >= ZN;
+      if (aIn) clipped.push(a);
+      if (aIn !== bIn) {
+        const t = (ZN - a[2]) / (b[2] - a[2]);
+        clipped.push([
+          a[0] + (b[0] - a[0]) * t,
+          a[1] + (b[1] - a[1]) * t,
+          ZN
+        ]);
+      }
+    }
+    if (clipped.length < 3) return null;
+
+    let ptsStr = '';
+    let minX = 1e9, maxX = -1e9, minY = 1e9, maxY = -1e9, sumZ = 0;
+    for (let i = 0; i < clipped.length; i++) {
+      const p = clipped[i];
+      const s = focal / p[2];
+      const sx = halfW + p[0] * s;
+      const sy = horizonY - p[1] * s;
+      if (sx < minX) minX = sx;
+      if (sx > maxX) maxX = sx;
+      if (sy < minY) minY = sy;
+      if (sy > maxY) maxY = sy;
+      sumZ += p[2];
+      ptsStr += (i ? ' ' : '') + sx.toFixed(1) + ',' + sy.toFixed(1);
+    }
+    if (maxX < -80 || minX > vw + 80 || maxY < horizonY - 40 || minY > vh + 80) return null;
+    const avgZ = sumZ / clipped.length;
+    if (avgZ > 64) return null;
+    return { ptsStr, avgZ };
+  }
+
+  // Base RGB palettes for prop elements (fog-mixed cleanly per frame)
+  const C_COMB_L = [122, 66, 36];
+  const C_COMB_M = [74, 36, 44];
+  const C_COMB_R = [38, 19, 32];
+  const C_COMB_CAP = [242, 218, 168];
+  const C_COMB_SUN = [255, 174, 42];
+  const C_COMB_CORE = [255, 242, 184];
+
+  const C_TREE_TRUNK = [34, 19, 36];
+  const C_TREE_RIM = [110, 58, 42];
+  const C_TREE_BACK = [48, 24, 44];
+  const C_TREE_FRONT = [78, 36, 48];
+  const C_LANTERN = [255, 182, 54];
+
+  const C_SKEP_STAND = [44, 26, 28];
+  const C_SKEP_DOME = [184, 132, 68];
+  const C_SKEP_COIL = [118, 76, 38];
+  const C_SKEP_CLOTH = [24, 15, 32];
+  const C_SKEP_DIM = [148, 78, 28];
+  const C_SKEP_LIT = [255, 214, 102];
+
+  const C_CENSER_IRON = [42, 32, 44];
+  const C_CENSER_BRASS = [166, 114, 52];
+  const C_CENSER_EMBER = [255, 118, 46];
+  const C_SMOKE_A = [148, 168, 206];
+  const C_SMOKE_B = [196, 212, 238];
+
+  const C_BEE_WING = [238, 232, 218];
+  const C_BEE_VEIN = [186, 148, 92];
+  const C_BEE_ABD = [255, 184, 48];
+  const C_BEE_BODY = [32, 20, 28];
+
+  const C_TUFT_STEM = [88, 76, 108];
+  const C_TUFT_BELL = [242, 182, 78];
+
+  function styleAndAnimateProp(p, fogAmt) {
+    const r = p.nodeEntry.refs;
+    const glowFog = fogAmt * fogAmt; // Luminous honey stays visible deeper into twilight mist
+    const kind = p.kind;
+
+    if (kind === 'comb') {
+      r.colL.setAttribute('fill', mixFog(C_COMB_L, fogAmt));
+      r.colM.setAttribute('fill', mixFog(C_COMB_M, fogAmt));
+      r.colR.setAttribute('fill', mixFog(C_COMB_R, fogAmt));
+      r.sideA.setAttribute('fill', mixFog(C_COMB_M, fogAmt));
+      r.sideB.setAttribute('fill', mixFog(C_COMB_R, fogAmt));
+      r.capped.setAttribute('fill', mixFog(C_COMB_CAP, fogAmt));
+      r.uncapped.setAttribute('fill', mixFog(C_COMB_SUN, glowFog));
+      r.core.setAttribute('fill', mixFog(C_COMB_CORE, glowFog));
+      r.drip.setAttribute('fill', mixFog(C_COMB_SUN, glowFog));
+      // Viscous golden honey droplet slowly swells & elongates
+      const swell = 4 * Math.sin(simTime * 1.6 + p.phase);
+      r.drip.setAttribute(
+        'd',
+        'M -4 -340 C -11 ' + (-320 - swell).toFixed(1) + ', -10 ' + (-307 - swell).toFixed(1) +
+        ', 0 ' + (-305 - swell).toFixed(1) + ' C 10 ' + (-307 - swell).toFixed(1) +
+        ', 11 ' + (-320 - swell).toFixed(1) + ', 4 -340 Z'
+      );
+      r.halo.setAttribute('display', fogAmt > 0.82 ? 'none' : 'inline');
+    } else if (kind === 'tree') {
+      r.canopyBack.setAttribute('fill', mixFog(C_TREE_BACK, fogAmt));
+      r.trunk.setAttribute('fill', mixFog(C_TREE_TRUNK, fogAmt));
+      r.barkRim.setAttribute('stroke', mixFog(C_TREE_RIM, fogAmt));
+      r.canopyFront.setAttribute('fill', mixFog(C_TREE_FRONT, fogAmt));
+      r.frostRim.setAttribute('stroke', mixFog([198, 184, 214], Math.min(1, fogAmt + 0.18)));
+
+      // Gentle breeze sway on the 3 hanging hexagonal brood-lanterns, anchored directly onto boughs
+      const sway1 = Math.sin(simTime * 1.35 + p.phase) * 9;
+      const sway2 = Math.sin(simTime * 1.55 + p.phase + 2.1) * 8;
+      const ax1 = r.wide ? -152 : -116;
+      const ay1 = r.wide ? -352 : -388;
+      const ax2 = r.wide ? 146 : 112;
+      const ay2 = r.wide ? -346 : -382;
+      const ax3 = r.wide ? -48 : -36;
+      const ay3 = r.wide ? -298 : -336;
+      const x1 = ax1 + sway1, y1 = ay1 + 68;
+      const x2 = ax2 + sway2, y2 = ay2 + 68;
+      const x3 = ax3 + sway1 * 0.6, y3 = ay3 + 58;
+      r.cords.setAttribute(
+        'd',
+        'M ' + ax1 + ' ' + ay1 + ' L ' + x1.toFixed(1) + ' ' + y1 +
+        ' M ' + ax2 + ' ' + ay2 + ' L ' + x2.toFixed(1) + ' ' + y2 +
+        ' M ' + ax3 + ' ' + ay3 + ' L ' + x3.toFixed(1) + ' ' + y3
+      );
+      r.cords.setAttribute('stroke', mixFog(C_TREE_RIM, fogAmt));
+      r.lanterns.setAttribute(
+        'd',
+        hexLanternPath(x1, y1, 18, 26) + ' ' +
+        hexLanternPath(x2, y2, 17, 25) + ' ' +
+        hexLanternPath(x3, y3, 14, 21)
+      );
+      r.lanterns.setAttribute('fill', mixFog(C_LANTERN, glowFog));
+      r.lanternCores.setAttribute(
+        'd',
+        hexLanternPath(x1, y1 + 4, 9, 14) + ' ' +
+        hexLanternPath(x2, y2 + 4, 9, 13) + ' ' +
+        hexLanternPath(x3, y3 + 3, 7, 11)
+      );
+      r.lanternCores.setAttribute('fill', mixFog(C_COMB_CORE, glowFog));
+      r.halo.setAttribute('display', fogAmt > 0.82 ? 'none' : 'inline');
+    } else if (kind === 'skep') {
+      const told = toldSkeps.has(p.id);
+      r.stand.setAttribute('fill', mixFog(C_SKEP_STAND, fogAmt));
+      r.dome.setAttribute('fill', mixFog(told ? [216, 158, 78] : C_SKEP_DOME, fogAmt));
+      r.hackle.setAttribute('fill', mixFog(told ? [232, 176, 92] : [164, 114, 56], fogAmt));
+      r.coils.setAttribute('stroke', mixFog(C_SKEP_COIL, fogAmt));
+      r.cloth.setAttribute('fill', mixFog(C_SKEP_CLOTH, fogAmt));
+      r.arch.setAttribute('fill', mixFog(told ? C_SKEP_LIT : C_SKEP_DIM, told ? glowFog * 0.7 : fogAmt));
+      r.crownRing.setAttribute('stroke', mixFog(told ? C_COMB_CORE : C_LANTERN, glowFog));
+      const bobR = Math.sin(simTime * 2.1 + p.phase) * 5;
+      const hw = told ? 18 : 13;
+      const cy = -322 + bobR;
+      r.crownRing.setAttribute(
+        'points',
+        '0,' + (cy - hw).toFixed(1) + ' ' +
+        (hw * 0.866).toFixed(1) + ',' + (cy - hw * 0.5).toFixed(1) + ' ' +
+        (hw * 0.866).toFixed(1) + ',' + (cy + hw * 0.5).toFixed(1) + ' ' +
+        '0,' + (cy + hw).toFixed(1) + ' ' +
+        (-hw * 0.866).toFixed(1) + ',' + (cy + hw * 0.5).toFixed(1) + ' ' +
+        (-hw * 0.866).toFixed(1) + ',' + (cy - hw * 0.5).toFixed(1)
+      );
+      r.halo.setAttribute('r', told ? '240' : '150');
+      r.halo.setAttribute('display', fogAmt > 0.85 ? 'none' : 'inline');
+
+      if (told && fogAmt < 0.78) {
+        // Three golden scout-bees orbiting the awakened skep crown
+        let sd = '';
+        for (let b = 0; b < 3; b++) {
+          const a = simTime * 2.4 + b * (TAU / 3) + p.phase;
+          const bx = Math.cos(a) * 68;
+          const by = -232 + Math.sin(a * 2) * 18;
+          sd += 'M ' + (bx - 5).toFixed(1) + ' ' + by.toFixed(1) + ' a 5 5 0 1 0 10 0 a 5 5 0 1 0 -10 0 ';
+        }
+        r.scouts.setAttribute('d', sd);
+        r.scouts.setAttribute('fill', mixFog(C_COMB_CORE, glowFog));
+      } else {
+        r.scouts.setAttribute('d', '');
+      }
+    } else if (kind === 'censer') {
+      r.tripod.setAttribute('fill', mixFog(C_CENSER_IRON, fogAmt));
+      r.body.setAttribute('fill', mixFog(C_CENSER_BRASS, fogAmt));
+      r.embers.setAttribute('fill', mixFog(C_CENSER_EMBER, glowFog));
+      r.halo.setAttribute('display', fogAmt > 0.8 ? 'none' : 'inline');
+
+      // Sinuous curling keeper's lavender smoke ribbons (pure JS Bezier animation)
+      const w1 = Math.sin(simTime * 1.4 + p.phase) * 24;
+      const w2 = Math.cos(simTime * 1.1 + p.phase) * 34;
+      r.smokeA.setAttribute(
+        'd',
+        'M 28 -234 C ' + (46 + w1 * 0.5).toFixed(1) + ' -285, ' +
+        (10 - w1).toFixed(1) + ' -345, ' +
+        (24 + w2).toFixed(1) + ' -425'
+      );
+      r.smokeB.setAttribute(
+        'd',
+        'M 24 -236 C ' + (34 - w2 * 0.4).toFixed(1) + ' -298, ' +
+        (42 + w1 * 0.8).toFixed(1) + ' -365, ' +
+        (8 - w1 * 0.9).toFixed(1) + ' -455'
+      );
+      r.smokeA.setAttribute('stroke', mixFog(C_SMOKE_A, Math.min(1, fogAmt + 0.25)));
+      r.smokeB.setAttribute('stroke', mixFog(C_SMOKE_B, Math.min(1, fogAmt + 0.35)));
+    } else if (kind === 'bee') {
+      const flap = Math.sin(simTime * 9.5 + p.phase);
+      const liftF = -26 - flap * 26;
+      const liftB = -6 - flap * 18;
+      const span = 76 - Math.abs(flap) * 14;
+      r.wingsBack.setAttribute(
+        'd',
+        'M -10 -8 C -42 ' + (liftB - 18).toFixed(1) + ', -' + (span * 0.82).toFixed(1) + ' ' + liftB.toFixed(1) + ', -32 10 Z ' +
+        'M 10 -8 C 42 ' + (liftB - 18).toFixed(1) + ', ' + (span * 0.82).toFixed(1) + ' ' + liftB.toFixed(1) + ', 32 10 Z'
+      );
+      r.wingsFront.setAttribute(
+        'd',
+        'M -12 -14 C -48 ' + (liftF - 24).toFixed(1) + ', -' + span.toFixed(1) + ' ' + liftF.toFixed(1) + ', -44 -2 Z ' +
+        'M 12 -14 C 48 ' + (liftF - 24).toFixed(1) + ', ' + span.toFixed(1) + ' ' + liftF.toFixed(1) + ', 44 -2 Z'
+      );
+      r.wingsBack.setAttribute('fill', mixFog(C_BEE_WING, Math.min(1, fogAmt + 0.25)));
+      r.wingsBack.setAttribute('stroke', mixFog(C_BEE_VEIN, fogAmt));
+      r.wingsFront.setAttribute('fill', mixFog(C_BEE_WING, Math.min(1, fogAmt + 0.12)));
+      r.wingsFront.setAttribute('stroke', mixFog(C_BEE_VEIN, fogAmt));
+      r.abdomen.setAttribute('fill', mixFog(C_BEE_ABD, glowFog));
+      r.abdomenCore.setAttribute('fill', mixFog(C_COMB_CORE, glowFog));
+      r.thorax.setAttribute('fill', mixFog(C_BEE_BODY, fogAmt));
+      r.thorax.setAttribute('stroke', mixFog(C_BEE_BODY, fogAmt));
+      r.halo.setAttribute('display', fogAmt > 0.8 ? 'none' : 'inline');
+    } else {
+      r.stems.setAttribute('stroke', mixFog(C_TUFT_STEM, fogAmt));
+      r.bells.setAttribute('fill', mixFog(C_TUFT_BELL, glowFog));
+    }
+  }
+
+  function hexLanternPath(cx, topY, hw, hh) {
+    const midY = topY + hh;
+    const botY = topY + hh * 2;
+    return (
+      'M ' + cx.toFixed(1) + ' ' + topY.toFixed(1) +
+      ' L ' + (cx + hw).toFixed(1) + ' ' + (topY + hh * 0.45).toFixed(1) +
+      ' L ' + (cx + hw * 0.82).toFixed(1) + ' ' + (midY + hh * 0.45).toFixed(1) +
+      ' L ' + cx.toFixed(1) + ' ' + botY.toFixed(1) +
+      ' L ' + (cx - hw * 0.82).toFixed(1) + ' ' + (midY + hh * 0.45).toFixed(1) +
+      ' L ' + (cx - hw).toFixed(1) + ' ' + (topY + hh * 0.45).toFixed(1) + ' Z'
+    );
+  }
+
+  const visibleList = [];
+  const visiblePlates = [];
+  let hudTick = 0;
+
+  function renderScene() {
+    const halfW = vw * 0.5;
+    const horizonY = clamp(vh * 0.46 + Math.tan(player.pitch) * focal, vh * 0.14, vh * 0.84);
+
+    // Camera eye with subtle lateral head-bob sway
+    const cosY = Math.cos(player.yaw);
+    const sinY = Math.sin(player.yaw);
+    const sway = Math.cos(player.stridePhase) * 0.042 * player.bobAmp;
+    const eyeX = player.x + cosY * sway;
+    const eyeY = player.y;
+    const eyeZ = player.z - sinY * sway;
+
+    // 1. Sky & Ground Horizon Positioning
+    skyRect.setAttribute('height', (horizonY + 2).toFixed(1));
+    groundRect.setAttribute('y', horizonY.toFixed(1));
+    groundRect.setAttribute('height', Math.max(10, vh - horizonY + 4).toFixed(1));
+    horizonMist.setAttribute('y', (horizonY - 68).toFixed(1));
+
+    // 2. Pollen-Aurora Ribbons
+    const aShift = wrapAngle(0.25 - player.yaw) * focal * 0.45;
+    const ay1 = horizonY - 295 + Math.sin(simTime * 0.35) * 12;
+    const ay2 = horizonY - 235 + Math.cos(simTime * 0.28) * 10;
+    auroraA.setAttribute(
+      'd',
+      'M ' + (-200 + aShift * 0.2).toFixed(1) + ' ' + (ay1 + 26).toFixed(1) +
+      ' Q ' + (vw * 0.35 + aShift * 0.3).toFixed(1) + ' ' + (ay1 - 44).toFixed(1) + ' ' +
+      (vw + 200).toFixed(1) + ' ' + (ay1 + 18).toFixed(1) +
+      ' L ' + (vw + 200).toFixed(1) + ' ' + (ay1 + 66).toFixed(1) +
+      ' Q ' + (vw * 0.35 + aShift * 0.3).toFixed(1) + ' ' + (ay1 + 4).toFixed(1) + ' ' +
+      (-200 + aShift * 0.2).toFixed(1) + ' ' + (ay1 + 68).toFixed(1) + ' Z'
+    );
+    auroraB.setAttribute(
+      'd',
+      'M -200 ' + (ay2 + 12).toFixed(1) +
+      ' Q ' + (vw * 0.65 - aShift * 0.25).toFixed(1) + ' ' + (ay2 - 36).toFixed(1) + ' ' +
+      (vw + 200).toFixed(1) + ' ' + (ay2 + 24).toFixed(1) +
+      ' L ' + (vw + 200).toFixed(1) + ' ' + (ay2 + 54).toFixed(1) +
+      ' Q ' + (vw * 0.65 - aShift * 0.25).toFixed(1) + ' ' + (ay2 - 2).toFixed(1) + ' ' +
+      '-200 ' + (ay2 + 42).toFixed(1) + ' Z'
+    );
+
+    // 3. Stars
+    for (let i = 0; i < stars.length; i++) {
+      const st = stars[i];
+      const dAz = wrapAngle(st.az - player.yaw);
+      const sx = halfW + dAz * focal;
+      const sy = horizonY - st.elev * focal;
+      if (sx < -8 || sx > vw + 8 || sy < -8 || sy > horizonY - 6) {
+        st.node.setAttribute('display', 'none');
+      } else {
+        st.node.setAttribute('display', 'inline');
+        st.node.setAttribute('cx', sx.toFixed(1));
+        st.node.setAttribute('cy', sy.toFixed(1));
+        const tw = st.baseR * (0.76 + 0.24 * Math.sin(simTime * st.speed + st.phase));
+        st.node.setAttribute('r', tw.toFixed(2));
+      }
+    }
+
+    // 4. The Hollow Corona (Azimuth +0.16 rad, Elevation 0.27 rad)
+    const cAz = wrapAngle(0.16 - player.yaw);
+    const cSx = halfW + cAz * focal;
+    const cSy = horizonY - 0.27 * focal;
+    if (cSx > -450 && cSx < vw + 450 && cSy > -220 && cSy < horizonY + 110) {
+      coronaGroup.setAttribute('display', 'inline');
+      const cScale = clamp(focal / 960, 0.55, 1.35);
+      coronaGroup.setAttribute('transform', 'translate(' + cSx.toFixed(1) + ',' + cSy.toFixed(1) + ') scale(' + cScale.toFixed(3) + ')');
+      coronaDrop.setAttribute('r', (4.2 + 0.9 * Math.sin(simTime * 1.8)).toFixed(2));
+    } else {
+      coronaGroup.setAttribute('display', 'none');
+    }
+
+    // 5. 360° Horizon Ridges
+    farRidge.setAttribute('d', buildRidgePath(farRidgeProfile, horizonY, player.yaw));
+    nearRidge.setAttribute('d', buildRidgePath(nearRidgeProfile, horizonY, player.yaw));
+
+    // 6. Projected Ground Hex-Plates & Spilled-Honey Pools (Near-Clipped & Back-to-Front Sorted)
+    visiblePlates.length = 0;
+    for (const ch of chunks.values()) {
+      const cdx = ch.cx * CHUNK_SIZE + CHUNK_SIZE * 0.5 - eyeX;
+      const cdz = ch.cz * CHUNK_SIZE + CHUNK_SIZE * 0.5 - eyeZ;
+      if (cdx * cdx + cdz * cdz > 6200) continue;
+      for (let i = 0; i < ch.plates.length; i++) {
+        const pl = ch.plates[i];
+        const proj = clipAndProjectGroundPoly(pl.pts, eyeX, eyeY, eyeZ, cosY, sinY, halfW, horizonY);
+        if (proj) {
+          visiblePlates.push({ honey: pl.honey, ptsStr: proj.ptsStr, avgZ: proj.avgZ });
+        }
+      }
+    }
+    visiblePlates.sort((a, b) => b.avgZ - a.avgZ);
+    for (let i = 0; i < visiblePlates.length; i++) {
+      const vp = visiblePlates[i];
+      const poly = ensureGroundPoly(i);
+      const t = clamp((vp.avgZ - 6) / 56, 0, 1);
+      poly.setAttribute('points', vp.ptsStr);
+      if (vp.honey) {
+        poly.setAttribute('fill', mixFog([128, 66, 24], t * 0.85));
+        poly.setAttribute('stroke', mixFog([232, 152, 48], t * 0.8));
+      } else {
+        poly.setAttribute('fill', mixFog([32, 20, 38], t));
+        poly.setAttribute('stroke', mixFog([92, 74, 108], t));
+      }
+    }
+    trimGroundPolys(visiblePlates.length);
+
+    // 7. 3D World Props: Frustum Cull, Pool Acquire/Release, Depth Sort, & Render
+    visibleList.length = 0;
+    for (const ch of chunks.values()) {
+      for (let i = 0; i < ch.props.length; i++) {
+        const p = ch.props[i];
+        const dx = p.x - eyeX;
+        const dy = p.y - eyeY;
+        const dz = p.z - eyeZ;
+        const rz = dx * sinY + dz * cosY;
+
+        if (rz < NEAR_CLIP || rz > FAR_CLIP) {
+          if (p.nodeEntry) {
+            releasePropNode(p.nodeEntry);
+            p.nodeEntry = null;
+          }
+          continue;
+        }
+
+        // Cull subtle small tufts slightly closer to keep far horizon clean and fast
+        if (p.kind === 'tuft' && rz > 36) {
+          if (p.nodeEntry) {
+            releasePropNode(p.nodeEntry);
+            p.nodeEntry = null;
+          }
+          continue;
+        }
+
+        const scale = focal / rz;
+        const rx = dx * cosY - dz * sinY;
+        const sx = halfW + rx * scale;
+        const sy = horizonY - dy * scale;
+        const margin = scale * (p.kind === 'tree' ? 3.2 : 2.1) * p.s + 80;
+
+        if (sx < -margin || sx > vw + margin || sy - scale * 8.5 * p.s > vh + 80) {
+          if (p.nodeEntry) {
+            releasePropNode(p.nodeEntry);
+            p.nodeEntry = null;
+          }
+          continue;
+        }
+
+        visibleList.push({ prop: p, sx, sy, rz, scale });
+      }
+    }
+
+    // Sort back-to-front (largest rz first)
+    visibleList.sort((a, b) => b.rz - a.rz);
+
+    // Ensure pooled nodes & synchronize DOM child order with minimal mutations
+    let cursor = worldPropsGroup.firstChild;
+    for (let i = 0; i < visibleList.length; i++) {
+      const item = visibleList[i];
+      const p = item.prop;
+      if (!p.nodeEntry) {
+        p.nodeEntry = acquirePropNode(p.poolKey);
+      }
+      const gNode = p.nodeEntry.g;
+      if (gNode !== cursor) {
+        worldPropsGroup.insertBefore(gNode, cursor);
+      } else {
+        cursor = cursor.nextSibling;
+      }
+
+      const unitScale = item.scale * 0.01 * p.s;
+      const sxStr = item.sx.toFixed(1);
+      const syStr = item.sy.toFixed(1);
+      const scX = (unitScale * p.flip).toFixed(4);
+      const scY = unitScale.toFixed(4);
+      gNode.setAttribute('transform', 'translate(' + sxStr + ',' + syStr + ') scale(' + scX + ',' + scY + ')');
+
+      const maxD = p.kind === 'tuft' ? 36 : FAR_CLIP;
+      const fogAmt = clamp((item.rz - 8) / (maxD - 9), 0, 1);
+      styleAndAnimateProp(p, fogAmt);
+    }
+
+    // 8. 3D World-Space Drifting Pollen & Frost Motes
+    for (let i = 0; i < motes.length; i++) {
+      const m = motes[i];
+      // Toroidal wrap around camera in world space so motes drift past naturally as you walk
+      let wx = eyeX + ((((m.ox - eyeX) % MOTE_BOX) + MOTE_BOX * 1.5) % MOTE_BOX - MOTE_BOX * 0.5);
+      let wz = eyeZ + ((((m.oz - eyeZ) % MOTE_BOX) + MOTE_BOX * 1.5) % MOTE_BOX - MOTE_BOX * 0.5);
+      wx += Math.sin(simTime * m.spd + m.phase) * 0.55;
+      wz += Math.cos(simTime * m.spd * 0.8 + m.phase) * 0.55;
+      const wy = groundY(wx, wz) + m.baseY + Math.sin(simTime * 0.9 + m.phase * 1.7) * 0.32;
+
+      const dx = wx - eyeX;
+      const dy = wy - eyeY;
+      const dz = wz - eyeZ;
+      const rz = dx * sinY + dz * cosY;
+      if (rz < 0.7 || rz > 24) {
+        m.node.setAttribute('display', 'none');
+        continue;
+      }
+      const s = focal / rz;
+      const sx = halfW + (dx * cosY - dz * sinY) * s;
+      const sy = horizonY - dy * s;
+      if (sx < -12 || sx > vw + 12 || sy < -12 || sy > vh + 12) {
+        m.node.setAttribute('display', 'none');
+        continue;
+      }
+      const pr = clamp(m.size * s, 0.9, 6.5);
+      const fade = clamp((rz - 2) / 21, 0, 1);
+      m.node.setAttribute('display', 'inline');
+      m.node.setAttribute('cx', sx.toFixed(1));
+      m.node.setAttribute('cy', sy.toFixed(1));
+      m.node.setAttribute('r', pr.toFixed(2));
+      m.node.setAttribute('fill', mixFog(m.golden ? [255, 214, 112] : [202, 218, 248], fade));
+    }
+
+    // 9. Update Compass & Walked Readout (~6 Hz to minimize text layout work)
+    if (++hudTick >= 8) {
+      hudTick = 0;
+      const deg = Math.round(((player.yaw * 180 / Math.PI) % 360 + 360) % 360) % 360;
+      hudBearing.textContent = String(deg).padStart(3, '0') + '\u00B0';
+      hudDist.textContent = Math.floor(player.walked) + ' m';
+    }
+  }
+
+  /* =========================================================================
+     FRAME LOOP & FOCUS / VISIBILITY LIFECYCLE
+     ========================================================================= */
+  let rafId = 0;
+  let paused = false;
+  let lastFrameTime = null;
+
+  function tick(now) {
+    rafId = 0;
+    if (paused) return;
+    if (lastFrameTime === null) lastFrameTime = now;
+    const dt = clamp((now - lastFrameTime) / 1000, 0, 0.05);
+    lastFrameTime = now;
+
+    updateSimulation(dt);
+    renderScene();
+    rafId = window.requestAnimationFrame(tick);
+  }
+
+  function pauseLoop() {
+    if (alwaysOn || paused) return;
+    paused = true;
+    lastFrameTime = null;
+    if (rafId) {
+      window.cancelAnimationFrame(rafId);
+      rafId = 0;
+    }
+    clearAllInputs();
+    sound.suspendForBlur();
+    document.body.classList.add('is-paused');
+  }
+
+  function wakeLoop() {
+    if (paused) {
+      paused = false;
+      lastFrameTime = null;
+      document.body.classList.remove('is-paused');
+      sound.resumeFromFocus();
+    }
+    if (!rafId) {
+      rafId = window.requestAnimationFrame(tick);
+    }
+  }
+
+  window.addEventListener('blur', pauseLoop);
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) pauseLoop();
+    else wakeLoop();
+  });
+  window.addEventListener('focus', wakeLoop);
+  window.addEventListener('resize', () => {
+    updateViewport();
+    renderScene();
+  });
+
+  // Initial synchronous bootstrap (guarded dt = 0 so first paint is immediate & NaN-free)
+  updateViewport();
+  updateSimulation(0);
+  renderScene();
+  wakeLoop();
+
+  /* =========================================================================
+     DETERMINISTIC VERIFICATION & DEBUG HOOK
+     ========================================================================= */
+  window.__wintercomb = {
+    state() {
+      return {
+        x: player.x,
+        y: player.y,
+        z: player.z,
+        yaw: player.yaw,
+        pitch: player.pitch,
+        walked: player.walked,
+        bobAmp: player.bobAmp,
+        skepsTold: toldSkeps.size,
+        activeChunks: chunks.size,
+        visibleProps: worldPropsGroup.childNodes.length,
+        visiblePlates: activeGroundPolys.length,
+        totalCreatedPropNodes,
+        pooledFreeNodes: Object.values(pools).reduce((acc, arr) => acc + arr.length, 0),
+        joyMove: joyState.move,
+        joyTurn: joyState.turn,
+        paused,
+        vw,
+        vh
+      };
+    },
+    dismissIntro,
+    setKeys(map) {
+      Object.assign(keys, map);
+    },
+    setJoysticks(move, turn) {
+      joyState.move = move;
+      joyState.turn = turn;
+    },
+    teleport(x, z, yaw, pitch) {
+      player.x = x;
+      player.z = z;
+      if (typeof yaw === 'number') player.yaw = wrapAngle(yaw);
+      if (typeof pitch === 'number') player.pitch = clamp(pitch, -0.3, 0.36);
+      updateSimulation(0);
+      renderScene();
+    },
+    step(dt, steps) {
+      const n = steps || 1;
+      const stepDt = dt || 1 / 60;
+      for (let i = 0; i < n; i++) {
+        updateSimulation(stepDt);
+      }
+      renderScene();
+      return this.state();
+    },
+    checkSvgIntegrity() {
+      const all = sceneSvg.querySelectorAll('*');
+      let nanAttrs = 0;
+      for (let i = 0; i < all.length; i++) {
+        const attrs = all[i].attributes;
+        for (let j = 0; j < attrs.length; j++) {
+          if (attrs[j].value.indexOf('NaN') !== -1 || attrs[j].value.indexOf('undefined') !== -1) {
+            nanAttrs++;
+          }
+        }
+      }
+      return {
+        svgElements: all.length,
+        canvasCount: document.querySelectorAll('canvas').length,
+        imgCount: document.querySelectorAll('img').length,
+        nanAttrs
+      };
+    }
+  };
+})();
+</script>
+</body>
+</html>
