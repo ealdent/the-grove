@@ -109,6 +109,12 @@ A collection of games, tools, and experiments built with AI — hosted on GitHub
 - **[Bioluminescent Deep Sea Drift](svg-forest/sonnet-4.6-svg-forest.html)** — Dive into the dark depths. Explore glowing underwater worlds and mysterious sea creatures. (*Sonnet 4.6*)
 - **[CANDYFALL](svg-forest/sonnet5xhigh-svg-forest.html)** — Wander an endless candy-coated dreamscape of swirling lollipop trees, gumdrop groves, and peppermint spires beneath a cotton-candy sky. (*Sonnet 5 xHigh*)
 
+### [Silva Machinarum](silva-machinarum/)
+
+*One short-story brief, written by one model after another*
+
+- **[The Graft](silva-machinarum/gemini-4-neon-high-silva-machinarum.html)** — An orchard keeper who has outlived nine names aboard *The Almanac* tells one dying man the truth on the morning the ship learns its world is dead, then goes back to grafting apples. (*Gemini 4 Neon High*)
+
 ### [Videos](videos/)
 
 *Music videos on tape*
