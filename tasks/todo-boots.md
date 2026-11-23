@@ -37,3 +37,7 @@ v1 (2026-11-19): `tmp/boots-march/out/boots.mp4`, 1920x1080 at 30 fps, 2:36, 240
 v2 (2026-11-19, Jason's notes): the danger section now reads "THE DANGER IS REAL" then "THIS IS NOT A SCI-FI MOVIE",
 with no red X. Every card was re-checked by two independent passes; one ordering slip (xAI before Llama 2) and about
 a dozen over-precise captions were corrected (list in `videos/boots/README.md`). 238 of 238 planned cuts verified.
+
+Page (2026-11-23): `videos/boots/` now has a public page and a fourth tape on `videos/index.html`. Checked in headless
+Chrome at 1440, 1180, 820 and 390 px wide: no console errors, no horizontal overflow, and the readout, record and poem
+follow the video when it is seeked. Not checked: real playback with sound in a browser, Safari, or the live site.

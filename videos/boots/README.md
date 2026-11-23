@@ -7,6 +7,13 @@ type until the last stanza, which turns to colour and ends on "We're all in this
 Only the source lives here. The media (recording, score, generated stills and clips, renders) is in the gitignored
 `tmp/boots-march/` (`MEDIA` below).
 
+## The page
+
+`index.html` is the public page (https://ealdent.github.io/the-grove/videos/boots/): the player pinned beside a ledger
+of every dated card and the poem, with the film's timeline strip following the video. It reads `ledger.js` and
+`poem.js`, both generated (see the pipeline), and `media/`: the 720p encode, poster, hero still, captions, twelve
+frames for the shelf's TV, and the share card (`node ../cards/render.mjs boots`).
+
 ## Sources
 
 - **Voice:** "Boots", Rudyard Kipling (1903), recited by Taylor Holmes, Victor 55057, recorded 8 Jul 1915. Library of
@@ -29,7 +36,8 @@ python3 prep.py MEDIA                    # raw/ -> img/*.jpg, clip/*/NNNN.jpg, c
 node export_shots.mjs                    # edit.js -> MEDIA/shots.json
 $PY mix.py MEDIA SOURCE.wav MEDIA/audio/score.mp3      # -> MEDIA/audio/mix.wav
 node render.mjs                          # -> MEDIA/out/boots.mp4   (--sheet 20 for contact sheets, --stills t,t)
-python3 captions.py                      # -> boots.srt, the recitation line by line (upload as captions)
+python3 captions.py                      # -> boots.srt, media/boots.vtt and poem.js (the recitation, line by line)
+node export_shots.mjs --page             # -> ledger.js: the dated cards and timeline track the public page reads
 ```
 
 Chrome, the Higgsfield CLI and mlx-whisper all need the command sandbox off.
