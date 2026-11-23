@@ -54,8 +54,30 @@ Fonts (Fraunces, Michroma).
    `data-provider`, `data-model`, `data-effort`, `data-paper` (the story page's
    background), `--ground` / `--ground2` / `--accent` (borrow the story page's
    own palette), the title, the opening sentence with its first letter in
-   `.cap`, and the word count.
-3. Add the README line by hand under "Silva Machinarum".
+   `.cap`, and the word count. When that first letter only begins a word
+   ("Every"), put the rest of the word in `.lead` so it is set in capitals
+   after the initial; a ship's name the story italicises goes in `<em>`.
+   Update the static numerals and the "Two stories" fallback text too (the
+   script overwrites both, but they are what shows without it).
+3. Add the README line by hand under "Silva Machinarum", in the same order.
+
+## Stories
+
+- 2026-11-22: *The Graft*, Gemini 4 Neon, High (2,110 words).
+- 2026-11-23: *The Arithmetic of Shedding Skin*, Gemini 4 Carbon, High
+  (1,324 words). Its paper is near-black (`#090c0f`), so the click wipe reads
+  as the lights going out. Its 23-word opening sentence and long title were
+  the first to stretch a tile, which led to three layout changes:
+  - Tiles in one row share their three bands through CSS subgrid, so header
+    rules, initials and feet line up whatever the title lengths.
+  - The initial sits level with the first line of a long opening (and stays
+    centred beside a short one); `text-box: trim-both cap alphabetic` makes
+    the frame meet the capitals exactly.
+  - `.lead` and upright `<em>` inside the italic line, as above.
+  Checked in headless Chrome 158 (1920, 1440, 1024, 820, 390 and 320 px wide;
+  hover, click-through, Back, keyboard focus, no WebGL, reduced motion),
+  Firefox 160, and Mobile Safari 26.5 in the iPhone 17 simulator (phone width,
+  and a 1100 px layout viewport for the two-column case).
 
 ## Verification (2026-11-23)
 

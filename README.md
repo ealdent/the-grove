@@ -113,6 +113,7 @@ A collection of games, tools, and experiments built with AI — hosted on GitHub
 
 *One short-story brief, written by one model after another*
 
+- **[The Arithmetic of Shedding Skin](silva-machinarum/gemini-4-carbon-high-silva-machinarum.html)** — A woman who has staged her own death every forty-two years aboard the *Vanguard* wipes off the walnut stain and grey powder on the night the ship learns its world has turned to sulfur, and offers the one thing that can mend its sky: herself. (*Gemini 4 Carbon High*)
 - **[The Graft](silva-machinarum/gemini-4-neon-high-silva-machinarum.html)** — An orchard keeper who has outlived nine names aboard *The Almanac* tells one dying man the truth on the morning the ship learns its world is dead, then goes back to grafting apples. (*Gemini 4 Neon High*)
 
 ### [Videos](videos/)
