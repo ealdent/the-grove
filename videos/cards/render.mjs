@@ -1,6 +1,7 @@
 // Render the link-preview images (Open Graph / X cards) for the videos pages: 1200×630, captured at 2× as JPEG.
 //   node videos/cards/render.mjs            all of them
 //   node videos/cards/render.mjs boots      only the named card(s): shelf, p-doom, save-me-a-seat, boots
+//   node videos/cards/render.mjs shelf --keep-sky   reuse frames/shelf-sky.jpg instead of re-capturing the live hero
 // Writes videos/media/card.jpg and each page's media/card.jpg.
 // Chrome must run outside the command sandbox (and reach Google Fonts).
 import { writeFileSync } from 'node:fs';
@@ -18,9 +19,10 @@ const shot = async (file, opts = {}) => {
 };
 const settle = () => chrome.evaluate(`(async () => { await document.fonts.ready; await Promise.all([...document.images].map(i => i.complete ? 0 : new Promise(r => (i.onload = i.onerror = r)))); return true; })()`);
 const CARDS = [['shelf', 'media/card.jpg'], ['p-doom', 'p-doom/media/card.jpg'], ['save-me-a-seat', 'save-me-a-seat/media/card.jpg'], ['boots', 'boots/media/card.jpg']];
-const only = process.argv.slice(2), todo = only.length ? CARDS.filter(c => only.includes(c[0])) : CARDS;
+const flags = process.argv.slice(2).filter(a => a.startsWith('--')), only = process.argv.slice(2).filter(a => !a.startsWith('--'));
+const todo = only.length ? CARDS.filter(c => only.includes(c[0])) : CARDS;
 try {
-  if (todo.some(c => c[0] === 'shelf')) {
+  if (todo.some(c => c[0] === 'shelf') && !flags.includes('--keep-sky')) {
   await chrome.send('Emulation.setDeviceMetricsOverride', { width: W, height: H, deviceScaleFactor: SCALE, mobile: false });
   // the shelf's sky: the live hero, its words hidden, a few seconds in so the cassette has drifted into place
   await chrome.goto(pathToFileURL(path.join(VIDEOS, 'index.html')).href, 'document.readyState === "complete"');
