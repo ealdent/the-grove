@@ -1129,6 +1129,7 @@ function dayUpdate(dt) {
   updateLampsAnim(dt);
   if (G.chainT > 0) { G.chainT -= dt; if (G.chainT <= 0) { G.chain = 0; G.mult = 1; } }
   G.dose += sun.I * dt;
+  sampleExposure(dt);
   if (d.eclipse && G.u >= d.uTot) { beginTotality(); return; }
   if (G.u >= 1) beginSunset();
 }
@@ -1256,31 +1257,11 @@ function render() {
   const night = G.mode === 'night' || G.mode === 'plate' || G.mode === 'over';
   const showSh = sun.I > 0.01 && !night;
   if (showSh) {
-    const s = sctx; s.globalCompositeOperation = 'source-over'; s.setTransform(1, 0, 0, 1, 0, 0); s.clearRect(0, 0, shadowC.width, shadowC.height);
-    s.fillStyle = '#fff'; s.strokeStyle = '#fff';
-    for (const c of G.casters) {
-      if (c.t === 'sil') { if (!c.m) continue; const [a, b, cc, dd, e, f, S] = c.m; if (Math.abs(c.det) < 1e-5) continue; s.setTransform(SS * a, SS * b, SS * cc, SS * dd, SS * e, SS * f); s.drawImage(S.cv, 0, 0); }
-      else { s.setTransform(SS, 0, 0, SS, 0, 0); s.beginPath(); c.hull.forEach((p, i) => i ? s.lineTo(p[0], p[1]) : s.moveTo(p[0], p[1])); s.closePath(); s.fill(); }
-    }
-    if (!P.gone || P.gone < 0.6) {
-      drawProfile();
-      const pc = { s: null, x: P.x, y: P.y, h: 168 / PU, flip: 0 };
-      const k = sun.k, Hh = pc.h, Wd = PROF_S.w / PU;
-      const a = sun.Px * Wd / PROF_S.w, b = sun.Py * Wd / PROF_S.w, cc = -sun.Sx * k * Hh / PROF_S.h, dd = -sun.Sy * k * Hh / PROF_S.h;
-      const off = P.z * k, e = P.x - sun.Px * Wd / 2 + sun.Sx * off - cc * PROF_S.h, f = P.y - sun.Py * Wd / 2 + sun.Sy * off - dd * PROF_S.h;
-      s.globalAlpha = 1 - (P.gone || 0);
-      if (Math.abs(a * dd - cc * b) > 1e-5) { s.setTransform(SS * a, SS * b, SS * cc, SS * dd, SS * e, SS * f); s.drawImage(PROF, 0, 0); }
-      s.setTransform(SS, 0, 0, SS, 0, 0); s.lineCap = 'round'; s.lineWidth = 6;
-      s.beginPath(); s.moveTo(P.ax, P.ay); s.lineTo(P.bx, P.by); s.stroke();
-      s.beginPath(); s.arc(P.bx, P.by, 5.5, 0, TAU); s.fill();
-      s.globalAlpha = 1;
-    }
-    if (G.owlFly) { const o = G.owlFly, S = sil('owlSpread'), alt = 30 + o.t * 14, k = sun.k; const px = owlPos(o), w = 26; s.setTransform(SS, 0, 0, SS, 0, 0); s.translate(px[0] + sun.Sx * k * alt, px[1] + sun.Sy * k * alt); s.rotate(Math.sin(o.t * 2) * 0.4); s.scale(1, 0.75 + 0.25 * Math.sin(o.t * 12)); s.drawImage(S.cv, -w / 2, -w * S.h / S.w / 2, w, w * S.h / S.w); }
+    const s = sctx; drawShadowMask(s, shadowC, SS, true);
     s.setTransform(1, 0, 0, 1, 0, 0); s.globalCompositeOperation = 'source-in'; s.fillStyle = inkPattern; s.fillRect(0, 0, shadowC.width, shadowC.height); s.globalCompositeOperation = 'source-over';
     x.globalCompositeOperation = 'multiply'; x.globalAlpha = clamp(sun.I * 0.92, 0, 0.92);
     x.drawImage(shadowC, ox, oy, W * VS, H * VS);
     x.globalAlpha = 1; x.globalCompositeOperation = 'source-over';
-    if (G.mode === 'day') sampleExposure();
     if (d.eclipse && sun.cover > 0.25 && sun.cover < 0.99) drawCrescents(x, ox, oy);
   }
   // ---- world space
@@ -1572,13 +1553,37 @@ function drawPlayer(x) {
   if (G.owlFly) { const o = G.owlFly, p = owlPos(o), S = sil('owlSpread'); x.save(); x.translate(p[0], p[1]); x.globalAlpha = 0.9; x.fillStyle = '#8d7b62'; const fl = Math.sin(o.t * 12); x.beginPath(); x.ellipse(0, 0, 3.5, 4.5, 0, 0, TAU); x.fill(); x.beginPath(); x.moveTo(-3, -1); x.quadraticCurveTo(-12, -6 * fl, -16, 2); x.lineTo(-3, 2); x.moveTo(3, -1); x.quadraticCurveTo(12, -6 * fl, 16, 2); x.lineTo(3, 2); x.fill(); x.restore(); void S; }
 }
 
+// every shadow on the field as a white mask at the given scale (screen layer and the print share it)
+function drawShadowMask(s, cvs, SS, withProfile) {
+  s.globalCompositeOperation = 'source-over'; s.setTransform(1, 0, 0, 1, 0, 0); s.clearRect(0, 0, cvs.width, cvs.height);
+  s.fillStyle = '#fff'; s.strokeStyle = '#fff';
+  for (const c of G.casters) {
+    if (c.t === 'sil') { if (!c.m) continue; const [a, b, cc, dd, e, f, S] = c.m; if (Math.abs(c.det) < 1e-5) continue; s.setTransform(SS * a, SS * b, SS * cc, SS * dd, SS * e, SS * f); s.drawImage(S.cv, 0, 0); }
+    else { s.setTransform(SS, 0, 0, SS, 0, 0); s.beginPath(); c.hull.forEach((p, i) => i ? s.lineTo(p[0], p[1]) : s.moveTo(p[0], p[1])); s.closePath(); s.fill(); }
+  }
+  if (!P.gone || P.gone < 0.6) {
+    if (withProfile) drawProfile();
+    const pc = { s: null, x: P.x, y: P.y, h: 168 / PU, flip: 0 };
+    const k = sun.k, Hh = pc.h, Wd = PROF_S.w / PU;
+    const a = sun.Px * Wd / PROF_S.w, b = sun.Py * Wd / PROF_S.w, cc = -sun.Sx * k * Hh / PROF_S.h, dd = -sun.Sy * k * Hh / PROF_S.h;
+    const off = P.z * k, e = P.x - sun.Px * Wd / 2 + sun.Sx * off - cc * PROF_S.h, f = P.y - sun.Py * Wd / 2 + sun.Sy * off - dd * PROF_S.h;
+    s.globalAlpha = 1 - (P.gone || 0);
+    if (Math.abs(a * dd - cc * b) > 1e-5) { s.setTransform(SS * a, SS * b, SS * cc, SS * dd, SS * e, SS * f); s.drawImage(PROF, 0, 0); }
+    s.setTransform(SS, 0, 0, SS, 0, 0); s.lineCap = 'round'; s.lineWidth = 6;
+    s.beginPath(); s.moveTo(P.ax, P.ay); s.lineTo(P.bx, P.by); s.stroke();
+    s.beginPath(); s.arc(P.bx, P.by, 5.5, 0, TAU); s.fill();
+    s.globalAlpha = 1;
+  }
+  if (G.owlFly) { const o = G.owlFly, S = sil('owlSpread'), alt = 30 + o.t * 14, k = sun.k; const px = owlPos(o), w = 26; s.setTransform(SS, 0, 0, SS, 0, 0); s.translate(px[0] + sun.Sx * k * alt, px[1] + sun.Sy * k * alt); s.rotate(Math.sin(o.t * 2) * 0.4); s.scale(1, 0.75 + 0.25 * Math.sin(o.t * 12)); s.drawImage(S.cv, -w / 2, -w * S.h / S.w / 2, w, w * S.h / S.w); }
+}
 // exposure: the paper keeps every shadow the sun drew
-function sampleExposure() {
-  G.sampleT += G.frameDt || 0.016;
+function sampleExposure(dt) {
+  G.sampleT += dt;
   if (G.sampleT < 0.2) return;
-  const dt = G.sampleT; G.sampleT = 0;
-  ectx.globalCompositeOperation = 'copy'; ectx.drawImage(shadowC, 0, 0, EW, EH);
-  const dd = ectx.getImageData(0, 0, EW, EH).data, I = sun.I * dt;
+  const step = G.sampleT; G.sampleT = 0;
+  if (sun.I <= 0.001) return;
+  drawShadowMask(ectx, expoC, EW / W, true);
+  const dd = ectx.getImageData(0, 0, EW, EH).data, I = sun.I * step;
   const sa = clamp(sun.I * 0.92, 0, 1);
   for (let i = 0, j = 3; i < expo.length; i++, j += 4) expo[i] += (1 - dd[j] / 255 * sa) * I;
 }
@@ -1588,7 +1593,8 @@ function renderPlate(cvs, raw) {
   const mx = Math.max(1e-3, G.dose);
   const paper = hex('#f3eee2'), blue = hex('#123a72'), mid = hex('#3f6ea8'), unexp = hex('#cfc777'), unexpD = hex('#8f8a52');
   for (let i = 0; i < expo.length; i++) {
-    const v = clamp(expo[i] / mx, 0, 1.2), ev = (1 - Math.exp(-3.2 * v)) / (1 - Math.exp(-3.2)), n = (R() - 0.5) * 0.05;
+    // a long exposure: any time spent in shade leaves a pale ghost
+    const miss = clamp(1 - expo[i] / mx, 0, 1), pale = Math.pow(clamp(miss * 4.2, 0, 1), 0.62), ev = 1 - pale, n = (R() - 0.5) * 0.05;
     let c;
     if (raw) c = mix3(unexp, unexpD, clamp(ev * 0.35 + n, 0, 1));
     else c = ev < 0.5 ? mix3(paper, mid, clamp(ev * 2 + n, 0, 1)) : mix3(mid, blue, clamp((ev - 0.5) * 2 + n, 0, 1));
@@ -1608,7 +1614,7 @@ function renderPlate(cvs, raw) {
   x.imageSmoothingEnabled = true; x.imageSmoothingQuality = 'high';
   x.drawImage(small, 0, 0, w, h);
   // brush streaks
-  for (let i = 0; i < 9; i++) { const y0 = R() * h, hh = 18 + R() * 50, gr = x.createLinearGradient(0, y0, 0, y0 + hh); const col = raw ? '150,140,70' : (R() < 0.5 ? '10,30,80' : '140,170,215'); const a = 0.025 + R() * 0.035; gr.addColorStop(0, `rgba(${col},0)`); gr.addColorStop(0.5, `rgba(${col},${a})`); gr.addColorStop(1, `rgba(${col},0)`); x.fillStyle = gr; x.fillRect(0, y0, w, hh); }
+  for (let i = 0; i < 4; i++) { const y0 = R() * h, hh = 30 + R() * 60, gr = x.createLinearGradient(0, y0, 0, y0 + hh); const col = raw ? '150,140,70' : (R() < 0.5 ? '10,30,80' : '140,170,215'); const a = 0.015 + R() * 0.02; gr.addColorStop(0, `rgba(${col},0)`); gr.addColorStop(0.5, `rgba(${col},${a})`); gr.addColorStop(1, `rgba(${col},0)`); x.fillStyle = gr; x.fillRect(0, y0, w, hh); }
   x.restore();
   // fibres
   for (let i = 0; i < 300; i++) { x.fillStyle = `rgba(80,70,50,${0.04 + R() * 0.05})`; x.fillRect(R() * w, R() * h, 1 + R() * 2, 1); }
