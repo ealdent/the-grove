@@ -76,13 +76,22 @@ lamplighting (pole flame, touch lamps, chimes) → night (stars rise, owl) → p
   loops (dawn birds, cicadas, crickets, winter wind), owl hoot.
 
 ## Plan
-- [ ] Generate art (Higgsfield): key art, owl, silhouette sheets, 7 vignettes, ending
-- [ ] Engine: canvas layers, sun model, shadow casters (affine silhouettes + boxes), IK pole aim
-- [ ] Sparks + kills + cinders + heat/lives + scoring
-- [ ] Day structure: phases, waves, sunset, lamplighting, night stars, plate
-- [ ] Days I–VII content and special mechanics
-- [ ] Dialogue system + owl lines
-- [ ] Audio: procedural score + SFX + generated tracks
-- [ ] Title, pause, album, mobile touch, blur pause, debug hooks
-- [ ] Verify: headless/CDP playthrough, perf, console clean, phone viewport
-- [ ] Arcade tile + README line, storyboard images, PR
+- [x] Generate art (Higgsfield): key art, owl, silhouette sheets, 7 vignettes, ending
+- [x] Engine: canvas layers, sun model, shadow casters (affine silhouettes + boxes), IK pole aim
+- [x] Sparks + kills + cinders + heat/lives + scoring
+- [x] Day structure: phases, waves, sunset, lamplighting, night stars, plate
+- [x] Days I–VII content and special mechanics
+- [x] Dialogue system + owl lines
+- [x] Audio: procedural score + SFX + generated tracks
+- [x] Title, pause, album, mobile touch, blur pause, debug hooks
+- [x] Verify: headless/CDP playthrough, perf, console clean, phone viewport
+- [x] Arcade tile + README line, storyboard images, PR
+
+## Review (2026-11-25)
+Shipped on `wt/arcade-game-novel-style-127b7a`, PR https://github.com/ealdent/the-grove/pull/40.
+
+- Balance: cautious autopilot (0.23 s reaction delay, watches 4 nearest) finishes the week with 1-2 lanterns left at about 60k; Day VI is the hardest. Hunter variant takes 3-4x the hits.
+- Perf: 60 fps at a 2880x1620 canvas (real GPU, headless Chrome). Firefox 160 and Mobile Safari (iOS 26.5 sim) run it without errors.
+- Independent review: 8 bugs (second-run state leak, Enter skipping a day, frozen volleys, blur during the card, lamp hint, retry bookkeeping, eclipse lamp count), all fixed and re-tested.
+- Lessons: sample exposure from sim time, not render(); a spark latched on a lamp sat in the lamp's own shadow; slow sparks never threaten a faster player without telegraphed fast entries; ElevenLabs ambience loudness varies by 40 dB between prompts.
+- Not verified: physical phone, sound by ear, balance with people.
