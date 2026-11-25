@@ -27,7 +27,7 @@
   html, body { margin:0; height:100%; background:#17140f; overflow:hidden; }
   body { font-family:'IM Fell English', Georgia, 'Times New Roman', serif; color:var(--ink);
          -webkit-user-select:none; user-select:none; touch-action:none; -webkit-tap-highlight-color:transparent; }
-  canvas#c { position:fixed; inset:0; width:100%; height:100%; display:block; }
+  canvas#c { position:fixed; inset:0; width:100%; height:100%; display:block; cursor:crosshair; }
   #ui { position:fixed; pointer-events:none; }
   .scr { position:absolute; inset:0; display:none; }
   .scr.on { display:flex; }
@@ -110,7 +110,7 @@
   #album figure img, #album figure .blank { width:100%; aspect-ratio:16/9; display:block; object-fit:cover; background:#e6dcc5; }
   #album figcaption { font-style:italic; text-align:center; padding-top:6px; font-size:17px; }
   #album .btn { color:#efe6d2; margin-top:22px; }
-  #rot { position:fixed; inset:auto 0 12px 0; text-align:center; color:#efe6d2; font-style:italic; font-size:15px; display:none; z-index:7; pointer-events:none; }
+  #rot { position:fixed; inset:calc(env(safe-area-inset-top, 0px) + 14px) 0 auto 0; text-align:center; color:#efe6d2; font-style:italic; font-size:15px; display:none; z-index:7; pointer-events:none; }
   @media (orientation:portrait) and (max-width:700px) { #rot.show { display:block; } }
 
   #final { flex-direction:column; align-items:center; justify-content:center; }
@@ -118,7 +118,7 @@
   #finalBg.on { opacity:1; transform:scale(1.08); }
   #finalLine { position:relative; color:#f2ead7; font-style:italic; font-size:calc(34px*var(--ui-scale)); opacity:0; transition:opacity 2s; text-shadow:0 2px 14px #000; margin-top:46vh; }
   #finalLine.on { opacity:1; }
-  #finalSheet { position:relative; display:none; margin-top:3vh; }
+  #finalSheet { position:absolute; right:4%; bottom:6%; display:none; margin:0; }
   #finalSheet.on { display:block; }
 </style>
 </head>
@@ -180,6 +180,7 @@ const hyp = Math.hypot, rand = Math.random, rr = (a, b) => a + rand() * (b - a);
 function mulberry(s) { return function () { s |= 0; s = s + 0x6D2B79F5 | 0; let t = Math.imul(s ^ s >>> 15, 1 | s); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
 const QS = new URLSearchParams(location.search);
 const DEBUG = QS.has('debug');
+if (DEBUG) { addEventListener('error', e => { try { G.lastErr = e.message; } catch (_) {} }); addEventListener('unhandledrejection', e => { try { G.lastErr = String(e.reason); } catch (_) {} }); }
 const store = {
   get(k, d) { try { const v = localStorage.getItem('longshadow.' + k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
   set(k, v) { try { localStorage.setItem('longshadow.' + k, JSON.stringify(v)); } catch (e) {} }
@@ -841,7 +842,8 @@ function killSpark(s, byPlayer) {
   if (s.dead) return; s.dead = true;
   const base = SPEC[s.type].score;
   if (byPlayer) {
-    G.chain++; G.chainT = 1.6; G.mult = Math.min(8, 1 + Math.floor(G.chain / 6));
+    G.chain++; G.chainT = 1.6; const pm = G.mult; G.mult = Math.min(8, 1 + Math.floor(G.chain / 6));
+    if (G.mult > pm) { G.parts.push({ x: P.x, y: P.y - 30, vx: 0, vy: -26, life: 1.3, max: 1.3, size: 1, kind: 'text', text: '×' + G.mult }); AU.chain(G.mult); }
     addScore(base * G.mult);
   } else addScore(base);
   G.dayKills++; G.totalKills++;
@@ -1276,6 +1278,7 @@ function render() {
   }
   // ink particles & ground marks
   for (const p of G.parts) if (p.kind === 'ink' || p.kind === 'smoke') { const f = p.life / p.max; x.fillStyle = p.kind === 'ink' ? `rgba(30,60,120,${0.55 * f})` : `rgba(90,80,70,${0.25 * f})`; x.beginPath(); x.arc(p.x, p.y, p.size * (p.kind === 'smoke' ? 2 - f : 1), 0, TAU); x.fill(); }
+  for (const p of G.parts) if (p.kind === 'text') { const f = clamp(p.life / p.max, 0, 1); x.globalAlpha = Math.min(1, f * 2); x.fillStyle = '#1f3563'; x.font = `italic ${22 + (1 - f) * 6}px 'IM Fell English', Georgia, serif`; x.textAlign = 'center'; x.fillText(p.text, p.x, p.y); x.globalAlpha = 1; x.textAlign = 'start'; }
   // low objects (bases)
   drawObjects(x, true);
   drawPlayer(x);
@@ -1316,7 +1319,7 @@ function render() {
   x.globalAlpha = 1; x.globalCompositeOperation = 'source-over';
   if (IN.touch && playing()) drawSticks(x);
   if (G.mode === 'totality' && G.flags.flash) { const f = clamp(1 - (G.tT - 19) / 2.5, 0, 1); x.fillStyle = `rgba(255,250,235,${f})`; x.fillRect(0, 0, CW, CH); }
-  if (DEBUG) { x.fillStyle = '#000'; x.font = '14px monospace'; x.fillText(`u ${G.u.toFixed(3)} e ${(sun.e / DEG).toFixed(1)} k ${sun.k.toFixed(2)} sparks ${G.sparks.length} ft ${Q.ft.toFixed(1)}`, 10, CH - 10); }
+  if (DEBUG) { x.fillStyle = '#000'; x.font = '14px monospace'; x.fillText(`${G.mode} u ${G.u.toFixed(3)} e ${(sun.e / DEG).toFixed(1)} k ${sun.k.toFixed(2)} sparks ${G.sparks.length} ft ${Q.ft.toFixed(1)} ${G.lastErr ? 'ERR ' + G.lastErr : 'no errors'}`, 10, CH - 10); }
 }
 // during a partial eclipse every gap in the leaves projects the crescent sun
 let crescentC = null;
@@ -1877,6 +1880,7 @@ const AU = {
   glass() { if (!this.ok()) return; const t = this.ctx.currentTime; this.bell(93, t, 0.05, 2.76); this.bell(98, t + 0.05, 0.04, 2.76); },
   hit() { if (!this.ok()) return; const t = this.ctx.currentTime; this.thump(t, 0.3); const f = this.noiseHit(t, 2400, 0.8, 0.12, 0.45, 'lowpass'); f.frequency.exponentialRampToValueAtTime(400, t + 0.4); },
   lifeLost() { if (!this.ok()) return; const t = this.ctx.currentTime; this.thump(t, 0.4); [62, 57, 50].forEach((n, i) => this.bell(n, t + i * 0.16, 0.08, 1.41)); },
+  chain(m) { if (!this.ok()) return; const t = this.ctx.currentTime, ch = this.chord || [50, 57, 62, 66, 69]; const top = ch.filter(n => n >= 57).map(n => n + 12); [0, 1, 2].forEach(i => this.bell(top[(m + i) % top.length] || 81, t + i * 0.06, 0.05)); },
   extra() { if (!this.ok()) return; const t = this.ctx.currentTime; [74, 78, 81, 86].forEach((n, i) => this.bell(n, t + i * 0.09, 0.06)); },
   jump() { if (!this.ok()) return; const t = this.ctx.currentTime; const f = this.noiseHit(t, 600, 1.5, 0.05, 0.25); f.frequency.exponentialRampToValueAtTime(1800, t + 0.22); },
   land() { if (!this.ok()) return; const t = this.ctx.currentTime; this.noiseHit(t, 300, 0.8, 0.06, 0.12, 'lowpass'); },
