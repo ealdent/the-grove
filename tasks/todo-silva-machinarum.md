@@ -57,7 +57,7 @@ Fonts (Fraunces, Michroma).
    `.cap`, and the word count. When that first letter only begins a word
    ("Every"), put the rest of the word in `.lead` so it is set in capitals
    after the initial; a ship's name the story italicises goes in `<em>`.
-   Update the static numerals and the "Four stories" fallback text too (the
+   Update the static numerals and the "Five stories" fallback text too (the
    script overwrites both, but they are what shows without it).
 3. Add the README line by hand under "Silva Machinarum", in the same order.
 
@@ -83,6 +83,9 @@ Fonts (Fraunces, Michroma).
   its claude.ai artifact; last in file-name order, so leaf IV. Its initial is
   grounded in the story's painted blue over its soil-dark paper, and the
   horizon turns the real planet's rust on hover.
+- 2026-11-25: *The Ambering*, Gemini 4 Argon, High (1,000 words). Second in
+  file-name order (leaf II), grounded in cerium-amber (`#7a4b1e` / `#281508`)
+  with a warm honey horizon (`#e5b363`) over obsidian-parchment (`#0d0907`).
 
 ## Verification (2026-11-23)
 
