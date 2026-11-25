@@ -45,6 +45,8 @@
   #heat i.hot { background:#e98a2c; border-color:#e98a2c; opacity:1; box-shadow:0 0 8px #f0a040; }
   #hudC { text-align:center; min-width:30%; }
   #score { font-family:'IM Fell English SC', Georgia, serif; font-size:calc(28px*var(--ui-scale)); letter-spacing:.06em; line-height:1; }
+  #bPause { font-size:calc(13px*var(--ui-scale)); opacity:.5; letter-spacing:-.1em; padding:2px 10px; }
+  #bPause:hover { opacity:.9; }
   #mult { font-style:italic; font-size:calc(17px*var(--ui-scale)); height:1.2em; opacity:.85; }
   #hudR { display:flex; flex-direction:column; align-items:flex-end; min-width:30%; }
   #dial { width:calc(176px*var(--ui-scale)); height:calc(68px*var(--ui-scale)); }
@@ -127,7 +129,7 @@
 <div id="ui">
   <div id="hud">
     <div id="hudL"><div id="lives"></div><div id="heat"><i></i><i></i><i></i></div></div>
-    <div id="hudC"><div id="score">0</div><div id="mult"></div></div>
+    <div id="hudC"><div id="score">0</div><div id="mult"></div><button id="bPause" aria-label="Pause">❚❚</button></div>
     <div id="hudR"><canvas id="dial" width="352" height="136"></canvas><div id="dayLbl"></div></div>
   </div>
   <div id="hint"></div>
@@ -534,7 +536,9 @@ function setupDay(idx) {
   const d = DAYS[idx]; G.dayIdx = idx; G.day = d; G.u = 0; G.t = 0;
   G.sparks.length = 0; G.parts.length = 0; G.lands.length = 0; G.volleys.length = 0; G.casters.length = 0; G.circles.length = 0; G.boxes.length = 0; G.canopies.length = 0; G.lamps.length = 0;
   G.todayStars = []; G.dayKills = 0; G.lampsLit = 0; G.dose = 0; G.budget = 0; G.sampleT = 0; G.said = {}; G.introDone = {}; G.chain = 0; G.chainT = 0; G.mult = 1;
-  G.eclipseT = 0; G.umbra = -1; sun.cover = 0;
+  G.eclipseT = 0; G.umbra = -1; sun.cover = 0; G.owlFly = null; G.tT = 0; G.nT = 0; G.sT = 0;
+  G.flags = {};
+  talk.q = []; talk.cur = null; talk.gap = 0; $('talk').classList.remove('on'); hints.cur = null; $('hint').classList.remove('on');
   expo.fill(0);
   for (const o0 of d.objs()) {
     const o = Object.assign({}, o0); if (o.x != null) { o.x *= LS; o.y *= LS; }
@@ -560,7 +564,7 @@ function setupDay(idx) {
   computeSun(d, 0);
   prepCasters();
   buildGround();
-  G.dayStartScore = G.score;
+  G.dayStartScore = G.score; G.dayStartNext = G.nextLife; G.dayStartKills = G.totalKills;
   $('dayLbl').textContent = d.num + ' · ' + d.name;
 }
 
@@ -691,6 +695,8 @@ function toWorld(cx, cy) { return [(cx * DPR - VX) / VS, (cy * DPR - VY) / VS]; 
 addEventListener('keydown', e => {
   if (e.repeat) { if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) e.preventDefault(); return; }
   keys.add(e.code); AU.unlock();
+  const onButton = e.target && (e.target.tagName === 'BUTTON' || e.target.tagName === 'INPUT');
+  if (onButton && (e.code === 'Enter' || e.code === 'Space' || e.code === 'NumpadEnter')) return;
   if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) e.preventDefault();
   if (e.code === 'Escape' || e.code === 'KeyP') { togglePause(); return; }
   if (e.code === 'KeyM') { AU.toggleMute(); return; }
@@ -701,8 +707,8 @@ addEventListener('keydown', e => {
 addEventListener('keyup', e => keys.delete(e.code));
 document.addEventListener('pointerdown', () => AU.unlock(), { capture: true });
 const NOAUTOPAUSE = QS.has('bg');
-addEventListener('blur', () => { keys.clear(); if (playing() && !NOAUTOPAUSE) setPause(true); });
-document.addEventListener('visibilitychange', () => { if (document.hidden && playing() && !NOAUTOPAUSE) setPause(true); });
+addEventListener('blur', () => { keys.clear(); if (pausable() && !G.paused && !NOAUTOPAUSE) setPause(true); });
+document.addEventListener('visibilitychange', () => { if (document.hidden && pausable() && !G.paused && !NOAUTOPAUSE) setPause(true); });
 cv.addEventListener('contextmenu', e => e.preventDefault());
 addEventListener('pointermove', e => {
   if (e.pointerType === 'mouse') { const [x, y] = toWorld(e.clientX, e.clientY); IN.mx = x; IN.my = y; IN.mouseT = G.mt; IN.touch = false; return; }
@@ -741,6 +747,7 @@ function pollPad() {
 }
 const BOT = { on: false, ix: 0, iy: 0, ax: 0, ay: 0, jump: false };
 const playing = () => (G.mode === 'day' || G.mode === 'lamps') && !G.paused;
+const pausable = () => G.mode === 'day' || G.mode === 'lamps' || G.mode === 'sunset' || G.mode === 'card';
 
 // ============================================================ entities: sparks
 const SPEC = {
@@ -1129,6 +1136,7 @@ function dayUpdate(dt) {
   updateSparks(dt);
   updateParts(dt);
   updateLampsAnim(dt);
+  if (G.mode !== 'day') return;
   if (G.chainT > 0) { G.chainT -= dt; if (G.chainT <= 0) { G.chain = 0; G.mult = 1; } }
   G.dose += sun.I * dt;
   sampleExposure(dt);
@@ -1148,7 +1156,7 @@ function sunsetUpdate(dt) {
   updateParts(dt); updatePlayer(dt);
   if (G.sT > 2.2) {
     const left = G.lamps.filter(l => l.hp > 0).length;
-    if (left) { G.mode = 'lamps'; G.lT = 15; hint('lamps', 'Touch each lamp with the tip of your pole.', 'Touch each lamp with the tip of your pole.'); }
+    if (left) { G.mode = 'lamps'; G.lT = 15; $('hint').classList.add('on'); }
     else beginNight();
   }
 }
@@ -1159,10 +1167,11 @@ function lampsUpdate(dt) {
     l.lit = 0.01; G.lampsLit++; addScore(250 * G.lampsLit); AU.lampLit(G.lampsLit); burst(l.x, l.y, 10, 'spark');
   }
   const left = G.lamps.filter(l => l.hp > 0 && !l.lit).length;
-  $('hint').textContent = left ? `${left} lamp${left > 1 ? 's' : ''} to light` : 'All lit.';
+  const teach = G.dayIdx === 0 && G.lT > 11.5;
+  $('hint').textContent = teach ? 'Touch each lamp with the tip of your pole.' : left ? `${left} lamp${left > 1 ? 's' : ''} to light · ${Math.ceil(G.lT)}` : 'All lit.';
   if (!left || G.lT <= 0) {
     if (!left && G.lampsLit === G.lamps.length) addScore(1500);
-    clearHint('lamps'); $('hint').classList.remove('on'); beginNight();
+    $('hint').classList.remove('on'); beginNight();
   }
 }
 function beginNight() {
@@ -1177,7 +1186,11 @@ function nightUpdate(dt) {
   if (G.nT > 3 && !talk.cur && !talk.q.length && !G.nightReady) { G.nightReady = true; $('hint').textContent = IN.touch ? 'Tap to develop the print.' : 'Click to develop the print.'; $('hint').classList.add('on'); }
 }
 function advance() {
-  if (G.mode === 'title') return;
+  if ($('album').classList.contains('on')) { $('bAlbumBack').click(); return; }
+  if (G.paused) { setPause(false); return; }
+  if (G.mode === 'title') { $('bBegin').click(); return; }
+  if (G.mode === 'over') { $('bRetry').click(); return; }
+  if (G.mode === 'final') { if ($('finalSheet').classList.contains('on')) $('bAgain').click(); return; }
   if (G.mode === 'card' && G.cardT > 0.6) { G.cardT = 99; return; }
   if (G.mode === 'night' && G.nightReady) { $('hint').classList.remove('on'); showPlate(); return; }
   if (G.mode === 'plate' && G.plateReady) { walkOn(); return; }
@@ -1188,7 +1201,7 @@ function showPlate() {
   const raw = $('plateRaw'); raw.style.transition = 'none'; raw.style.opacity = 1;
   const d = G.day;
   $('plateCap').textContent = `Plate ${d.num}. ${d.name}.`;
-  const lampsTxt = d.nosunset && false ? '' : ` · lamps lit ${G.lampsLit} of ${G.lamps.length}`;
+  const lampsTxt = ` · lamps lit ${G.lampsLit} of ${G.lamps.length}`;
   $('plateStats').textContent = `${G.dayKills} sparks put out${lampsTxt} · ${G.score.toLocaleString()}`;
   showScreen('plate', true); $('hud').classList.remove('on');
   AU.wash();
@@ -1199,6 +1212,7 @@ function showPlate() {
   if (G.score > G.best) { G.best = G.score; store.set('best', G.best); }
 }
 function walkOn() {
+  if (G.mode !== 'plate') return; G.plateReady = false;
   showScreen('plate', false); document.body.classList.remove('night');
   if (G.dayIdx + 1 < DAYS.length) beginCard(G.dayIdx + 1);
   else showFinal();
@@ -1206,19 +1220,19 @@ function walkOn() {
 // eclipse ending
 function beginTotality() {
   G.mode = 'totality'; G.tT = 0; G.umbra = 0; AU.setPhase('totality');
-  P.tx = 0; P.ty = 0; $('hud').classList.remove('on'); $('hint').classList.remove('on'); talk.q = [];
+  G.volleys.length = 0; P.tx = 0; P.ty = 0; $('hud').classList.remove('on'); $('hint').classList.remove('on'); talk.q = [];
 }
 function totalityUpdate(dt) {
   G.tT += dt; const t = G.tT;
   sun.cover = 1; computeSun(G.day, G.day.uTot); prepCasters();
   G.umbra = clamp(t / 2.4, 0, 1);
   const front = lerp(-200, W + 200, G.umbra);
-  for (const s of G.sparks) if (!s.dead && s.x < front) { s.dead = true; cinder(s.x, s.y, 1); G.todayStars.push({ x: s.x, y: s.y, m: 1, t: rand() * TAU }); G.dayKills++; AU.kill(G.dayKills % 12, 'glint', s.x); }
+  for (const s of G.sparks) if (!s.dead && s.x < front) { s.dead = true; cinder(s.x, s.y, 1); G.todayStars.push({ x: s.x, y: s.y, m: 1, t: rand() * TAU }); G.dayKills++; G.totalKills++; AU.kill(G.dayKills % 12, 'glint', s.x); }
   for (const L of G.lands) L.t = 99; if (t > 2.4) G.lands.length = 0;
   G.sparks = G.sparks.filter(s => !s.dead);
   updateParts(dt);
   if (t > 2.6 && !G.said.look) { G.said.look = 1; say('Look up.'); for (const s of G.todayStars) G.stars.push({ x: s.x, y: s.y, m: s.m, t: s.t, d: 6, born: G.mt + rand() * 3 }); G.todayStars = []; }
-  G.lamps.forEach((l, i) => { if (l.hp > 0 && !l.lit && t > 3.4 + 0.6 * i) { l.lit = 0.01; AU.lampLit(i + 1); } });
+  G.lamps.forEach((l, i) => { if (l.hp > 0 && !l.lit && t > 3.4 + 0.6 * i) { l.lit = 0.01; G.lampsLit++; AU.lampLit(i + 1); } });
   updateLampsAnim(dt);
   if (t > 9 && !P.gone) { P.gone = 0.001; P.owl = false; G.owlFly = { x: P.x, y: P.y - 14, t: 0 }; }
   if (P.gone) { P.gone = Math.min(1, P.gone + dt / 5); if (rand() < dt * 30 * (1 - P.gone * 0.5)) G.parts.push({ x: P.x + rr(-8, 8), y: P.y + rr(-8, 8), vx: rr(-6, 6), vy: rr(-30, -12), life: 1.6, max: 1.6, size: rr(2, 3.4), kind: 'cinder' }); }
@@ -1270,7 +1284,7 @@ function render() {
   x.setTransform(VS, 0, 0, VS, ox, oy);
   // landing telegraphs
   for (const L of G.lands) { const f = L.t / 0.9; x.strokeStyle = `rgba(214,130,30,${0.75 * (1 - f) + 0.2})`; x.lineWidth = 1.6; x.setLineDash([5, 5]); x.beginPath(); x.arc(L.x, L.y, 8 + 34 * f, 0, TAU); x.stroke(); x.setLineDash([]); x.fillStyle = 'rgba(214,130,30,0.5)'; x.beginPath(); x.arc(L.x, L.y, 2.5, 0, TAU); x.fill(); }
-  for (const v of G.volleys) { const f = 1 - v.t / 0.75, px = clamp(v.x, 6, W - 6), py = clamp(v.y, 6, H - 6); x.strokeStyle = `rgba(214,120,30,${0.25 + 0.6 * f})`; x.lineWidth = 2 + f * 3; x.beginPath(); x.arc(px, py, 30 + 40 * f, 0, TAU); x.stroke(); x.fillStyle = `rgba(230,140,40,${0.15 + 0.35 * f})`; x.beginPath(); x.arc(px, py, 18 + 22 * f, 0, TAU); x.fill(); }
+  if (G.mode === 'day') for (const v of G.volleys) { const f = 1 - v.t / 0.75, px = clamp(v.x, 6, W - 6), py = clamp(v.y, 6, H - 6); x.strokeStyle = `rgba(214,120,30,${0.25 + 0.6 * f})`; x.lineWidth = 2 + f * 3; x.beginPath(); x.arc(px, py, 30 + 40 * f, 0, TAU); x.stroke(); x.fillStyle = `rgba(230,140,40,${0.15 + 0.35 * f})`; x.beginPath(); x.arc(px, py, 18 + 22 * f, 0, TAU); x.fill(); }
   // reach outline
   if (G.mode === 'day' && sun.I > 0.25 && !P.gone) {
     reachOutline(outline); x.strokeStyle = 'rgba(30,55,100,0.16)'; x.lineWidth = 1.2; x.setLineDash([2, 7]);
@@ -1653,9 +1667,9 @@ function updateHud() {
 
 // ============================================================ screens
 function showScreen(id, on) { $(id).classList.toggle('on', on); }
-function togglePause() { if (G.mode === 'day' || G.mode === 'lamps' || G.mode === 'sunset') setPause(!G.paused); }
+function togglePause() { if (pausable()) setPause(!G.paused); }
 function setPause(p) {
-  if (p && !(G.mode === 'day' || G.mode === 'lamps' || G.mode === 'sunset')) return;
+  if (p && !pausable()) return;
   G.paused = p; showScreen('pause', p); AU.pause(p);
   $('kMove').textContent = 'walk';
   if (IN.touch) { const rows = $('pause').querySelectorAll('td:last-child'); rows[0].textContent = 'left thumb'; rows[1].textContent = 'right thumb drag'; rows[2].textContent = 'tap right side'; }
@@ -1689,13 +1703,14 @@ $('bAlbumBack').onclick = () => { AU.click(); showScreen('album', false); };
 $('bFinalAlbum').onclick = () => { AU.click(); openAlbum(); };
 $('bAgain').onclick = () => { AU.click(); $('finalSheet').classList.remove('on'); showScreen('final', false); toTitle(); };
 $('bSnd').onclick = () => { AU.unlock(); AU.toggleMute(); };
+$('bPause').onclick = e => { e.currentTarget.blur(); togglePause(); };
 $('bResume').onclick = () => { AU.click(); setPause(false); };
 $('bMute').onclick = () => AU.toggleMute();
 $('bTitle').onclick = () => { AU.click(); toTitle(); };
-$('bRetry').onclick = () => { AU.click(); showScreen('over', false); G.score = G.dayStartScore; G.lives = 3; G.stars = G.stars.filter(s => s.d !== G.dayIdx); say('Up you get.'); beginCard(G.dayIdx); };
+$('bRetry').onclick = () => { AU.click(); showScreen('over', false); G.score = G.dayStartScore; G.nextLife = G.dayStartNext; G.totalKills = G.dayStartKills; G.lives = 3; G.stars = G.stars.filter(s => s.d !== G.dayIdx); beginCard(G.dayIdx); say('Up you get.'); };
 $('bQuit').onclick = () => { AU.click(); toTitle(); };
 $('bWalk').onclick = () => { AU.click(); if (G.plateReady) walkOn(); };
-$('bKeep').onclick = () => { AU.click(); const c = $('plateCv'); const a = document.createElement('a'); a.download = `long-shadow-plate-${G.day.num}.png`; try { a.href = c.toDataURL('image/png'); a.click(); } catch (e) {} };
+$('bKeep').onclick = e => { AU.click(); e.currentTarget.blur(); const c = $('plateCv'); const a = document.createElement('a'); a.download = `long-shadow-plate-${G.day.num}.png`; try { a.href = c.toDataURL('image/png'); a.click(); } catch (e) {} };
 $('vol').oninput = e => AU.setVol(+e.target.value);
 
 // ============================================================ audio
@@ -1703,7 +1718,7 @@ const AU = {
   BOOST: 2.6, ctx: null, muted: store.get('muted', false), vol: store.get('vol', 0.8), phase: 'title', inten: 0, step: 0, chordI: 0, prog: null, next: 0, buf: {}, amb: {}, loops: {},
   unlock() {
     if (!this.ctx) this.init();
-    if (this.ctx && this.ctx.state === 'suspended') this.ctx.resume();
+    if (this.ctx && this.ctx.state === 'suspended' && !G.paused) this.ctx.resume();
   },
   init() {
     const AC = window.AudioContext || window.webkitAudioContext; if (!AC) return;
