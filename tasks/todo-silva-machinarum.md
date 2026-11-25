@@ -57,7 +57,7 @@ Fonts (Fraunces, Michroma).
    `.cap`, and the word count. When that first letter only begins a word
    ("Every"), put the rest of the word in `.lead` so it is set in capitals
    after the initial; a ship's name the story italicises goes in `<em>`.
-   Update the static numerals and the "Two stories" fallback text too (the
+   Update the static numerals and the "Four stories" fallback text too (the
    script overwrites both, but they are what shows without it).
 3. Add the README line by hand under "Silva Machinarum", in the same order.
 
@@ -78,6 +78,11 @@ Fonts (Fraunces, Michroma).
   hover, click-through, Back, keyboard focus, no WebGL, reduced motion),
   Firefox 160, and Mobile Safari 26.5 in the iPhone 17 simulator (phone width,
   and a 1100 px layout viewport for the two-column case).
+- 2026-11-23: *Reclamation*, Fable 5.2, Medium (1,061 words).
+- 2026-11-25: *Later*, Opus 5.5, Max (1,000 words). Taken byte for byte from
+  its claude.ai artifact; last in file-name order, so leaf IV. Its initial is
+  grounded in the story's painted blue over its soil-dark paper, and the
+  horizon turns the real planet's rust on hover.
 
 ## Verification (2026-11-23)
 

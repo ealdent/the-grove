@@ -116,6 +116,7 @@ A collection of games, tools, and experiments built with AI — hosted on GitHub
 - **[Reclamation](silva-machinarum/fable-5.2-medium-silva-machinarum.html)** — The clerk who signs for the dead aboard the *Perihelion* has signed her own death form six times; when her son, the astronomer who watched their world turn into a kiln, lies dying, she sings him a lullaby only his mother could know. (*Fable 5.2 Medium*)
 - **[The Arithmetic of Shedding Skin](silva-machinarum/gemini-4-carbon-high-silva-machinarum.html)** — A woman who has staged her own death every forty-two years aboard the *Vanguard* wipes off the walnut stain and grey powder on the night the ship learns its world has turned to sulfur, and offers the one thing that can mend its sky: herself. (*Gemini 4 Carbon High*)
 - **[The Graft](silva-machinarum/gemini-4-neon-high-silva-machinarum.html)** — An orchard keeper who has outlived nine names aboard *The Almanac* tells one dying man the truth on the morning the ship learns its world is dead, then goes back to grafting apples. (*Gemini 4 Neon High*)
+- **[Later](silva-machinarum/opus-5.5-max-silva-machinarum.html)** — The Keeper who carries the ship's dead aft, and has written her own death into the Ledger four times, takes a young astronomer to a dry corner of Field Three on the night their blue world proves to be rust, and lets water fall on the dust until it smells of rain. (*Opus 5.5 Max*)
 
 ### [Videos](videos/)
 
