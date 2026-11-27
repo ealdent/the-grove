@@ -299,7 +299,7 @@ h1.logo{font-family:Georgia,'Times New Roman',serif;font-weight:700;font-size:cl
   <div class="pulse-enter" style="margin-top:22px">THE MURK WILL SOON LEARN YOUR NAME</div>
 </div>
 
-<div id="webgl-error"><div>THE RIFT CANNOT BE RENDERED.<br><br>Your browser refused WebGL.<br>Enable hardware acceleration and descend again.</div></div>
+<div id="webgl-error"><div>THE RIFT CANNOT BE RENDERED.<br><br>The renderer failed to start.<br>Hard-refresh, or try another browser.</div></div>
 
 <script>
 'use strict';
@@ -566,17 +566,17 @@ const BOSS_DEPTH=3300;
 const STAGES=[
   { name:'THE TWILIGHT GARDENS', sub:'SECTOR 01 — CORAL GARDENS OF A DYING SUN', sector:'01 · Twilight Gardens',
     fog:0x062326, fogDensity:0.0115, sky:0x2e6b60, ground:0x02080a, hemi:0.75, dirColor:0xcfffe9, dirInt:0.55,
-    sun:0xffd98a, floor:0x10503f, wall:0x14332e, planktonA:new THREE.Color(0x3dffc0), planktonB:new THREE.Color(0x1ad0a0),
+    sun:0xffd98a, floor:0x10503f, wall:0x14332e, planktonA:0x3dffc0, planktonB:0x1ad0a0,
     speed:40, enemyInterval:1.55, obstacleInterval:1.6, gateInterval:2.5, ventInterval:0,
     weights:[['eel',5],['lantern',2],['shard',1]] },
   { name:'THE SIREN RIFF', sub:'SECTOR 02 — THE REEF-ARCHES SING WHEN YOU PASS', sector:'02 · The Siren Riff',
     fog:0x1d0b31, fogDensity:0.014, sky:0x5b2e86, ground:0x07030d, hemi:0.72, dirColor:0xe6b8ff, dirInt:0.5,
-    sun:0xff6ad5, floor:0x3d1d5e, wall:0x2b1746, planktonA:new THREE.Color(0xff7ad9), planktonB:new THREE.Color(0xb44dff),
+    sun:0xff6ad5, floor:0x3d1d5e, wall:0x2b1746, planktonA:0xff7ad9, planktonB:0xb44dff,
     speed:54, enemyInterval:1.15, obstacleInterval:1.25, gateInterval:2.3, ventInterval:0,
     weights:[['eel',3],['shard',3],['lantern',2],['jelly',2]] },
   { name:'THE MOTHERLIGHT MAW', sub:'SECTOR 03 — GEOTHERMAL FURY AT THE MOUTH OF THE DEEP', sector:'03 · The Motherlight Maw',
     fog:0x2b0c04, fogDensity:0.0165, sky:0x8a3a16, ground:0x0a0402, hemi:0.72, dirColor:0xffb070, dirInt:0.55,
-    sun:0xff8a3a, floor:0x54240f, wall:0x3a1a10, planktonA:new THREE.Color(0xffb35c), planktonB:new THREE.Color(0xff6a2a),
+    sun:0xff8a3a, floor:0x54240f, wall:0x3a1a10, planktonA:0xffb35c, planktonB:0xff6a2a,
     speed:68, enemyInterval:0.95, obstacleInterval:1.05, gateInterval:2.15, ventInterval:0.85,
     weights:[['eel',2],['shard',3],['jelly',2],['lantern',2],['shard',1]] }
 ];
@@ -602,16 +602,51 @@ let state=null;
 let trailPool=null, burstPool=null;
 const flashes=[];
 
-/* three ERR guard */
-try{ initThree(); }
-catch(err){
-  const el=$('webgl-error'); if(el){ el.style.display='flex'; }
+function showRendererError(err){
+  console.error('Gauntlet renderer:', err);
+  const el=$('webgl-error');
+  if(!el) return;
+  el.style.display='flex';
+  let d=el.querySelector('#webgl-error-detail');
+  if(!d){
+    d=document.createElement('div');
+    d.id='webgl-error-detail';
+    d.style.cssText='margin-top:18px;max-width:42em;font-size:11px;letter-spacing:.04em;color:#ffd8c8';
+    el.appendChild(d);
+  }
+  d.textContent=(err&&err.message)?err.message:String(err||'unknown error');
+}
+function makeGLContext(startCanvas){
+  const attrsList=[
+    {alpha:false, antialias:true, depth:true, stencil:false, failIfMajorPerformanceCaveat:false},
+    {alpha:false, antialias:false, depth:true, stencil:false, failIfMajorPerformanceCaveat:false},
+    {alpha:false, antialias:false, depth:true}
+  ];
+  let el=startCanvas;
+  for(let i=0;i<attrsList.length;i++){
+    const gl=el.getContext('webgl', attrsList[i])||el.getContext('experimental-webgl', attrsList[i]);
+    if(gl) return {canvas:el, gl:gl};
+    const fresh=el.cloneNode(false);
+    if(el.parentNode) el.parentNode.replaceChild(fresh, el);
+    el=fresh;
+  }
+  return {canvas:el, gl:null};
+}
+if(typeof THREE==='undefined'){
+  showRendererError(new Error('three.js did not load'));
   return;
 }
 
 function initThree(){
-  const canvas=$('game-canvas');
-  renderer=new THREE.WebGLRenderer({canvas:canvas, antialias:true, powerPreference:'high-performance'});
+  let canvas=$('game-canvas');
+  if(!canvas) throw new Error('missing game canvas');
+  // Open the context ourselves. r128 WebGLRenderer adds xrCompatible and
+  // powerPreference:'high-performance', which return null on some Safari/Chrome
+  // GPUs even though WebGL works, and that failed getContext poisons the canvas.
+  const made=makeGLContext(canvas);
+  canvas=made.canvas;
+  if(!made.gl) throw new Error('WebGL context is null');
+  renderer=new THREE.WebGLRenderer({canvas:canvas, context:made.gl, antialias:false, alpha:false});
   renderer.setPixelRatio(Math.min(window.devicePixelRatio||1, 2));
   renderer.setSize(window.innerWidth, window.innerHeight);
   scene=new THREE.Scene();
@@ -906,9 +941,10 @@ function recolorPlankton(stageIdx){
   const S=STAGES[stageIdx];
   const colAttr=planktonData.colorAttr;
   const arr=colAttr.array;
+  const a=new THREE.Color(S.planktonA), b=new THREE.Color(S.planktonB);
   for(let i=0;i<planktonData.count;i++){
     const mix=Math.random();
-    const c=S.planktonA.clone().lerp(S.planktonB, mix);
+    const c=a.clone().lerp(b, mix);
     arr[i*3]=c.r; arr[i*3+1]=c.g; arr[i*3+2]=c.b;
   }
   colAttr.needsUpdate=true;
@@ -1018,6 +1054,13 @@ function buildPlayer(){
   scene.add(g);
   player.mesh=g;
   playerRefs={group:g, glow:glow, flame:flame, canopy:canopy};
+}
+
+// Scene builders need the texture, geometry, and player state declared above.
+try{ initThree(); }
+catch(err){
+  showRendererError(err);
+  return;
 }
 
 /* =====================================================================
